@@ -477,3 +477,9 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   (`synergies.test.ts` nuevo, `pokeStats`, `runSave`), `tests/e2e/flow.spec.ts` (versión del guardado), README.
 - **Dudas**: números a ojo (los dejo para el equilibrio de la T25). La fila de controles junta poderes y objeto
   activo para que la lista quepa en el panel del menú (N5).
+
+## N7 — Prioridad: T32, T30 y T31 (2026-10-18)
+
+- Leída. Orden a partir de aquí: T32 (equilibrio), T30 (1920×1080, junto con N8 del HUD), T31 (sprites de 8
+  direcciones) y luego T24-T29. `test-results/` y `playwright-report/` van al `.gitignore`. No toco la fuente de los
+  números del supervisor (`PokeIsaacDigits.ttf` en `loadThemeFont`).
