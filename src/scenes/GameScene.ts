@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { fetchAttackMovesForTypes, fetchMoveInfo, fetchPokemon, fetchPokemonCard } from '../data/pokeapi';
+import { fetchAttackMovesForTypes, fetchMoveInfo, fetchNextEvolutions, fetchPokemon, fetchPokemonCard } from '../data/pokeapi';
+import { pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeHex, typeNameEs } from '../data/types';
 import { addTickets } from '../data/save';
@@ -125,7 +126,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId'
 >;
 
 export interface GameData {
@@ -215,6 +216,11 @@ export class GameScene extends Phaser.Scene {
   private bossKey = '';
   /** Pokémon elegido en StarterScene y la clave de sus texturas. */
   private starterId = 4;
+  /** Forma en la que va tu Pokémon ahora (evoluciona en ciertos pisos); starterId sigue siendo el elegido. */
+  private formId = 4;
+  /** Al bajar a este piso toca evolucionar (se hace cuando ya se ve la sala). */
+  private evolvePending = false;
+  private evolving = false;
   private starterName = '';
   private playerKey = 'starter-4';
   /** Hueco donde se guarda la partida y, si se continúa, lo guardado. */
@@ -308,6 +314,10 @@ export class GameScene extends Phaser.Scene {
     this.carry = data?.carry ?? null;
     this.slot = data?.slot ?? 0;
     this.starterId = this.resume?.starterId ?? data?.starterId ?? 4;
+    this.formId = this.resume?.formId ?? data?.carry?.formId ?? this.starterId;
+    // Solo al llegar a un piso nuevo por la trampilla (al continuar una partida ya había evolucionado)
+    this.evolvePending = !!data?.carry && shouldEvolve(this.resume?.mode ?? data?.mode ?? 'normal', data.carry.floor);
+    this.evolving = false;
     this.mode = this.resume?.mode ?? data?.mode ?? 'normal';
   }
 
@@ -406,7 +416,7 @@ export class GameScene extends Phaser.Scene {
       await this.spanishMoves(r);
       this.movePool = [...r.movePool];
     }
-    const poolReady = fetchPokemon(this.starterId)
+    const poolReady = fetchPokemon(this.formId)
       .then(async (s) => {
         // Las partidas guardadas antes de esto podían traer poderes de otros tipos
         this.movePool = filterMovesByTypes(this.movePool, s.types);
@@ -425,7 +435,7 @@ export class GameScene extends Phaser.Scene {
     // Enemigos del piso: más fuertes cuanto más hondo; la semilla del piso los fija (no hace falta guardarlos)
     const foeIds = pickFloorEnemies(enemyPool(index, this.level()), this.foeRng(this.level()));
     const [starter, boss, foeCards] = await Promise.all([
-      fetchPokemon(this.starterId),
+      fetchPokemon(this.formId),
       fetchPokemon(bossId),
       Promise.all(foeIds.map((id) => fetchPokemonCard(id).catch(() => null))),
     ]);
@@ -746,6 +756,77 @@ export class GameScene extends Phaser.Scene {
       const where = progressText(this.mode, this.floorNum);
       this.showBanner(r ? `Partida cargada · ${where}` : `${MODE_LABEL[this.mode]} · ${where}`, 1200);
     }
+    if (this.evolvePending) {
+      this.evolvePending = false;
+      this.time.delayedCall(1300, () => void this.evolve());
+    }
+  }
+
+  // --- Evolución (evolution.ts) ---
+
+  /**
+   * Evoluciona a la siguiente forma de la cadena (al azar si hay varias): destello, sprite y nombre nuevos y sus
+   * estadísticas (más altas), con las mejoras del Pokémon elegido encima. Si no evoluciona o falla la red, nada.
+   */
+  private async evolve() {
+    if (this.evolving || this.ended) return;
+    this.evolving = true;
+    try {
+      const next = pickEvolution(await fetchNextEvolutions(this.formId), Math.random);
+      if (next === null) return;
+      const data = await fetchPokemon(next);
+      const key = `starter-${next}`;
+      await new Promise<void>((resolve) => {
+        let queued = 0;
+        for (const side of ['front', 'back'] as const) {
+          if (this.textures.exists(`${key}-${side}`)) continue;
+          this.load.image(`${key}-${side}`, data.sprites[side]);
+          queued++;
+        }
+        if (queued === 0) return resolve();
+        this.load.once(Phaser.Loader.Events.COMPLETE, () => resolve());
+        this.load.start();
+      });
+      if (this.ended || !this.player?.active || !this.textures.exists(`${key}-front`)) return;
+      for (const side of ['front', 'back']) {
+        if (this.textures.exists(`${key}-${side}`)) this.textures.get(`${key}-${side}`).setFilter(Phaser.Textures.FilterMode.NEAREST);
+      }
+      const oldName = this.starterName;
+      sfx('heal');
+      this.cameras.main.flash(600, 255, 255, 255);
+      // Parpadeo en blanco, como en los juegos, y al final cambia de forma
+      this.player.setTintFill(0xffffff);
+      this.tweens.add({
+        targets: this.player,
+        alpha: 0.3,
+        yoyo: true,
+        repeat: 5,
+        duration: 110,
+        onComplete: () => {
+          if (!this.player?.active) return;
+          this.player.clearTint().setAlpha(1);
+          this.formId = next;
+          this.playerKey = key;
+          this.player.setData('sheet', key).setData('facing', undefined);
+          this.face(this.player, this.aim);
+          const prevMax = this.stats.maxHp;
+          this.baseStats = data.stats;
+          this.base = applyUpgrades(playerBaseStats(data.stats), levelsFor(loadUpgrades(), this.starterId));
+          this.stats = this.calcStats();
+          // Lo que suben los PS máximos también te cura
+          this.hp = Math.min(this.stats.maxHp, this.hp + Math.max(0, this.stats.maxHp - prevMax));
+          this.starterName = data.name;
+          this.tearType = data.types[0] ?? this.tearType;
+          this.showBanner(`¡${oldName} ha evolucionado!\nAhora es ${data.name}`, 2600);
+          void cry(next);
+          this.saveNow();
+        },
+      });
+    } catch {
+      // sin red: se queda como estaba
+    } finally {
+      this.evolving = false;
+    }
   }
 
   // --- Guardado (como en Isaac: solo, en el hueco elegido) ---
@@ -789,6 +870,7 @@ export class GameScene extends Phaser.Scene {
       version: RUN_VERSION,
       savedAt: Date.now(),
       starterId: this.starterId,
+      formId: this.formId,
       starterName: this.starterName,
       mode: this.mode,
       floor: this.floorNum,
@@ -1436,6 +1518,7 @@ export class GameScene extends Phaser.Scene {
       movePool: [...this.movePool],
       earned: this.earned,
       coins: this.coins,
+      formId: this.formId,
     };
     this.cameras.main.fadeOut(350, 0, 0, 0);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
@@ -2061,6 +2144,7 @@ export class GameScene extends Phaser.Scene {
     // Siguiente ronda: al subir de nivel, enemigos más fuertes y más dificultad
     const prevLevel = this.level();
     this.floorNum = round + 1;
+    if (shouldEvolve(this.mode, this.floorNum)) void this.evolve();
     this.difficulty = difficultyFor(this.level());
     this.saveNow();
     const ready = this.level() !== prevLevel ? this.reloadFoes(this.level()).catch(() => undefined) : Promise.resolve();

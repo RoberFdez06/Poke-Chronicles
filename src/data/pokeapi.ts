@@ -2,6 +2,7 @@ import type { MoveInfo } from './items';
 import { isUsableMove, localName, pickMoveIds, typeMoveIds } from './moves';
 import { loadSpeciesIndex } from './speciesIndex';
 import { parseApiStats, type BaseStats } from './pokeStats';
+import { nextEvolutionIds, type ChainLink } from './evolution';
 
 export interface MoveData {
   name: string;
@@ -86,6 +87,19 @@ export function fetchSpeciesName(id: number): Promise<string> {
     } catch {
       return (await getPokemonRaw(id)).name as string;
     }
+  });
+}
+
+const chainCache = new Map<number, Promise<number[]>>();
+
+/** Especies en las que puede evolucionar `id` según su `evolution-chain` (vacío si no evoluciona). */
+export function fetchNextEvolutions(id: number): Promise<number[]> {
+  return cached(chainCache, id, async () => {
+    const species = await getJson(`${BASE}/pokemon-species/${id}`);
+    const url = species.evolution_chain?.url as string | undefined;
+    if (!url) return [];
+    const chain = (await getJson(url)).chain as ChainLink;
+    return nextEvolutionIds(chain, id);
   });
 }
 

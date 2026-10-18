@@ -14,8 +14,9 @@ export const RUN_SLOTS = 3;
  * v4: monedas de la partida, Centro Pokémon, tienda y monedas/bayas en el suelo. Los pisos v3 se
  *     generaron sin Centro ni tienda (`layout` 1) y se siguen generando así para que cuadren.
  * v5: PS máximos (dependen de las estadísticas del Pokémon) para mostrarlos sin cargarlo.
+ * v6: forma actual del Pokémon (evoluciona durante la partida); los v5 aún no habían evolucionado.
  */
-export const RUN_VERSION = 5;
+export const RUN_VERSION = 6;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -39,7 +40,9 @@ export interface RunSave {
   version: number;
   /** Fecha del guardado (ms desde 1970). */
   savedAt: number;
+  /** Pokémon elegido (sus mejoras son las que cuentan) y la forma en la que va ahora (evolucionado o no). */
   starterId: number;
+  formId: number;
   starterName: string;
   mode: GameMode;
   /** Por dónde vas: piso (Normal, Infinito), ronda (Oleadas) o jefe (Rush de jefes); 1 = el primero. */
@@ -121,6 +124,11 @@ function migrateV4(d: RunSave): RunSave {
   return { ...d, version: 5, maxHp: computeStats(passives).maxHp };
 }
 
+/** v5 no evolucionaba: la forma es la del Pokémon elegido. */
+function migrateV5(d: RunSave): RunSave {
+  return { ...d, version: 6, formId: d.starterId };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -135,9 +143,10 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 2) d = migrateV2(d);
   if (d.version === 3) d = migrateV3(d);
   if (d.version === 4) d = migrateV4(d);
+  if (d.version === 5) d = migrateV5(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
-    isInt(d.savedAt) && isInt(d.starterId) && typeof d.starterName === 'string' && isMode(d.mode) &&
+    isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
     isInt(d.floor) && d.floor >= 1 && isIntArray(d.bossHistory) &&
     isInt(d.floorSeed) && isInt(d.roomCount) && isInt(d.bossId) && isInt(d.roomId) &&
     isIntArray(d.visited) && isIntArray(d.cleared) && typeof d.hp === 'number' && d.hp > 0 && isInt(d.maxHp) && d.maxHp > 0 &&

@@ -16,6 +16,7 @@ function sample(): RunSave {
     version: RUN_VERSION,
     savedAt: 1700000000000,
     starterId: 4,
+    formId: 5,
     starterName: 'charmander',
     mode: 'normal',
     floor: 2,
@@ -120,6 +121,14 @@ test('un guardado v4 (sin PS máximos) los calcula con los objetos', () => {
   assert.equal(run.maxHp, 100);
   const withBerry = parseRun(JSON.stringify({ ...v4, version: 4, passives: ['baya-aranja'] }));
   assert.equal(withBerry?.maxHp, 120);
+});
+
+test('un guardado v5 (sin evolución) sigue con el Pokémon elegido', () => {
+  const { formId: _f, ...v5 } = sample();
+  const run = parseRun(JSON.stringify({ ...v5, version: 5 }));
+  assert.ok(run);
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.formId, 4);
 });
 
 test('un piso no válido invalida el guardado', () => {

@@ -119,7 +119,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 - Como en PokéSurvivor: cada Pokémon tiene sus mejoras (daño, PS, velocidad, cadencia) que se compran con
   monedas y solo se aplican jugando con él. Pantalla "Mejoras" con los 3 controles; datos en `save.ts` con tests.
 
-## [ ] T14 — Evolución en partida
+## [x] T14 — Evolución en partida
 - Si tu Pokémon tiene evolución (PokeAPI `evolution-chain`), evoluciona al completar ciertos pisos: cambia
   sprite y nombre y sube estadísticas. Animación de destello y texto "¡X ha evolucionado!".
 

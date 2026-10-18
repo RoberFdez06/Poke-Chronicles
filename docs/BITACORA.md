@@ -317,3 +317,20 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
   `GameScene`, `MenuScene`, `main.ts`, README.
 - **Dudas**: la mejora de Daño sube el disparo; los poderes siguen dependiendo del At. Esp. y de los objetos.
   Precios y porcentajes a ojo.
+
+## T14 — Evolución en partida (2026-10-18)
+
+- **Qué**: `src/data/evolution.ts` (puro): `nextEvolutionIds(cadena, id)` recorre `evolution-chain` (descarta formas
+  especiales con id > 1025), `pickEvolution` elige una al azar si hay varias y `EVOLVE_AT` dice cuándo: pisos 2 y 4
+  (Normal, Infinito), rondas 6 y 12 (Oleadas), jefes 3 y 6 (Rush). `fetchNextEvolutions(id)` en `pokeapi.ts` (con caché).
+- **En partida**: al bajar por la trampilla a uno de esos pisos (o al empezar esa ronda en Oleadas), poco después
+  de ver la sala: destello de cámara, parpadeo en blanco, cambia sprite (frente y espalda), nombre, tipo del disparo
+  y estadísticas (las del nuevo Pokémon con las mejoras del elegido; lo que suben los PS máximos te cura),
+  cartel "¡X ha evolucionado! Ahora es Y" y su grito. Si no tiene evolución o falla la red, no pasa nada.
+- **Guardado**: `RUN_VERSION` 6 con `formId` (forma actual); los v5 migran con la forma del elegido. `starterId`
+  sigue siendo el elegido (para mejoras y huecos). Al continuar no se vuelve a evolucionar.
+- Comprobado contra PokeAPI: Charmander → Charmeleon → Charizard; Eevee → 8 ramas; Pikachu → Raichu.
+- **Archivos**: `src/data/evolution.ts`, `tests/evolution.test.ts` (nuevos), `pokeapi.ts`, `runSave.ts` (+test),
+  `GameScene`, README.
+- **Dudas**: los poderes ya conseguidos se quedan; los nuevos siguen saliendo de los tipos de la forma con la que
+  empezó el piso (si la evolución añade un tipo, como Charizard Volador, sus poderes llegan en el piso siguiente).

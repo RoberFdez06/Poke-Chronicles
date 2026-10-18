@@ -154,6 +154,14 @@ Un Pokémon medio (unos 70 en cada estadística) juega igual que antes y los ext
 ejemplo, va de ×0,7 a ×1,6). Los enemigos y jefes reparten su fuerza (la del piso) según sus estadísticas: mucha
 vida, mucho daño o mucha velocidad. Las 6 estadísticas se ven en barras en las tarjetas al elegir Pokémon y en la pausa.
 
+## Evolución en partida
+
+Si tu Pokémon tiene evolución (PokeAPI `evolution-chain`, `src/data/evolution.ts`), evoluciona al llegar a los pisos
+2 y 4 (Normal e Infinito), a las rondas 6 y 12 (Oleadas) o a los jefes 3 y 6 (Rush): destello y parpadeo en blanco,
+"¡X ha evolucionado!", su grito, sprite, nombre, tipo de disparo y estadísticas nuevas (lo que suben los PS máximos
+también te cura). Si la cadena se ramifica (Eevee), sale una al azar. Las mejoras que cuentan son las del Pokémon
+que elegiste.
+
 ## Combate
 
 - **Disparo continuo** como en Isaac: mantén una flecha y el Pokémon dispara solo, mirando hacia esa dirección.
@@ -210,6 +218,7 @@ src/
   data/loot.ts         monedas de la partida, bayas, pociones, Centro Pokémon y tienda (puro)
   scenes/ModeScene.ts  elegir modo de juego
   scenes/UpgradeScene.ts  mejoras permanentes por Pokémon
+  data/evolution.ts    cadena evolutiva y cuándo se evoluciona en cada modo (puro)
   data/upgrades.ts     mejoras: costes, niveles y cómo suben las estadísticas (puro)
   scenes/PokedexScene.ts  Pokédex con todos los Pokémon y filtros
   ui/collection.ts     barra de filtros (región, nombre, rareza, tipo) y teclado de búsqueda comunes
@@ -241,6 +250,7 @@ tests/
   pokeStats.test.ts    tests de las estadísticas
   roomLayouts.test.ts  tests de las salas con obstáculos (puertas conectadas)
   sounds.test.ts       tests de sonidos y volumen
+  evolution.test.ts    tests de la evolución
   upgrades.test.ts     tests de las mejoras
   loot.test.ts         tests de botín, curación y tienda
 scripts/
