@@ -28,6 +28,18 @@ import {
 } from '../data/modes';
 import { loadShinies, loadUpgrades, submitRecord } from '../data/save';
 import {
+  attackInterval,
+  bossAttacks,
+  bossPhase,
+  mixBehaviors,
+  pickAttack,
+  rainCount,
+  ringCount,
+  BossAttack,
+  PHASE2_SPEED,
+  TELEGRAPH_MS,
+} from '../data/bossPatterns';
+import {
   ACTIVE_DROP_CHANCE,
   ACTIVE_EFFECT,
   ACTIVE_IDS,
@@ -186,6 +198,11 @@ interface EnemyAI {
   boss: boolean;
   /** Hasta cuándo sale despedido por un golpe que empuja (la IA no manda mientras tanto). */
   knockUntil: number;
+  /** Jefe: ataques que sabe, cuándo toca el siguiente, el último y su fase (2 por debajo del 50 %). */
+  attacks?: BossAttack[];
+  nextAttack?: number;
+  lastAttack?: BossAttack;
+  phase?: 1 | 2;
 }
 
 /** Velocidad de los proyectiles enemigos (px/s) y cuánto duran. */
@@ -217,6 +234,7 @@ export class GameScene extends Phaser.Scene {
   private foeKinds: FoeKind[] = [];
   private bossType = 'normal';
   private bossName = '';
+  private bossTypes: string[] = ['normal'];
   private pickups!: Phaser.Physics.Arcade.Group;
   private walls!: Phaser.Physics.Arcade.StaticGroup;
   /** Obstáculos: hierba alta (se rompe a disparos) y agujeros (los disparos pasan por encima). */
@@ -535,6 +553,7 @@ export class GameScene extends Phaser.Scene {
     this.foeKinds = this.toFoeKinds(foes, index);
     this.bossType = boss.types[0] ?? 'normal';
     this.bossName = boss.name;
+    this.bossTypes = boss.types.length > 0 ? boss.types : ['normal'];
     this.bossBase = boss.stats;
     // Tus estadísticas salen de las de tu Pokémon; los objetos van encima
     this.baseStats = starter.stats;
@@ -1574,7 +1593,7 @@ ${where} — ${this.biome.name}`, 1600);
       if (room.kind === 'boss') this.spawnBoss();
       else {
         const n = Phaser.Math.Between(...this.difficulty.enemies);
-        for (let k = 0; k < n; k++) this.spawnEnemy();
+        this.spawnEnemies(n);
       }
       this.setDoorsLocked(room, true);
       sfx('door');
@@ -1587,7 +1606,7 @@ ${where} — ${this.biome.name}`, 1600);
   private spawnChallengeWave(roomId: number) {
     if (this.ended || this.current.id !== roomId) return;
     const n = challengeWaveSize(this.floorNum, this.challengeWave);
-    for (let k = 0; k < n; k++) this.spawnEnemy();
+    this.spawnEnemies(n);
   }
 
   private transition(dir: Dir) {
@@ -1774,22 +1793,28 @@ ${where} — ${this.biome.name}`, 1600);
     return { x, y };
   }
 
-  private spawnEnemy() {
-    const kind = Phaser.Utils.Array.GetRandom(this.foeKinds) as FoeKind;
+  /** Varios enemigos del piso; al menos uno de cada tres dispara, sea del tipo que sea (T32). */
+  private spawnEnemies(n: number) {
+    const kinds = Array.from({ length: n }, () => Phaser.Utils.Array.GetRandom(this.foeKinds) as FoeKind);
+    const behaviors = mixBehaviors(kinds.map((k) => k.behavior));
+    kinds.forEach((k, i) => this.spawnEnemy(k, behaviors[i]));
+  }
+
+  private spawnEnemy(kind: FoeKind = Phaser.Utils.Array.GetRandom(this.foeKinds) as FoeKind, behavior: EnemyBehavior = kind.behavior) {
     const { x, y } = this.randomSpotInRoom(60);
     // Shiny (1/200): otro color, más vida y más premio
     const shiny = rollShiny(Math.random, SHINY_ODDS.enemy) && this.textures.exists(`${kind.key}-s-front`);
     const sheet = shiny ? `${kind.key}-s` : kind.key;
     const e = this.enemies.create(x, y, `${sheet}-front`) as Sprite;
     e.setDisplaySize(60, 60).setData('sheet', sheet).setData('size', 60).setData('shiny', shiny);
-    const st = shapeEnemyStats(enemyStats(kind.bst, kind.behavior, this.difficulty), kind.stats);
+    const st = shapeEnemyStats(enemyStats(kind.bst, behavior, this.difficulty), kind.stats);
     const hp = Math.round(st.hp * (shiny ? SHINY_ENEMY.hpMul : 1));
     e.setData('hp', hp).setData('maxHp', hp).setData('speed', st.speed).setData('dmg', st.damage);
     if (shiny) {
       sparkle(this, x, y);
       this.popup(x, y - 40, '¡Shiny!', 0xffd34d);
     }
-    e.setData('ai', this.newAI(kind.behavior, kind.type, false));
+    e.setData('ai', this.newAI(behavior, kind.type, false));
   }
 
   private spawnBoss() {
@@ -1802,9 +1827,99 @@ ${where} — ${this.biome.name}`, 1600);
     b.setData('maxHp', b.getData('hp'));
     this.buildBossBar(b);
     // El jefe también se comporta según su tipo
-    b.setData('ai', this.newAI(behaviorFor([this.bossType]), this.bossType, true));
+    const ai = this.newAI(behaviorFor([this.bossType]), this.bossType, true);
+    ai.attacks = bossAttacks(this.bossTypes);
+    ai.nextAttack = this.time.now + 2200;
+    ai.phase = 1;
+    b.setData('ai', ai);
     this.showBanner(`¡${this.bossName}, jefe legendario!`, 1400);
     void cry(this.bossId);
+  }
+
+  // --- Ataques de los jefes (bossPatterns.ts): aviso, ataque y fase 2 ---
+
+  private updateBossAttacks(b: Sprite, time: number) {
+    const ai = b.getData('ai') as EnemyAI;
+    if (!ai.attacks || !b.active) return;
+    // Fase 2: por debajo de la mitad de vida, más rápido y con más ataques
+    const ratio = (b.getData('hp') as number) / (b.getData('maxHp') as number);
+    if (ai.phase === 1 && bossPhase(ratio) === 2) {
+      ai.phase = 2;
+      b.setData('speed', (b.getData('speed') as number) * PHASE2_SPEED);
+      this.cameras.main.shake(250, 0.006);
+      this.showBanner(`¡${this.bossName} se enfurece!`, 1400);
+      ai.nextAttack = time + 900;
+    }
+    if (time < (ai.nextAttack ?? 0) || this.ended) return;
+    const attack = pickAttack(ai.attacks, Math.random, ai.lastAttack);
+    ai.lastAttack = attack;
+    ai.nextAttack = time + attackInterval(ai.phase ?? 1) + TELEGRAPH_MS;
+    if (attack === 'ring') this.bossRing(b, ai);
+    else if (attack === 'charge') this.bossCharge(b, ai, time);
+    else this.bossRain(b, ai);
+  }
+
+  /** Ráfaga en círculo: el jefe brilla y crece un anillo de aviso; luego salen proyectiles en todas direcciones. */
+  private bossRing(b: Sprite, ai: EnemyAI) {
+    const warn = this.add.circle(b.x, b.y, 30).setStrokeStyle(4, typeColor(ai.type), 0.9).setDepth(5);
+    this.tweens.add({ targets: warn, radius: 120, alpha: 0.2, duration: TELEGRAPH_MS, onComplete: () => warn.destroy() });
+    b.setData('flashUntil', this.time.now + TELEGRAPH_MS).setTintFill(0xffffff);
+    this.time.delayedCall(TELEGRAPH_MS, () => {
+      if (!b.active || this.ended) return;
+      const n = ringCount(ai.phase ?? 1);
+      const offset = Math.random() * Math.PI;
+      for (let k = 0; k < n; k++) {
+        const a = offset + (k / n) * Math.PI * 2;
+        this.fireFoeShot(b, new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), ai.type);
+      }
+    });
+  }
+
+  /** Embestida: marca una línea hacia ti, se para y se lanza por ella. */
+  private bossCharge(b: Sprite, ai: EnemyAI, time: number) {
+    const dir = new Phaser.Math.Vector2(this.player.x - b.x, this.player.y - b.y).normalize();
+    const line = this.add.graphics().setDepth(4);
+    line.lineStyle(20, 0xe53935, 0.25).lineBetween(b.x, b.y, b.x + dir.x * 600, b.y + dir.y * 600);
+    line.lineStyle(3, 0xe53935, 0.8).lineBetween(b.x, b.y, b.x + dir.x * 600, b.y + dir.y * 600);
+    this.tweens.add({ targets: line, alpha: 0.4, yoyo: true, repeat: 2, duration: TELEGRAPH_MS / 6 });
+    // Quieto mientras avisa (la IA no manda)
+    ai.knockUntil = time + TELEGRAPH_MS;
+    b.setVelocity(0, 0);
+    this.time.delayedCall(TELEGRAPH_MS, () => {
+      line.destroy();
+      if (!b.active || this.ended) return;
+      const speed = (ai.phase === 2 ? 720 : 600);
+      b.setVelocity(dir.x * speed, dir.y * speed);
+      ai.knockUntil = this.time.now + 650;
+    });
+  }
+
+  /** Lluvia: círculos de aviso en el suelo (uno donde estás); al caer, quien esté dentro recibe daño. */
+  private bossRain(b: Sprite, ai: EnemyAI) {
+    const i = this.interior(this.current);
+    const R = 56;
+    const spots = Array.from({ length: rainCount(ai.phase ?? 1) }, (_, k) =>
+      k === 0
+        ? { x: this.player.x, y: this.player.y }
+        : {
+            x: Phaser.Math.Clamp(this.player.x + Phaser.Math.Between(-260, 260), i.x0 + R, i.x1 - R),
+            y: Phaser.Math.Clamp(this.player.y + Phaser.Math.Between(-200, 200), i.y0 + R, i.y1 - R),
+          },
+    );
+    const marks = spots.map((p) => {
+      const c = this.add.circle(p.x, p.y, R, 0xe53935, 0.18).setStrokeStyle(3, 0xe53935, 0.8).setDepth(3);
+      this.tweens.add({ targets: c, fillAlpha: 0.4, duration: TELEGRAPH_MS + 150 });
+      return c;
+    });
+    this.time.delayedCall(TELEGRAPH_MS + 150, () => {
+      marks.forEach((m) => m.destroy());
+      if (this.ended) return;
+      for (const p of spots) {
+        const fx = this.add.circle(p.x, p.y, R, typeColor(ai.type), 0.7).setDepth(12);
+        this.tweens.add({ targets: fx, alpha: 0, scale: 1.3, duration: 260, onComplete: () => fx.destroy() });
+        if (b.active && inBlast(p.x, p.y, this.player.x, this.player.y, R)) this.hurtPlayer(b);
+      }
+    });
   }
 
   /** Estado inicial de la IA; deja un respiro al entrar antes de embestir, disparar o saltar. */
@@ -2110,6 +2225,7 @@ ${where} — ${this.biome.name}`, 1600);
       const e = c as Sprite;
       if (!e.active || this.tickEnemyStatus(e, time)) return;
       this.updateEnemy(e, time);
+      if ((e.getData('ai') as EnemyAI | undefined)?.boss) this.updateBossAttacks(e, time);
       this.paintEnemy(e, time);
       this.drawEnemyBar(e);
     });
@@ -2680,6 +2796,7 @@ ${where} — ${this.biome.name}`, 1600);
     if (ai?.state === 'windup') return;
     const tint = statusTint((e.getData('statuses') as ActiveStatus[] | undefined) ?? [], time);
     if (tint !== null) e.setTint(tint);
+    else if (ai?.phase === 2) e.setTint(0xff9a8a); // jefe enfurecido
     else if (e.isTinted) e.clearTint();
   }
 
@@ -2702,7 +2819,7 @@ ${where} — ${this.biome.name}`, 1600);
     this.time.delayedCall(delay, () => {
       if (this.ended || this.floorNum !== round) return;
       const { count } = waveSpec(round);
-      for (let k = 0; k < count; k++) this.spawnEnemy();
+      this.spawnEnemies(count);
       this.waveActive = true;
     });
   }

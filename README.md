@@ -79,7 +79,7 @@ Hay dos monedas distintas:
 - **Monedas** (dentro de la partida, `src/data/loot.ts`): caen a veces de los enemigos y al limpiar salas, se recogen
   pisándolas, se ven en el HUD (●) y en la pausa, y solo sirven en la tienda. Se pierden al acabar la partida.
 
-Los tickets se ganan jugando (15 por sala limpiada, +5 por cada piso; 60 × número de piso por el jefe) y se guardan en el navegador; nunca se
+Los tickets se ganan jugando (1 por sala limpiada y 1 × número de piso por el jefe: una partida completa da unos 60, una tirada cada 2-3 partidas buenas) y se guardan en el navegador; nunca se
 compran con dinero real. Todos los nombres (Pokémon, movimientos y tipos) salen en español: los de Pokémon vienen en
 `species-index.json` (`nameEs`) y, si faltan, de `pokemon-species/{id}`. Una tirada cuesta 100 y da un Pokémon según su rareza (común, raro, épico, ultraente
 o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 tickets. La lista de especies
@@ -127,6 +127,14 @@ cada una) y con **filtros por nombre y por rareza**. Cada tarjeta muestra tipos,
 Los desbloqueados se guardan en el navegador (`localStorage`, clave `pokeisaac.unlocked`, formato
 `{ v: 2, ids: [...] }`); el gacha añade más con `unlockPokemon(id)` de `src/data/save.ts`. Regiones y filtros en
 `src/data/regions.ts`.
+
+## Jefes
+
+Además de moverse según su tipo, cada jefe tiene al menos dos ataques con aviso previo (`src/data/bossPatterns.ts`):
+**ráfaga en círculo** (brilla en blanco y crece un anillo), **embestida** (marca una línea roja y se lanza por ella) o
+**lluvia** (círculos rojos en el suelo, uno donde estás). Por debajo del 50 % de vida pasa a la **fase 2**: se tiñe de
+rojo, va más rápido y ataca más a menudo y con más proyectiles. En cada sala, al menos uno de cada tres enemigos
+dispara. `node scripts/simulate.ts` saca los números del equilibrio.
 
 ## Biomas
 
@@ -256,6 +264,8 @@ src/
     enemies.ts            enemigos por piso, comportamiento por tipo y estadísticas
     status.ts             estados por tipo: quemar, congelar, paralizar…
     synergies.ts          objetos activos y sinergias entre objetos y poderes
+    bossPatterns.ts       ataques de los jefes, su fase 2 y la mezcla de enemigos que disparan
+    balance.ts            premios esperados por piso y partida (equilibrio, con tests)
     shiny.ts              probabilidades y efectos de los shinies
     loot.ts               monedas de la partida, bayas, pociones, Centro Pokémon y tienda
     gacha.ts              rarezas y tiradas del gacha
@@ -293,6 +303,7 @@ tests/                    un archivo por módulo de data/, level/ y ui/theme.ts 
 scripts/
   buildSpeciesIndex.mjs   genera public/data/species-index.json desde PokeAPI (nombres en español, tipos, rareza)
   ensureIndex.mjs         lo genera antes de dev/build si no existe
+  simulate.ts             números del equilibrio (node scripts/simulate.ts)
 public/
   data/species-index.json lista de las 1025 especies
   fonts/PixelifySans.ttf  fuente pixel (OFL)

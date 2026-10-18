@@ -145,7 +145,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 - **Sala de desafío**: puerta especial; al entrar se cierra y salen oleadas; al ganarlas, premio bueno.
 - Todo con teclado, ratón y mando; `floorGen` coloca las salas nuevas con tests; `RunSave` sube versión.
 
-## [ ] T32 — Equilibrio: más difícil y menos premio (pedido por Roberto; va ANTES de T30)
+## [x] T32 — Equilibrio: más difícil y menos premio (pedido por Roberto; va ANTES de T30)
 Roberto lo ha jugado: se ganan demasiados tickets y monedas, caen demasiadas bayas, es muy fácil y los jefes
 también. Ajusta (todo en constantes con tests que fijen los nuevos rangos):
 - **Tickets**: aproximadamente la mitad o menos por partida (`ROOM_TICKETS`, `BOSS_TICKETS`, `roomTicketsFor`,
@@ -184,6 +184,18 @@ también. Ajusta (todo en constantes con tests que fijen los nuevos rangos):
 - Lógica pura (elegir dirección de 8 a partir de un vector, leer AnimData.xml) en `src/data/` con tests. Caché.
 - **Créditos**: pantalla o sección "Créditos" (desde Ajustes) con "Sprites: PMDCollab SpriteCollab (CC BY-NC 4.0)",
   PokeAPI y la fuente Pixelify Sans (OFL); y en el README.
+
+## [ ] T33 — Usar el arte del supervisor en la partida (va después de T31)
+El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo):
+- `src/ui/art/icons.ts`: iconos 16×16 (`bakeIcons(scene)`, `addIcon(scene, x, y, nombre, escala)` o la textura
+  `iconKey(nombre)`): aranja, zidra, coin, coin5, key, bomb, chest, chestOpen, potion, superpotion, ticket, disc
+  (gris, para teñir con el color del tipo del poder), pokeball, heart, bag (objeto pasivo), center, shop, trapdoor.
+  Sustituye con ellos los círculos de colores de bayas, monedas, llaves, bombas, cofres, objetos y poderes en el suelo,
+  los artículos de la tienda, la trampilla, el contador de monedas/llaves/bombas del HUD y los tickets de los menús.
+- `src/ui/art/tiles.ts`: `bakeBiomeTiles(scene, biome)` crea por bioma las texturas de suelo y pared (para
+  `TileSprite`, 32×32) y de roca, hierba alta, agujero, charco y columna (`tileKey(bioma, parte)`). Úsalas para
+  pintar las salas y los obstáculos de T9/T20 en vez de rectángulos lisos (escala x2 o x3 según la resolución de T30).
+- Todo con NEAREST (ya viene así) para que se vea nítido.
 
 ## [x] T22 — Shinies
 - Probabilidad de shiny (1/64 en gacha, 1/200 en enemigos; ajustable): usa `sprites.front_shiny`/`back_shiny`.

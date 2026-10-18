@@ -95,7 +95,8 @@ export function enemyStats(bst: number, behavior: EnemyBehavior, d: FloorDifficu
   const hpMul = behavior === 'charge' ? 1.2 : behavior === 'chase' ? 1 : 0.8;
   const speedMul = behavior === 'chase' ? 1 : behavior === 'charge' ? 0.7 : behavior === 'shoot' ? 0.75 : 0.5;
   return {
-    hp: Math.round(60 * k * hpMul * d.hp),
+    // T32: base de 70 PS (antes 60)
+    hp: Math.round(70 * k * hpMul * d.hp),
     speed: Math.round(80 * speedMul * d.speed),
     damage: Math.round(10 * Math.sqrt(k) * d.damage),
   };

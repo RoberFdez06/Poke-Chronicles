@@ -46,14 +46,15 @@ test('los enemigos a veces sueltan monedas y bayas', () => {
       else if (d.kind === 'berry') berries++;
     }
   }
-  assert.ok(coins > 500 && coins < 900, `monedas ${coins}`);
-  assert.ok(berries > 150 && berries < 400, `bayas ${berries}`);
+  // T32: 8 % de monedas y 1 % de bayas por enemigo
+  assert.ok(coins > 110 && coins < 220, `monedas ${coins}`);
+  assert.ok(berries > 5 && berries < 40, `bayas ${berries}`);
 });
 
-test('limpiar sala da de 1 a 3 monedas, más en pisos hondos', () => {
+test('limpiar sala da 0 o 1 moneda (T32)', () => {
   assert.equal(roomClearCoins(() => 0, 1), 1);
-  assert.equal(roomClearCoins(() => 0.999, 1), 3);
-  assert.equal(roomClearCoins(() => 0, 5), 3);
+  assert.equal(roomClearCoins(() => 0.999, 1), 0);
+  assert.equal(roomClearCoins(() => 0, 5), 1);
 });
 
 test('la tienda tiene poción, superpoción y un objeto', () => {
@@ -102,8 +103,8 @@ test('llaves y bombas caen a veces de los enemigos', () => {
       if (d.kind === 'bomb') bombs++;
     }
   }
-  assert.ok(keys > 100 && keys < 320, `llaves ${keys}`);
-  assert.ok(bombs > 100 && bombs < 320, `bombas ${bombs}`);
+  assert.ok(keys > 70 && keys < 200, `llaves ${keys}`);
+  assert.ok(bombs > 70 && bombs < 200, `bombas ${bombs}`);
 });
 
 test('la explosión alcanza lo que está dentro del radio', () => {

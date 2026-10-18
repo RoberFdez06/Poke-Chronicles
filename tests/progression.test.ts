@@ -41,10 +41,10 @@ test('la dificultad sube con el piso', () => {
   assert.ok(difficultyFor(100).speed <= 1.6);
 });
 
-test('los tickets escalan con el piso', () => {
+test('los tickets del jefe escalan con el piso; los de sala no (T32)', () => {
   assert.equal(roomTicketsFor(1), ROOM_TICKETS);
+  assert.equal(roomTicketsFor(3), ROOM_TICKETS);
   assert.equal(bossTicketsFor(1), BOSS_TICKETS);
-  assert.equal(roomTicketsFor(3), ROOM_TICKETS + 10);
   assert.equal(bossTicketsFor(3), BOSS_TICKETS * 3);
 });
 

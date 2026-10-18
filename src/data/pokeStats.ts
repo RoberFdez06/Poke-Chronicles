@@ -112,9 +112,12 @@ export function shapeEnemyStats(st: EnemyStats, b: BaseStats): EnemyStats {
   };
 }
 
+export const BOSS_BASE = { hp: 1300, damage: 26 } as const;
+
 /** Jefe: base fija por piso (como antes) repartida según sus estadísticas. */
 export function bossStats(b: BaseStats, d: FloorDifficulty): EnemyStats {
-  return shapeEnemyStats({ hp: Math.round(500 * d.hp), damage: Math.round(20 * d.damage), speed: Math.round(70 * d.speed) }, b);
+  // T32: bastante más vida y daño (antes 500 y 20): un jefe del piso 1 dura ~30-60 s sin mejoras
+  return shapeEnemyStats({ hp: Math.round(BOSS_BASE.hp * d.hp), damage: Math.round(BOSS_BASE.damage * d.damage), speed: Math.round(70 * d.speed) }, b);
 }
 
 /** Para mostrar en barras: fracción sobre un máximo razonable (255 es el tope de los juegos). */

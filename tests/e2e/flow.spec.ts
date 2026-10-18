@@ -11,6 +11,9 @@ test.beforeEach(async ({ page }) => {
 test('con teclado: se juega, se guarda, se continúa y Esc vuelve atrás', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/');
+  // Pantalla de título: cualquier tecla pasa al menú
+  await waitScene(page, 'Title', 1500);
+  await press(page, 'Enter');
   await waitScene(page, 'Menu');
 
   // Menú → Huecos, y Esc vuelve

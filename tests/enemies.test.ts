@@ -88,7 +88,8 @@ test('cada tipo tiene un comportamiento y hay al menos cuatro distintos', () => 
 test('los enemigos más fuertes y los de pisos altos tienen más vida y daño', () => {
   const d1 = difficultyFor(1);
   const rattata = enemyStats(253, 'chase', d1);
-  assert.ok(Math.abs(rattata.hp - 60) <= 5);
+  // T32: un Rattata del piso 1 tiene unos 70 PS (antes 60)
+  assert.ok(Math.abs(rattata.hp - 70) <= 5);
   assert.ok(Math.abs(rattata.damage - 10) <= 1);
   const strong = enemyStats(500, 'chase', d1);
   assert.ok(strong.hp > rattata.hp && strong.damage > rattata.damage);

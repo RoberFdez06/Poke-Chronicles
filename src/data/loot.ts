@@ -38,18 +38,19 @@ export const centerHeal = (maxHp: number): number => Math.round(maxHp / 2);
 export type LootDrop = { kind: 'coin'; value: number } | { kind: 'berry'; id: BerryId } | { kind: 'key' } | { kind: 'bomb' };
 
 export const LOOT_CHANCE = {
-  coin: 0.35,
+  // T32: bastante menos (antes 35 % de monedas, 10 % + 3 % de bayas y 5 % de llaves y bombas)
+  coin: 0.08,
   /** De las monedas que caen, cuántas son de 5. */
   bigCoin: 0.12,
-  aranja: 0.1,
-  zidra: 0.03,
-  key: 0.05,
-  bomb: 0.05,
+  aranja: 0.008,
+  zidra: 0.002,
+  key: 0.03,
+  bomb: 0.03,
 } as const;
 
 /** Botín de un enemigo al caer. El jefe siempre suelta una Baya Zidra y un puñado de monedas. */
 export function rollEnemyLoot(rng: () => number, boss = false): LootDrop[] {
-  if (boss) return [{ kind: 'berry', id: 'zidra' }, { kind: 'coin', value: 5 }, { kind: 'coin', value: 5 }];
+  if (boss) return [{ kind: 'berry', id: 'zidra' }, { kind: 'coin', value: 5 }];
   const out: LootDrop[] = [];
   if (rng() < LOOT_CHANCE.coin) out.push({ kind: 'coin', value: rng() < LOOT_CHANCE.bigCoin ? 5 : 1 });
   const b = rng();
@@ -99,9 +100,9 @@ export const CHALLENGE_REWARD: readonly LootDrop[] = [
   { kind: 'berry', id: 'zidra' },
 ];
 
-/** Monedas que caen al limpiar una sala: de 1 a 3, una más cada dos pisos. */
-export function roomClearCoins(rng: () => number, floor: number): number {
-  return 1 + Math.floor(rng() * 3) + Math.floor((Math.max(1, floor) - 1) / 2);
+/** Monedas que caen al limpiar una sala: 0 o 1 (dos de cada tres veces una). T32: antes de 1 a 3, y más en pisos hondos. */
+export function roomClearCoins(rng: () => number, _floor: number): number {
+  return rng() < 2 / 3 ? 1 : 0;
 }
 
 // --- Tienda ---

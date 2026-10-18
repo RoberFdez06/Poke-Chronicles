@@ -67,7 +67,7 @@ export function waveSpec(round: number): WaveSpec {
 export const waveDropsItem = (round: number): boolean => round > 0 && round % WAVE_ITEM_EVERY === 0;
 
 /** Tickets por ronda completada en Oleadas (menos que una sala, porque son más seguidas). */
-export const waveTickets = (round: number): number => 5 + 2 * Math.max(0, Math.floor(round) - 1);
+export const waveTickets = (round: number): number => 1 + Math.floor(Math.max(0, Math.floor(round)) / 5);
 
 // --- Sala única para Oleadas y Rush de jefes ---
 

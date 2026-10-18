@@ -20,8 +20,8 @@ function fakeStorage(): StorageLike & { data: Map<string, string> } {
 }
 
 test('cada nivel cuesta más y al máximo no se puede subir', () => {
-  assert.equal(upgradeCost(0), 40);
-  assert.equal(upgradeCost(4), 200);
+  assert.equal(upgradeCost(0), 15);
+  assert.equal(upgradeCost(4), 75);
   assert.equal(upgradeCost(MAX_UPGRADE_LEVEL), null);
   for (const k of UPGRADE_KINDS) assert.ok(UPGRADE_LABEL[k]);
 });
@@ -47,10 +47,11 @@ test('se leen aunque estén corruptas y nunca pasan del máximo', () => {
 test('comprar gasta tickets, es por Pokémon y se borra con el progreso', () => {
   const st = fakeStorage();
   assert.equal(buyUpgrade(4, 'damage', st), 'poor');
-  addTickets(100, st);
+  addTickets(40, st);
   assert.equal(buyUpgrade(4, 'damage', st), 'ok');
-  assert.equal(loadTickets(st), 60);
-  assert.equal(buyUpgrade(4, 'damage', st), 'poor'); // el segundo nivel cuesta 80
+  assert.equal(loadTickets(st), 25);
+  assert.equal(buyUpgrade(4, 'damage', st), 'poor'); // el segundo nivel cuesta 30 y quedan 25
+  assert.equal(loadTickets(st), 25);
   assert.equal(levelsFor(loadUpgrades(st), 4).damage, 1);
   assert.equal(levelsFor(loadUpgrades(st), 7).damage, 0);
   addTickets(10000, st);

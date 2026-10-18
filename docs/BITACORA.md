@@ -483,3 +483,45 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - Leída. Orden a partir de aquí: T32 (equilibrio), T30 (1920×1080, junto con N8 del HUD), T31 (sprites de 8
   direcciones) y luego T24-T29. `test-results/` y `playwright-report/` van al `.gitignore`. No toco la fuente de los
   números del supervisor (`PokeIsaacDigits.ttf` en `loadThemeFont`).
+
+## N9 — Arte nuevo del supervisor (2026-10-18)
+
+- Leída: `TitleScene` es ahora la primera escena (la prueba de navegador ya pasa por ella pulsando Enter) y
+  `src/ui/art/icons.ts` y `tiles.ts` quedan para la T33.
+
+## T32 — Equilibrio: más difícil y menos premio (2026-10-18)
+
+- **Cómo lo he medido**: `src/data/balance.ts` (puro) calcula los premios esperados por piso a partir de las
+  constantes del juego y de la media de salas de combate de `generateFloor` (60 semillas por piso), y
+  `node scripts/simulate.ts` imprime la tabla. `tests/balance.test.ts` fija los rangos nuevos.
+- **Antes → después** (partida Normal completa, de media):
+
+  | | Antes | Después |
+  |---|---|---|
+  | Tickets por partida completa | 2134 (21 tiradas) | 60 (0,6 tiradas) |
+  | Tickets hasta el piso 3 | 800 | 27 |
+  | Monedas por piso | 25 → 113 | 11 → 26 (la tienda cuesta 32 en total) |
+  | Bayas por piso | 3,6 → 14,8 | 1,2 → 2,1 (incluida la Zidra del jefe) |
+  | PS del jefe (piso 1 / 5) | 500 / 1200 | 1300 / 3640 |
+  | Daño del jefe (piso 1 / 5) | 20 / 40 | 26 / 57 |
+  | Jefe del piso 1 sin mejoras | ~12 s | ~31 s |
+  | PS de un enemigo de 300 (piso 1 / 5) | 69 / 166 | 81 / 226 |
+
+  Con una media entre partida completa y partida hasta el piso 3 (~43 tickets), una tirada (100) sale cada 2,3
+  partidas buenas.
+- **Constantes**: `ROOM_TICKETS` 15 → 1 (y ya no sube por piso), `BOSS_TICKETS` 60 → 1 (× piso); Oleadas 5 + 2/ronda →
+  1 + 1 cada 5 rondas. `LOOT_CHANCE`: monedas 35 % → 8 %, Aranja 10 % → 0,8 %, Zidra 3 % → 0,2 %, llaves y bombas 5 % →
+  3 %; monedas al limpiar sala 1-3 (+piso) → 0-1; el jefe suelta una moneda de 5 en vez de dos. Dificultad por piso:
+  +45 % de vida y +30 % de daño (antes +35 % y +25 %); enemigo base de 70 PS (antes 60). Jefe 1300 PS y 26 de daño
+  (`BOSS_BASE`). Como los tickets escasean, las mejoras cuestan 15 × nivel (antes 40 ×).
+- **Jefes** (`src/data/bossPatterns.ts`, adelanto de la T26): siempre ráfaga en círculo (anillo de aviso y el jefe en
+  blanco; 10 proyectiles, 16 en fase 2) más embestida (tipos físicos: línea roja de aviso y carga) o lluvia (resto:
+  círculos rojos en el suelo, uno bajo tus pies; daño al caer); Dragón hace las tres. Aviso de 0,75 s. Ataque cada
+  3,3 s (2,1 s en fase 2). Fase 2 por debajo del 50 %: cartel "¡X se enfurece!", temblor, tinte rojo y ×1,3 de velocidad.
+- **Enemigos a distancia**: `mixBehaviors` hace que en cada sala (combate, desafío y Oleadas) al menos uno de cada
+  tres dispare, sea del tipo que sea, con sus proyectiles del color de su tipo.
+- **Archivos**: `balance.ts`, `bossPatterns.ts`, `scripts/simulate.ts`, `tests/balance.test.ts` (nuevos), `save.ts`,
+  `progression.ts`, `modes.ts`, `loot.ts`, `enemies.ts`, `pokeStats.ts`, `upgrades.ts`, `GameScene`, tests y README.
+  `test-results/` sale del repositorio (se había colado antes de ponerlo en `.gitignore`).
+- **Dudas**: el "DPS del jugador" de la simulación es una suposición (disparo normal y un poder, acertando el 70 %);
+  si Roberto ve los jefes largos o cortos, el número a tocar es `BOSS_BASE.hp`.

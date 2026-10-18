@@ -7,6 +7,7 @@ import {
   STAT_KEYS,
   STAT_LABEL,
   bossStats,
+  BOSS_BASE,
   parseApiStats,
   playerBaseStats,
   shapeEnemyStats,
@@ -82,7 +83,7 @@ test('los enemigos reparten su fuerza según sus estadísticas', () => {
   assert.ok(quick.speed > st.speed);
   const b1 = bossStats(all(100), difficultyFor(1));
   const b3 = bossStats(all(100), difficultyFor(3));
-  assert.equal(b1.hp, 500);
+  assert.equal(b1.hp, BOSS_BASE.hp);
   assert.ok(b3.hp > b1.hp && b3.damage > b1.damage);
 });
 

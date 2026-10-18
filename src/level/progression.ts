@@ -28,15 +28,16 @@ export function difficultyFor(floor: number): FloorDifficulty {
   const k = Math.max(0, Math.floor(floor) - 1);
   const extra = Math.min(4, k);
   return {
-    hp: 1 + 0.35 * k,
-    damage: 1 + 0.25 * k,
+    // T32: algo más duros por piso (antes +35 % de vida y +25 % de daño)
+    hp: 1 + 0.45 * k,
+    damage: 1 + 0.3 * k,
     speed: Math.min(1.6, 1 + 0.08 * k),
     enemies: [3 + extra, 5 + extra],
   };
 }
 
-/** Tickets por sala limpiada: +5 por piso. */
-export const roomTicketsFor = (floor: number): number => ROOM_TICKETS + 5 * Math.max(0, Math.floor(floor) - 1);
+/** Tickets por sala limpiada (igual en todos los pisos). */
+export const roomTicketsFor = (_floor: number): number => ROOM_TICKETS;
 /** Tickets por vencer al jefe: se multiplican por el número de piso. */
 export const bossTicketsFor = (floor: number): number => BOSS_TICKETS * Math.max(1, Math.floor(floor));
 

@@ -97,9 +97,13 @@ export function unlockPokemon(id: number, storage: StorageLike | null = browserS
 export const TICKETS_KEY = 'pokeisaac.tickets';
 /** Clave antigua del saldo: se migra a TICKETS_KEY la primera vez que se lee. */
 export const COINS_KEY = 'pokeisaac.coins';
-/** Tickets por sala de combate limpiada y por vencer al jefe. Ajustables. */
-export const ROOM_TICKETS = 15;
-export const BOSS_TICKETS = 60;
+/**
+ * Tickets por sala de combate limpiada y por vencer al jefe (× número de piso). Ajustables.
+ * T32: antes 15 y 60 (una partida completa daba ~2100 tickets); ahora una partida buena da ~30-60, una tirada
+ * del gacha cada 2-3 partidas.
+ */
+export const ROOM_TICKETS = 1;
+export const BOSS_TICKETS = 1;
 
 export function parseTickets(raw: string | null): number {
   const n = Number(raw);
