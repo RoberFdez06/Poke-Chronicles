@@ -17,8 +17,9 @@ const RARITY_COLOR: Record<Rarity, number> = {
   common: 0x9aa5b1,
   rare: 0x4aa3ff,
   epic: 0xb05cff,
-  legendary: 0xffb02e,
   ultra: 0xff4fa0,
+  // El dorado queda para lo más valioso
+  legendary: 0xffc21a,
 };
 
 type Key = Phaser.Input.Keyboard.Key;

@@ -1,15 +1,16 @@
 // Rarezas y gacha: lógica pura, sin Phaser ni red, para poder testearla.
 // Los datos de cada especie salen de PokeAPI (ver scripts/buildSpeciesIndex.mjs).
 
-export const RARITIES = ['common', 'rare', 'epic', 'legendary', 'ultra'] as const;
+// De menos a más valiosa: los legendarios y singulares son lo más difícil de conseguir.
+export const RARITIES = ['common', 'rare', 'epic', 'ultra', 'legendary'] as const;
 export type Rarity = (typeof RARITIES)[number];
 
 export const RARITY_LABEL: Record<Rarity, string> = {
   common: 'Común',
   rare: 'Raro',
   epic: 'Épico',
-  legendary: 'Legendario',
   ultra: 'Ultraente',
+  legendary: 'Legendario',
 };
 
 /** Lo que necesitamos saber de cada especie para clasificarla. */
@@ -48,8 +49,8 @@ export const GACHA_RATES: Readonly<Record<Rarity, number>> = {
   common: 60,
   rare: 25,
   epic: 10,
-  legendary: 4,
-  ultra: 1,
+  ultra: 4,
+  legendary: 1,
 };
 
 /** Monedas por tirada. Ajustable cuando sepamos cuánto se gana por partida. */
@@ -58,7 +59,7 @@ export const PULL_COST = 100;
 export type RarityPools = Record<Rarity, number[]>;
 
 export function buildPools(index: readonly SpeciesFact[]): RarityPools {
-  const pools: RarityPools = { common: [], rare: [], epic: [], legendary: [], ultra: [] };
+  const pools: RarityPools = { common: [], rare: [], epic: [], ultra: [], legendary: [] };
   for (const s of index) pools[classifyRarity(s)].push(s.id);
   return pools;
 }
@@ -94,7 +95,7 @@ export function pull(
 ): PullResult {
   const rolled = RARITIES.indexOf(rollRarity(rng, rates));
 
-  // Si la rareza tirada está vacía, usa la más cercana que tenga Pokémon
+  // Si la rareza tirada está vacía, usa la más cercana que tenga Pokémon (a igual distancia, la menos valiosa)
   for (let d = 0; d < RARITIES.length; d++) {
     for (const i of [rolled - d, rolled + d]) {
       const rarity = RARITIES[i];

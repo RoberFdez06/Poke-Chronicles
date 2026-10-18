@@ -49,7 +49,7 @@ test('la misma semilla da la misma tirada', () => {
 test('la distribución de rarezas se acerca a las probabilidades', () => {
   const rng = mulberry32(12345);
   const N = 100_000;
-  const counts: Record<Rarity, number> = { common: 0, rare: 0, epic: 0, legendary: 0, ultra: 0 };
+  const counts: Record<Rarity, number> = { common: 0, rare: 0, epic: 0, ultra: 0, legendary: 0 };
   for (let i = 0; i < N; i++) counts[rollRarity(rng)]++;
   for (const r of RARITIES) {
     const pct = (counts[r] / N) * 100;
@@ -74,6 +74,20 @@ test('si la rareza tirada está vacía, baja a la más cercana con Pokémon', ()
     assert.equal(res.rarity, 'common');
     assert.ok([1, 2].includes(res.speciesId));
   }
+});
+
+test('los legendarios son la rareza más valiosa y la menos probable', () => {
+  assert.equal(RARITIES[RARITIES.length - 1], 'legendary');
+  assert.ok(RARITIES.indexOf('ultra') < RARITIES.indexOf('legendary'));
+  assert.ok(GACHA_RATES.legendary < GACHA_RATES.ultra);
+});
+
+test('sin legendarios, una tirada de legendario da un Ultraente', () => {
+  const pools = buildPools([sp(1, 300), sp(793, 570)]);
+  const always = { common: 0, rare: 0, epic: 0, ultra: 0, legendary: 1 };
+  const res = pull(mulberry32(3), pools, new Set(), always);
+  assert.equal(res.rarity, 'ultra');
+  assert.equal(res.speciesId, 793);
 });
 
 test('marca los repetidos', () => {

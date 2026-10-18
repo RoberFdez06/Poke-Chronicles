@@ -45,8 +45,8 @@ La pausa muestra tus estadísticas, objetos y poderes, y tiene *Reanudar*, *Rein
 ## Gacha y monedas
 
 Las monedas se ganan jugando (15 por sala limpiada, +5 por cada piso; 60 × número de piso por el jefe) y se guardan en el navegador; nunca se
-compran con dinero real. Una tirada cuesta 100 y da un Pokémon según su rareza (común, raro, épico, legendario
-o ultraente; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 monedas. La lista de especies
+compran con dinero real. Una tirada cuesta 100 y da un Pokémon según su rareza (común, raro, épico, ultraente
+o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 monedas. La lista de especies
 se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `node scripts/buildSpeciesIndex.mjs`.
 Con más de 8 desbloqueados, la pantalla de inicial se divide en páginas (◀ ▶ con ratón, izquierda/derecha con teclado o mando).
 
@@ -118,5 +118,5 @@ pausa muestran el piso actual.
 1. ~~Generación procedural del piso con salas y puertas.~~ Hecho (modo Normal, versión inicial).
 2. ~~Objetos y bayas que modifican estadísticas.~~ Hecho (pasivos y poderes; faltan efectos de estado por tipo).
 3. Jefes y modos: Normal, Oleadas, Infinito y Rush de jefes.
-4. Gacha con monedas ganadas jugando (común, raro, épico, legendario y ultraente).
+4. Gacha con monedas ganadas jugando (común, raro, épico, ultraente y legendario).
 5. Empaquetado como app con Tauri o Electron.

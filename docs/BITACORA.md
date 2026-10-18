@@ -19,3 +19,11 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
   extensión `.ts` (node --test no resuelve imports sin extensión). Vite lo admite sin problema.
 - **Dudas para Roberto**: los números de dificultad (+35 % vida y +25 % daño por piso) son a ojo; están juntos en
   `difficultyFor` para ajustarlos.
+
+## N1 y N2 — Notas del supervisor (2026-10-18)
+
+- **N1**: rarezas reordenadas: común < raro < épico < ultraente < legendario. Probabilidades: ultraente 4 %,
+  legendario 1 %. El respaldo de `pull` ya busca la rareza más cercana (a igual distancia, la menos valiosa), así
+  que sin legendarios una tirada de legendario da un Ultraente. Color dorado para legendario en `GachaScene`.
+  Tests nuevos en `tests/gacha.test.ts`. README actualizado.
+- **N2**: leída. Los botones nuevos usarán `setInteractive(new Rectangle(0, 0, w, h))` o `MenuList`.
