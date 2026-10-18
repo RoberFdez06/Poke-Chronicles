@@ -66,7 +66,7 @@ export class SlotsScene extends Phaser.Scene {
     }).setOrigin(0, 0.5);
 
     const box = this.add.container(x, y, [bg, glow, title, info]).setSize(w, h);
-    box.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
+    box.setInteractive(new Phaser.Geom.Rectangle(0, 0, w, h) /* Phaser la centra solo */, Phaser.Geom.Rectangle.Contains);
     box.input!.cursor = 'pointer';
     box.on('pointerover', () => !this.dialog && this.select(i));
     box.on('pointerdown', () => {

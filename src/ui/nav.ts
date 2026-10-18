@@ -108,7 +108,7 @@ export class MenuList {
         .text(0, 0, label, { fontFamily: FONT, fontSize: `${opts.fontSize ?? 24}px`, fontStyle: 'bold', color: '#2b3a67' })
         .setOrigin(0.5);
       const box = scene.add.container(0, i * (this.h + gap), [bg, text]).setSize(this.w, this.h);
-      box.setInteractive(new Phaser.Geom.Rectangle(-this.w / 2, -this.h / 2, this.w, this.h), Phaser.Geom.Rectangle.Contains);
+      box.setInteractive(new Phaser.Geom.Rectangle(0, 0, this.w, this.h) /* Phaser la centra solo */, Phaser.Geom.Rectangle.Contains);
       box.input!.cursor = 'pointer';
       box.on('pointerover', () => this.active && this.select(i));
       box.on('pointerdown', () => {

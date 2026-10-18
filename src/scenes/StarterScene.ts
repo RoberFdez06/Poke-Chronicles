@@ -201,8 +201,8 @@ export class StarterScene extends Phaser.Scene {
 
     const box = this.add.container(x, y, [bg, glow, sprite, name, ...chips]).setScale(scale);
     box.setSize(w, h);
-    // El área interactiva de un contenedor parte de su esquina; la centramos
-    box.setInteractive(new Phaser.Geom.Rectangle(-w / 2, -h / 2, w, h), Phaser.Geom.Rectangle.Contains);
+    // En un contenedor con tamaño, Phaser ya desplaza el área al centro: va de (0,0) a (w,h)
+    box.setInteractive(new Phaser.Geom.Rectangle(0, 0, w, h), Phaser.Geom.Rectangle.Contains);
     box.input!.cursor = 'pointer';
     box.on('pointerover', () => this.select(index));
     box.on('pointerdown', () => this.choose(index));

@@ -101,8 +101,8 @@ export class MenuScene extends Phaser.Scene {
 
     const box = this.add.container(x, y, [bg, label]);
     box.setSize(BTN.w, BTN.h);
-    // El área interactiva de un contenedor parte de su esquina; la centramos
-    box.setInteractive(new Phaser.Geom.Rectangle(-BTN.w / 2, -BTN.h / 2, BTN.w, BTN.h), Phaser.Geom.Rectangle.Contains);
+    // En un contenedor con tamaño, Phaser ya desplaza el área al centro: va de (0,0) a (w,h)
+    box.setInteractive(new Phaser.Geom.Rectangle(0, 0, BTN.w, BTN.h), Phaser.Geom.Rectangle.Contains);
     box.input!.cursor = 'pointer';
     box.on('pointerover', () => !this.overlay && this.select(index));
     box.on('pointerdown', () => !this.overlay && this.activate(index));

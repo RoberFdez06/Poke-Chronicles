@@ -102,7 +102,7 @@ export class GachaScene extends Phaser.Scene {
     const bg = this.add.graphics();
     const label = this.add.text(0, 0, text, { fontFamily: FONT, fontSize: '24px', fontStyle: 'bold', color: '#2b3a67' }).setOrigin(0.5);
     const box = this.add.container(x, y, [bg, label]).setSize(BTN.w, BTN.h);
-    box.setInteractive(new Phaser.Geom.Rectangle(-BTN.w / 2, -BTN.h / 2, BTN.w, BTN.h), Phaser.Geom.Rectangle.Contains);
+    box.setInteractive(new Phaser.Geom.Rectangle(0, 0, BTN.w, BTN.h) /* Phaser la centra solo */, Phaser.Geom.Rectangle.Contains);
     box.input!.cursor = 'pointer';
     box.on('pointerover', () => this.select(i));
     box.on('pointerdown', () => {
