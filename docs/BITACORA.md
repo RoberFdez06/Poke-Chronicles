@@ -376,3 +376,20 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 11. **Equilibrio**: dificultad por piso, precios de tienda y mejoras, tickets por sala/jefe/ronda y estadísticas
     de los Pokémon muy fuertes o muy débiles. Todos los números están en `src/data/` y `src/level/` para ajustarlos.
 12. **Licencia de la fuente**: añadir `public/fonts/OFL.txt` (enlace en el README).
+
+## T20 — Biomas por piso (2026-10-18)
+
+- **Qué**: `src/level/biomes.ts` con 9 biomas (Bosque, Cueva, Mar, Volcán, Torre fantasma, Ciudad, Montaña nevada,
+  Pantano, Cumbre dragón): tipos de enemigos, colores de suelo, paredes, rocas, hierba (tinte), charcos (lava,
+  hielo, lodo…) y agujeros. Normal: orden fijo Bosque → Cueva → Mar → Volcán → Torre; Infinito y Rush rotan los 9
+  por piso; Oleadas, por nivel (cada 3 rondas).
+- **Enemigos**: `biomeEnemyPool` coge de la franja de fuerza del piso los que tengan un tipo del bioma; si son menos
+  de 6, los 6 del bioma con la suma de estadísticas más cercana (test: la media queda cerca de la franja).
+  **Jefe**: `biomeBossPool` = legendarios/singulares del tipo del bioma (Volcán → Moltres, Entei, Groudon…), si no hay, cualquiera.
+- **Pantalla**: inicio, combate y jefe con el suelo del bioma (objeto, Centro y tienda conservan el suyo para
+  reconocerlos), paredes y obstáculos del bioma, cartel "Normal / Piso 2/5 — Cueva" y "Ronda 4 — Volcán".
+- **Decisión**: la tarea decía usar `/type/{tipo}` de PokeAPI; como `species-index.json` ya trae los tipos de las
+  1025 especies (T12), los saco de ahí: mismo resultado, sin peticiones y con tests. El bioma se calcula del modo y el
+  piso, así que no cambia `RunSave`.
+- **Dudas**: en Oleadas la sala no cambia de colores al cambiar de bioma (solo los enemigos y el cartel).
+- **Archivos**: `src/level/biomes.ts`, `tests/biomes.test.ts` (nuevos), `GameScene`, README.

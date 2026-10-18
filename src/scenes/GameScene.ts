@@ -8,7 +8,6 @@ import { clearRun, saveRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOO
 import { loadSpeciesIndex } from '../data/speciesIndex';
 import {
   bossTicketsFor,
-  bossPool,
   difficultyFor,
   pickBoss,
   roomTicketsFor,
@@ -83,7 +82,8 @@ import {
   PlayerStats,
 } from '../data/items';
 import { generateFloor, mulberry32, DIRS, OPPOSITE, Dir, Floor, Room } from '../level/floorGen';
-import { behaviorFor, enemyPool, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES } from '../data/enemies';
+import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES } from '../level/biomes';
+import { behaviorFor, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES } from '../data/enemies';
 import { drawMinimap } from './minimap';
 
 // Cada sala ocupa una pantalla del mundo; ROOM es su interior relativo a la celda
@@ -97,7 +97,6 @@ const CLEAR_DROP_CHANCE = 0.25;
 /** Separación en radianes entre los proyectiles de un abanico. */
 const SPREAD = 0.2;
 
-const WALL_COLOR = 0x2b3a67;
 const DOOR_COLOR = 0x8a5a3c;
 const FLOOR_COLORS: Record<Room['kind'], number> = {
   start: 0xdff3ff,
@@ -237,6 +236,8 @@ export class GameScene extends Phaser.Scene {
   /** Número de piso (1 = el primero) y su dificultad. */
   private floorNum = 1;
   private difficulty: FloorDifficulty = difficultyFor(1);
+  /** Bioma del piso (o del nivel de Oleadas): colores, obstáculos y tipos de enemigos (biomes.ts). */
+  private biome: Biome = BIOMES[0];
   private bossHistory: number[] = [];
   /** Trampilla al piso siguiente: aparece al vencer al jefe y se activa cuando te alejas de ella. */
   private trapdoor?: { x: number; y: number; armed: boolean };
@@ -396,6 +397,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.waveActive = false;
     this.difficulty = difficultyFor(this.level());
+    this.biome = biomeFor(this.mode, this.mode === 'waves' ? this.level() : this.floorNum);
     // Al continuar, el piso se regenera igual con la misma semilla; cada piso nuevo es más grande.
     // Oleadas y Rush de jefes se juegan en una sola sala
     this.floorSeed = r?.floorSeed ?? Phaser.Math.Between(0, 0x7fffffff);
@@ -427,12 +429,13 @@ export class GameScene extends Phaser.Scene {
     const index = await loadSpeciesIndex().catch(() => []);
     let bossId = r?.bossId;
     if (bossId === undefined) {
-      bossId = pickBoss(bossPool(index), Math.random, this.bossHistory);
+      // El jefe intenta ser de un tipo del bioma
+      bossId = pickBoss(biomeBossPool(index, this.biome), Math.random, this.bossHistory);
       this.bossHistory.push(bossId);
     }
     this.bossId = bossId;
     // Enemigos del piso: más fuertes cuanto más hondo; la semilla del piso los fija (no hace falta guardarlos)
-    const foeIds = pickFloorEnemies(enemyPool(index, this.level()), this.foeRng(this.level()));
+    const foeIds = pickFloorEnemies(biomeEnemyPool(index, this.level(), this.biome), this.foeRng(this.level()));
     const [starter, boss, foeCards] = await Promise.all([
       fetchPokemon(this.formId),
       fetchPokemon(bossId),
@@ -530,7 +533,8 @@ export class GameScene extends Phaser.Scene {
   /** Oleadas: al subir de nivel, cambia a especies más fuertes (si no se pueden cargar, siguen las de antes). */
   private async reloadFoes(level: number) {
     const index = await loadSpeciesIndex().catch(() => [] as SpeciesFact[]);
-    const ids = pickFloorEnemies(enemyPool(index, level), this.foeRng(level));
+    this.biome = biomeFor(this.mode, level);
+    const ids = pickFloorEnemies(biomeEnemyPool(index, level, this.biome), this.foeRng(level));
     const cards = (await Promise.all(ids.map((id) => fetchPokemonCard(id).catch(() => null)))).filter((c) => c !== null);
     if (cards.length === 0 || !this.scene.isActive()) return;
     await new Promise<void>((resolve) => {
@@ -752,7 +756,9 @@ export class GameScene extends Phaser.Scene {
     // En Oleadas el cartel de la ronda lo pone startWave
     if (this.mode !== 'waves') {
       const where = progressText(this.mode, this.floorNum);
-      this.showBanner(r ? `Partida cargada · ${where}` : `${MODE_LABEL[this.mode]} · ${where}`, 1200);
+      const head = r ? 'Partida cargada' : MODE_LABEL[this.mode];
+      this.showBanner(`${head}
+${where} — ${this.biome.name}`, 1600);
     }
     if (this.evolvePending) {
       this.evolvePending = false;
@@ -971,10 +977,12 @@ export class GameScene extends Phaser.Scene {
 
   private buildRoom(room: Room) {
     const i = this.interior(room);
-    const floorColor = FLOOR_COLORS[room.kind];
+    // Inicio, combate y jefe llevan el suelo del bioma; objeto, Centro y tienda conservan el suyo
+    const plain = room.kind === 'start' || room.kind === 'combat' || room.kind === 'boss';
+    const floorColor = plain ? this.biome.colors.floor : FLOOR_COLORS[room.kind];
     const g = this.add.graphics().setDepth(0);
 
-    g.fillStyle(WALL_COLOR, 1).fillRect(i.x0 - WALL, i.y0 - WALL, ROOM.w + WALL * 2, ROOM.h + WALL * 2);
+    g.fillStyle(this.biome.colors.wall, 1).fillRect(i.x0 - WALL, i.y0 - WALL, ROOM.w + WALL * 2, ROOM.h + WALL * 2);
     g.fillStyle(floorColor, 1).fillRoundedRect(i.x0, i.y0, ROOM.w, ROOM.h, 24);
 
     for (const d of DIRS) {
@@ -1180,8 +1188,8 @@ export class GameScene extends Phaser.Scene {
         const cy = y + TILE / 2;
         switch (c) {
           case 'R':
-            g.fillStyle(0x5f5f6e, 1).fillRoundedRect(x + 2, y + 4, TILE - 4, TILE - 6, 8);
-            g.fillStyle(0x8d8d9c, 1).fillRoundedRect(x + 4, y + 3, TILE - 8, TILE - 12, 7);
+            g.fillStyle(this.biome.colors.rock, 1).fillRoundedRect(x + 2, y + 4, TILE - 4, TILE - 6, 8);
+            g.fillStyle(this.biome.colors.rockTop, 1).fillRoundedRect(x + 4, y + 3, TILE - 8, TILE - 12, 7);
             this.addWall(x, y, TILE, TILE);
             break;
           case 'P':
@@ -1190,18 +1198,18 @@ export class GameScene extends Phaser.Scene {
             this.addWall(x, y, TILE, TILE);
             break;
           case 'H': {
-            g.fillStyle(0x1a1410, 1).fillRoundedRect(x + 1, y + 1, TILE - 2, TILE - 2, 10);
+            g.fillStyle(this.biome.colors.hole, 1).fillRoundedRect(x + 1, y + 1, TILE - 2, TILE - 2, 10);
             g.fillStyle(0x0b0806, 1).fillRoundedRect(x + 6, y + 8, TILE - 12, TILE - 12, 8);
             const hole = this.add.rectangle(cx, cy, TILE - 6, TILE - 6).setVisible(false);
             this.holes.add(hole);
             break;
           }
           case 'W':
-            g.fillStyle(0x6fa8dc, 0.55).fillRoundedRect(x, y, TILE, TILE, 12);
+            g.fillStyle(this.biome.colors.puddle, 0.6).fillRoundedRect(x, y, TILE, TILE, 12);
             break;
           case 'B': {
             const bush = this.bushes.create(cx, cy, 'bush') as Sprite;
-            bush.setDepth(2).setData('hp', 2).setData('room', room.id).setData('tile', [tx, ty]);
+            bush.setTint(this.biome.colors.bush).setDepth(2).setData('hp', 2).setData('room', room.id).setData('tile', [tx, ty]);
             break;
           }
         }
@@ -2109,7 +2117,7 @@ export class GameScene extends Phaser.Scene {
   /** Empieza la ronda actual tras un momento de respiro. */
   private startWave(delay: number) {
     const round = this.floorNum;
-    this.showBanner(`Ronda ${round}`, delay);
+    this.showBanner(`Ronda ${round} — ${this.biome.name}`, delay);
     this.time.delayedCall(delay, () => {
       if (this.ended || this.floorNum !== round) return;
       const { count } = waveSpec(round);

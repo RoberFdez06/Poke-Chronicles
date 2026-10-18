@@ -126,3 +126,68 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 ## [x] T15 — Revisión final y pulido
 - Repasa el README y la bitácora, quita código muerto, revisa que todas las pantallas funcionan con los
   3 controles y deja en la bitácora una lista de "cosas para probar" para Roberto.
+
+# Tanda 2 (pedida por Roberto el 18/10 por la tarde)
+
+## [x] T20 — Biomas por piso
+- Cada piso tiene un bioma: Bosque, Cueva, Volcán, Mar, Ciudad, Nieve, Torre fantasma… (los de Normal, en orden
+  fijo; Infinito y Oleadas los rotan). Cambian colores de suelo/paredes, decoración de los obstáculos (T9) y el
+  tipo de los enemigos (Bosque → Planta/Bicho, Volcán → Fuego/Roca, Mar → Agua…), usando PokeAPI `/type/{tipo}`
+  para elegir especies. El jefe legendario intenta ser de un tipo del bioma.
+- Cartel al entrar al piso: "Piso 2 — Cueva". Datos de biomas puros en `src/level/biomes.ts` con tests.
+
+## [ ] T21 — Más salas tipo Isaac
+- **Llaves y cofres**: los enemigos sueltan llaves a veces; cofres en algunas salas que se abren con llave
+  (objeto, monedas o bayas). Contador de llaves en el HUD y la pausa.
+- **Bombas**: se recogen y se usan con una tecla (E / clic derecho+botón en HUD / botón del mando libre: mira
+  qué queda libre y documéntalo). Rompen rocas y abren paredes de la **sala secreta** (una por piso, sin puerta
+  visible; pista: grieta en la pared).
+- **Sala de desafío**: puerta especial; al entrar se cierra y salen oleadas; al ganarlas, premio bueno.
+- Todo con teclado, ratón y mando; `floorGen` coloca las salas nuevas con tests; `RunSave` sube versión.
+
+## [ ] T22 — Shinies
+- Probabilidad de shiny (1/64 en gacha, 1/200 en enemigos; ajustable): usa `sprites.front_shiny`/`back_shiny`.
+  Brillo con destellos al aparecer. Un shiny del gacha se guarda como shiny en la colección.
+- Si eliges un shiny de inicial, juegas con su sprite shiny. Enemigo shiny: más vida y suelta más premio.
+- Pokédex: marca de shiny y contador de shinies conseguidos.
+
+## [ ] T23 — Más objetos y sinergias
+- Al menos 25 pasivos nuevos (nombres de objetos Pokémon en español: Cinta Elegida, Lente Zoom, Vidasfera,
+  Restos, Banda Focus, Hierba Blanca…) con efectos variados, no solo números: disparos que siguen al enemigo,
+  disparo hacia atrás, escudo que para un golpe por sala, más alcance por cada enemigo vivo, etc.
+- **Objetos activos** (una ranura aparte, tecla Espacio / botón del HUD / un botón del mando) que se recargan
+  limpiando salas: Poké Flauta (aturde a todos), Repelente (enemigos huyen), Pokéblock (cura)…
+- **Sinergias**: combinaciones con efecto extra y aviso "¡Sinergia!" (p. ej. Carbón + poder de fuego = quemaduras
+  más fuertes). Tabla pura con tests.
+
+## [ ] T24 — Misiones y logros
+- Pantalla "Misiones" en el menú: retos permanentes (logros) y 3 misiones diarias que cambian cada día
+  (vence 10 enemigos de tipo Agua, llega al piso 3 sin curarte, abre 2 cofres…). Dan tickets y algunos logros
+  desbloquean cosas (un Pokémon, un objeto nuevo en el sorteo). Aviso en partida al completar una.
+- Lógica pura con tests (progreso, fecha de las diarias con semilla del día).
+
+## [ ] T25 — Tutorial y equilibrio
+- Primera partida guiada: carteles cortos que explican moverse, disparar, poderes, pausa, objetos, Centro y
+  tienda la primera vez que pasan (se pueden saltar; se guarda que ya se vieron). Con los 3 controles.
+- Equilibrio: script `scripts/simulate.mjs` (o tests) que simule partidas con la lógica pura y saque tiempos
+  por sala, daño recibido, monedas y tickets por partida; ajusta números y explica los cambios en la bitácora.
+
+## [ ] T26 — Jefes con patrones (sugerida por el supervisor)
+- Cada jefe legendario tiene 2-3 ataques según su tipo (ráfaga en círculo, embestida, lluvia de proyectiles,
+  invocar ayudantes) y una segunda fase al bajar del 50 % de vida (más rápido, cambio de color). Aviso
+  visual antes de cada ataque para poder esquivarlo.
+
+## [ ] T27 — Habilidades de PokeAPI (sugerida por el supervisor)
+- Tu Pokémon tiene su habilidad real de PokeAPI (`abilities`, nombre en español) con un efecto pasivo sencillo:
+  Mar Llamas (+daño con poca vida), Espesura, Torrente, Intimidación (enemigos −daño), Levitación (cruzas
+  agujeros), Velo Arena… Las que no tengan efecto definido dan una mejora pequeña genérica. Se ve en la pausa.
+
+## [ ] T28 — Resumen de partida e historial (sugerida por el supervisor)
+- Al morir o ganar: pantalla de resumen (tiempo, pisos, enemigos vencidos, daño hecho, objetos, tickets
+  ganados, nuevo récord) antes de volver. Historial de las últimas 20 partidas consultable desde el menú.
+
+## [ ] T29 — Pruebas en navegador (sugerida por el supervisor)
+- Añade Playwright como dependencia de desarrollo y `npm run e2e`: abre el juego con `vite preview`, simula
+  PokeAPI con `page.route` (respuestas falsas) y recorre menú → huecos → inicial → modo → partida → pausa →
+  salir, con teclado, con ratón y comprobando que Esc vuelve atrás en cada pantalla. Que falle si hay
+  errores en consola. Úsalo en la skill `comprobar` a partir de aquí.

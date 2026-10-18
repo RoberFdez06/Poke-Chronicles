@@ -118,6 +118,14 @@ Los desbloqueados se guardan en el navegador (`localStorage`, clave `pokeisaac.u
 `{ v: 2, ids: [...] }`); el gacha añade más con `unlockPokemon(id)` de `src/data/save.ts`. Regiones y filtros en
 `src/data/regions.ts`.
 
+## Biomas
+
+Cada piso tiene un bioma (`src/level/biomes.ts`): Bosque, Cueva, Mar, Volcán, Torre fantasma, Ciudad, Montaña nevada,
+Pantano y Cumbre dragón. En Normal van en orden fijo (Bosque → Cueva → Mar → Volcán → Torre fantasma); Infinito,
+Rush de jefes y Oleadas (cada 3 rondas) los rotan. Cambian los colores del suelo y las paredes, el aspecto de rocas,
+hierba, agujeros y charcos (en el volcán, lava) y el tipo de los enemigos (Bosque → Planta/Bicho, Volcán →
+Fuego/Roca, Mar → Agua/Volador…). El jefe legendario intenta ser de un tipo del bioma. Al entrar sale "Piso 2 — Cueva".
+
 ## Salas con obstáculos
 
 Las salas de combate tienen diseños variados (`src/level/roomLayouts.ts`, elegidos con la semilla del piso y a veces
@@ -223,6 +231,7 @@ src/
     controls.ts           lista de controles que enseñan el menú, la pausa y los ajustes
   level/                  lógica pura de los pisos, con tests
     floorGen.ts           generador de pisos (determinista por semilla), Centro y tienda
+    biomes.ts             biomas: colores, tipos de enemigos y del jefe por piso
     roomLayouts.ts        plantillas de sala con obstáculos, conectividad y campo de flujo
     progression.ts        pisos: tamaño, dificultad, tickets y jefes legendarios
   ui/
