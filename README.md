@@ -84,6 +84,14 @@ compran con dinero real. Todos los nombres (Pokémon, movimientos y tipos) salen
 o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 tickets. La lista de especies
 se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `node scripts/buildSpeciesIndex.mjs`.
 
+## Shinies
+
+Como en los juegos, a veces sale un Pokémon **shiny** (otro color; sprites `front_shiny`/`back_shiny` de PokeAPI, reglas
+en `src/data/shiny.ts`): 1 de cada 64 tiradas del gacha y 1 de cada 200 enemigos. Salen con destellos. Un shiny del
+gacha se guarda en tu colección (`pokeisaac.shinies`) y, si lo eliges, juegas con su sprite shiny (también al
+evolucionar); su tarjeta lleva una ★. Un enemigo shiny tiene un 50 % más de vida y suelta dos monedas de 5 y una llave.
+La Pokédex marca tus shinies con ★ y los cuenta.
+
 ## Mejoras
 
 Como en PokéSurvivor, cada Pokémon tiene sus mejoras permanentes (`src/scenes/UpgradeScene.ts`, reglas en

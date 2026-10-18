@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { fetchPokemonCard, PokemonCard } from '../data/pokeapi';
-import { loadUnlocked } from '../data/save';
+import { loadShinies, loadUnlocked } from '../data/save';
 import { loadSpeciesIndex } from '../data/speciesIndex';
 import { classifyRarity, RARITY_LABEL } from '../data/gacha';
 import { filterCollection, CollectionEntry } from '../data/regions';
@@ -40,6 +40,8 @@ export class StarterScene extends Phaser.Scene {
   /** Para descartar el dibujo de una página vieja si se ha cambiado de página mientras cargaba. */
   private pageToken = 0;
   private cardCache = new Map<number, PokemonCard>();
+  /** Los que tienes shiny: con ellos juegas con su sprite shiny. */
+  private shinies = new Set<number>();
 
   private nav!: NavInput;
   private pad!: PadButtons;
@@ -70,6 +72,7 @@ export class StarterScene extends Phaser.Scene {
 
     // Primera partida: sin ningún Pokémon, se elige región e inicial
     const unlocked = loadUnlocked();
+    this.shinies = new Set(loadShinies());
     if (unlocked.length === 0) {
       this.starting = true;
       this.scene.start('FirstStarter', { slot: this.slot });
@@ -192,7 +195,7 @@ export class StarterScene extends Phaser.Scene {
     let cards: PokemonCard[];
     try {
       cards = await Promise.all(slice.map((e) => this.card(e.id)));
-      await loadCardTextures(this, cards);
+      await loadCardTextures(this, cards, this.shinies);
     } catch (err) {
       if (token === this.pageToken) this.emptyText.setText('No se pudo cargar PokeAPI.\n' + String(err));
       return;
@@ -209,7 +212,8 @@ export class StarterScene extends Phaser.Scene {
       const t = buildPokemonCard(this, c, left + (k % COLS) * CELL.w, top + Math.floor(k / COLS) * CELL.h, {
         scale: CARD_SCALE,
         stats: c.stats,
-        tag: { text: RARITY_LABEL[e.rarity], color: hex(RARITY_COLORS[e.rarity]) },
+        shiny: this.shinies.has(c.id),
+        tag: { text: (this.shinies.has(c.id) ? 'Shiny · ' : '') + RARITY_LABEL[e.rarity], color: hex(RARITY_COLORS[e.rarity]) },
       });
       const index = page * PAGE_SIZE + k;
       t.box.on('pointerover', () => !this.filters?.searching && this.select(index));

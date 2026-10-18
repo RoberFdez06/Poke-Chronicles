@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { fetchAttackMovesForTypes, fetchMoveInfo, fetchNextEvolutions, fetchPokemon, fetchPokemonCard } from '../data/pokeapi';
+import { fetchAttackMovesForTypes, fetchMoveInfo, fetchNextEvolutions, fetchPokemon, fetchPokemonCard, pickSprites } from '../data/pokeapi';
 import { pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
@@ -26,7 +26,9 @@ import {
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
-import { loadUpgrades, submitRecord } from '../data/save';
+import { loadShinies, loadUpgrades, submitRecord } from '../data/save';
+import { rollShiny, SHINY_ENEMY, SHINY_ODDS } from '../data/shiny';
+import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
 import { cry, sfx } from '../ui/audio';
 import {
@@ -233,6 +235,8 @@ export class GameScene extends Phaser.Scene {
   /** Al bajar a este piso toca evolucionar (se hace cuando ya se ve la sala). */
   private evolvePending = false;
   private evolving = false;
+  /** Tienes shiny al Pokémon elegido: juegas con su sprite shiny (también al evolucionar). */
+  private shiny = false;
   private starterName = '';
   private playerKey = 'starter-4';
   /** Hueco donde se guarda la partida y, si se continúa, lo guardado. */
@@ -349,6 +353,7 @@ export class GameScene extends Phaser.Scene {
     // Solo al llegar a un piso nuevo por la trampilla (al continuar una partida ya había evolucionado)
     this.evolvePending = !!data?.carry && shouldEvolve(this.resume?.mode ?? data?.mode ?? 'normal', data.carry.floor);
     this.evolving = false;
+    this.shiny = loadShinies().includes(this.starterId);
     this.mode = this.resume?.mode ?? data?.mode ?? 'normal';
   }
 
@@ -504,19 +509,23 @@ export class GameScene extends Phaser.Scene {
     this.tearType = starter.types[0] ?? 'normal';
     this.starterName = starter.name;
     // Misma clave que usa StarterScene, así las texturas ya están cargadas
-    this.playerKey = `starter-${starter.id}`;
+    this.playerKey = `starter-${starter.id}${this.shiny ? '-s' : ''}`;
     this.bossKey = `boss-${boss.id}`;
     await poolReady;
 
     this.load.crossOrigin = 'anonymous';
-    const sheets: [string, { sprites: { front: string; back: string } }][] = [
-      [this.playerKey, starter],
-      [this.bossKey, boss],
-      ...foes.map((c) => [`foe-${c.id}`, c] as [string, typeof c]),
+    // Cada hoja: clave y sprites (los enemigos también en shiny, por si sale uno)
+    const sheets: [string, { front: string; back: string }][] = [
+      [this.playerKey, pickSprites(starter.sprites, this.shiny)],
+      [this.bossKey, pickSprites(boss.sprites, false)],
+      ...foes.flatMap((c) => [
+        [`foe-${c.id}`, pickSprites(c.sprites, false)] as [string, { front: string; back: string }],
+        [`foe-${c.id}-s`, pickSprites(c.sprites, true)] as [string, { front: string; back: string }],
+      ]),
     ];
-    for (const [key, data] of sheets) {
-      if (!this.textures.exists(`${key}-front`)) this.load.image(`${key}-front`, data.sprites.front);
-      if (!this.textures.exists(`${key}-back`)) this.load.image(`${key}-back`, data.sprites.back);
+    for (const [key, urls] of sheets) {
+      if (!this.textures.exists(`${key}-front`)) this.load.image(`${key}-front`, urls.front);
+      if (!this.textures.exists(`${key}-back`)) this.load.image(`${key}-back`, urls.back);
     }
     this.load.once(Phaser.Loader.Events.COMPLETE, () => {
       // Sprites pixel: escalado sin suavizar para que se vean nítidos
@@ -588,11 +597,14 @@ export class GameScene extends Phaser.Scene {
     await new Promise<void>((resolve) => {
       let queued = 0;
       for (const c of cards) {
-        for (const side of ['front', 'back'] as const) {
-          const key = `foe-${c.id}-${side}`;
-          if (this.textures.exists(key)) continue;
-          this.load.image(key, c.sprites[side]);
-          queued++;
+        for (const sh of [false, true]) {
+          const urls = pickSprites(c.sprites, sh);
+          for (const side of ['front', 'back'] as const) {
+            const key = `foe-${c.id}${sh ? '-s' : ''}-${side}`;
+            if (this.textures.exists(key)) continue;
+            this.load.image(key, urls[side]);
+            queued++;
+          }
         }
       }
       if (queued === 0) return resolve();
@@ -601,7 +613,7 @@ export class GameScene extends Phaser.Scene {
     });
     const ok = cards.filter((c) => this.textures.exists(`foe-${c.id}-front`));
     for (const c of ok) {
-      for (const side of ['front', 'back']) {
+      for (const side of ['front', 'back', 's-front', 's-back']) {
         const tex = `foe-${c.id}-${side}`;
         if (this.textures.exists(tex)) this.textures.get(tex).setFilter(Phaser.Textures.FilterMode.NEAREST);
       }
@@ -840,12 +852,13 @@ ${where} — ${this.biome.name}`, 1600);
       const next = pickEvolution(await fetchNextEvolutions(this.formId), Math.random);
       if (next === null) return;
       const data = await fetchPokemon(next);
-      const key = `starter-${next}`;
+      const key = `starter-${next}${this.shiny ? '-s' : ''}`;
+      const evoUrls = pickSprites(data.sprites, this.shiny);
       await new Promise<void>((resolve) => {
         let queued = 0;
         for (const side of ['front', 'back'] as const) {
           if (this.textures.exists(`${key}-${side}`)) continue;
-          this.load.image(`${key}-${side}`, data.sprites[side]);
+          this.load.image(`${key}-${side}`, evoUrls[side]);
           queued++;
         }
         if (queued === 0) return resolve();
@@ -1620,10 +1633,18 @@ ${where} — ${this.biome.name}`, 1600);
   private spawnEnemy() {
     const kind = Phaser.Utils.Array.GetRandom(this.foeKinds) as FoeKind;
     const { x, y } = this.randomSpotInRoom(60);
-    const e = this.enemies.create(x, y, `${kind.key}-front`) as Sprite;
-    e.setDisplaySize(60, 60).setData('sheet', kind.key).setData('size', 60);
+    // Shiny (1/200): otro color, más vida y más premio
+    const shiny = rollShiny(Math.random, SHINY_ODDS.enemy) && this.textures.exists(`${kind.key}-s-front`);
+    const sheet = shiny ? `${kind.key}-s` : kind.key;
+    const e = this.enemies.create(x, y, `${sheet}-front`) as Sprite;
+    e.setDisplaySize(60, 60).setData('sheet', sheet).setData('size', 60).setData('shiny', shiny);
     const st = shapeEnemyStats(enemyStats(kind.bst, kind.behavior, this.difficulty), kind.stats);
-    e.setData('hp', st.hp).setData('maxHp', st.hp).setData('speed', st.speed).setData('dmg', st.damage);
+    const hp = Math.round(st.hp * (shiny ? SHINY_ENEMY.hpMul : 1));
+    e.setData('hp', hp).setData('maxHp', hp).setData('speed', st.speed).setData('dmg', st.damage);
+    if (shiny) {
+      sparkle(this, x, y);
+      this.popup(x, y - 40, '¡Shiny!', 0xffd34d);
+    }
     e.setData('ai', this.newAI(kind.behavior, kind.type, false));
   }
 
@@ -2089,7 +2110,14 @@ ${where} — ${this.biome.name}`, 1600);
     const boss = !!(enemy.getData('ai') as EnemyAI | undefined)?.boss;
     // Monedas solo donde hay tienda en la que gastarlas; bayas siempre
     const hasShop = this.floor.shopId !== undefined;
-    rollEnemyLoot(Math.random, boss)
+    const loot = rollEnemyLoot(Math.random, boss);
+    if (enemy.getData('shiny')) {
+      // Un shiny suelta más: monedas de 5 y una llave
+      for (let k = 0; k < SHINY_ENEMY.extraCoins; k++) loot.push({ kind: 'coin', value: 5 });
+      loot.push({ kind: 'key' });
+      sparkle(this, enemy.x, enemy.y);
+    }
+    loot
       .filter((d) => hasShop || d.kind !== 'coin')
       .forEach((d, k) => this.dropLoot(enemy.x + (k - 1) * 26, enemy.y + 10, d));
     (enemy.getData('bar') as Phaser.GameObjects.Graphics | undefined)?.destroy();

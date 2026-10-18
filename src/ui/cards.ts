@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { PokemonCard } from '../data/pokeapi';
+import { pickSprites, type PokemonCard } from '../data/pokeapi';
 import { typeColor, typeNameEs } from '../data/types';
 import { addTypeChip, COLORS, drawBox, HEX, textStyle, strokePixelFrame } from './theme';
 import { STAT_KEYS, STAT_LABEL, statBar, type BaseStats } from '../data/pokeStats';
@@ -9,28 +9,38 @@ export const CARD_SIZE = { w: 200, h: 270 };
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Clave de textura de un Pokémon en menús; GameScene la reutiliza para el jugador. */
-export const starterKey = (id: number, side: 'front' | 'back' = 'front') => `starter-${id}-${side}`;
+export const starterKey = (id: number, side: 'front' | 'back' = 'front', shiny = false) =>
+  `starter-${id}${shiny ? '-s' : ''}-${side}`;
 
-/** Carga (si faltan) los sprites de frente y espalda de estos Pokémon. Se resuelve aunque alguno falle. */
-export function loadCardTextures(scene: Phaser.Scene, cards: readonly PokemonCard[]): Promise<void> {
+/**
+ * Carga (si faltan) los sprites de frente y espalda de estos Pokémon (y los shiny de los que estén en `shiny`).
+ * Se resuelve aunque alguno falle.
+ */
+export function loadCardTextures(scene: Phaser.Scene, cards: readonly PokemonCard[], shiny: ReadonlySet<number> = new Set()): Promise<void> {
   return new Promise((resolve) => {
     scene.load.crossOrigin = 'anonymous';
     let queued = 0;
+    const variants = (c: PokemonCard) => (shiny.has(c.id) ? [false, true] : [false]);
     for (const c of cards) {
-      for (const side of ['front', 'back'] as const) {
-        const key = starterKey(c.id, side);
-        if (scene.textures.exists(key)) continue;
-        scene.load.image(key, c.sprites[side]);
-        queued++;
+      for (const sh of variants(c)) {
+        const urls = pickSprites(c.sprites, sh);
+        for (const side of ['front', 'back'] as const) {
+          const key = starterKey(c.id, side, sh);
+          if (scene.textures.exists(key)) continue;
+          scene.load.image(key, urls[side]);
+          queued++;
+        }
       }
     }
     if (queued === 0) return resolve();
     scene.load.once(Phaser.Loader.Events.COMPLETE, () => {
       // Sprites pixel: escalado sin suavizar para que se vean nítidos
       for (const c of cards) {
-        for (const side of ['front', 'back'] as const) {
-          const key = starterKey(c.id, side);
-          if (scene.textures.exists(key)) scene.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+        for (const sh of variants(c)) {
+          for (const side of ['front', 'back'] as const) {
+            const key = starterKey(c.id, side, sh);
+            if (scene.textures.exists(key)) scene.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+          }
         }
       }
       resolve();
@@ -45,6 +55,8 @@ export interface CardOptions {
   tag?: { text: string; color: string };
   /** Muestra las 6 estadísticas base en barras (la tarjeta crece STATS_EXTRA_H). */
   stats?: BaseStats;
+  /** Lo tienes shiny: sprite shiny y estrella dorada (cargado con loadCardTextures). */
+  shiny?: boolean;
 }
 
 /** Alto extra de la tarjeta cuando lleva las barras de estadísticas. */
@@ -71,7 +83,7 @@ export function buildPokemonCard(scene: Phaser.Scene, card: PokemonCard, x: numb
   strokePixelFrame(glow, -w / 2 - 8, -h / 2 - 8, w + 16, h + 16, COLORS.gold, 6);
   glow.setVisible(false);
 
-  const key = starterKey(card.id);
+  const key = starterKey(card.id, 'front', !!opts.shiny && scene.textures.exists(starterKey(card.id, 'front', true)));
   const sprite = scene.textures.exists(key)
     ? scene.add.image(0, -50 + dy, key).setDisplaySize(150, 150)
     : scene.add.text(0, -50 + dy, '?', textStyle(64)).setOrigin(0.5);
@@ -86,6 +98,14 @@ export function buildPokemonCard(scene: Phaser.Scene, card: PokemonCard, x: numb
     ? [scene.add.text(0, 112 + dy, opts.tag.text, textStyle(16, opts.tag.color, { fontStyle: 'bold' })).setOrigin(0.5)]
     : [];
   if (opts.stats) extra.push(...statBars(scene, opts.stats, -w / 2 + 16, 132 + dy, w - 32));
+  if (opts.shiny) {
+    extra.push(
+      scene.add
+        .text(w / 2 - 22, -h / 2 + 22, '★', textStyle(26, '#ffd34d', { fontStyle: 'bold' }))
+        .setOrigin(0.5)
+        .setStroke('#8a6d1a', 4),
+    );
+  }
 
   const box = scene.add.container(x, y, [bg, glow, sprite, name, ...chips, ...extra]).setScale(opts.scale ?? 1);
   box.setSize(w, h);

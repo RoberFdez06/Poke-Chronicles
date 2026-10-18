@@ -145,7 +145,47 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 - **Sala de desafío**: puerta especial; al entrar se cierra y salen oleadas; al ganarlas, premio bueno.
 - Todo con teclado, ratón y mando; `floorGen` coloca las salas nuevas con tests; `RunSave` sube versión.
 
-## [ ] T22 — Shinies
+## [ ] T32 — Equilibrio: más difícil y menos premio (pedido por Roberto; va ANTES de T30)
+Roberto lo ha jugado: se ganan demasiados tickets y monedas, caen demasiadas bayas, es muy fácil y los jefes
+también. Ajusta (todo en constantes con tests que fijen los nuevos rangos):
+- **Tickets**: aproximadamente la mitad o menos por partida (`ROOM_TICKETS`, `BOSS_TICKETS`, `roomTicketsFor`,
+  `bossTicketsFor`, récords, misiones). Objetivo: ~1 tirada de gacha (100) por cada 2-3 partidas Normales buenas.
+- **Monedas de partida** y **bayas** (`LOOT_CHANCE` en `loot.ts`): bastante menos (bayas como premio raro: ~1-2 por
+  piso de media, no en casi cada sala). La tienda tiene que obligar a elegir.
+- **Jefes**: bastante más vida y daño, y adelanta lo básico de T26 aquí: al menos 2 ataques por jefe (ráfaga en
+  círculo y embestida/lluvia de proyectiles) con aviso previo, y fase 2 por debajo del 50 %. Que un jefe dure
+  ~30-60 s con un personaje normal sin mejoras.
+- **Enemigos a distancia**: ahora el comportamiento depende del tipo; haz que en cada sala de combate haya
+  siempre una mezcla (al menos 1 de cada 3 dispara, de cualquier tipo), con proyectiles esquivables de su color.
+- Enemigos algo más duros por piso. Usa la simulación de T25 si ya existe; si no, haz una versión mínima para
+  comprobar los números y explica en la bitácora los valores de antes y después.
+
+## [ ] T30 — Resolución 1920×1080 y adaptable (pedido por Roberto; va justo después de T21)
+- El juego pasa de 960×640 a **1920×1080** (16:9) y se adapta a cualquier ventana: `Scale.FIT` + `CENTER_BOTH`
+  (en pantallas 16:9 la llena entera; en otras deja bandas). Que se vea nítido: el pixel art con NEAREST y los
+  textos al nuevo tamaño (no escales todo con un zoom borroso).
+- Centraliza el tamaño en `src/ui/layout.ts` (`W`, `H`, `CX`, `CY` y ayudas para anclar a bordes) y **quita los
+  números fijos** (480, 320, 960, 640…) de todas las escenas. Reajusta tamaños de letra, cuadros y márgenes para
+  que nada quede diminuto ni montado. Las salas del juego crecen para llenar la pantalla (o se escala la cámara
+  del mundo para que la sala ocupe el alto); el HUD se ancla a las esquinas.
+- Para esta tarea **sí puedes tocar** `MenuScene.ts`, `theme.ts` y `src/ui/art/` (solo tamaños y posiciones, sin
+  cambiar el estilo): el paisaje pixel tiene que llenar los 1920×1080.
+- Comprueba con capturas o a ojo que cada pantalla se ve bien y apunta en la bitácora lo que no puedas verificar.
+
+## [ ] T31 — Sprites animados en 8 direcciones como PokéSurvivor (pedido por Roberto)
+- PokéSurvivor usa los sprites de **PMDCollab SpriteCollab** (estilo Mystery Dungeon, licencia CC BY-NC 4.0,
+  válida para este fan game gratuito con créditos). Úsalos para el jugador, los enemigos y los jefes:
+  `https://raw.githubusercontent.com/PMDCollab/SpriteCollab/master/sprite/{id con 4 cifras}/AnimData.xml` dice el
+  tamaño de cada frame y sus duraciones; `Walk-Anim.png` (y `Idle-Anim.png`) tiene **8 filas = 8 direcciones**
+  (abajo, abajo-derecha, derecha, arriba-derecha, arriba, arriba-izquierda, izquierda, abajo-izquierda).
+- El personaje mira a la dirección de disparo (o de movimiento si no dispara) usando la **más cercana de las 8**
+  y anda con la animación de caminar; quieto, la de reposo. Enemigos igual hacia el jugador.
+- Si un Pokémon no tiene sprite en SpriteCollab (o falla la descarga), se usa el de PokeAPI como ahora.
+- Lógica pura (elegir dirección de 8 a partir de un vector, leer AnimData.xml) en `src/data/` con tests. Caché.
+- **Créditos**: pantalla o sección "Créditos" (desde Ajustes) con "Sprites: PMDCollab SpriteCollab (CC BY-NC 4.0)",
+  PokeAPI y la fuente Pixelify Sans (OFL); y en el README.
+
+## [x] T22 — Shinies
 - Probabilidad de shiny (1/64 en gacha, 1/200 en enemigos; ajustable): usa `sprites.front_shiny`/`back_shiny`.
   Brillo con destellos al aparecer. Un shiny del gacha se guarda como shiny en la colección.
 - Si eliges un shiny de inicial, juegas con su sprite shiny. Enemigo shiny: más vida y suelta más premio.

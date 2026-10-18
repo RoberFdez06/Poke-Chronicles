@@ -2,6 +2,7 @@
 // para poder testearla sin navegador; si localStorage no está disponible, no guarda y sigue.
 
 import { parseAudio, type AudioSettings } from './sounds.ts';
+import { parseShinies } from './shiny.ts';
 import { levelsFor, parseUpgrades, upgradeCost, type UpgradeBook, type UpgradeKind } from './upgrades.ts';
 import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } from './modes.ts';
 
@@ -216,6 +217,32 @@ export function buyUpgrade(id: number, kind: UpgradeKind, storage: StorageLike |
   return 'ok';
 }
 
+// --- Shinies conseguidos (ver shiny.ts) ---
+
+export const SHINIES_KEY = 'pokeisaac.shinies';
+
+export function loadShinies(storage: StorageLike | null = browserStorage()): number[] {
+  try {
+    return parseShinies(storage?.getItem(SHINIES_KEY) ?? null);
+  } catch {
+    return [];
+  }
+}
+
+/** Guarda un shiny (y desbloquea el Pokémon si no lo tenías). Devuelve si era nuevo. */
+export function addShiny(id: number, storage: StorageLike | null = browserStorage()): boolean {
+  const list = loadShinies(storage);
+  unlockPokemon(id, storage);
+  if (list.includes(id)) return false;
+  list.push(id);
+  try {
+    storage?.setItem(SHINIES_KEY, JSON.stringify(list));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+  return true;
+}
+
 // --- Borrar progreso (Ajustes) ---
 
 /** Todo lo que se pierde al borrar el progreso: desbloqueos, tickets, récords y partidas. El volumen se queda. */
@@ -225,6 +252,7 @@ export const PROGRESS_KEYS: readonly string[] = [
   COINS_KEY,
   RECORDS_KEY,
   UPGRADES_KEY,
+  SHINIES_KEY,
   'pokeisaac.run.0',
   'pokeisaac.run.1',
   'pokeisaac.run.2',

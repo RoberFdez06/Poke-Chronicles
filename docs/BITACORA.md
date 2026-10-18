@@ -421,3 +421,20 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   `GameScene`, `PauseScene`, tests, README.
 - **Dudas**: no se puede entrar a la sala secreta desde dentro de una sala cerrada en combate hasta limpiarla (la
   puerta abierta se cierra con las demás); la hierba y las rocas rotas no se guardan.
+
+## T22 — Shinies (2026-10-18)
+
+- **Qué**: `src/data/shiny.ts` (1/64 gacha, 1/200 enemigos, ×1,5 de vida y premio extra) y `pokeisaac.shinies` en
+  `save.ts` (`loadShinies`, `addShiny`, que también desbloquea; "Borrar progreso" los borra). `PokemonCard.sprites`
+  trae ahora también `shinyFront`/`shinyBack` (si faltan, los normales) y `pickSprites` elige.
+- **Gacha**: cada tirada puede ser shiny; si ya lo tenías shiny cuenta como repetido (devuelve tickets), si no, se
+  guarda aunque tuvieras el normal. Sprite shiny, "★" en el nombre y tres tandas de destellos (`src/ui/sparkle.ts`).
+- **Colección**: si tienes shiny a un Pokémon, su tarjeta enseña el sprite shiny con ★ y "Shiny · rareza", y juegas con
+  él (texturas `starter-<id>-s`), también tras evolucionar.
+- **Enemigos**: al aparecer uno shiny (texturas `foe-<id>-s`, cargadas con el piso), destellos y "¡Shiny!"; al caer,
+  más destellos, dos monedas de 5 y una llave además de lo normal.
+- **Pokédex**: ★ en los que tienes shiny (con el sprite shiny del repositorio de PokeAPI) y "★ N shiny" en el título.
+- **Archivos**: `src/data/shiny.ts`, `src/ui/sparkle.ts`, `tests/shiny.test.ts` (nuevos), `save.ts`, `pokeapi.ts`,
+  `ui/cards.ts`, `GachaScene`, `StarterScene`, `PokedexScene`, `GameScene`, README.
+- **Dudas**: si tienes el shiny, siempre juegas con él (no hay opción de elegir el normal). Un shiny no se puede
+  conseguir venciéndolo, solo en el gacha.

@@ -2,7 +2,9 @@ import Phaser from 'phaser';
 import { fetchPokemonCard } from '../data/pokeapi';
 import { buildPools, GACHA_RATES, pull, PULL_COST, RARITIES, RARITY_LABEL, Rarity, RarityPools } from '../data/gacha';
 import { loadSpeciesIndex } from '../data/speciesIndex';
-import { addTickets, loadTickets, loadUnlocked, spendTickets, unlockPokemon } from '../data/save';
+import { addShiny, addTickets, loadShinies, loadTickets, loadUnlocked, spendTickets, unlockPokemon } from '../data/save';
+import { rollShiny, SHINY_ODDS } from '../data/shiny';
+import { sparkle } from '../ui/sparkle';
 import { typeColor, typeNameEs } from '../data/types';
 import { cry } from '../ui/audio';
 import { ARROW, addTypeChip, drawBox, fadeIn, FONT, goTo, hex, RARITY_COLORS } from '../ui/theme';
@@ -150,12 +152,15 @@ export class GachaScene extends Phaser.Scene {
 
     const owned = new Set(loadUnlocked());
     const result = pull(Math.random, this.pools, owned);
+    // Shiny: solo cuenta como repetido si ya lo tenías shiny
+    const shiny = rollShiny(Math.random, SHINY_ODDS.gacha);
+    const duplicate = shiny ? loadShinies().includes(result.speciesId) : result.duplicate;
     try {
       const card = await fetchPokemonCard(result.speciesId);
-      const key = `starter-${card.id}-front`;
+      const key = `starter-${card.id}${shiny ? '-s' : ''}-front`;
       if (!this.textures.exists(key)) {
         this.load.crossOrigin = 'anonymous';
-        this.load.image(key, card.sprites.front);
+        this.load.image(key, shiny ? card.sprites.shinyFront : card.sprites.front);
         await new Promise<void>((resolve) => {
           this.load.once(Phaser.Loader.Events.COMPLETE, () => resolve());
           this.load.start();
@@ -164,19 +169,26 @@ export class GachaScene extends Phaser.Scene {
       if (!this.alive) return;
 
       let note: string;
-      if (result.duplicate) {
+      if (duplicate) {
         addTickets(DUPLICATE_REFUND);
         note = `¡Repetido! Te devolvemos ${DUPLICATE_REFUND} tickets`;
+      } else if (shiny) {
+        addShiny(result.speciesId);
+        note = '¡Un shiny! Se guarda en tu colección';
       } else {
         unlockPokemon(result.speciesId);
         note = '¡Nuevo Pokémon desbloqueado!';
       }
-      this.showResult(card.id, card.name, card.types, result.rarity, note, key);
+      this.showResult(card.id, (shiny ? '★ ' : '') + card.name, card.types, result.rarity, note, key);
+      if (shiny) {
+        for (let k = 0; k < 3; k++) this.time.delayedCall(250 + k * 350, () => this.alive && sparkle(this, 480, 170, 110, 70));
+      }
       void cry(card.id);
     } catch (err) {
       // La tirada no se pierde si no se pudo mostrar: se desbloquea igual y se avisa
-      if (!result.duplicate) unlockPokemon(result.speciesId);
-      else addTickets(DUPLICATE_REFUND);
+      if (duplicate) addTickets(DUPLICATE_REFUND);
+      else if (shiny) addShiny(result.speciesId);
+      else unlockPokemon(result.speciesId);
       this.say(`Ha salido el Pokémon nº ${result.speciesId} (${RARITY_LABEL[result.rarity]})\npero no se pudo cargar su imagen`);
     } finally {
       this.busy = false;

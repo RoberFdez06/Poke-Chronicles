@@ -30,11 +30,24 @@ function getPokemonRaw(id: number): Promise<any> {
 
 const typesOf = (p: any): string[] => (p.types as { type: { name: string } }[]).map((t) => t.type.name);
 
-/** Sprites pixel de frente y de espalda; si no hay de espalda se repite el de frente. */
-function spritesOf(p: any): { front: string; back: string } {
+/** Sprites pixel de frente y de espalda, normales y shiny; lo que falte se cubre con lo que haya. */
+function spritesOf(p: any): PokemonSprites {
   const front: string = p.sprites.front_default ?? p.sprites.other['official-artwork'].front_default;
-  return { front, back: p.sprites.back_default ?? front };
+  const back: string = p.sprites.back_default ?? front;
+  const shinyFront: string = p.sprites.front_shiny ?? front;
+  return { front, back, shinyFront, shinyBack: p.sprites.back_shiny ?? shinyFront };
 }
+
+export interface PokemonSprites {
+  front: string;
+  back: string;
+  shinyFront: string;
+  shinyBack: string;
+}
+
+/** Los sprites de frente y espalda que tocan (shiny o no). */
+export const pickSprites = (s: PokemonSprites, shiny: boolean) =>
+  shiny ? { front: s.shinyFront, back: s.shinyBack } : { front: s.front, back: s.back };
 
 /** Lo que usamos de cada Pokémon: una petición (más el nombre en español, que suele venir del índice). */
 export interface PokemonCard {
@@ -43,7 +56,7 @@ export interface PokemonCard {
   /** Tipos del Pokémon, en el orden de PokeAPI. */
   types: string[];
   /** Sprites pixel de PokeAPI: de frente y de espalda (si no hay, se repite el de frente). */
-  sprites: { front: string; back: string };
+  sprites: PokemonSprites;
   /** Estadísticas base (PS, Ataque, Defensa, At. Esp., Def. Esp., Velocidad). */
   stats: BaseStats;
 }

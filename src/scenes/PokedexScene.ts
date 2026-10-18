@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { classifyRarity, RARITY_LABEL } from '../data/gacha';
 import { countByRegion, filterCollection, type CollectionEntry } from '../data/regions';
-import { loadUnlocked } from '../data/save';
+import { loadShinies, loadUnlocked } from '../data/save';
 import { loadSpeciesIndex } from '../data/speciesIndex';
 import { typeNameEs } from '../data/types';
 import { cry } from '../ui/audio';
@@ -19,12 +19,15 @@ const TILE = { w: 106, h: 108, gap: 6 };
 const GRID_TOP = 228;
 
 /** Sprite pixel de frente del repositorio de PokeAPI (sin pedir /pokemon/{id} por cada uno). */
-const spriteUrl = (id: number) => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
+const spriteUrl = (id: number, shiny = false) =>
+  `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${shiny ? 'shiny/' : ''}${id}.png`;
+const dexKey = (e: { id: number; shiny: boolean }) => `dex-${e.id}${e.shiny ? '-s' : ''}`;
 
 type Key = Phaser.Input.Keyboard.Key;
 
 interface DexEntry extends CollectionEntry {
   owned: boolean;
+  shiny: boolean;
 }
 
 /**
@@ -73,18 +76,20 @@ export class PokedexScene extends Phaser.Scene {
   private async boot(loading: Phaser.GameObjects.Text) {
     const index = await loadSpeciesIndex();
     const owned = new Set(loadUnlocked());
+    const shinies = new Set(loadShinies());
     this.entries = index.map((s) => ({
       id: s.id,
       name: s.nameEs ?? s.name,
       rarity: classifyRarity(s),
       types: s.types,
       owned: owned.has(s.id),
+      shiny: shinies.has(s.id),
     }));
     loading.destroy();
 
     const have = this.entries.filter((e) => e.owned);
     this.add
-      .text(480, 40, `Pokédex · Tienes ${have.length} de ${this.entries.length}`, { fontFamily: FONT, fontSize: '30px', color: '#ffffff' })
+      .text(480, 40, `Pokédex · Tienes ${have.length} de ${this.entries.length} · ★ ${shinies.size} shiny`, { fontFamily: FONT, fontSize: '30px', color: '#ffffff' })
       .setOrigin(0.5);
     this.filters = new FilterBar(this, {
       tabsY: 92,
@@ -153,18 +158,18 @@ export class PokedexScene extends Phaser.Scene {
   }
 
   /** Carga los sprites que falten de esta página (los que fallan se quedan con un "?"). */
-  private loadSprites(ids: number[]): Promise<void> {
+  private loadSprites(entries: DexEntry[]): Promise<void> {
     return new Promise((resolve) => {
       this.load.crossOrigin = 'anonymous';
       let queued = 0;
-      for (const id of ids) {
-        if (this.textures.exists(`dex-${id}`)) continue;
-        this.load.image(`dex-${id}`, spriteUrl(id));
+      for (const e of entries) {
+        if (this.textures.exists(dexKey(e))) continue;
+        this.load.image(dexKey(e), spriteUrl(e.id, e.shiny));
         queued++;
       }
       if (queued === 0) return resolve();
       this.load.once(Phaser.Loader.Events.COMPLETE, () => {
-        for (const id of ids) if (this.textures.exists(`dex-${id}`)) this.textures.get(`dex-${id}`).setFilter(Phaser.Textures.FilterMode.NEAREST);
+        for (const e of entries) if (this.textures.exists(dexKey(e))) this.textures.get(dexKey(e)).setFilter(Phaser.Textures.FilterMode.NEAREST);
         resolve();
       });
       this.load.start();
@@ -184,7 +189,7 @@ export class PokedexScene extends Phaser.Scene {
     }
     const slice = this.view.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
     this.info.setText('Cargando…');
-    await this.loadSprites(slice.map((e) => e.id));
+    await this.loadSprites(slice);
     if (token !== this.pageToken || !this.scene.isActive()) return;
 
     const left = 480 - ((COLS - 1) * (TILE.w + TILE.gap)) / 2;
@@ -215,7 +220,7 @@ export class PokedexScene extends Phaser.Scene {
     });
     const glow = this.add.graphics();
     strokePixelFrame(glow, -w / 2 - 6, -h / 2 - 6, w + 12, h + 12, COLORS.gold, 4).setVisible(false);
-    const key = `dex-${e.id}`;
+    const key = dexKey(e);
     const sprite = this.textures.exists(key)
       ? this.add.image(0, -10, key).setDisplaySize(84, 84)
       : this.add.text(0, -10, '?', { fontFamily: FONT, fontSize: '40px', color: HEX.text }).setOrigin(0.5);
@@ -225,7 +230,11 @@ export class PokedexScene extends Phaser.Scene {
     const name = this.add
       .text(0, h / 2 - 16, shorten(e.name, 12), { fontFamily: FONT, fontSize: '13px', fontStyle: 'bold', color: e.owned ? HEX.text : '#5f6b7a' })
       .setOrigin(0.5);
-    const box = this.add.container(x, y, [bg, glow, sprite, num, name]).setSize(w, h);
+    const parts: Phaser.GameObjects.GameObject[] = [bg, glow, sprite, num, name];
+    if (e.shiny) {
+      parts.push(this.add.text(w / 2 - 14, -h / 2 + 14, '★', { fontFamily: FONT, fontSize: '18px', color: '#ffd34d' }).setOrigin(0.5).setStroke('#8a6d1a', 3));
+    }
+    const box = this.add.container(x, y, parts).setSize(w, h);
     box.setInteractive(new Phaser.Geom.Rectangle(0, 0, w, h) /* Phaser la centra solo */, Phaser.Geom.Rectangle.Contains);
     box.input!.cursor = 'pointer';
     return { box, glow };
@@ -240,7 +249,7 @@ export class PokedexScene extends Phaser.Scene {
     const e = this.view[this.selected];
     if (!e) return;
     const types = (e.types ?? []).map(typeNameEs).join(' / ');
-    const owned = e.owned ? '¡Lo tienes!' : 'Aún no lo tienes: sale en el gacha';
+    const owned = e.shiny ? '¡Lo tienes shiny!' : e.owned ? '¡Lo tienes!' : 'Aún no lo tienes: sale en el gacha';
     this.info.setText(`#${e.id} ${e.name} · ${RARITY_LABEL[e.rarity]}${types ? ' · ' + types : ''} · ${owned}`);
     this.info.setColor(e.owned ? hex(RARITY_COLORS[e.rarity]) : HEX.textSoft);
   }
