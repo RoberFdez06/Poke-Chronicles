@@ -25,6 +25,17 @@ Abre la URL que muestra Vite (normalmente http://localhost:5173).
 **Regla del proyecto:** todo se puede manejar con teclado, con ratón y con mando, cada uno por sí solo. Cualquier
 pantalla o acción nueva debe cumplirlo.
 
+## Aspecto
+
+Interfaz al estilo de los juegos de Pokémon: cuadros de texto con borde doble y esquinas redondeadas, flecha ▶
+en la opción elegida, barras de PS verde/amarilla/roja con la etiqueta "PS", fichas de tipo y fundidos entre
+pantallas. Fuente, colores y piezas comunes en `src/ui/theme.ts`.
+
+La fuente es **Pixelify Sans** (licencia libre OFL), en `public/fonts/PixelifySans.ttf` con su licencia en
+`public/fonts/OFL.txt`; se carga antes de crear el juego. Si el archivo no está, el juego usa la fuente del sistema.
+Para descargarla: `https://github.com/google/fonts/raw/main/ofl/pixelifysans/PixelifySans%5Bwght%5D.ttf` →
+`public/fonts/PixelifySans.ttf` y `https://github.com/google/fonts/raw/main/ofl/pixelifysans/OFL.txt` → `public/fonts/OFL.txt`.
+
 ## Menú principal
 
 El juego arranca en el menú: **Jugar** (hueco → Pokémon → modo), **Gacha** (gasta monedas para desbloquear Pokémon) y **Controles**. Esc o B vuelven atrás desde la
@@ -122,6 +133,7 @@ src/
   scenes/ModeScene.ts  elegir modo de juego
   ui/nav.ts            entrada de menús (NavInput, PadButtons) y botones (MenuList)
   ui/cards.ts          tarjeta de Pokémon, carga de sprites y botón "Volver"
+  ui/theme.ts          tema: fuente, colores, cuadros, barra de PS, fichas de tipo y transiciones
   data/speciesIndex.ts carga (una vez) la lista de especies de public/data
   level/floorGen.ts    generador de pisos (puro, determinista por semilla)
   level/progression.ts pisos: tamaño, dificultad, monedas y jefes legendarios (puro)
@@ -139,6 +151,7 @@ tests/
   regions.test.ts      tests de regiones y filtros
   modes.test.ts        tests de modos y récords
   status.test.ts       tests de estados
+  theme.test.ts        tests del color de la barra de PS
 scripts/
   buildSpeciesIndex.mjs  genera public/data/species-index.json desde PokeAPI
 ```

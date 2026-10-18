@@ -4,6 +4,7 @@ import { REGIONS, Region } from '../data/regions';
 import { unlockPokemon } from '../data/save';
 import { MenuList, NavInput, UI } from '../ui/nav';
 import { addBackButton, buildPokemonCard, loadCardTextures } from '../ui/cards';
+import { fadeIn, goTo } from '../ui/theme';
 
 /** Margen tras cambiar de paso en el que se ignora confirmar (un Enter mantenido no elige solo). */
 const INPUT_DELAY_MS = 350;
@@ -36,6 +37,7 @@ export class FirstStarterScene extends Phaser.Scene {
   }
 
   create() {
+    fadeIn(this);
     this.leaving = false;
     this.tiles = [];
     this.cards = [];
@@ -134,14 +136,14 @@ export class FirstStarterScene extends Phaser.Scene {
     this.leaving = true;
     const id = this.cards[i].id;
     unlockPokemon(id);
-    this.scene.start('Mode', { starterId: id, slot: this.slot });
+    goTo(this, 'Mode', { starterId: id, slot: this.slot });
   }
 
   private back() {
     if (this.leaving) return;
     if (this.step === 'region') {
       this.leaving = true;
-      this.scene.start('Slots');
+      goTo(this, 'Slots');
       return;
     }
     const i = REGIONS.indexOf(this.region!);

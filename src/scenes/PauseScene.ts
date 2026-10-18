@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { CONTROLS } from '../data/controls';
 import type { MovePower, PlayerStats } from '../data/items';
-import { typeHex } from '../data/types';
+import { typeColor, typeHex, typeNameEs } from '../data/types';
+import { addHpBar, addTypeChip, drawBox } from '../ui/theme';
 import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
 
 export interface PauseData {
@@ -56,13 +57,13 @@ export class PauseScene extends Phaser.Scene {
 
     // Panel de la partida: estadísticas, objetos y poderes
     const g = this.add.graphics();
-    g.fillStyle(UI.PANEL, 1).fillRoundedRect(40, 100, 520, 470, 22);
-    g.lineStyle(5, UI.NAVY, 1).strokeRoundedRect(40, 100, 520, 470, 22);
+    drawBox(g, 40, 100, 520, 470, { radius: 20 });
     const t = (x: number, y: number, s: string, size = 18, color = '#2b3a67', bold = false) =>
       this.add.text(x, y, s, { fontFamily: UI.FONT, fontSize: `${size}px`, color, fontStyle: bold ? 'bold' : 'normal', wordWrap: { width: 470 } });
 
     const st = d.stats;
     t(66, 118, `${capitalize(d.starterName)} · Hueco ${d.slot + 1}`, 24, '#2b3a67', true);
+    addHpBar(this, 340, 126, 190, 12).set(d.hp / st.maxHp);
     const rooms = d.showRooms ? ` · Salas limpias ${d.roomsCleared}/${d.roomCount}` : '';
     t(66, 152, `${d.modeLabel} · ${d.progress}${rooms} · Monedas ganadas ${d.earned}`, 16, '#4a5578');
     const rows: [string, string][] = [
@@ -85,8 +86,12 @@ export class PauseScene extends Phaser.Scene {
     t(66, 340, d.items.length ? d.items.join(' · ') : 'Ninguno todavía', 16, '#4a5578');
     t(66, 430, 'Poderes', 20, '#2b3a67', true);
     d.moves.forEach((m, i) => {
-      t(66 + (i % 2) * 245, 460 + Math.floor(i / 2) * 30, `${i + 1}  ${m ? pretty(m.name) : '—'}`, 17, m ? typeHex(m.type) : '#9aa5b1', true)
+      const x = 66 + (i % 2) * 245;
+      const y = 460 + Math.floor(i / 2) * 34;
+      t(x, y, `${i + 1}  ${m ? pretty(m.name) : '—'}`, 17, m ? typeHex(m.type) : '#9aa5b1', true)
         .setStroke(m ? '#2b3a67' : '#00000000', m ? 2 : 0);
+      // Ficha del tipo del poder
+      if (m) addTypeChip(this, x + 196, y + 11, typeNameEs(m.type), typeColor(m.type), 64, 20);
     });
 
     this.menu = new MenuList(this, 760, 200, ['Reanudar', 'Reiniciar', 'Controles', 'Salir y guardar'], (i) => this.pick(i), {

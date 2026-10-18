@@ -49,13 +49,45 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 - Nombres de Pokémon (`pokemon-species/{id}` → `names` es), movimientos (`move/{id}` → `names` es) y tipos
   en español en todas las pantallas (gacha, iniciales, pausa, objetos, HUD). Con caché.
 
-## [ ] T8 — Interfaz estilo Pokémon
+## [x] T8 — Interfaz estilo Pokémon
 - Aspecto de los juegos de Pokémon: cuadros de texto con borde doble y esquinas redondeadas, flecha ▶ de
   selección, barras de PS verde/amarillo/rojo con la etiqueta "PS", fichas de tipo, transiciones de pantalla.
 - Tipografía pixel con licencia libre (OFL), descargada a `public/fonts/` (por ejemplo "Press Start 2P" o
   "Pixelify Sans" de Google Fonts) y cargada antes de crear el juego (`document.fonts.load`). No uses fuentes
   oficiales ni logos de Pokémon. Centraliza fuente y colores en un archivo de tema (`src/ui/theme.ts`).
 - Aplícalo a todas las escenas (menú, huecos, inicial, gacha, pausa, HUD) y mantén teclado, ratón y mando.
+
+## [ ] T16 — Recuperar vida (pedido por Roberto; va antes de T9)
+- **Bayas**: al morir, un enemigo a veces suelta una baya (Aranja cura 20 PS, Zidra cura 40; más raras en jefes no,
+  el jefe siempre suelta una Zidra). Se recogen al pisarlas; si estás al máximo no se gastan.
+- **Centro Pokémon**: una sala especial por piso (marco rosa en puerta y minimapa) con una enfermera/mostrador
+  que te cura entero **una sola vez** por piso (acercarte + Enter/A/clic, o al pisar el mostrador).
+- **Tienda**: una sala tienda por piso con 3 artículos en el suelo con precio: Poción (cura 20), Superpoción (cura 50)
+  y un objeto pasivo o poder al azar. Se paga con las **monedas ganadas en esta partida** (`earned`): comprar resta
+  de `earned` y del total guardado. No se puede comprar si no llegan. Con teclado, ratón (clic en el artículo) y mando.
+- `floorGen` coloca las salas nuevas (sin salida preferiblemente, nunca la del jefe); tests de que siempre existen.
+- El guardado (`RunSave`) recuerda si el Centro ya se usó y qué queda en la tienda (sube `RUN_VERSION`, migra).
+
+## [ ] T17 — Vida de los enemigos y colisiones entre ellos (va antes de T9)
+- Los enemigos chocan entre sí (collider enemigos↔enemigos) para no amontonarse en el mismo sitio.
+- Barrita de vida pequeña encima de cada enemigo (solo cuando ha recibido daño, verde→amarillo→rojo).
+- Jefe: barra grande arriba de la pantalla con su nombre en español y su tipo, como en Isaac.
+
+## [ ] T18 — Estadísticas reales de cada Pokémon (va antes de T9)
+- Usa `stats` de PokeAPI (`pokemon/{id}`: hp, attack, defense, special-attack, special-defense, speed) para tus
+  estadísticas base: PS → vida máxima, Ataque → daño del disparo, At. Esp. → daño de los poderes,
+  Defensa y Def. Esp. → reducen el daño recibido, Velocidad → velocidad de movimiento y cadencia.
+- Escala con una fórmula pura en `src/data/` con tests, para que el Pokémon medio quede como ahora
+  (`BASE_STATS`) y los extremos no rompan el juego (límites mínimo/máximo). Los objetos pasivos se aplican encima.
+- Los enemigos y jefes también usan sus estadísticas (vida, daño, velocidad), multiplicadas por la dificultad del piso.
+- Se ven en la tarjeta al elegir inicial (barras de las 6 estadísticas, en español) y en la pausa.
+
+## [ ] T19 — Efecto para todos los tipos y colores claros (va antes de T9)
+- Todos los tipos tienen efecto en `STATUS_EFFECTS`: Volador empuja con viento, Dragón hace +25 % de daño,
+  Siniestro asusta (el enemigo huye 1,5 s), Acero atraviesa un enemigo más, Hada debilita (el enemigo hace −30 %
+  de daño), Normal aturde 0,3 s. Ajusta el resto si alguno falta.
+- En las ranuras de poder del HUD y en la pausa, muestra el **nombre del tipo** junto al color (Volador y Veneno se
+  confundían). Tests de que todos los tipos de `TYPE_COLORS` tienen efecto.
 
 ## [ ] T9 — Salas con obstáculos
 - Diseños de sala variados (como en Isaac): rocas que bloquean, arbustos/hierba alta que se pueden destruir

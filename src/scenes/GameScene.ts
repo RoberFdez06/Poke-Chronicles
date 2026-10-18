@@ -27,6 +27,7 @@ import {
   MODE_LABEL,
 } from '../data/modes';
 import { submitRecord } from '../data/save';
+import { addHpBar, drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import {
   applyStatus,
   drainHeal,
@@ -58,7 +59,6 @@ const VIEW = { w: 960, h: 640 };
 const ROOM = { x: 80, y: 80, w: 800, h: 480 };
 const WALL = 40;
 const DOOR = 120;
-const FONT = 'system-ui, sans-serif';
 const SLOT_COUNT = 4;
 /** Probabilidad de que una sala de combate limpiada deje un objeto. */
 const CLEAR_DROP_CHANCE = 0.25;
@@ -213,9 +213,17 @@ export class GameScene extends Phaser.Scene {
   private overHud = false;
 
   private hud: Phaser.GameObjects.Text[] = [];
+  /** HUD: nombre, progreso y PS en un cuadro arriba a la izquierda. */
+  private nameText!: Phaser.GameObjects.Text;
   private hpText!: Phaser.GameObjects.Text;
+  private progressHud!: Phaser.GameObjects.Text;
+  private hpBar!: ReturnType<typeof addHpBar>;
   private invText!: Phaser.GameObjects.Text;
+  /** Fondo de cada ranura de poder y lo que muestra (para no redibujarlo en cada fotograma). */
+  private slotBoxes: Phaser.GameObjects.Graphics[] = [];
+  private slotShown: string[] = [];
   private banner!: Phaser.GameObjects.Text;
+  private bannerBox!: Phaser.GameObjects.Graphics;
   private bannerTimer?: Phaser.Time.TimerEvent;
   private minimap!: Phaser.GameObjects.Graphics;
 
@@ -251,6 +259,8 @@ export class GameScene extends Phaser.Scene {
     this.transitioning = false;
     this.padPrev = [false, false, false, false];
     this.hud = [];
+    this.slotBoxes = [];
+    this.slotShown = [];
     this.floorItems = [];
     this.doorMap.clear();
     this.visited.clear();
@@ -274,6 +284,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.cameras.main.setScroll(0, 0);
     this.cameras.main.resetFX();
+    fadeIn(this);
 
     const loading = this.add
       .text(480, 320, 'Cargando Pokémon…', { fontFamily: FONT, fontSize: '28px', color: '#ffffff' })
@@ -529,31 +540,43 @@ export class GameScene extends Phaser.Scene {
     // El clic derecho sirve para moverse con el ratón, así que sin menú contextual
     this.input.mouse?.disableContextMenu();
 
-    // HUD fijo en pantalla
-    const style = { fontFamily: FONT, fontSize: '20px', color: '#ffffff' };
-    this.hpText = this.add.text(90, 32, '', style).setDepth(10).setScrollFactor(0);
+    // HUD fijo en pantalla, en cuadros como los de los combates de Pokémon
+    const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T) =>
+      o.setDepth(10).setScrollFactor(0);
+    fixed(drawBox(this.add.graphics(), 76, 6, 360, 70, { radius: 12 }));
+    this.nameText = fixed(this.add.text(94, 24, '', { fontFamily: FONT, fontSize: '19px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5));
+    this.progressHud = fixed(this.add.text(420, 24, '', { fontFamily: FONT, fontSize: '15px', color: HEX.textSoft }).setOrigin(1, 0.5));
+    this.hpBar = addHpBar(this, 94, 46, 236, 10);
+    this.hpBar.objects.forEach((o) => fixed(o as Phaser.GameObjects.Text));
+    this.hpText = fixed(this.add.text(420, 51, '', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: HEX.text }).setOrigin(1, 0.5));
     this.invText = this.add
-      .text(90, 58, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff', wordWrap: { width: 600 } })
+      .text(452, 14, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff', wordWrap: { width: 340 } })
       .setDepth(10)
       .setScrollFactor(0);
+    const style = { fontFamily: FONT, fontSize: '19px', fontStyle: 'bold', color: HEX.text };
     for (let i = 0; i < SLOT_COUNT; i++) {
-      const slot = this.add.text(90 + i * 210, 590, '', style).setDepth(10).setScrollFactor(0);
+      this.slotBoxes.push(fixed(this.add.graphics()));
+      this.slotShown.push('');
+      const slot = this.add.text(104 + i * 210, 591, '', style).setDepth(11).setScrollFactor(0);
       // Con ratón, un clic en la ranura lanza el poder
       // Área fija: el texto cambia de tamaño y el área de clic no se actualizaría sola
-      slot.setInteractive(new Phaser.Geom.Rectangle(-6, -6, 200, 38), Phaser.Geom.Rectangle.Contains);
+      slot.setInteractive(new Phaser.Geom.Rectangle(-20, -11, 200, 44), Phaser.Geom.Rectangle.Contains);
       if (slot.input) slot.input.cursor = 'pointer';
       slot.on('pointerover', () => (this.overHud = true));
       slot.on('pointerout', () => (this.overHud = false));
       slot.on('pointerdown', () => !this.ended && !this.transitioning && this.castSlot(i, this.time.now));
       this.hud.push(slot);
     }
+    // Carteles en un cuadro de texto, como los diálogos de los juegos
+    this.bannerBox = this.add.graphics().setDepth(19).setScrollFactor(0);
     this.banner = this.add
       .text(480, 320, '', {
         fontFamily: FONT,
-        fontSize: '44px',
-        color: '#2b3a67',
+        fontSize: '34px',
+        fontStyle: 'bold',
+        color: HEX.text,
         align: 'center',
-        wordWrap: { width: 820 },
+        wordWrap: { width: 800 },
       })
       .setOrigin(0.5)
       .setDepth(20)
@@ -561,10 +584,12 @@ export class GameScene extends Phaser.Scene {
     this.minimap = this.add.graphics().setDepth(30).setScrollFactor(0);
 
     // Botón de pausa para jugar solo con ratón
+    fixed(drawBox(this.add.graphics(), 12, 14, 54, 54, { radius: 10 }));
     const pb = this.add
-      .text(24, 32, '❚❚', { fontFamily: FONT, fontSize: '24px', color: '#ffffff', backgroundColor: '#2b3a67' })
-      .setPadding(10, 6)
-      .setDepth(10)
+      .text(39, 41, '❚❚', { fontFamily: FONT, fontSize: '22px', color: HEX.text })
+      .setOrigin(0.5)
+      .setPadding(10, 8)
+      .setDepth(11)
       .setScrollFactor(0)
       .setInteractive({ useHandCursor: true });
     pb.on('pointerover', () => (this.overHud = true));
@@ -1114,7 +1139,7 @@ export class GameScene extends Phaser.Scene {
     this.menuPadPrev = menuPadNow;
     if (menuPressed) {
       // Durante la partida abre la pausa; con la partida terminada vuelve al menú
-      if (this.ended) this.scene.start('Menu');
+      if (this.ended) goTo(this, 'Menu');
       else this.openPause();
       return;
     }
@@ -1127,7 +1152,7 @@ export class GameScene extends Phaser.Scene {
       // Nueva partida (vuelves a elegir inicial): R, Start, o A del mando pasado un momento.
       // El clic se registra en armRestartClick.
       const start = hasPad && (!!pad!.buttons[9]?.pressed || (pad!.A && time - this.endedAt > 700));
-      if (Phaser.Input.Keyboard.JustDown(this.restartKey) || start) this.scene.start('Starter', { slot: this.slot });
+      if (Phaser.Input.Keyboard.JustDown(this.restartKey) || start) goTo(this, 'Starter', { slot: this.slot });
       return;
     }
     if (this.transitioning) return;
@@ -1189,18 +1214,12 @@ export class GameScene extends Phaser.Scene {
     });
 
     // HUD
-    this.hpText.setText(
-      `${progressText(this.mode, this.floorNum)}   PS ${Math.max(0, Math.ceil(this.hp))}/${this.stats.maxHp}   Enemigos ${this.enemies.countActive(true)}`,
-    );
-    this.slots.forEach((m, i) => {
-      const text = this.hud[i];
-      if (!m) {
-        text.setText(`${i + 1}  —`).setColor('#ffffff').setAlpha(0.3);
-        return;
-      }
-      const ready = time >= this.slotReady[i];
-      text.setText(`${i + 1}  ${pretty(m.name)}`).setColor(typeHex(m.type)).setAlpha(ready ? 1 : 0.35);
-    });
+    const foes = this.enemies.countActive(true);
+    this.nameText.setText(this.starterName.charAt(0).toUpperCase() + this.starterName.slice(1));
+    this.progressHud.setText(`${progressText(this.mode, this.floorNum)}${foes ? ` · ${foes} enem.` : ''}`);
+    this.hpText.setText(`${Math.max(0, Math.ceil(this.hp))}/${this.stats.maxHp}`);
+    this.hpBar.set(this.hp / this.stats.maxHp);
+    this.slots.forEach((m, i) => this.paintSlot(i, m, !m || time >= this.slotReady[i]));
 
     this.checkTrapdoor();
     if (!this.transitioning) this.checkExit();
@@ -1482,10 +1501,35 @@ export class GameScene extends Phaser.Scene {
     this.saveNow();
   }
 
+  /** Ranura de poder: cuadro con una franja del color del tipo; apagada mientras recarga. */
+  private paintSlot(i: number, m: MovePower | null, ready: boolean) {
+    const key = m ? `${m.id}:${m.name}:${ready}` : 'vacía';
+    if (this.slotShown[i] === key) return;
+    this.slotShown[i] = key;
+    const g = this.slotBoxes[i].clear();
+    const x = 84 + i * 210;
+    drawBox(g, x, 580, 200, 44, { radius: 10, fillAlpha: m ? 1 : 0.5 });
+    if (m) g.fillStyle(typeColor(m.type), 1).fillRoundedRect(x + 9, 589, 8, 26, 4);
+    const text = this.hud[i];
+    if (!m) text.setText(`${i + 1}  —`).setAlpha(0.6);
+    else text.setText(`${i + 1}  ${pretty(m.name)}`).setAlpha(ready ? 1 : 0.4);
+    g.setAlpha(ready ? 1 : 0.7);
+  }
+
   private showBanner(text: string, ms?: number) {
     this.bannerTimer?.remove();
+    this.setBanner(text);
+    this.bannerTimer = ms ? this.time.delayedCall(ms, () => this.setBanner('')) : undefined;
+  }
+
+  /** Pone el texto del cartel y ajusta su cuadro al tamaño del texto (sin texto, sin cuadro). */
+  private setBanner(text: string) {
     this.banner.setText(text);
-    this.bannerTimer = ms ? this.time.delayedCall(ms, () => this.banner.setText('')) : undefined;
+    this.bannerBox.clear();
+    if (!text) return;
+    const w = Math.min(880, this.banner.width + 70);
+    const h = this.banner.height + 44;
+    drawBox(this.bannerBox, 480 - w / 2, 320 - h / 2, w, h, { radius: 16 });
   }
 
   private hurtPlayer(enemy: Sprite) {
@@ -1514,6 +1558,6 @@ export class GameScene extends Phaser.Scene {
     this.physics.pause();
     this.showBanner(message);
     // Un momento de margen y un clic nuevo, para no saltarse la pantalla si estabas disparando
-    this.time.delayedCall(700, () => this.input.once('pointerdown', () => this.scene.start('Starter', { slot: this.slot })));
+    this.time.delayedCall(700, () => this.input.once('pointerdown', () => goTo(this, 'Starter', { slot: this.slot })));
   }
 }

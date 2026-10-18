@@ -6,6 +6,7 @@ import { classifyRarity, RARITIES, RARITY_LABEL, Rarity } from '../data/gacha';
 import { countByRegion, filterCollection, CollectionEntry, REGIONS, SEARCH_LETTERS } from '../data/regions';
 import { addPanel, NavInput, PadButtons, UI } from '../ui/nav';
 import { addBackButton, buildPokemonCard, loadCardTextures } from '../ui/cards';
+import { drawBox, fadeIn, goTo, hex, RARITY_COLORS } from '../ui/theme';
 
 /** Pokémon por página (2 filas de 4). */
 const PAGE_SIZE = 8;
@@ -16,13 +17,6 @@ const GRID_Y = 384;
 /** Margen tras abrir la pantalla en el que se ignora confirmar: evita que un Enter mantenido desde el menú elija solo. */
 const INPUT_DELAY_MS = 350;
 
-export const RARITY_COLOR: Record<Rarity, string> = {
-  common: '#5f6b7a',
-  rare: '#2e86de',
-  epic: '#8e44ad',
-  ultra: '#e84393',
-  legendary: '#d4a017',
-};
 
 type Key = Phaser.Input.Keyboard.Key;
 
@@ -90,6 +84,7 @@ export class StarterScene extends Phaser.Scene {
   }
 
   create() {
+    fadeIn(this);
     this.tabs = [];
     this.tiles = [];
     this.grid = undefined;
@@ -132,7 +127,7 @@ export class StarterScene extends Phaser.Scene {
     if (this.starting) return;
     if (this.search) return this.closeSearch();
     this.starting = true;
-    this.scene.start('Slots');
+    goTo(this, 'Slots');
   }
 
   private async boot(unlocked: number[], loading: Phaser.GameObjects.Text) {
@@ -202,8 +197,7 @@ export class StarterScene extends Phaser.Scene {
 
   private paintChip(c: Chip, on: boolean, dim = false) {
     c.bg.clear();
-    c.bg.fillStyle(on ? UI.GOLD : UI.PANEL, dim ? 0.55 : 1).fillRoundedRect(-c.w / 2, -c.h / 2, c.w, c.h, 12);
-    c.bg.lineStyle(3, UI.NAVY, 1).strokeRoundedRect(-c.w / 2, -c.h / 2, c.w, c.h, 12);
+    drawBox(c.bg, -c.w / 2, -c.h / 2, c.w, c.h, { selected: on, radius: 10, fillAlpha: dim ? 0.6 : 1 });
   }
 
   private buildArrow(text: string, x: number, action: () => void) {
@@ -300,7 +294,7 @@ export class StarterScene extends Phaser.Scene {
       const e = slice[k];
       const t = buildPokemonCard(this, c, left + (k % COLS) * CELL.w, top + Math.floor(k / COLS) * CELL.h, {
         scale: CARD_SCALE,
-        tag: { text: RARITY_LABEL[e.rarity], color: RARITY_COLOR[e.rarity] },
+        tag: { text: RARITY_LABEL[e.rarity], color: hex(RARITY_COLORS[e.rarity]) },
       });
       const index = page * PAGE_SIZE + k;
       t.box.on('pointerover', () => !this.search && this.select(index));
@@ -342,7 +336,7 @@ export class StarterScene extends Phaser.Scene {
     const e = this.view[i];
     if (!e || !this.tiles.length) return;
     this.starting = true;
-    this.scene.start('Mode', { starterId: e.id, slot: this.slot });
+    goTo(this, 'Mode', { starterId: e.id, slot: this.slot });
   }
 
   // --- Búsqueda por nombre: teclado físico o en pantalla (ratón y mando) ---

@@ -3,24 +3,12 @@ import { fetchPokemonCard } from '../data/pokeapi';
 import { buildPools, GACHA_RATES, pull, PULL_COST, RARITIES, RARITY_LABEL, Rarity, RarityPools } from '../data/gacha';
 import { loadSpeciesIndex } from '../data/speciesIndex';
 import { addCoins, loadCoins, loadUnlocked, spendCoins, unlockPokemon } from '../data/save';
-import { typeNameEs } from '../data/types';
-
-const FONT = 'system-ui, sans-serif';
-const NAVY = 0x2b3a67;
-const PANEL = 0xeaf4ff;
-const GOLD = 0xffd34d;
+import { typeColor, typeNameEs } from '../data/types';
+import { ARROW, addTypeChip, drawBox, fadeIn, FONT, goTo, hex, RARITY_COLORS } from '../ui/theme';
 /** Monedas que devuelve una tirada repetida. */
 const DUPLICATE_REFUND = 30;
 const BTN = { w: 300, h: 54 };
 
-const RARITY_COLOR: Record<Rarity, number> = {
-  common: 0x9aa5b1,
-  rare: 0x4aa3ff,
-  epic: 0xb05cff,
-  ultra: 0xff4fa0,
-  // El dorado queda para lo más valioso
-  legendary: 0xffc21a,
-};
 
 type Key = Phaser.Input.Keyboard.Key;
 type KeyName = 'LEFT' | 'RIGHT' | 'UP' | 'DOWN' | 'A' | 'D' | 'W' | 'S' | 'ENTER' | 'SPACE' | 'ESC';
@@ -30,7 +18,7 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 /** Gacha: gasta monedas (ganadas jugando) para desbloquear Pokémon. Teclado, ratón y mando. */
 export class GachaScene extends Phaser.Scene {
   private pools: RarityPools | null = null;
-  private buttons: { box: Phaser.GameObjects.Container; bg: Phaser.GameObjects.Graphics; label: Phaser.GameObjects.Text }[] = [];
+  private buttons: { box: Phaser.GameObjects.Container; bg: Phaser.GameObjects.Graphics; arrow: Phaser.GameObjects.Text }[] = [];
   private actions: (() => void)[] = [];
   private selected = 0;
   private busy = false;
@@ -57,13 +45,19 @@ export class GachaScene extends Phaser.Scene {
     this.padPrev = { dir: 0, ok: false, back: false };
     this.alive = true;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (this.alive = false));
+    fadeIn(this);
 
     this.add.text(480, 56, 'Gacha', { fontFamily: FONT, fontSize: '52px', fontStyle: 'bold', color: '#ffd34d' }).setOrigin(0.5).setStroke('#2b3a67', 10);
-    this.coinsText = this.add.text(924, 40, '', { fontFamily: FONT, fontSize: '26px', color: '#ffd34d' }).setOrigin(1, 0.5);
-    this.ownedText = this.add.text(924, 72, '', { fontFamily: FONT, fontSize: '16px', color: '#ffffff' }).setOrigin(1, 0.5).setAlpha(0.8);
+    // Monedas y desbloqueados en un cuadro arriba a la derecha
+    drawBox(this.add.graphics(), 690, 14, 254, 80, { radius: 12 });
+    this.coinsText = this.add.text(924, 40, '', { fontFamily: FONT, fontSize: '24px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(1, 0.5);
+    this.ownedText = this.add.text(924, 70, '', { fontFamily: FONT, fontSize: '16px', color: '#4a5578' }).setOrigin(1, 0.5);
+    // Cuadro de texto como los de los juegos para los mensajes
+    drawBox(this.add.graphics(), 140, 344, 680, 62, { radius: 12 });
     this.message = this.add
-      .text(480, 372, 'Cargando…', { fontFamily: FONT, fontSize: '24px', color: '#ffffff', align: 'center' })
-      .setOrigin(0.5);
+      .text(480, 375, 'Cargando…', { fontFamily: FONT, fontSize: '20px', color: '#2b3a67', align: 'center' })
+      .setOrigin(0.5)
+      .setDepth(1);
 
     const rates = RARITIES.map((r) => `${RARITY_LABEL[r]} ${GACHA_RATES[r]}%`).join(' · ');
     this.add.text(480, 560, rates, { fontFamily: FONT, fontSize: '15px', color: '#ffffff' }).setOrigin(0.5).setAlpha(0.7);
@@ -102,7 +96,8 @@ export class GachaScene extends Phaser.Scene {
     const i = this.buttons.length;
     const bg = this.add.graphics();
     const label = this.add.text(0, 0, text, { fontFamily: FONT, fontSize: '24px', fontStyle: 'bold', color: '#2b3a67' }).setOrigin(0.5);
-    const box = this.add.container(x, y, [bg, label]).setSize(BTN.w, BTN.h);
+    const arrow = this.add.text(-BTN.w / 2 + 14, 0, ARROW, { fontFamily: FONT, fontSize: '20px', color: '#2b3a67' }).setOrigin(0, 0.5);
+    const box = this.add.container(x, y, [bg, label, arrow]).setSize(BTN.w, BTN.h);
     box.setInteractive(new Phaser.Geom.Rectangle(0, 0, BTN.w, BTN.h) /* Phaser la centra solo */, Phaser.Geom.Rectangle.Contains);
     box.input!.cursor = 'pointer';
     box.on('pointerover', () => this.select(i));
@@ -110,24 +105,24 @@ export class GachaScene extends Phaser.Scene {
       this.select(i);
       action();
     });
-    this.buttons.push({ box, bg, label });
+    this.buttons.push({ box, bg, arrow });
   }
 
   private select(i: number) {
     this.selected = i;
-    this.buttons.forEach(({ box, bg }, k) => {
+    this.buttons.forEach(({ box, bg, arrow }, k) => {
       const sel = k === i;
       bg.clear();
-      bg.fillStyle(sel ? GOLD : PANEL, 1).fillRoundedRect(-BTN.w / 2, -BTN.h / 2, BTN.w, BTN.h, 16);
-      bg.lineStyle(5, NAVY, 1).strokeRoundedRect(-BTN.w / 2, -BTN.h / 2, BTN.w, BTN.h, 16);
-      box.setScale(sel ? 1.06 : 1);
+      drawBox(bg, -BTN.w / 2, -BTN.h / 2, BTN.w, BTN.h, { selected: sel });
+      arrow.setVisible(sel);
+      box.setScale(sel ? 1.04 : 1);
     });
   }
 
   private goBack() {
     if (this.leaving || this.busy) return;
     this.leaving = true;
-    this.scene.start('Menu');
+    goTo(this, 'Menu');
   }
 
   private say(text: string) {
@@ -188,17 +183,17 @@ export class GachaScene extends Phaser.Scene {
   private showResult(id: number, name: string, types: string[], rarity: Rarity, note: string, key: string) {
     this.message.setText('');
     if (this.textures.exists(key)) this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
-    const color = RARITY_COLOR[rarity];
+    const color = RARITY_COLORS[rarity];
 
-    const card = this.add.graphics();
-    card.fillStyle(PANEL, 1).fillRoundedRect(-170, -150, 340, 300, 22);
-    card.lineStyle(8, color, 1).strokeRoundedRect(-170, -150, 340, 300, 22);
+    // Cuadro con borde doble del color de la rareza
+    const card = drawBox(this.add.graphics(), -170, -150, 340, 300, { radius: 20, border: color });
     const img = this.add.image(0, -50, key).setDisplaySize(170, 170);
     const title = this.add.text(0, 56, `${capitalize(name)}  #${id}`, { fontFamily: FONT, fontSize: '26px', fontStyle: 'bold', color: '#2b3a67' }).setOrigin(0.5);
-    const rar = this.add.text(0, 90, `${RARITY_LABEL[rarity]} · ${types.map(typeNameEs).join(' / ')}`, { fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: '#' + color.toString(16).padStart(6, '0') }).setOrigin(0.5).setStroke('#2b3a67', 3);
+    const rar = this.add.text(-160 + 20, 90, RARITY_LABEL[rarity], { fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: hex(color) }).setOrigin(0, 0.5).setStroke('#2b3a67', 3);
+    const chips = types.flatMap((t, k) => addTypeChip(this, 40 + k * 80, 90, typeNameEs(t), typeColor(t), 74, 24));
     const info = this.add.text(0, 124, note, { fontFamily: FONT, fontSize: '16px', color: '#4a5578' }).setOrigin(0.5);
 
-    this.resultLayer = this.add.container(480, 230, [card, img, title, rar, info]).setScale(0.2).setAlpha(0);
+    this.resultLayer = this.add.container(480, 206, [card, img, title, rar, ...chips, info]).setScale(0.2).setAlpha(0);
     this.tweens.add({ targets: this.resultLayer, scale: 0.85, alpha: 1, duration: 320, ease: 'Back.easeOut' });
   }
 

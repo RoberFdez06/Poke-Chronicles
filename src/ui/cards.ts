@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { PokemonCard } from '../data/pokeapi';
 import { typeColor, typeNameEs } from '../data/types';
-import { UI } from './nav';
+import { addTypeChip, COLORS, drawBox, HEX, textStyle } from './theme';
 
 export const CARD_SIZE = { w: 200, h: 270 };
 
@@ -52,38 +52,28 @@ export function buildPokemonCard(scene: Phaser.Scene, card: PokemonCard, x: numb
   const { w, h } = CARD_SIZE;
   const accent = typeColor(card.types[0] ?? 'normal');
 
+  // Cuadro con borde doble y una franja del color del tipo detrás del sprite
   const bg = scene.add.graphics();
-  bg.fillStyle(UI.PANEL, 1).fillRoundedRect(-w / 2, -h / 2, w, h, 22);
-  bg.lineStyle(6, accent, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 22);
+  drawBox(bg, -w / 2, -h / 2, w, h, { radius: 18 });
+  bg.fillStyle(accent, 0.35).fillRoundedRect(-w / 2 + 12, -h / 2 + 12, w - 24, 140, 10);
 
   const glow = scene.add.graphics();
-  glow.lineStyle(8, UI.GOLD, 1).strokeRoundedRect(-w / 2 - 6, -h / 2 - 6, w + 12, h + 12, 28);
+  glow.lineStyle(8, COLORS.gold, 1).strokeRoundedRect(-w / 2 - 6, -h / 2 - 6, w + 12, h + 12, 24);
   glow.setVisible(false);
 
   const key = starterKey(card.id);
   const sprite = scene.textures.exists(key)
     ? scene.add.image(0, -50, key).setDisplaySize(150, 150)
-    : scene.add.text(0, -50, '?', { fontFamily: UI.FONT, fontSize: '64px', color: '#2b3a67' }).setOrigin(0.5);
-  const name = scene.add
-    .text(0, 46, capitalize(card.name), { fontFamily: UI.FONT, fontSize: '24px', color: '#2b3a67' })
-    .setOrigin(0.5);
+    : scene.add.text(0, -50, '?', textStyle(64)).setOrigin(0.5);
+  const name = scene.add.text(0, 46, capitalize(card.name), textStyle(24, HEX.text, { fontStyle: 'bold' })).setOrigin(0.5);
 
   // Una etiqueta por tipo, centradas
   const chipW = 84;
   const chipGap = 8;
   const start = -((card.types.length * chipW + (card.types.length - 1) * chipGap) / 2) + chipW / 2;
-  const chips = card.types.flatMap((t, k) => {
-    const cx = start + k * (chipW + chipGap);
-    const chip = scene.add.graphics();
-    chip.fillStyle(typeColor(t), 1).fillRoundedRect(cx - chipW / 2, 72, chipW, 26, 13);
-    const label = scene.add
-      .text(cx, 85, typeNameEs(t), { fontFamily: UI.FONT, fontSize: '15px', color: '#ffffff' })
-      .setOrigin(0.5)
-      .setShadow(0, 1, '#00000066', 2);
-    return [chip, label];
-  });
+  const chips = card.types.flatMap((t, k) => addTypeChip(scene, start + k * (chipW + chipGap), 85, typeNameEs(t), typeColor(t), chipW));
   const extra = opts.tag
-    ? [scene.add.text(0, 114, opts.tag.text, { fontFamily: UI.FONT, fontSize: '16px', fontStyle: 'bold', color: opts.tag.color }).setOrigin(0.5)]
+    ? [scene.add.text(0, 114, opts.tag.text, textStyle(16, opts.tag.color, { fontStyle: 'bold' })).setOrigin(0.5)]
     : [];
 
   const box = scene.add.container(x, y, [bg, glow, sprite, name, ...chips, ...extra]).setScale(opts.scale ?? 1);
@@ -97,7 +87,7 @@ export function buildPokemonCard(scene: Phaser.Scene, card: PokemonCard, x: numb
 /** Botón de texto "← Volver" arriba a la izquierda, para jugar solo con ratón. */
 export function addBackButton(scene: Phaser.Scene, onClick: () => void, x = 36, y = 40) {
   const back = scene.add
-    .text(x, y, '← Volver', { fontFamily: UI.FONT, fontSize: '22px', color: '#ffffff' })
+    .text(x, y, '← Volver', textStyle(22, HEX.white))
     .setOrigin(0, 0.5)
     .setPadding(8, 6)
     .setDepth(5)

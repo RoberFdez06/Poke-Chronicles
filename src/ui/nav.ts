@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
+import { ARROW, COLORS, FONT, drawBox, textStyle } from './theme';
 
-const FONT = 'system-ui, sans-serif';
-const NAVY = 0x2b3a67;
-const PANEL = 0xeaf4ff;
-const GOLD = 0xffd34d;
+const NAVY = COLORS.navy;
+const PANEL = COLORS.panel;
+const GOLD = COLORS.gold;
 
 type Key = Phaser.Input.Keyboard.Key;
 type KeyName = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT' | 'W' | 'A' | 'S' | 'D' | 'ENTER' | 'SPACE' | 'ESC' | 'P';
@@ -123,7 +123,7 @@ export interface MenuListOptions {
 /** Columna de botones: ratón (pasar y clic), y move()/activate() para teclado y mando. */
 export class MenuList {
   readonly container: Phaser.GameObjects.Container;
-  private items: { bg: Phaser.GameObjects.Graphics; box: Phaser.GameObjects.Container }[] = [];
+  private items: { bg: Phaser.GameObjects.Graphics; box: Phaser.GameObjects.Container; arrow: Phaser.GameObjects.Text }[] = [];
   selected = 0;
   /** Solo la lista activa responde (las de debajo de un diálogo, no). */
   active = true;
@@ -144,10 +144,11 @@ export class MenuList {
     this.container = scene.add.container(x, y).setDepth(opts.depth ?? 0);
     labels.forEach((label, i) => {
       const bg = scene.add.graphics();
-      const text = scene.add
-        .text(0, 0, label, { fontFamily: FONT, fontSize: `${opts.fontSize ?? 24}px`, fontStyle: 'bold', color: '#2b3a67' })
-        .setOrigin(0.5);
-      const box = scene.add.container(0, i * (this.h + gap), [bg, text]).setSize(this.w, this.h);
+      const size = opts.fontSize ?? 24;
+      const text = scene.add.text(0, 0, label, textStyle(size, '#2b3a67', { fontStyle: 'bold' })).setOrigin(0.5);
+      // Flecha de selección a la izquierda, como en los menús de los juegos
+      const arrow = scene.add.text(-this.w / 2 + 14, 0, ARROW, textStyle(size - 4, '#2b3a67')).setOrigin(0, 0.5);
+      const box = scene.add.container(0, i * (this.h + gap), [bg, text, arrow]).setSize(this.w, this.h);
       box.setInteractive(new Phaser.Geom.Rectangle(0, 0, this.w, this.h) /* Phaser la centra solo */, Phaser.Geom.Rectangle.Contains);
       box.input!.cursor = 'pointer';
       box.on('pointerover', () => this.active && this.select(i));
@@ -157,19 +158,19 @@ export class MenuList {
         this.onPick(i);
       });
       this.container.add(box);
-      this.items.push({ bg, box });
+      this.items.push({ bg, box, arrow });
     });
     this.select(0);
   }
 
   select(i: number) {
     this.selected = i;
-    this.items.forEach(({ bg, box }, k) => {
+    this.items.forEach(({ bg, box, arrow }, k) => {
       const sel = k === i;
       bg.clear();
-      bg.fillStyle(sel ? GOLD : PANEL, 1).fillRoundedRect(-this.w / 2, -this.h / 2, this.w, this.h, 16);
-      bg.lineStyle(5, NAVY, 1).strokeRoundedRect(-this.w / 2, -this.h / 2, this.w, this.h, 16);
-      box.setScale(sel ? 1.05 : 1);
+      drawBox(bg, -this.w / 2, -this.h / 2, this.w, this.h, { selected: sel });
+      arrow.setVisible(sel);
+      box.setScale(sel ? 1.04 : 1);
     });
   }
 
@@ -191,8 +192,7 @@ export class MenuList {
 export function addPanel(scene: Phaser.Scene, x: number, y: number, w: number, h: number, depth: number) {
   const dim = scene.add.rectangle(480, 320, 960, 640, 0x000000, 0.65).setInteractive().setScrollFactor(0);
   const panel = scene.add.graphics().setScrollFactor(0);
-  panel.fillStyle(PANEL, 1).fillRoundedRect(x - w / 2, y - h / 2, w, h, 24);
-  panel.lineStyle(6, NAVY, 1).strokeRoundedRect(x - w / 2, y - h / 2, w, h, 24);
+  drawBox(panel, x - w / 2, y - h / 2, w, h, { radius: 20 });
   return scene.add.container(0, 0, [dim, panel]).setDepth(depth);
 }
 

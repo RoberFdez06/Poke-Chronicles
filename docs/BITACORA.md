@@ -129,3 +129,33 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
   huecos, una partida antigua sigue mostrando el nombre en inglés hasta que se continúe y se guarde.
 - **Archivos**: `scripts/buildSpeciesIndex.mjs`, `public/data/species-index.json`, `src/data/gacha.ts` (`nameEs?`),
   `src/data/pokeapi.ts`, `GameScene`, `StarterScene`, README.
+
+## T8 — Interfaz estilo Pokémon (2026-10-18)
+
+- **Qué**: tema nuevo en `src/ui/theme.ts` (fuente, colores, `drawBox` con borde doble y esquinas redondeadas,
+  flecha `▶`, `addHpBar` con etiqueta "PS" y color verde > 50 % > amarillo > 20 % > rojo, `addTypeChip`, colores de
+  rareza, `fadeIn`/`goTo` para fundidos entre pantallas y `loadThemeFont`). Aplicado a todas las pantallas:
+  - Menús (`MenuList`, menú principal, gacha): cuadros de borde doble, relleno dorado y ▶ en la opción elegida.
+  - Huecos: cuadros con ▶ por fuera y barra de PS de la partida guardada.
+  - Colección, primer inicial y gacha: tarjetas con borde doble, franja del color del tipo y fichas de tipo.
+    El gacha tiene sus mensajes en un cuadro de texto y las monedas en un cuadro.
+  - Modo: panel con borde doble. Pausa: panel con borde doble, barra de PS y ficha de tipo de cada poder.
+  - Partida: cuadro arriba a la izquierda con nombre, progreso, enemigos, barra de PS y números; botón de pausa en
+    cuadro; ranuras de poder en cuadros con franja del color del tipo (apagadas mientras recargan, mismas áreas de
+    clic); carteles dentro de un cuadro de texto ajustado al texto.
+  - Fundido a negro al cambiar de pantalla (`goTo`) y desde negro al entrar (`fadeIn`). Desde la pausa se cambia
+    sin fundido porque la partida está congelada.
+- **Controles**: no cambia la entrada; teclado, ratón y mando siguen igual (áreas de clic centradas como pide N2).
+- **Fuente**: `main.ts` espera a `loadThemeFont()` (FontFace + `document.fonts.load`, con 2,5 s de límite) antes de
+  crear el juego. **No se ha podido descargar**: el comando `curl` a GitHub (google/fonts) fue denegado y no lo he
+  intentado por otra vía. Mientras no esté `public/fonts/PixelifySans.ttf`, el juego usa la fuente del sistema
+  (las URLs de descarga están en el README). Elegí Pixelify Sans en vez de Press Start 2P porque es más estrecha y
+  los textos actuales caben sin reescribir tamaños.
+- **Archivos**: `src/ui/theme.ts` y `tests/theme.test.ts` (nuevos), `src/main.ts`, `src/ui/nav.ts`, `src/ui/cards.ts`,
+  todas las escenas, README.
+- **Dudas para Roberto**: no he podido verlo en el navegador; conviene revisar a ojo tamaños de texto con la fuente
+  pixel (sobre todo la línea de la partida en los huecos y los nombres largos de poderes en la pausa).
+
+## Parada antes de T9 (2026-10-18)
+
+- Hechas T7 y T8. Por indicación de Roberto paro aquí: **T9 sin empezar**, porque antes quiere pedir otra cosa.

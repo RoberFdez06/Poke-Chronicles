@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { loadAllRuns, RunSave } from '../data/runSave';
 import { MODE_LABEL, progressText } from '../data/modes';
 import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
+import { computeStats } from '../data/items';
+import { addHpBar, ARROW, drawBox, fadeIn, goTo } from '../ui/theme';
 
 const CARD = { w: 600, h: 120, gap: 22 };
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -16,7 +18,7 @@ function describe(run: RunSave): string {
 /** Los 3 huecos de partida: continuar una guardada o empezar una nueva (avisa antes de sobrescribir). */
 export class SlotsScene extends Phaser.Scene {
   private runs: (RunSave | null)[] = [];
-  private cards: { box: Phaser.GameObjects.Container; glow: Phaser.GameObjects.Graphics }[] = [];
+  private cards: { box: Phaser.GameObjects.Container; glow: Phaser.GameObjects.Graphics; arrow: Phaser.GameObjects.Text }[] = [];
   private selected = 0;
   private nav!: NavInput;
   private dialog?: { layer: Phaser.GameObjects.Container; list: MenuList; onBack: () => void };
@@ -32,6 +34,7 @@ export class SlotsScene extends Phaser.Scene {
     this.dialog = undefined;
     this.leaving = false;
     this.nav = new NavInput(this);
+    fadeIn(this);
 
     this.add.text(480, 56, 'Partidas', { fontFamily: UI.FONT, fontSize: '44px', fontStyle: 'bold', color: '#ffd34d' })
       .setOrigin(0.5).setStroke('#2b3a67', 10);
@@ -56,18 +59,26 @@ export class SlotsScene extends Phaser.Scene {
   private buildCard(run: RunSave | null, i: number, x: number, y: number) {
     const { w, h } = CARD;
     const bg = this.add.graphics();
-    bg.fillStyle(UI.PANEL, 1).fillRoundedRect(-w / 2, -h / 2, w, h, 20);
-    bg.lineStyle(5, UI.NAVY, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 20);
+    drawBox(bg, -w / 2, -h / 2, w, h, { radius: 18 });
     const glow = this.add.graphics();
     glow.lineStyle(8, UI.GOLD, 1).strokeRoundedRect(-w / 2 - 6, -h / 2 - 6, w + 12, h + 12, 26);
+    // Flecha de selección por fuera del cuadro, a la izquierda
+    const arrow = this.add.text(-w / 2 - 34, 0, ARROW, { fontFamily: UI.FONT, fontSize: '28px', color: '#ffd34d' }).setOrigin(0, 0.5);
     const title = this.add.text(-w / 2 + 28, -22, `Hueco ${i + 1}`, {
       fontFamily: UI.FONT, fontSize: '28px', fontStyle: 'bold', color: '#2b3a67',
     }).setOrigin(0, 0.5);
     const info = this.add.text(-w / 2 + 28, 22, run ? describe(run) : 'Vacío · Nueva partida', {
-      fontFamily: UI.FONT, fontSize: '17px', color: run ? '#2b3a67' : '#7a849e',
+      fontFamily: UI.FONT, fontSize: '15px', color: run ? '#2b3a67' : '#7a849e', wordWrap: { width: CARD.w - 56 },
     }).setOrigin(0, 0.5);
 
-    const box = this.add.container(x, y, [bg, glow, title, info]).setSize(w, h);
+    const parts: Phaser.GameObjects.GameObject[] = [bg, glow, arrow, title, info];
+    if (run) {
+      // Barra de PS de la partida guardada
+      const hp = addHpBar(this, w / 2 - 230, -30, 200, 10);
+      hp.set(run.hp / computeStats(run.passives).maxHp);
+      parts.push(...hp.objects);
+    }
+    const box = this.add.container(x, y, parts).setSize(w, h);
     box.setInteractive(new Phaser.Geom.Rectangle(0, 0, w, h) /* Phaser la centra solo */, Phaser.Geom.Rectangle.Contains);
     box.input!.cursor = 'pointer';
     box.on('pointerover', () => !this.dialog && this.select(i));
@@ -76,13 +87,14 @@ export class SlotsScene extends Phaser.Scene {
       this.select(i);
       this.open(i);
     });
-    return { box, glow };
+    return { box, glow, arrow };
   }
 
   private select(i: number) {
     this.selected = i;
     this.cards.forEach((c, k) => {
       c.glow.setVisible(k === i);
+      c.arrow.setVisible(k === i);
       c.box.setScale(k === i ? 1.03 : 1);
     });
   }
@@ -90,12 +102,12 @@ export class SlotsScene extends Phaser.Scene {
   private goBack() {
     if (this.leaving) return;
     this.leaving = true;
-    this.scene.start('Menu');
+    goTo(this, 'Menu');
   }
 
   private startNew(slot: number) {
     this.leaving = true;
-    this.scene.start('Starter', { slot });
+    goTo(this, 'Starter', { slot });
   }
 
   private open(slot: number) {
@@ -104,7 +116,7 @@ export class SlotsScene extends Phaser.Scene {
     this.showDialog(`Hueco ${slot + 1}\n${capitalize(run.starterName)}`, ['Continuar', 'Nueva partida', 'Cancelar'], (k) => {
       if (k === 0) {
         this.leaving = true;
-        this.scene.start('Game', { slot, resume: run });
+        goTo(this, 'Game', { slot, resume: run });
       } else if (k === 1) {
         this.closeDialog();
         this.showDialog('Se perderá la partida guardada\nen este hueco. ¿Seguro?', ['No, volver', 'Sí, empezar de nuevo'], (j) => {

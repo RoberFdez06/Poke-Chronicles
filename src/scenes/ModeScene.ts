@@ -3,6 +3,7 @@ import { emptyRecords, MODES, MODE_LABEL, modeDesc, recordText, Records } from '
 import { loadRecords } from '../data/save';
 import { MenuList, NavInput, UI } from '../ui/nav';
 import { addBackButton } from '../ui/cards';
+import { drawBox, fadeIn, goTo } from '../ui/theme';
 
 /** Margen tras abrir la pantalla en el que se ignora confirmar (el Enter que eligió el Pokémon no elige modo). */
 const INPUT_DELAY_MS = 350;
@@ -33,6 +34,7 @@ export class ModeScene extends Phaser.Scene {
   }
 
   create() {
+    fadeIn(this);
     this.leaving = false;
     this.shown = -1;
     this.nav = new NavInput(this);
@@ -43,8 +45,7 @@ export class ModeScene extends Phaser.Scene {
     this.list = new MenuList(this, 280, 190, MODES.map((m) => MODE_LABEL[m]), (i) => this.start(i), { w: 320, h: 62, gap: 22 });
 
     const panel = this.add.graphics();
-    panel.fillStyle(UI.PANEL, 1).fillRoundedRect(480, 160, 420, 330, 22);
-    panel.lineStyle(5, UI.NAVY, 1).strokeRoundedRect(480, 160, 420, 330, 22);
+    drawBox(panel, 480, 160, 420, 330, { radius: 20 });
     this.desc = this.add
       .text(510, 190, '', { fontFamily: UI.FONT, fontSize: '22px', color: '#2b3a67', wordWrap: { width: 360 } })
       .setLineSpacing(6);
@@ -64,13 +65,13 @@ export class ModeScene extends Phaser.Scene {
   private start(i: number) {
     if (this.leaving || this.time.now < this.readyAt) return;
     this.leaving = true;
-    this.scene.start('Game', { starterId: this.args.starterId, slot: this.args.slot, mode: MODES[i] });
+    goTo(this, 'Game', { starterId: this.args.starterId, slot: this.args.slot, mode: MODES[i] });
   }
 
   private back() {
     if (this.leaving) return;
     this.leaving = true;
-    this.scene.start('Starter', { slot: this.args.slot });
+    goTo(this, 'Starter', { slot: this.args.slot });
   }
 
   update() {

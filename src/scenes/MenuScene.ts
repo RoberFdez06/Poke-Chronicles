@@ -3,6 +3,7 @@ import { fetchPokemonCard } from '../data/pokeapi';
 import { loadRecords, loadUnlocked } from '../data/save';
 import { MODES, MODE_LABEL } from '../data/modes';
 import { CONTROLS } from '../data/controls';
+import { ARROW, FONT, drawBox, fadeIn, goTo } from '../ui/theme';
 
 /** Récord de cada modo en una línea: "Normal 2 · Oleadas 7 · …". */
 const recordsLine = () => {
@@ -10,10 +11,6 @@ const recordsLine = () => {
   return MODES.map((m) => `${MODE_LABEL[m]} ${r[m]}`).join(' · ');
 };
 
-const FONT = 'system-ui, sans-serif';
-const NAVY = 0x2b3a67;
-const PANEL = 0xeaf4ff;
-const GOLD = 0xffd34d;
 const BTN = { w: 320, h: 58, gap: 16 };
 
 type Key = Phaser.Input.Keyboard.Key;
@@ -27,7 +24,7 @@ interface MenuItem {
 /** Menú principal: jugar, gacha y controles. */
 export class MenuScene extends Phaser.Scene {
   private items: MenuItem[] = [];
-  private buttons: { box: Phaser.GameObjects.Container; bg: Phaser.GameObjects.Graphics }[] = [];
+  private buttons: { box: Phaser.GameObjects.Container; bg: Phaser.GameObjects.Graphics; arrow: Phaser.GameObjects.Text }[] = [];
   private keys!: Record<KeyName, Key>;
   private selected = 0;
   private overlay?: Phaser.GameObjects.Container;
@@ -42,7 +39,7 @@ export class MenuScene extends Phaser.Scene {
 
   create() {
     this.items = [
-      { label: 'Jugar', action: () => this.scene.start('Slots') },
+      { label: 'Jugar', action: () => goTo(this, 'Slots') },
       { label: 'Gacha', action: () => this.openGacha() },
       { label: 'Controles', action: () => this.showControls() },
     ];
@@ -53,10 +50,11 @@ export class MenuScene extends Phaser.Scene {
     this.padPrev = { up: false, down: false, ok: false, back: false };
     this.alive = true;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (this.alive = false));
+    fadeIn(this);
 
     // Título
     this.add
-      .text(480, 118, 'PokeIsaac', { fontFamily: FONT, fontSize: '92px', fontStyle: 'bold', color: '#ffd34d' })
+      .text(480, 118, 'PokeIsaac', { fontFamily: FONT, fontSize: '96px', fontStyle: 'bold', color: '#ffd34d' })
       .setOrigin(0.5)
       .setStroke('#2b3a67', 14)
       .setShadow(0, 7, '#0d1425', 0, true, true);
@@ -106,23 +104,26 @@ export class MenuScene extends Phaser.Scene {
       .text(0, 0, item.label, { fontFamily: FONT, fontSize: '28px', fontStyle: 'bold', color: '#2b3a67' })
       .setOrigin(0.5);
 
-    const box = this.add.container(x, y, [bg, label]);
+    const arrow = this.add
+      .text(-BTN.w / 2 + 18, 0, ARROW, { fontFamily: FONT, fontSize: '24px', color: '#2b3a67' })
+      .setOrigin(0, 0.5);
+    const box = this.add.container(x, y, [bg, label, arrow]);
     box.setSize(BTN.w, BTN.h);
     // En un contenedor con tamaño, Phaser ya desplaza el área al centro: va de (0,0) a (w,h)
     box.setInteractive(new Phaser.Geom.Rectangle(0, 0, BTN.w, BTN.h), Phaser.Geom.Rectangle.Contains);
     box.input!.cursor = 'pointer';
     box.on('pointerover', () => !this.overlay && this.select(index));
     box.on('pointerdown', () => !this.overlay && this.activate(index));
-    return { box, bg };
+    return { box, bg, arrow };
   }
 
   private paint(i: number) {
-    const { box, bg } = this.buttons[i];
+    const { box, bg, arrow } = this.buttons[i];
     const sel = i === this.selected;
     bg.clear();
-    bg.fillStyle(sel ? GOLD : PANEL, 1).fillRoundedRect(-BTN.w / 2, -BTN.h / 2, BTN.w, BTN.h, 18);
-    bg.lineStyle(5, NAVY, 1).strokeRoundedRect(-BTN.w / 2, -BTN.h / 2, BTN.w, BTN.h, 18);
-    box.setScale(sel ? 1.06 : 1);
+    drawBox(bg, -BTN.w / 2, -BTN.h / 2, BTN.w, BTN.h, { selected: sel, radius: 16 });
+    arrow.setVisible(sel);
+    box.setScale(sel ? 1.05 : 1);
   }
 
   private select(i: number) {
@@ -137,7 +138,7 @@ export class MenuScene extends Phaser.Scene {
 
   private openGacha() {
     // La escena del gacha se registra en main.ts cuando exista
-    if (this.scene.manager.keys['Gacha']) this.scene.start('Gacha');
+    if (this.scene.manager.keys['Gacha']) goTo(this, 'Gacha');
     else this.showToast('El gacha llegará pronto');
   }
 
@@ -154,8 +155,7 @@ export class MenuScene extends Phaser.Scene {
     dim.on('pointerdown', () => this.closeControls());
 
     const panel = this.add.graphics();
-    panel.fillStyle(PANEL, 1).fillRoundedRect(130, 110, 700, 400, 26);
-    panel.lineStyle(6, NAVY, 1).strokeRoundedRect(130, 110, 700, 400, 26);
+    drawBox(panel, 130, 110, 700, 400, { radius: 22 });
 
     const parts: Phaser.GameObjects.GameObject[] = [dim, panel];
     parts.push(
