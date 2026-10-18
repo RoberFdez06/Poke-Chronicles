@@ -42,9 +42,13 @@ export async function mockPokeApi(page: Page) {
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body), headers: { 'access-control-allow-origin': '*' } });
   });
   for (const pattern of ['https://pokeapi.test/**', 'https://raw.githubusercontent.com/**']) {
-    await page.route(pattern, (route) =>
-      route.fulfill({ status: 200, contentType: 'image/png', body: PNG, headers: { 'access-control-allow-origin': '*' } }),
-    );
+    await page.route(pattern, (route) => {
+      // Con REAL_SPRITES=1 se descargan de verdad los sprites de SpriteCollab (para revisar capturas)
+      if (process.env.REAL_SPRITES && route.request().url().includes('/PMDCollab/')) return route.continue();
+      // Sin sprite de SpriteCollab: el juego usa el de PokeAPI (aquí, un PNG de 1 px)
+      if (route.request().url().endsWith('.xml')) return route.fulfill({ status: 404, body: '' });
+      return route.fulfill({ status: 200, contentType: 'image/png', body: PNG, headers: { 'access-control-allow-origin': '*' } });
+    });
   }
 }
 
@@ -52,7 +56,8 @@ export async function mockPokeApi(page: Page) {
 export function collectErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on('console', (m) => {
-    if (m.type() === 'error') errors.push(m.text());
+    // Un 404 de recurso es normal: los Pokémon sin sprite en SpriteCollab usan el de PokeAPI
+    if (m.type() === 'error' && !m.text().includes('status of 404')) errors.push(m.text());
   });
   page.on('pageerror', (e) => errors.push(String(e)));
   return errors;

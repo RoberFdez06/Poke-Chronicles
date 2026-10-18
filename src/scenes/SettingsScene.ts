@@ -19,9 +19,17 @@ export interface SettingsData {
   onReset?: () => void;
 }
 
-type Row = 'music' | 'sfx' | 'fullscreen' | 'controls' | 'reset' | 'back';
-const ROWS: Row[] = ['music', 'sfx', 'fullscreen', 'controls', 'reset', 'back'];
-const ROW = { w: 520, h: 54, gap: 12, top: 140 };
+type Row = 'music' | 'sfx' | 'fullscreen' | 'controls' | 'credits' | 'reset' | 'back';
+const ROWS: Row[] = ['music', 'sfx', 'fullscreen', 'controls', 'credits', 'reset', 'back'];
+const ROW = { w: 520, h: 50, gap: 10, top: 136 };
+
+/** Créditos (T31): de dónde salen los datos, los sprites y la fuente. */
+const CREDITS: [string, string][] = [
+  ['Datos de Pokémon', 'PokeAPI (pokeapi.co): nombres, tipos, estadísticas, movimientos, sprites y gritos'],
+  ['Sprites animados', 'PMDCollab SpriteCollab (sprites.pmdcollab.org), licencia CC BY-NC 4.0'],
+  ['Fuente', 'Pixelify Sans, de Stefie Justprince, licencia SIL Open Font License (OFL)'],
+  ['Pokémon', 'Pokémon es de Nintendo, Game Freak y The Pokémon Company. Fan game gratuito, sin ánimo de lucro'],
+];
 
 /** Ajustes: volumen de música y efectos, pantalla completa, controles y borrar progreso. Teclado, ratón y mando. */
 export class SettingsScene extends Phaser.Scene {
@@ -103,6 +111,8 @@ export class SettingsScene extends Phaser.Scene {
         return `Efectos   ◀ ${pct(a.sfx)} ▶`;
       case 'fullscreen':
         return `Pantalla completa: ${this.scale.isFullscreen ? 'Sí' : 'No'}`;
+      case 'credits':
+        return 'Créditos';
       case 'controls':
         return 'Mostrar controles';
       case 'reset':
@@ -151,6 +161,7 @@ export class SettingsScene extends Phaser.Scene {
       }
       this.time.delayedCall(150, () => this.refresh());
     } else if (row === 'controls') this.showControls();
+    else if (row === 'credits') this.showCredits();
     else if (row === 'reset') this.confirmReset();
     else this.close();
   }
@@ -169,6 +180,19 @@ export class SettingsScene extends Phaser.Scene {
     this.dialog?.layer.destroy();
     this.dialog?.list?.destroy();
     this.dialog = undefined;
+  }
+
+  private showCredits() {
+    const layer = addPanel(this, 480, 330, 760, 420, 50);
+    layer.add(this.add.text(480, 160, 'Créditos', { fontFamily: FONT, fontSize: '32px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5));
+    CREDITS.forEach(([what, who], k) => {
+      const y = 205 + k * 70;
+      layer.add(this.add.text(130, y, what, { fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: HEX.text }));
+      layer.add(this.add.text(130, y + 26, who, { fontFamily: FONT, fontSize: '15px', color: HEX.textSoft, wordWrap: { width: 700 } }));
+    });
+    layer.add(this.add.text(480, 510, 'Esc, Enter, B, A o clic para cerrar', { fontFamily: FONT, fontSize: '15px', color: HEX.textSoft }).setOrigin(0.5));
+    (layer.list[0] as Phaser.GameObjects.Rectangle).on('pointerdown', () => this.closeDialog());
+    this.dialog = { layer };
   }
 
   private showControls() {

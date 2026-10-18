@@ -172,7 +172,7 @@ también. Ajusta (todo en constantes con tests que fijen los nuevos rangos):
   cambiar el estilo): el paisaje pixel tiene que llenar los 1920×1080.
 - Comprueba con capturas o a ojo que cada pantalla se ve bien y apunta en la bitácora lo que no puedas verificar.
 
-## [ ] T31 — Sprites animados en 8 direcciones como PokéSurvivor (pedido por Roberto)
+## [x] T31 — Sprites animados en 8 direcciones como PokéSurvivor (pedido por Roberto)
 - PokéSurvivor usa los sprites de **PMDCollab SpriteCollab** (estilo Mystery Dungeon, licencia CC BY-NC 4.0,
   válida para este fan game gratuito con créditos). Úsalos para el jugador, los enemigos y los jefes:
   `https://raw.githubusercontent.com/PMDCollab/SpriteCollab/master/sprite/{id con 4 cifras}/AnimData.xml` dice el

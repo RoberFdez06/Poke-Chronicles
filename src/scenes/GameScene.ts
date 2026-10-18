@@ -53,6 +53,8 @@ import { rollShiny, SHINY_ENEMY, SHINY_ODDS } from '../data/shiny';
 import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
 import { cry, sfx } from '../ui/audio';
+import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
+import { dir8Row, pmdScale } from '../data/pmdAnim';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, W } from '../ui/layout';
 import {
   flowField,
@@ -267,6 +269,8 @@ export class GameScene extends Phaser.Scene {
   private evolving = false;
   /** Tienes shiny al Pokémon elegido: juegas con su sprite shiny (también al evolucionar). */
   private shiny = false;
+  /** Sprites animados de SpriteCollab cargados (por id de Pokémon); los que no estén usan el de PokeAPI. */
+  private pmd = new Map<number, PmdSheet>();
   private starterName = '';
   private playerKey = 'starter-4';
   /** Hueco donde se guarda la partida y, si se continúa, lo guardado. */
@@ -598,10 +602,54 @@ export class GameScene extends Phaser.Scene {
           if (this.textures.exists(tex)) this.textures.get(tex).setFilter(Phaser.Textures.FilterMode.NEAREST);
         }
       }
-      loading.destroy();
-      this.startFloor();
+      // Sprites animados de 8 direcciones (T31). El shiny se queda con el de PokeAPI (SpriteCollab no lo tiene igual)
+      const pmdIds = [bossId!, ...foes.map((c) => c.id), ...(this.shiny ? [] : [this.formId])];
+      loadPmd(this, pmdIds)
+        .catch(() => new Map<number, PmdSheet>())
+        .then((m) => {
+          this.pmd = m;
+          loading.destroy();
+          this.startFloor();
+        });
     });
     this.load.start();
+  }
+
+  /**
+   * Usa el sprite animado de SpriteCollab para este Pokémon si lo hay: textura de la hoja, escala y cuerpo físico.
+   * Devuelve si lo ha usado (si no, el sprite sigue con el de PokeAPI).
+   */
+  private applyPmd(sprite: Sprite, id: number | undefined, size: number, circle = false): boolean {
+    const sheet = id === undefined ? undefined : this.pmd.get(id);
+    if (!sheet) {
+      sprite.setData('pmd', undefined);
+      return false;
+    }
+    sprite.anims.stop();
+    sprite.setTexture(pmdKey(sheet.id, 'walk'), 0).setFlipX(false).setScale(pmdScale(size));
+    sprite.setData('pmd', sheet).setData('row', 0).setData('facing', undefined);
+    const fw = sheet.walk.frameWidth;
+    const fh = sheet.walk.frameHeight;
+    const body = sprite.body as Body | null;
+    if (body) {
+      // Cuerpo hacia los pies del Pokémon (los frames tienen aire por arriba)
+      if (circle) {
+        const rad = Math.min(fw, fh) * 0.3;
+        sprite.setCircle(rad, fw / 2 - rad, fh * 0.62 - rad);
+      } else body.setSize(fw * 0.6, fh * 0.55).setOffset(fw * 0.2, fh * 0.38);
+    }
+    this.playPmd(sprite);
+    return true;
+  }
+
+  /** Animación de caminar (o reposo si está quieto) en la fila de la dirección a la que mira. */
+  private playPmd(sprite: Sprite) {
+    const sheet = sprite.getData('pmd') as PmdSheet | undefined;
+    if (!sheet) return;
+    const row = (sprite.getData('row') as number | undefined) ?? 0;
+    const moving = (sprite.getData('moving') as boolean | undefined) ?? true;
+    const anim = moving || !sheet.hasIdle ? 'walk' : 'idle';
+    sprite.anims.play(pmdAnimKey(sheet.id, anim, row), true);
   }
 
   /**
@@ -690,6 +738,7 @@ export class GameScene extends Phaser.Scene {
       }
     }
     if (ok.length > 0) this.foeKinds = this.toFoeKinds(ok, index);
+    for (const [id, sheet] of await loadPmd(this, ok.map((c) => c.id)).catch(() => new Map<number, PmdSheet>())) this.pmd.set(id, sheet);
   }
 
   /** Pide a PokeAPI movimientos de ataque de tus tipos; si alguno falla, simplemente habrá menos. */
@@ -710,6 +759,14 @@ export class GameScene extends Phaser.Scene {
    */
   private face(sprite: Sprite, v: { x: number; y: number }) {
     if (v.x === 0 && v.y === 0) return;
+    if (sprite.getData('pmd')) {
+      const row = dir8Row(v.x, v.y);
+      if (sprite.getData('row') !== row) {
+        sprite.setData('row', row);
+        this.playPmd(sprite);
+      }
+      return;
+    }
     // En diagonal (empate) gana el lado, para que se vea el volteo izquierda/derecha
     const dir: Dir = Math.abs(v.x) >= Math.abs(v.y) ? (v.x < 0 ? 'left' : 'right') : v.y < 0 ? 'up' : 'down';
     if (sprite.getData('facing') === dir) return;
@@ -765,6 +822,7 @@ export class GameScene extends Phaser.Scene {
     this.player.setDisplaySize(84, 84).setDepth(5).setData('sheet', this.playerKey).setData('size', 84);
     const fw = this.player.width;
     this.player.setCircle(fw * 0.3, fw * 0.2, fw * 0.2);
+    if (!this.shiny) this.applyPmd(this.player, this.formId, 84, true);
 
     this.enemies = this.physics.add.group();
     this.shots = this.physics.add.group();
@@ -954,6 +1012,7 @@ ${where} — ${this.biome.name}`, 1600);
         this.load.once(Phaser.Loader.Events.COMPLETE, () => resolve());
         this.load.start();
       });
+      if (!this.shiny) for (const [id, sheet] of await loadPmd(this, [next])) this.pmd.set(id, sheet);
       if (this.ended || !this.player?.active || !this.textures.exists(`${key}-front`)) return;
       for (const side of ['front', 'back']) {
         if (this.textures.exists(`${key}-${side}`)) this.textures.get(`${key}-${side}`).setFilter(Phaser.Textures.FilterMode.NEAREST);
@@ -975,6 +1034,11 @@ ${where} — ${this.biome.name}`, 1600);
           this.formId = next;
           this.playerKey = key;
           this.player.setData('sheet', key).setData('facing', undefined);
+          // Con SpriteCollab si la nueva forma lo tiene; si no, vuelve al de PokeAPI
+          if (this.shiny || !this.applyPmd(this.player, next, 84, true)) {
+            this.player.anims.stop();
+            this.player.setScale(1);
+          }
           this.face(this.player, this.aim);
           const prevMax = this.stats.maxHp;
           this.baseStats = data.stats;
@@ -1824,6 +1888,7 @@ ${where} — ${this.biome.name}`, 1600);
     const sheet = shiny ? `${kind.key}-s` : kind.key;
     const e = this.enemies.create(x, y, `${sheet}-front`) as Sprite;
     e.setDisplaySize(60, 60).setData('sheet', sheet).setData('size', 60).setData('shiny', shiny);
+    if (!shiny) this.applyPmd(e, Number(kind.key.replace('foe-', '')), 60);
     const st = shapeEnemyStats(enemyStats(kind.bst, behavior, this.difficulty), kind.stats);
     const hp = Math.round(st.hp * (shiny ? SHINY_ENEMY.hpMul : 1));
     e.setData('hp', hp).setData('maxHp', hp).setData('speed', st.speed).setData('dmg', st.damage);
@@ -1838,6 +1903,7 @@ ${where} — ${this.biome.name}`, 1600);
     const { x, y } = this.randomSpotInRoom(110);
     const b = this.enemies.create(x, y, `${this.bossKey}-front`) as Sprite;
     b.setDisplaySize(150, 150).setData('sheet', this.bossKey).setData('size', 150);
+    this.applyPmd(b, this.bossId, 150);
     const d = this.difficulty;
     const st = bossStats(this.bossBase, d);
     b.setData('hp', st.hp).setData('speed', st.speed).setData('dmg', st.damage);
@@ -2196,6 +2262,13 @@ ${where} — ${this.biome.name}`, 1600);
     // En los charcos vas más despacio
     const wade = this.cellAt(this.player.x, this.player.y) === 'W' ? 0.6 : 1;
     this.player.setVelocity(dir.x * this.stats.speed * wade, dir.y * this.stats.speed * wade);
+    if (this.player.getData('pmd')) {
+      const moving = dir.length() > 0.2;
+      if (this.player.getData('moving') !== moving) {
+        this.player.setData('moving', moving);
+        this.playPmd(this.player);
+      }
+    }
     this.updateFlow();
 
     // Disparo continuo como en Isaac: flechas (o clic / stick derecho) y mira hacia donde dispara

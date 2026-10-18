@@ -37,6 +37,23 @@ los fondos llenan también los lados. En la partida la sala se ve **entera en el
 puertas) y el HUD va en las franjas de alrededor: a la izquierda la pausa, tu Pokémon con sus PS, monedas, llaves y
 bombas, los objetos y el objeto activo; a la derecha el minimapa y los cuatro poderes; arriba la barra del jefe.
 
+## Sprites
+
+El jugador, los enemigos y los jefes usan los sprites animados de **PMDCollab SpriteCollab** (estilo Mystery
+Dungeon, `src/data/pmdAnim.ts` y `src/ui/pmdSprites.ts`): miran a la más cercana de las **8 direcciones** (el
+jugador, hacia donde dispara o se mueve; los enemigos, hacia ti), andan con la animación de caminar y, quietos, con la
+de reposo. Si un Pokémon no tiene sprite allí o falla la descarga, se usa el de PokeAPI. Los shinies usan el de
+PokeAPI (para que se vea su color).
+
+## Créditos
+
+- Datos de Pokémon: [PokeAPI](https://pokeapi.co/).
+- Sprites animados: [PMDCollab SpriteCollab](https://sprites.pmdcollab.org/), licencia CC BY-NC 4.0.
+- Fuente: Pixelify Sans (licencia SIL Open Font License).
+- Pokémon es de Nintendo, Game Freak y The Pokémon Company. Este es un fan game gratuito y sin ánimo de lucro.
+
+También se ven en el juego: Ajustes → Créditos.
+
 ## Aspecto
 
 Interfaz al estilo de los juegos de Pokémon: cuadros de texto con borde doble y esquinas redondeadas, flecha ▶
@@ -273,6 +290,7 @@ src/
     enemies.ts            enemigos por piso, comportamiento por tipo y estadísticas
     status.ts             estados por tipo: quemar, congelar, paralizar…
     synergies.ts          objetos activos y sinergias entre objetos y poderes
+    pmdAnim.ts            dirección de 8 y lectura de AnimData.xml de SpriteCollab
     bossPatterns.ts       ataques de los jefes, su fase 2 y la mezcla de enemigos que disparan
     balance.ts            premios esperados por piso y partida (equilibrio, con tests)
     shiny.ts              probabilidades y efectos de los shinies
@@ -296,6 +314,7 @@ src/
     cards.ts              tarjeta de Pokémon con estadísticas, carga de sprites y botón "Volver"
     collection.ts         barra de filtros (región, nombre, rareza, tipo) y teclado de búsqueda
     audio.ts              efectos, música y gritos con Web Audio
+    pmdSprites.ts         carga de los sprites animados de SpriteCollab y sus animaciones
   scenes/
     MenuScene.ts          menú principal
     SlotsScene.ts         los 3 huecos de partida

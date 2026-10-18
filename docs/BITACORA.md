@@ -555,3 +555,22 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - **N10**: incluido el arreglo del supervisor (`k.reset()` en `NavInput`, `MenuScene`, `GachaScene` y
   `resetKeys()` al reanudar). **N11**: a partir de este commit no toco `GachaScene.ts` (aquí solo lleva la cámara).
 - **No verificado**: los sprites reales de PokeAPI (en las pruebas son cuadrados de 1 px) y el mando.
+
+## T31 — Sprites animados en 8 direcciones (2026-10-19)
+
+- **Qué**: `src/data/pmdAnim.ts` (puro, con tests): `dir8Row` elige la fila de la más cercana de las 8 direcciones
+  (abajo, abajo-derecha, derecha, arriba-derecha, arriba, arriba-izquierda, izquierda, abajo-izquierda), `parseAnimData`
+  lee `AnimData.xml` (tamaño de frame y duraciones en ticks de 1/60 s; resuelve `CopyOf`), rutas y escala.
+  `src/ui/pmdSprites.ts` descarga `AnimData.xml` (caché por id; 404 = sin sprite), carga `Walk-Anim.png` e
+  `Idle-Anim.png` como hojas y crea las 16 animaciones (caminar y reposo × 8 direcciones).
+- **En la partida**: jugador, enemigos y jefe usan SpriteCollab si lo tienen (si no, el de PokeAPI de siempre, con
+  su volteo). El jugador mira hacia donde dispara o se mueve y alterna caminar/reposo según se mueva; los enemigos
+  miran hacia ti. Cuerpo físico recalculado hacia los pies del sprite. Al evolucionar y en Oleadas (especies nuevas)
+  también se cargan. Los **shinies** (jugador o enemigo) siguen con el sprite de PokeAPI para que se note el color.
+- **Créditos**: nueva opción "Créditos" en Ajustes (PokeAPI, SpriteCollab CC BY-NC 4.0, Pixelify Sans OFL y el aviso
+  de Pokémon) y sección en el README.
+- **Comprobado**: captura real (`REAL_SPRITES=1 npx playwright test -c tests/e2e/playwright.config.ts screens`) con
+  Charmander de SpriteCollab andando hacia la derecha. Las pruebas normales simulan SpriteCollab con 404 (el juego
+  usa entonces el de PokeAPI), y los 404 de recursos ya no cuentan como error de consola.
+- **Dudas**: los menús (colección, Pokédex, título…) siguen con los sprites de PokeAPI; la tarea hablaba de jugador,
+  enemigos y jefes. El tamaño (`pmdScale`) está igualado a ojo con el de antes.

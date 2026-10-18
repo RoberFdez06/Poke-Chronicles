@@ -37,7 +37,12 @@ test('capturas de todas las pantallas', async ({ page }) => {
   await waitScene(page, 'Mode');
   await press(page, 'Enter');
   await waitScene(page, 'Game', 3500);
+  await page.waitForTimeout(1800); // que se vaya el cartel del piso
   await shot(page, '08-partida');
+  await page.keyboard.down('d');
+  await page.waitForTimeout(500);
+  await shot(page, '08b-andando');
+  await page.keyboard.up('d');
   await press(page, 'Escape');
   await waitScene(page, 'Pause');
   await shot(page, '09-pausa');
