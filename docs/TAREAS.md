@@ -185,7 +185,7 @@ también. Ajusta (todo en constantes con tests que fijen los nuevos rangos):
 - **Créditos**: pantalla o sección "Créditos" (desde Ajustes) con "Sprites: PMDCollab SpriteCollab (CC BY-NC 4.0)",
   PokeAPI y la fuente Pixelify Sans (OFL); y en el README.
 
-## [ ] T33 — Usar el arte del supervisor en la partida (va después de T31)
+## [x] T33 — Usar el arte del supervisor en la partida (va después de T31)
 El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo):
 - `src/ui/art/icons.ts`: iconos 16×16 (`bakeIcons(scene)`, `addIcon(scene, x, y, nombre, escala)` o la textura
   `iconKey(nombre)`): aranja, zidra, coin, coin5, key, bomb, chest, chestOpen, potion, superpotion, ticket, disc

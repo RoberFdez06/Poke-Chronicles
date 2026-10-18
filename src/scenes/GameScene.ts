@@ -53,6 +53,8 @@ import { rollShiny, SHINY_ENEMY, SHINY_ODDS } from '../data/shiny';
 import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
 import { cry, sfx } from '../ui/audio';
+import { bakeIcons, iconKey } from '../ui/art/icons';
+import { bakeBiomeTiles, TILE as ART_TILE } from '../ui/art/tiles';
 import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, W } from '../ui/layout';
@@ -238,6 +240,8 @@ export class GameScene extends Phaser.Scene {
   private bossType = 'normal';
   private bossName = '';
   private bossTypes: string[] = ['normal'];
+  /** Texturas de suelo, pared y obstáculos del bioma (ui/art/tiles.ts). */
+  private tiles!: ReturnType<typeof bakeBiomeTiles>;
   private pickups!: Phaser.Physics.Arcade.Group;
   private walls!: Phaser.Physics.Arcade.StaticGroup;
   /** Obstáculos: hierba alta (se rompe a disparos) y agujeros (los disparos pasan por encima). */
@@ -798,6 +802,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.physics.world.setBounds(0, 0, this.floor.cols * VIEW.w, this.floor.rows * VIEW.h);
+    // Arte pixel del supervisor (T33): iconos y baldosas del bioma, antes de montar las salas
+    bakeIcons(this);
+    this.tiles = bakeBiomeTiles(this, this.biome);
     this.walls = this.physics.add.staticGroup();
     this.bushes = this.physics.add.staticGroup();
     this.holes = this.physics.add.staticGroup();
@@ -908,12 +915,12 @@ export class GameScene extends Phaser.Scene {
     // Monedas, llaves y bombas (clic en la bomba para soltar una)
     hud(drawBox(this.add.graphics(), LX, 258, LW, 60, { radius: 12 }));
     const count = (iconKey: string, x: number) => {
-      hud(this.add.image(x, 288, iconKey).setScale(1.2));
+      hud(this.add.image(x, 288, iconKey).setScale(2));
       return txt(x + 16, 288, 20, HEX.text, true).setOrigin(0, 0.5);
     };
-    this.coinsHud = count('coin', LX + 26);
-    this.keysHud = count('key', LX + 94);
-    this.bombsHud = count('bomb', LX + 160);
+    this.coinsHud = count(iconKey('coin'), LX + 26);
+    this.keysHud = count(iconKey('key'), LX + 94);
+    this.bombsHud = count(iconKey('bomb'), LX + 160);
     const bombBtn = over(hud(this.add.zone(LX + 172, 288, 64, 52).setInteractive({ useHandCursor: true })));
     bombBtn.on('pointerdown', () => this.placeBomb());
     // Objetos pasivos
@@ -1227,8 +1234,12 @@ ${where} — ${this.biome.name}`, 1600);
     const floorColor = plain ? this.biome.colors.floor : FLOOR_COLORS[room.kind];
     const g = this.add.graphics().setDepth(0);
 
-    g.fillStyle(this.biome.colors.wall, 1).fillRect(i.x0 - WALL, i.y0 - WALL, ROOM.w + WALL * 2, ROOM.h + WALL * 2);
-    g.fillStyle(floorColor, 1).fillRoundedRect(i.x0, i.y0, ROOM.w, ROOM.h, 24);
+    // Baldosas de 32 px escaladas a las casillas de 40 de la sala, así cuadran con los obstáculos
+    const ts = TILE / ART_TILE;
+    this.add.tileSprite(i.x0 - WALL, i.y0 - WALL, ROOM.w + WALL * 2, ROOM.h + WALL * 2, this.tiles.wall).setOrigin(0).setTileScale(ts).setDepth(0);
+    if (plain) this.add.tileSprite(i.x0, i.y0, ROOM.w, ROOM.h, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0);
+    else g.fillStyle(floorColor, 1).fillRoundedRect(i.x0, i.y0, ROOM.w, ROOM.h, 24);
+    g.setDepth(0.5);
 
     for (const d of DIRS) {
       const to = room.doors[d];
@@ -1282,7 +1293,9 @@ ${where} — ${this.biome.name}`, 1600);
   /** Hueco de puerta con su marco (el color dice adónde lleva) y su bloque para cerrarla en combate. */
   private drawDoor(room: Room, d: Dir, g: Phaser.GameObjects.Graphics, floorColor: number) {
     const r = this.doorRect(room, d);
-    g.fillStyle(floorColor, 1).fillRect(r.x, r.y, r.w, r.h);
+    const plain = room.kind === 'start' || room.kind === 'combat' || room.kind === 'boss';
+    if (plain) this.add.tileSprite(r.x, r.y, r.w, r.h, this.tiles.floor).setOrigin(0).setTileScale(TILE / ART_TILE).setDepth(0.4);
+    else g.fillStyle(floorColor, 1).fillRect(r.x, r.y, r.w, r.h);
     const kind = this.floor.rooms[room.doors[d]!].kind;
     const frame =
       kind === 'boss' ? 0xe53935
@@ -1390,7 +1403,7 @@ ${where} — ${this.biome.name}`, 1600);
     const [tx, ty] = grid ? nearestWalkable(grid, 15, 2) : [15, 2];
     const x = i.x0 + tx * TILE + TILE / 2;
     const y = i.y0 + ty * TILE + TILE / 2;
-    const img = this.add.image(x, y, this.openedChests.has(room.id) ? 'chest-open' : 'chest').setDepth(2);
+    const img = this.add.image(x, y, iconKey(this.openedChests.has(room.id) ? 'chestOpen' : 'chest')).setScale(3).setDepth(2);
     img.setInteractive({ useHandCursor: true });
     img.on('pointerover', () => (this.overHud = true));
     img.on('pointerout', () => (this.overHud = false));
@@ -1405,7 +1418,7 @@ ${where} — ${this.biome.name}`, 1600);
     if (this.keys <= 0) return this.showBanner('Necesitas una llave para abrir el cofre', 1300);
     this.keys--;
     this.openedChests.add(roomId);
-    chest.img.setTexture('chest-open');
+    chest.img.setTexture(iconKey('chestOpen'));
     sfx('buy');
     const prize = rollChest(Math.random);
     if (prize.kind === 'item') {
@@ -1425,8 +1438,8 @@ ${where} — ${this.biome.name}`, 1600);
     const x = this.player.x;
     const y = this.player.y + 10;
     const roomId = this.current.id;
-    const b = this.add.image(x, y, 'bomb').setDepth(3).setScale(1.4);
-    this.tweens.add({ targets: b, scale: 1.7, duration: 160, yoyo: true, repeat: -1 });
+    const b = this.add.image(x, y, iconKey('bomb')).setDepth(3).setScale(2.4);
+    this.tweens.add({ targets: b, scale: 2.9, duration: 160, yoyo: true, repeat: -1 });
     this.time.delayedCall(BOMB.fuse, () => {
       this.tweens.killTweensOf(b);
       b.destroy();
@@ -1526,8 +1539,11 @@ ${where} — ${this.biome.name}`, 1600);
     const name = item.kind === 'passive' ? item.item.name : item.kind === 'move' ? pretty(item.move.name) : `${act?.name ?? item.id} (activo)`;
 
     const shadow = this.add.ellipse(x, y + 18, 90, 34, 0xc9b27a).setDepth(1);
-    const s = this.pickups.create(x, y, 'shot') as Sprite;
-    s.setTint(color).setScale(1.6).setDepth(2).setData('item', item).setData('entry', entry);
+    // Pasivo: bolsa; poder: disco del color de su tipo; activo: Poké Ball
+    const icon = item.kind === 'passive' ? 'bag' : item.kind === 'move' ? 'disc' : 'pokeball';
+    const s = this.pickups.create(x, y, iconKey(icon)) as Sprite;
+    s.setScale(3).setDepth(2).setData('item', item).setData('entry', entry);
+    if (item.kind === 'move') s.setTint(color);
     const label = this.add
       .text(x, y - 38, name, { fontFamily: FONT, fontSize: '16px', color: '#2b3a67' })
       .setOrigin(0.5)
@@ -1744,40 +1760,38 @@ ${where} — ${this.biome.name}`, 1600);
     const grid = layoutFor(this.floorSeed, room.id, room.kind);
     this.grids.set(room.id, grid);
     const i = this.interior(room);
-    const g = this.add.graphics().setDepth(1);
     grid.forEach((row, ty) =>
       row.forEach((c, tx) => {
         const x = i.x0 + tx * TILE;
         const y = i.y0 + ty * TILE;
         const cx = x + TILE / 2;
         const cy = y + TILE / 2;
+        const sc = TILE / ART_TILE;
         switch (c) {
           case 'R': {
             // Cada roca va aparte para que una bomba pueda romperla
-            const rg = this.add.graphics().setDepth(1);
-            rg.fillStyle(this.biome.colors.rock, 1).fillRoundedRect(x + 2, y + 4, TILE - 4, TILE - 6, 8);
-            rg.fillStyle(this.biome.colors.rockTop, 1).fillRoundedRect(x + 4, y + 3, TILE - 8, TILE - 12, 7);
-            this.rocks.set(`${room.id}:${tx},${ty}`, [rg, this.addWall(x, y, TILE, TILE)]);
+            const rock = this.add.image(cx, cy, this.tiles.rock).setScale(sc).setDepth(1);
+            this.rocks.set(`${room.id}:${tx},${ty}`, [rock, this.addWall(x, y, TILE, TILE)]);
             break;
           }
           case 'P':
-            g.fillStyle(0x3d4466, 1).fillRect(x + 4, y + 2, TILE - 8, TILE - 4);
-            g.fillStyle(0x6c75a3, 1).fillRect(x + 8, y + 2, TILE - 20, TILE - 4);
+            // La columna es más alta que la casilla: apoyada en su base
+            this.add.image(cx, y + TILE, this.tiles.pillar).setOrigin(0.5, 1).setScale(sc).setDepth(2);
             this.addWall(x, y, TILE, TILE);
             break;
           case 'H': {
-            g.fillStyle(this.biome.colors.hole, 1).fillRoundedRect(x + 1, y + 1, TILE - 2, TILE - 2, 10);
-            g.fillStyle(0x0b0806, 1).fillRoundedRect(x + 6, y + 8, TILE - 12, TILE - 12, 8);
+            this.add.image(cx, cy, this.tiles.hole).setScale(sc).setDepth(0.6);
             const hole = this.add.rectangle(cx, cy, TILE - 6, TILE - 6).setVisible(false);
             this.holes.add(hole);
             break;
           }
           case 'W':
-            g.fillStyle(this.biome.colors.puddle, 0.6).fillRoundedRect(x, y, TILE, TILE, 12);
+            this.add.image(cx, cy, this.tiles.puddle).setScale(sc).setDepth(0.6);
             break;
           case 'B': {
-            const bush = this.bushes.create(cx, cy, 'bush') as Sprite;
-            bush.setTint(this.biome.colors.bush).setDepth(2).setData('hp', 2).setData('room', room.id).setData('tile', [tx, ty]);
+            const bush = this.bushes.create(cx, cy, this.tiles.bush) as Sprite;
+            bush.setScale(sc).refreshBody();
+            bush.setDepth(2).setData('hp', 2).setData('room', room.id).setData('tile', [tx, ty]);
             break;
           }
         }
@@ -2161,10 +2175,7 @@ ${where} — ${this.biome.name}`, 1600);
 
   private spawnTrapdoor() {
     const i = this.interior(this.floor.rooms[this.floor.bossId]);
-    const g = this.add.graphics().setDepth(1);
-    g.fillStyle(0x3b2a1e, 1).fillRoundedRect(i.cx - 46, i.cy - 34, 92, 68, 10);
-    g.fillStyle(0x0d0905, 1).fillRoundedRect(i.cx - 36, i.cy - 25, 72, 50, 8);
-    g.lineStyle(4, 0xffd34d, 1).strokeRoundedRect(i.cx - 46, i.cy - 34, 92, 68, 10);
+    this.add.image(i.cx, i.cy, iconKey('trapdoor')).setScale(5).setDepth(1);
     this.add
       .text(i.cx, i.cy - 52, 'Trampilla', { fontFamily: FONT, fontSize: '16px', color: '#2b3a67' })
       .setOrigin(0.5)
@@ -2612,9 +2623,10 @@ ${where} — ${this.biome.name}`, 1600);
   private spawnLoot(roomId: number, x: number, y: number, drop: LootDrop) {
     const entry: FloorItemSave = { roomId, x, y, drop };
     this.floorItems.push(entry);
-    const s = this.loot.create(x, y, drop.kind) as Sprite;
-    if (drop.kind === 'coin') s.setScale(drop.value > 1 ? 1.3 : 1);
-    else if (drop.kind === 'berry') s.setTint(BERRIES[drop.id].color);
+    const icon = drop.kind === 'berry' ? iconKey(drop.id) : iconKey(drop.kind);
+    const s = this.loot.create(x, y, icon) as Sprite;
+    // Iconos de 16 px: la moneda de 5 algo más grande
+    s.setScale(drop.kind === 'coin' && drop.value > 1 ? 2.6 : 2);
     s.setDepth(2).setData('drop', drop).setData('entry', entry);
     this.tweens.add({ targets: s, y: y - 5, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
   }
@@ -2706,7 +2718,10 @@ ${where} — ${this.biome.name}`, 1600);
       const y = i.cy;
       const { name, color } = this.goodsInfo(slot);
       const shadow = this.add.ellipse(x, y + 18, 80, 30, 0xa8c9a8).setDepth(1);
-      const icon = this.add.image(x, y, 'shot').setTint(color).setScale(1.5).setDepth(2);
+      const g = slot.goods;
+      const iconName = g.kind === 'potion' ? (g.id === 'pocion' ? 'potion' : 'superpotion') : g.kind === 'move' ? 'disc' : 'bag';
+      const icon = this.add.image(x, y, iconKey(iconName)).setScale(3).setDepth(2);
+      if (g.kind === 'move') icon.setTint(color);
       const label = this.add
         .text(x, y - 40, name, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: HEX.text })
         .setOrigin(0.5)

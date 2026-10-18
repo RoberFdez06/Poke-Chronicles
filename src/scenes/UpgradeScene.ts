@@ -8,6 +8,7 @@ import { addBackButton, buildPokemonCard, loadCardTextures } from '../ui/cards';
 import { NavInput, PadButtons } from '../ui/nav';
 import { ARROW, COLORS, drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
+import { addIcon } from '../ui/art/icons';
 
 const ROW = { x: 680, w: 420, h: 88, gap: 14, top: 170 };
 const CARD_X = 250;
@@ -50,6 +51,7 @@ export class UpgradeScene extends Phaser.Scene {
 
     this.add.text(480, 44, 'Mejoras', { fontFamily: FONT, fontSize: '44px', fontStyle: 'bold', color: HEX.gold }).setOrigin(0.5).setStroke('#2b3a67', 10);
     drawBox(this.add.graphics(), 720, 18, 224, 52, { radius: 12 });
+    addIcon(this, 746, 44, 'ticket', 2);
     this.ticketsText = this.add.text(924, 44, '', { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(1, 0.5);
     this.message = this.add.text(ROW.x, 560, '', { fontFamily: FONT, fontSize: '18px', color: '#ffffff', align: 'center' }).setOrigin(0.5);
     this.add

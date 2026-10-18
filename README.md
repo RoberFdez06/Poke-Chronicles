@@ -60,6 +60,12 @@ Interfaz al estilo de los juegos de Pokémon: cuadros de texto con borde doble y
 en la opción elegida, barras de PS verde/amarilla/roja con la etiqueta "PS", fichas de tipo y fundidos entre
 pantallas. Fuente, colores y piezas comunes en `src/ui/theme.ts`.
 
+En la partida todo es pixel art generado por código (`src/ui/art/`): las salas normales tienen suelo y paredes de
+baldosas de su bioma, y rocas, hierba alta, agujeros, charcos y columnas con su dibujo (`tiles.ts`); monedas,
+bayas, llaves, bombas, cofres, la trampilla, los objetos del suelo (bolsa = pasivo, disco del color del tipo = poder,
+Poké Ball = activo), los artículos de la tienda y el contador del HUD usan los iconos de `icons.ts`. Las salas
+especiales (tesoro, tienda, Centro Pokémon, secreta, desafío) conservan su color de suelo para reconocerlas.
+
 La fuente es **Pixelify Sans** (licencia libre OFL), en `public/fonts/PixelifySans.ttf`; se carga antes de crear el
 juego y, si el archivo no está, el juego usa la fuente del sistema. **Falta su licencia** `public/fonts/OFL.txt`
 (la OFL pide distribuirla junto a la fuente). Se descargan de: `https://github.com/google/fonts/raw/main/ofl/pixelifysans/PixelifySans%5Bwght%5D.ttf` →
@@ -315,6 +321,7 @@ src/
     collection.ts         barra de filtros (región, nombre, rareza, tipo) y teclado de búsqueda
     audio.ts              efectos, música y gritos con Web Audio
     pmdSprites.ts         carga de los sprites animados de SpriteCollab y sus animaciones
+    art/                  pixel art por código: iconos, baldosas de bioma, paisajes y gacha (del supervisor)
   scenes/
     MenuScene.ts          menú principal
     SlotsScene.ts         los 3 huecos de partida

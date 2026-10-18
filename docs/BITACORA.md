@@ -574,3 +574,21 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   usa entonces el de PokeAPI), y los 404 de recursos ya no cuentan como error de consola.
 - **Dudas**: los menús (colección, Pokédex, título…) siguen con los sprites de PokeAPI; la tarea hablaba de jugador,
   enemigos y jefes. El tamaño (`pmdScale`) está igualado a ojo con el de antes.
+
+## T33 — Arte del supervisor en la partida (2026-10-19)
+
+- **Qué**: `GameScene` llama a `bakeIcons` y `bakeBiomeTiles` al montar cada piso. Las salas normales (inicio,
+  combate, jefe) pintan suelo y paredes con `TileSprite` de las baldosas del bioma, escaladas ×1,25 (baldosa de 32 px
+  sobre la casilla de 40 de `roomLayouts`, así cuadran con los obstáculos; la cámara de juego ya va a ×1,5). Los
+  huecos de las puertas también llevan suelo de baldosa. Rocas (siguen rompiéndose con bomba), columnas (apoyadas en
+  su base, más altas que la casilla), agujeros, charcos y hierba alta usan sus texturas.
+- **Iconos**: monedas (la de 5, más grande), bayas Aranja/Zidra, llaves, bombas (en el suelo y la que pones),
+  cofres (cerrado/abierto), trampilla, objetos del suelo (bolsa = pasivo, disco teñido del color del tipo = poder,
+  Poké Ball = activo), artículos de la tienda (Poción/Superpoción, disco, bolsa) y contador del HUD.
+  En Mejoras, icono de ticket junto al saldo.
+- **Decisiones**: las salas especiales (tesoro, tienda, Centro, secreta, desafío) mantienen su color de suelo liso
+  para distinguirlas de un vistazo; las paredes sí son de baldosa en todas. Todo con NEAREST (ya lo hacen las texturas
+  del supervisor).
+- **No hecho (por N5/N11)**: los tickets del menú principal (`MenuScene`) y del gacha (`GachaScene`) no los he tocado;
+  si el supervisor quiere el icono allí, es `addIcon(scene, x, y, 'ticket', 2)`.
+- **Comprobado**: tsc, tests, build y e2e (capturas de la sala inicial con baldosas y del HUD con iconos).
