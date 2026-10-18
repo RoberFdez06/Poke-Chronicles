@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { fetchAttackMovesForTypes, fetchMoveInfo, fetchPokemon, fetchPokemonCard } from '../data/pokeapi';
 import { filterMovesByTypes } from '../data/moves';
-import { typeColor, typeHex } from '../data/types';
+import { typeColor, typeHex, typeNameEs } from '../data/types';
 import { addTickets } from '../data/save';
 import { clearRun, saveRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
 import { loadSpeciesIndex } from '../data/speciesIndex';
@@ -40,7 +40,7 @@ import {
   LootDrop,
   ShopSlot,
 } from '../data/loot';
-import { addHpBar, drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
+import { addHpBar, addTypeChip, drawBox, fadeIn, FONT, goTo, HEX, hpColor } from '../ui/theme';
 import {
   applyStatus,
   drainHeal,
@@ -244,6 +244,8 @@ export class GameScene extends Phaser.Scene {
   private prompt!: Phaser.GameObjects.Text;
   private enterKey!: Key;
   private coinsHud!: Phaser.GameObjects.Text;
+  /** Barra grande del jefe arriba de la pantalla (nombre, tipo y vida), como en Isaac. */
+  private bossBar?: { boss: Sprite; bar: ReturnType<typeof addHpBar>; objects: Phaser.GameObjects.GameObject[] };
   private escKey!: Phaser.Input.Keyboard.Key;
   private menuPadPrev = false;
   /** El cursor está sobre una ranura de poder: ahí un clic no dispara. */
@@ -571,6 +573,8 @@ export class GameScene extends Phaser.Scene {
 
     this.physics.add.collider(this.player, [this.walls, this.doorBlocks]);
     this.physics.add.collider(this.enemies, [this.walls, this.doorBlocks]);
+    // Los enemigos se empujan entre sí para no amontonarse en el mismo sitio
+    this.physics.add.collider(this.enemies, this.enemies);
     // Collider (no overlap) para que los disparos con rebote reboten de verdad
     this.physics.add.collider(this.shots, [this.walls, this.doorBlocks], (s) => this.onShotWall(asSprite(s)));
     this.physics.add.overlap(this.shots, this.enemies, (s, e) => this.onHit(asSprite(s), asSprite(e)));
@@ -1014,7 +1018,7 @@ export class GameScene extends Phaser.Scene {
     const e = this.enemies.create(x, y, `${kind.key}-front`) as Sprite;
     e.setDisplaySize(60, 60).setData('sheet', kind.key).setData('size', 60);
     const st = enemyStats(kind.bst, kind.behavior, this.difficulty);
-    e.setData('hp', st.hp).setData('speed', st.speed).setData('dmg', st.damage);
+    e.setData('hp', st.hp).setData('maxHp', st.hp).setData('speed', st.speed).setData('dmg', st.damage);
     e.setData('ai', this.newAI(kind.behavior, kind.type, false));
   }
 
@@ -1024,6 +1028,8 @@ export class GameScene extends Phaser.Scene {
     b.setDisplaySize(150, 150).setData('sheet', this.bossKey).setData('size', 150);
     const d = this.difficulty;
     b.setData('hp', Math.round(500 * d.hp)).setData('speed', 70 * d.speed).setData('dmg', Math.round(20 * d.damage));
+    b.setData('maxHp', b.getData('hp'));
+    this.buildBossBar(b);
     // El jefe también se comporta según su tipo
     b.setData('ai', this.newAI(behaviorFor([this.bossType]), this.bossType, true));
     this.showBanner(`¡${this.bossName}, jefe legendario!`, 1400);
@@ -1304,6 +1310,7 @@ export class GameScene extends Phaser.Scene {
       if (!e.active || this.tickEnemyStatus(e, time)) return;
       this.updateEnemy(e, time);
       this.paintEnemy(e, time);
+      this.drawEnemyBar(e);
     });
 
     // HUD
@@ -1312,6 +1319,8 @@ export class GameScene extends Phaser.Scene {
     this.progressHud.setText(`${progressText(this.mode, this.floorNum)}${foes ? ` · ${foes} enem.` : ''}`);
     this.hpText.setText(`${Math.max(0, Math.ceil(this.hp))}/${this.stats.maxHp}`);
     this.hpBar.set(this.hp / this.stats.maxHp);
+    const bb = this.bossBar;
+    if (bb) bb.bar.set((bb.boss.getData('hp') as number) / (bb.boss.getData('maxHp') as number));
     this.coinsHud.setText(`● ${this.coins}`);
     this.slots.forEach((m, i) => this.paintSlot(i, m, !m || time >= this.slotReady[i]));
 
@@ -1444,8 +1453,50 @@ export class GameScene extends Phaser.Scene {
     rollEnemyLoot(Math.random, boss)
       .filter((d) => hasShop || d.kind !== 'coin')
       .forEach((d, k) => this.dropLoot(enemy.x + (k - 1) * 26, enemy.y + 10, d));
+    (enemy.getData('bar') as Phaser.GameObjects.Graphics | undefined)?.destroy();
+    if (this.bossBar?.boss === enemy) {
+      this.bossBar.objects.forEach((o) => o.destroy());
+      this.bossBar = undefined;
+    }
     enemy.destroy();
     this.checkClear();
+  }
+
+  // --- Barras de vida ---
+
+  /** Barrita encima del enemigo, solo cuando ya ha recibido daño (el jefe usa la barra grande). */
+  private drawEnemyBar(e: Sprite) {
+    if (!e.active || this.bossBar?.boss === e) return;
+    const hp = e.getData('hp') as number;
+    const max = (e.getData('maxHp') as number | undefined) ?? hp;
+    let g = e.getData('bar') as Phaser.GameObjects.Graphics | undefined;
+    if (hp >= max) {
+      g?.setVisible(false);
+      return;
+    }
+    if (!g) {
+      g = this.add.graphics().setDepth(6);
+      e.setData('bar', g);
+    }
+    const w = 44;
+    const x = e.x - w / 2;
+    const y = e.y - (e.getData('size') as number) / 2 - 10;
+    const ratio = Math.max(0, hp / max);
+    g.clear().setVisible(e.alpha > 0.5);
+    g.fillStyle(0x1d2848, 1).fillRoundedRect(x - 2, y - 2, w + 4, 8, 3);
+    g.fillStyle(0x404a5c, 1).fillRect(x, y, w, 4);
+    g.fillStyle(hpColor(ratio), 1).fillRect(x, y, w * ratio, 4);
+  }
+
+  private buildBossBar(boss: Sprite) {
+    this.bossBar?.objects.forEach((o) => o.destroy());
+    const box = drawBox(this.add.graphics(), 230, 84, 500, 50, { radius: 12 });
+    const name = this.add.text(248, 109, this.bossName, { fontFamily: FONT, fontSize: '18px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5);
+    const chip = addTypeChip(this, 248 + name.width + 46, 109, typeNameEs(this.bossType), typeColor(this.bossType), 78, 22);
+    const bar = addHpBar(this, 248 + name.width + 96, 103, 712 - (248 + name.width + 96), 12);
+    const objects = [box, name, ...chip, ...bar.objects];
+    objects.forEach((o) => (o as Phaser.GameObjects.Text).setScrollFactor(0).setDepth(10));
+    this.bossBar = { boss, bar, objects };
   }
 
   // --- Monedas y bayas en el suelo ---

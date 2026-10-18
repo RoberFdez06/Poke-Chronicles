@@ -116,6 +116,8 @@ Los desbloqueados se guardan en el navegador (`localStorage`, clave `pokeisaac.u
   (se queda quieto a ratos), Agua **empapa** (algo más lento), Psíquico y Fantasma **confunden** (se mueve y apunta
   dando bandazos), Planta y Bicho **drenan** (recuperas PS) y Lucha, Roca y Tierra **empujan**. Los jefes resisten la
   lentitud y la parálisis. Tabla en `src/data/status.ts`.
+- **Vida de los enemigos**: los enemigos chocan entre sí (no se amontonan) y, cuando les has dado, llevan encima una
+  barrita de vida verde/amarilla/roja. El jefe tiene una barra grande arriba con su nombre y su tipo.
 - Los objetos salen siempre en la sala de objeto y, a veces (25 %), al limpiar una sala de combate.
 - **Enemigos variados**: cada piso tiene 4 especies al azar de PokeAPI (nunca legendarios, singulares ni
   ultraentes), más fuertes cuanto más hondo (por su suma de estadísticas base: en torno a 280 en el piso 1 y

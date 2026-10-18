@@ -190,3 +190,12 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
 - **Archivos**: `src/data/loot.ts`, `tests/loot.test.ts` (nuevos), `save.ts`, `runSave.ts`, `progression.ts`,
   `modes.ts`, `floorGen.ts`, `GameScene`, `PauseScene`, `GachaScene`, `minimap.ts`, tests, README.
 - **Dudas**: precios y probabilidades a ojo (en `loot.ts`). En Oleadas y Rush no hay tienda, así que no caen monedas.
+
+## T17 — Vida de los enemigos y colisiones entre ellos (2026-10-18)
+
+- **Qué**: collider enemigos↔enemigos (se empujan en vez de amontonarse; quien salta no choca mientras desaparece
+  porque su cuerpo está desactivado). Cada enemigo guarda `maxHp` y, cuando ha recibido daño, dibuja una barrita
+  de 44 px encima (verde > 50 %, amarilla > 20 %, roja), oculta mientras está medio invisible al saltar. El jefe no
+  lleva barrita: tiene una barra grande arriba (cuadro con borde doble, nombre en español, ficha de su tipo y barra
+  "PS") que desaparece al vencerlo.
+- **Archivos**: `GameScene` (`drawEnemyBar`, `buildBossBar`, collider), README.

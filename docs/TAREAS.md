@@ -74,7 +74,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 - `floorGen` coloca las salas nuevas (sin salida preferiblemente, nunca la del jefe); tests de que siempre existen.
 - `RunSave` guarda monedas, si el Centro ya se usó y qué queda en la tienda (sube `RUN_VERSION`, migra).
 
-## [ ] T17 — Vida de los enemigos y colisiones entre ellos (va antes de T9)
+## [x] T17 — Vida de los enemigos y colisiones entre ellos (va antes de T9)
 - Los enemigos chocan entre sí (collider enemigos↔enemigos) para no amontonarse en el mismo sitio.
 - Barrita de vida pequeña encima de cada enemigo (solo cuando ha recibido daño, verde→amarillo→rojo).
 - Jefe: barra grande arriba de la pantalla con su nombre en español y su tipo, como en Isaac.
