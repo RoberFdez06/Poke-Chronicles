@@ -8,7 +8,8 @@ import { cry } from '../ui/audio';
 import { addBackButton } from '../ui/cards';
 import { FilterBar } from '../ui/collection';
 import { NavInput, PadButtons } from '../ui/nav';
-import { COLORS, drawBox, fadeIn, FONT, goTo, hex, HEX, RARITY_COLORS, shorten } from '../ui/theme';
+import { COLORS, drawBox, fadeIn, FONT, goTo, hex, HEX, RARITY_COLORS, shorten, strokePixelFrame } from '../ui/theme';
+import { addMenuBackdrop } from '../ui/art/landscape';
 
 const COLS = 7;
 const ROWS = 3;
@@ -54,6 +55,7 @@ export class PokedexScene extends Phaser.Scene {
 
   create() {
     fadeIn(this);
+    addMenuBackdrop(this);
     this.tiles = [];
     this.grid = undefined;
     this.filters = undefined;
@@ -212,7 +214,7 @@ export class PokedexScene extends Phaser.Scene {
       fill: e.owned ? COLORS.panel : 0xd5dae6,
     });
     const glow = this.add.graphics();
-    glow.lineStyle(5, COLORS.gold, 1).strokeRoundedRect(-w / 2 - 4, -h / 2 - 4, w + 8, h + 8, 12).setVisible(false);
+    strokePixelFrame(glow, -w / 2 - 6, -h / 2 - 6, w + 12, h + 12, COLORS.gold, 4).setVisible(false);
     const key = `dex-${e.id}`;
     const sprite = this.textures.exists(key)
       ? this.add.image(0, -10, key).setDisplaySize(84, 84)

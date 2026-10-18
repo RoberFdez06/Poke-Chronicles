@@ -6,6 +6,7 @@ import { MenuList, NavInput, UI } from '../ui/nav';
 import { addBackButton, buildPokemonCard, loadCardTextures } from '../ui/cards';
 import { fadeIn, goTo } from '../ui/theme';
 import { cry } from '../ui/audio';
+import { addMenuBackdrop } from '../ui/art/landscape';
 
 /** Margen tras cambiar de paso en el que se ignora confirmar (un Enter mantenido no elige solo). */
 const INPUT_DELAY_MS = 350;
@@ -39,6 +40,7 @@ export class FirstStarterScene extends Phaser.Scene {
 
   create() {
     fadeIn(this);
+    addMenuBackdrop(this);
     this.leaving = false;
     this.tiles = [];
     this.cards = [];

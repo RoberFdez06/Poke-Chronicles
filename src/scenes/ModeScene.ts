@@ -4,6 +4,7 @@ import { loadRecords } from '../data/save';
 import { MenuList, NavInput, UI } from '../ui/nav';
 import { addBackButton } from '../ui/cards';
 import { drawBox, fadeIn, goTo } from '../ui/theme';
+import { addMenuBackdrop } from '../ui/art/landscape';
 
 /** Margen tras abrir la pantalla en el que se ignora confirmar (el Enter que eligió el Pokémon no elige modo). */
 const INPUT_DELAY_MS = 350;
@@ -35,6 +36,7 @@ export class ModeScene extends Phaser.Scene {
 
   create() {
     fadeIn(this);
+    addMenuBackdrop(this);
     this.leaving = false;
     this.shown = -1;
     this.nav = new NavInput(this);

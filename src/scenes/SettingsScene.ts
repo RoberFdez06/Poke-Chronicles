@@ -6,6 +6,7 @@ import { getAudioSettings, setAudioSettings, sfx } from '../ui/audio';
 import { addPanel, MenuList, NavInput } from '../ui/nav';
 import { addBackButton } from '../ui/cards';
 import { ARROW, drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
+import { addMenuBackdrop } from '../ui/art/landscape';
 
 export interface SettingsData {
   /**
@@ -48,7 +49,10 @@ export class SettingsScene extends Phaser.Scene {
     if (this.args.overlay) {
       // Encima de la pausa: tapa lo de debajo y sus clics
       this.add.rectangle(480, 320, 960, 640, 0x0d1425, 0.92).setInteractive();
-    } else fadeIn(this);
+    } else {
+      fadeIn(this);
+      addMenuBackdrop(this);
+    }
 
     this.add
       .text(480, 70, 'Ajustes', { fontFamily: FONT, fontSize: '48px', fontStyle: 'bold', color: HEX.gold })

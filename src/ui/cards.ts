@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import type { PokemonCard } from '../data/pokeapi';
 import { typeColor, typeNameEs } from '../data/types';
-import { addTypeChip, COLORS, drawBox, HEX, textStyle } from './theme';
+import { addTypeChip, COLORS, drawBox, HEX, textStyle, strokePixelFrame } from './theme';
 import { STAT_KEYS, STAT_LABEL, statBar, type BaseStats } from '../data/pokeStats';
 
 export const CARD_SIZE = { w: 200, h: 270 };
@@ -68,7 +68,7 @@ export function buildPokemonCard(scene: Phaser.Scene, card: PokemonCard, x: numb
   bg.fillStyle(accent, 0.35).fillRoundedRect(-w / 2 + 12, -h / 2 + 12, w - 24, 140, 10);
 
   const glow = scene.add.graphics();
-  glow.lineStyle(8, COLORS.gold, 1).strokeRoundedRect(-w / 2 - 6, -h / 2 - 6, w + 12, h + 12, 24);
+  strokePixelFrame(glow, -w / 2 - 8, -h / 2 - 8, w + 16, h + 16, COLORS.gold, 6);
   glow.setVisible(false);
 
   const key = starterKey(card.id);

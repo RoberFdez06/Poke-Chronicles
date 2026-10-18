@@ -73,13 +73,39 @@ export interface BoxOptions {
   border?: number;
 }
 
-/** Cuadro de texto con borde doble y esquinas redondeadas. (x, y) es la esquina superior izquierda. */
+/**
+ * Cuadro de texto al estilo GBA: borde doble hecho de "píxeles" de 4x4 con las esquinas recortadas
+ * (escalonadas), como los menús de Rojo Fuego o Esmeralda. (x, y) es la esquina superior izquierda.
+ * `radius` se mantiene por compatibilidad: con 0 las esquinas quedan rectas.
+ */
 export function drawBox(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, o: BoxOptions = {}) {
-  const r = o.radius ?? 14;
-  const fill = o.selected ? COLORS.gold : (o.fill ?? COLORS.panel);
-  g.fillStyle(o.border ?? COLORS.navy, 1).fillRoundedRect(x, y, w, h, r);
-  g.fillStyle(fill, o.fillAlpha ?? 1).fillRoundedRect(x + 4, y + 4, w - 8, h - 8, Math.max(2, r - 4));
-  g.lineStyle(2, o.selected ? 0xc99a1e : COLORS.frame, 1).strokeRoundedRect(x + 7, y + 7, w - 14, h - 14, Math.max(2, r - 7));
+  const u = 4;
+  const cut = (o.radius ?? 14) > 0 ? u : 0;
+  x = Math.round(x / 2) * 2;
+  y = Math.round(y / 2) * 2;
+  // Rectángulo con esquinas escalonadas: dos rectángulos cruzados
+  const block = (inset: number, color: number, alpha = 1) => {
+    g.fillStyle(color, alpha);
+    g.fillRect(x + inset + cut, y + inset, w - 2 * (inset + cut), h - 2 * inset);
+    g.fillRect(x + inset, y + inset + cut, w - 2 * inset, h - 2 * (inset + cut));
+  };
+  block(0, o.border ?? COLORS.navy);
+  block(u, o.selected ? 0xc99a1e : COLORS.frame);
+  block(u * 2, o.selected ? COLORS.gold : (o.fill ?? COLORS.panel), o.fillAlpha ?? 1);
+  // Brillo de la esquina superior, como el relieve de los cuadros de la GBA
+  g.fillStyle(0xffffff, o.selected ? 0.35 : 0.6).fillRect(x + u * 3, y + u * 2, w - u * 6, 2);
+  return g;
+}
+
+/** Marco de selección pixelado (borde de `t` px con esquinas escalonadas), en lugar de un contorno redondeado. */
+export function strokePixelFrame(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, color: number, t = 6) {
+  const u = 4;
+  g.fillStyle(color, 1);
+  g.fillRect(x + u, y, w - 2 * u, t).fillRect(x + u, y + h - t, w - 2 * u, t);
+  g.fillRect(x, y + u, t, h - 2 * u).fillRect(x + w - t, y + u, t, h - 2 * u);
+  // Esquinas escalonadas
+  g.fillRect(x + t - 2, y + t - 2, u, u).fillRect(x + w - t - 2, y + t - 2, u, u);
+  g.fillRect(x + t - 2, y + h - t - 2, u, u).fillRect(x + w - t - 2, y + h - t - 2, u, u);
   return g;
 }
 

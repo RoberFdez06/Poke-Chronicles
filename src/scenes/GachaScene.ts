@@ -6,6 +6,7 @@ import { addTickets, loadTickets, loadUnlocked, spendTickets, unlockPokemon } fr
 import { typeColor, typeNameEs } from '../data/types';
 import { cry } from '../ui/audio';
 import { ARROW, addTypeChip, drawBox, fadeIn, FONT, goTo, hex, RARITY_COLORS } from '../ui/theme';
+import { addMenuBackdrop } from '../ui/art/landscape';
 /** Tickets que devuelve una tirada repetida. */
 const DUPLICATE_REFUND = 30;
 const BTN = { w: 300, h: 54 };
@@ -47,6 +48,7 @@ export class GachaScene extends Phaser.Scene {
     this.alive = true;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (this.alive = false));
     fadeIn(this);
+    addMenuBackdrop(this);
 
     this.add.text(480, 56, 'Gacha', { fontFamily: FONT, fontSize: '52px', fontStyle: 'bold', color: '#ffd34d' }).setOrigin(0.5).setStroke('#2b3a67', 10);
     // Tickets y desbloqueados en un cuadro arriba a la derecha

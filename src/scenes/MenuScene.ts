@@ -3,7 +3,9 @@ import { fetchPokemonCard } from '../data/pokeapi';
 import { loadRecords, loadUnlocked } from '../data/save';
 import { MODES, MODE_LABEL } from '../data/modes';
 import { CONTROLS } from '../data/controls';
-import { ARROW, FONT, drawBox, fadeIn, goTo } from '../ui/theme';
+import { FONT, drawBox, fadeIn, goTo } from '../ui/theme';
+import { addLandscape, nextLandscape, PIX, WALK_Y, type Landscape } from '../ui/art/landscape';
+import { addPixelText, drawPixelArrow } from '../ui/art/pixel';
 
 /** Récord de cada modo en una línea: "Normal 2 · Oleadas 7 · …". */
 const recordsLine = () => {
@@ -11,27 +13,40 @@ const recordsLine = () => {
   return MODES.map((m) => `${MODE_LABEL[m]} ${r[m]}`).join(' · ');
 };
 
-const BTN = { w: 320, h: 46, gap: 10 };
+/** Menú en un único cuadro, como en la GBA: filas de texto y la flecha ▶ en la elegida. */
+const MENU = { x: 480, top: 200, w: 340, row: 42, pad: 18 };
+const TEXT = '#303848';
+const TEXT_SHADOW = '#c8c8c0';
 
 type Key = Phaser.Input.Keyboard.Key;
-type KeyName = 'UP' | 'DOWN' | 'W' | 'S' | 'ENTER' | 'SPACE' | 'ESC';
+type KeyName = 'UP' | 'DOWN' | 'W' | 'S' | 'ENTER' | 'SPACE' | 'ESC' | 'BACKSPACE';
 
 interface MenuItem {
   label: string;
   action: () => void;
 }
 
-/** Menú principal: jugar, gacha y controles. */
+interface Walker {
+  img: Phaser.GameObjects.Image;
+  vx: number;
+  phase: number;
+}
+
+/** Menú principal con fondo pixel art animado al estilo de la GBA. */
 export class MenuScene extends Phaser.Scene {
   private items: MenuItem[] = [];
-  private buttons: { box: Phaser.GameObjects.Container; bg: Phaser.GameObjects.Graphics; arrow: Phaser.GameObjects.Text }[] = [];
+  private rows: Phaser.GameObjects.Text[] = [];
+  private arrow!: Phaser.GameObjects.Graphics;
   private keys!: Record<KeyName, Key>;
   private selected = 0;
   private overlay?: Phaser.GameObjects.Container;
-  private toast!: Phaser.GameObjects.Text;
+  private toast!: Phaser.GameObjects.Container;
+  private toastText!: Phaser.GameObjects.Text;
   private toastTimer?: Phaser.Time.TimerEvent;
   private padPrev = { up: false, down: false, ok: false, back: false };
   private alive = true;
+  private land!: Landscape;
+  private walkers: Walker[] = [];
 
   constructor() {
     super('Menu');
@@ -46,7 +61,8 @@ export class MenuScene extends Phaser.Scene {
       { label: 'Controles', action: () => this.showControls() },
       { label: 'Ajustes', action: () => goTo(this, 'Settings') },
     ];
-    this.buttons = [];
+    this.rows = [];
+    this.walkers = [];
     this.selected = 0;
     this.overlay = undefined;
     this.toastTimer = undefined;
@@ -55,83 +71,81 @@ export class MenuScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (this.alive = false));
     fadeIn(this);
 
-    // Título
-    this.add
-      .text(480, 118, 'PokeIsaac', { fontFamily: FONT, fontSize: '96px', fontStyle: 'bold', color: '#ffd34d' })
-      .setOrigin(0.5)
-      .setStroke('#2b3a67', 14)
-      .setShadow(0, 7, '#0d1425', 0, true, true);
-    this.add
-      .text(480, 194, 'Un roguelike de Pokémon', { fontFamily: FONT, fontSize: '22px', color: '#ffffff' })
-      .setOrigin(0.5)
-      .setAlpha(0.85);
+    // Fondo: un ambiente distinto cada vez que vuelves al menú
+    this.land = addLandscape(this, nextLandscape(this));
 
-    // Botones
-    const top = 246;
-    this.items.forEach((item, i) => {
-      this.buttons.push(this.buildButton(item, i, 480, top + i * (BTN.h + BTN.gap)));
+    // Título con píxeles gordos y un leve balanceo
+    const title = addPixelText(this, 480, 92, 'PokeIsaac', {
+      size: 22, scale: 4, color: '#f8d030', stroke: '#283068', strokeWidth: 3, shadow: '#101828',
     });
+    this.tweens.add({ targets: title, y: 100, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const sub = this.add.graphics();
+    drawBox(sub, 480 - 170, 146, 340, 40, { radius: 4 });
+    this.add.text(480, 166, 'Un roguelike de Pokémon', this.rowStyle(18)).setOrigin(0.5).setShadow(2, 2, TEXT_SHADOW, 0);
 
-    this.toast = this.add
-      .text(480, 562, '', { fontFamily: FONT, fontSize: '20px', color: '#ffd34d' })
-      .setOrigin(0.5)
-      .setDepth(60);
+    this.buildMenu();
 
+    // Franja de abajo: progreso y ayuda
+    this.add.rectangle(480, 620, 960, 40, 0x101828, 0.85).setDepth(20);
     this.add
-      .text(480, 584, `Pokémon desbloqueados: ${loadUnlocked().length}   ·   Récords: ${recordsLine()}`, {
-        fontFamily: FONT,
-        fontSize: '16px',
-        color: '#ffffff',
+      .text(480, 610, `Pokémon desbloqueados: ${loadUnlocked().length}   ·   Récords: ${recordsLine()}`, {
+        fontFamily: FONT, fontSize: '14px', color: '#f8f8f8',
       })
-      .setOrigin(0.5)
-      .setAlpha(0.7);
+      .setOrigin(0.5).setDepth(21);
     this.add
-      .text(480, 612, 'Flechas o W S, ratón o mando para moverte · Enter, espacio, clic o A para elegir', {
-        fontFamily: FONT,
-        fontSize: '14px',
-        color: '#ffffff',
+      .text(480, 628, 'Flechas o W S, ratón o mando para moverte · Enter, espacio, clic o A para elegir', {
+        fontFamily: FONT, fontSize: '12px', color: '#a8b0c8',
       })
-      .setOrigin(0.5)
-      .setAlpha(0.5);
+      .setOrigin(0.5).setDepth(21);
 
-    this.keys = this.input.keyboard!.addKeys('UP,DOWN,W,S,ENTER,SPACE,ESC') as Record<KeyName, Key>;
+    // Aviso corto (por ejemplo, si el gacha no está)
+    const tg = this.add.graphics();
+    drawBox(tg, 480 - 200, 0, 400, 44, { radius: 4 });
+    this.toastText = this.add.text(480, 22, '', this.rowStyle(18)).setOrigin(0.5);
+    this.toast = this.add.container(0, 510, [tg, this.toastText]).setDepth(40).setVisible(false);
+
+    this.keys = this.input.keyboard!.addKeys('UP,DOWN,W,S,ENTER,SPACE,ESC,BACKSPACE') as Record<KeyName, Key>;
     this.select(0);
 
-    // Decoración: dos Pokémon tuyos que flotan a los lados. Se cargan en segundo plano.
-    this.decorate().catch(() => undefined);
+    // Pokémon de tu colección paseando por el camino. Se cargan en segundo plano.
+    this.addWalkers().catch(() => undefined);
   }
 
-  private buildButton(item: MenuItem, index: number, x: number, y: number) {
-    const bg = this.add.graphics();
-    const label = this.add
-      .text(0, 0, item.label, { fontFamily: FONT, fontSize: '28px', fontStyle: 'bold', color: '#2b3a67' })
-      .setOrigin(0.5);
-
-    const arrow = this.add
-      .text(-BTN.w / 2 + 18, 0, ARROW, { fontFamily: FONT, fontSize: '24px', color: '#2b3a67' })
-      .setOrigin(0, 0.5);
-    const box = this.add.container(x, y, [bg, label, arrow]);
-    box.setSize(BTN.w, BTN.h);
-    // En un contenedor con tamaño, Phaser ya desplaza el área al centro: va de (0,0) a (w,h)
-    box.setInteractive(new Phaser.Geom.Rectangle(0, 0, BTN.w, BTN.h), Phaser.Geom.Rectangle.Contains);
-    box.input!.cursor = 'pointer';
-    box.on('pointerover', () => !this.overlay && this.select(index));
-    box.on('pointerdown', () => !this.overlay && this.activate(index));
-    return { box, bg, arrow };
+  private rowStyle(size: number) {
+    return { fontFamily: FONT, fontSize: `${size}px`, color: TEXT };
   }
 
-  private paint(i: number) {
-    const { box, bg, arrow } = this.buttons[i];
-    const sel = i === this.selected;
-    bg.clear();
-    drawBox(bg, -BTN.w / 2, -BTN.h / 2, BTN.w, BTN.h, { selected: sel, radius: 16 });
-    arrow.setVisible(sel);
-    box.setScale(sel ? 1.05 : 1);
+  private buildMenu() {
+    const h = this.items.length * MENU.row + MENU.pad * 2;
+    const left = MENU.x - MENU.w / 2;
+    const g = this.add.graphics().setDepth(10);
+    drawBox(g, left, MENU.top, MENU.w, h, { radius: 4 });
+    this.arrow = this.add.graphics().setDepth(11);
+
+    this.items.forEach((item, i) => {
+      const y = MENU.top + MENU.pad + i * MENU.row + MENU.row / 2;
+      const t = this.add
+        .text(left + 64, y, item.label, { ...this.rowStyle(28), fontStyle: 'bold' })
+        .setOrigin(0, 0.5)
+        .setShadow(2, 2, TEXT_SHADOW, 0)
+        .setDepth(11);
+      this.rows.push(t);
+      // Con ratón: cada fila es una zona (pasar = elegir, clic = entrar)
+      const zone = this.add.zone(MENU.x, y, MENU.w - 24, MENU.row).setInteractive({ useHandCursor: true });
+      zone.on('pointerover', () => !this.overlay && this.select(i));
+      zone.on('pointerdown', () => !this.overlay && this.activate(i));
+    });
+    // La flecha "respira" de lado a lado
+    this.tweens.add({ targets: this.arrow, x: 6, duration: 420, yoyo: true, repeat: -1, ease: 'Stepped', easeParams: [2] });
   }
 
   private select(i: number) {
     this.selected = i;
-    this.buttons.forEach((_, k) => this.paint(k));
+    const left = MENU.x - MENU.w / 2;
+    const y = MENU.top + MENU.pad + i * MENU.row + MENU.row / 2;
+    this.arrow.clear();
+    drawPixelArrow(this.arrow, left + 30, y - 14);
+    this.rows.forEach((t, k) => t.setColor(k === i ? '#2850b0' : TEXT));
   }
 
   private activate(i: number) {
@@ -140,45 +154,40 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private openGacha() {
-    // La escena del gacha se registra en main.ts cuando exista
     if (this.scene.manager.keys['Gacha']) goTo(this, 'Gacha');
     else this.showToast('El gacha llegará pronto');
   }
 
   private showToast(msg: string) {
     this.toastTimer?.remove();
-    this.toast.setText(msg);
-    this.toastTimer = this.time.delayedCall(1800, () => this.toast.setText(''));
+    this.toastText.setText(msg);
+    this.toast.setVisible(true);
+    this.toastTimer = this.time.delayedCall(1800, () => this.toast.setVisible(false));
   }
 
   // --- Panel de controles ---
 
   private showControls() {
-    const dim = this.add.rectangle(480, 320, 960, 640, 0x000000, 0.65).setInteractive();
+    const dim = this.add.rectangle(480, 320, 960, 640, 0x000000, 0.55).setInteractive();
     dim.on('pointerdown', () => this.closeControls());
 
     const panel = this.add.graphics();
-    drawBox(panel, 130, 110, 700, 400, { radius: 22 });
+    drawBox(panel, 130, 110, 700, 400, { radius: 4 });
 
     const parts: Phaser.GameObjects.GameObject[] = [dim, panel];
     parts.push(
-      this.add
-        .text(480, 158, 'Controles', { fontFamily: FONT, fontSize: '34px', fontStyle: 'bold', color: '#2b3a67' })
-        .setOrigin(0.5),
+      this.add.text(480, 154, 'Controles', { ...this.rowStyle(34), fontStyle: 'bold' }).setOrigin(0.5).setShadow(2, 2, TEXT_SHADOW, 0),
     );
     CONTROLS.forEach(([what, how], k) => {
-      const y = 196 + k * 56;
+      const y = 194 + k * 56;
       parts.push(
-        this.add.text(170, y, what, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#2b3a67' }),
-        this.add.text(170, y + 28, how, { fontFamily: FONT, fontSize: '18px', color: '#4a5578' }),
+        this.add.text(170, y, what, { ...this.rowStyle(22), fontStyle: 'bold' }).setShadow(2, 2, TEXT_SHADOW, 0),
+        this.add.text(170, y + 28, how, { fontFamily: FONT, fontSize: '18px', color: '#58607a' }),
       );
     });
     parts.push(
-      this.add
-        .text(480, 484, 'Esc, Enter o clic para cerrar', { fontFamily: FONT, fontSize: '15px', color: '#4a5578' })
-        .setOrigin(0.5),
+      this.add.text(480, 482, 'Esc, Enter o clic para cerrar', { fontFamily: FONT, fontSize: '15px', color: '#58607a' }).setOrigin(0.5),
     );
-
     this.overlay = this.add.container(0, 0, parts).setDepth(50);
   }
 
@@ -187,43 +196,56 @@ export class MenuScene extends Phaser.Scene {
     this.overlay = undefined;
   }
 
-  // --- Decoración ---
+  // --- Pokémon paseando ---
 
-  private async decorate() {
-    const ids = Phaser.Utils.Array.Shuffle([...loadUnlocked()]).slice(0, 2);
-    const cards = await Promise.all(ids.map(fetchPokemonCard));
+  private async addWalkers() {
+    const unlocked = loadUnlocked();
+    const pool = unlocked.length ? unlocked : [1, 4, 7, 25];
+    const ids = Phaser.Utils.Array.Shuffle([...pool]).slice(0, 4);
+    const cards = await Promise.all(ids.map((id) => fetchPokemonCard(id).catch(() => null)));
     if (!this.alive) return;
 
-    // Mismas claves que usan StarterScene y GameScene, así se reaprovechan
     this.load.crossOrigin = 'anonymous';
     for (const c of cards) {
-      if (!this.textures.exists(`starter-${c.id}-front`)) this.load.image(`starter-${c.id}-front`, c.sprites.front);
+      if (c && !this.textures.exists(`starter-${c.id}-front`)) this.load.image(`starter-${c.id}-front`, c.sprites.front);
     }
     this.load.once(Phaser.Loader.Events.COMPLETE, () => {
       if (!this.alive) return;
       cards.forEach((c, k) => {
-        const key = `starter-${c.id}-front`;
-        if (!this.textures.exists(key)) return;
+        const key = c && `starter-${c.id}-front`;
+        if (!key || !this.textures.exists(key)) return;
         this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
-
-        const x = k === 0 ? 150 : 810;
-        const img = this.add.image(x, 440, key).setDisplaySize(210, 210).setFlipX(k === 1).setDepth(1);
-        this.tweens.add({
-          targets: img,
-          y: 426,
-          duration: 1100 + k * 250,
-          yoyo: true,
-          repeat: -1,
-          ease: 'Sine.easeInOut',
-        });
+        const dir = k % 2 ? 1 : -1;
+        const img = this.add
+          .image(80 + k * 230 + Math.random() * 60, WALK_Y * PIX.scale, key)
+          .setOrigin(0.5, 0.92)
+          .setScale(1)
+          .setDepth(5)
+          .setFlipX(dir > 0);
+        this.walkers.push({ img, vx: dir * (36 + Math.random() * 30), phase: Math.random() * 6 });
       });
     });
     this.load.start();
   }
 
+  private moveWalkers(dt: number) {
+    const s = dt / 1000;
+    for (const w of this.walkers) {
+      // Camina por el camino, que a su vez se desplaza con el paisaje
+      w.img.x += (w.vx - this.land.groundSpeed) * s;
+      w.phase += s * Math.abs(w.vx) * 0.18;
+      // Pasitos: un saltito por paso, de 4 en 4 píxeles como en la GBA
+      w.img.y = WALK_Y * PIX.scale - Math.round(Math.abs(Math.sin(w.phase)) * 2) * 4;
+      if (w.img.x < -70) w.img.x = 1030;
+      if (w.img.x > 1030) w.img.x = -70;
+    }
+  }
+
   // --- Entrada ---
 
-  update() {
+  update(_time: number, delta: number) {
+    this.land?.update(delta);
+    this.moveWalkers(delta);
     if (!this.keys) return;
     const J = Phaser.Input.Keyboard.JustDown;
     const k = this.keys;
@@ -232,7 +254,7 @@ export class MenuScene extends Phaser.Scene {
     const down = J(k.DOWN) || J(k.S);
     let dy = (down ? 1 : 0) - (up ? 1 : 0);
     let ok = J(k.ENTER) || J(k.SPACE);
-    let back = J(k.ESC);
+    let back = J(k.ESC) || J(k.BACKSPACE);
 
     const pad = this.input.gamepad?.getPad(0);
     if (pad && pad.connected) {
