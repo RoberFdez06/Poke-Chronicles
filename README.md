@@ -52,9 +52,23 @@ Con más de 8 desbloqueados, la pantalla de inicial se divide en páginas (◀ �
 
 ## Elegir inicial
 
-Al abrir el juego eliges entre los iniciales desbloqueados (de momento Bulbasaur, Charmander y Squirtle).
-Los desbloqueados se guardan en el navegador (`localStorage`, clave `pokeisaac.unlocked`); el gacha usará
-`unlockPokemon(id)` de `src/data/save.ts` para añadir más.
+**Primera partida** (sin ningún Pokémon guardado): eliges **región** (Kanto, Johto, Hoenn, Sinnoh, Teselia, Kalos,
+Alola, Galar o Paldea) y luego uno de **sus 3 iniciales**; ese es tu primer Pokémon. Quien ya jugaba antes conserva
+Bulbasaur, Charmander y Squirtle (migración automática).
+
+Después, al empezar partida eliges entre tu colección, **dividida por regiones** (pestañas con cuántos tienes de
+cada una) y con **filtros por nombre y por rareza**. Cada tarjeta muestra tipos y rareza; 8 por página.
+
+| Acción | Teclado | Ratón | Mando |
+|---|---|---|---|
+| Cambiar de región | Q / E | Clic en la pestaña | LB / RB |
+| Cambiar rareza | R | Clic en "Rareza" | X |
+| Buscar por nombre | F y escribir (Retroceso borra, Enter cierra) | Clic en "Buscar" y en las letras | Y, cruceta y A (Y borra, B cierra) |
+| Cambiar de página | Flechas al pasar del borde | ◀ ▶ | Cruceta |
+
+Los desbloqueados se guardan en el navegador (`localStorage`, clave `pokeisaac.unlocked`, formato
+`{ v: 2, ids: [...] }`); el gacha añade más con `unlockPokemon(id)` de `src/data/save.ts`. Regiones y filtros en
+`src/data/regions.ts`.
 
 ## Combate
 
@@ -94,7 +108,11 @@ src/
   data/moves.ts        poderes del tipo de tu Pokémon y nombres en español (puro)
   data/save.ts         Pokémon desbloqueados guardados en el navegador
   scenes/MenuScene.ts     menú principal
-  scenes/StarterScene.ts  pantalla para elegir inicial
+  scenes/StarterScene.ts  elegir Pokémon de tu colección (regiones, búsqueda y rareza)
+  scenes/FirstStarterScene.ts  primera partida: elegir región e inicial
+  data/regions.ts      regiones, iniciales y filtros de la colección (puro)
+  ui/nav.ts            entrada de menús (NavInput, PadButtons) y botones (MenuList)
+  ui/cards.ts          tarjeta de Pokémon, carga de sprites y botón "Volver"
   data/speciesIndex.ts carga (una vez) la lista de especies de public/data
   level/floorGen.ts    generador de pisos (puro, determinista por semilla)
   level/progression.ts pisos: tamaño, dificultad, monedas y jefes legendarios (puro)
@@ -109,6 +127,7 @@ tests/
   progression.test.ts  tests de pisos, dificultad y jefes
   enemies.test.ts      tests de enemigos por piso y comportamientos
   moves.test.ts        tests de poderes por tipo
+  regions.test.ts      tests de regiones y filtros
 scripts/
   buildSpeciesIndex.mjs  genera public/data/species-index.json desde PokeAPI
 ```

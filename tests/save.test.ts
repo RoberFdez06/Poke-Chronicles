@@ -5,6 +5,7 @@ import {
   DEFAULT_STARTERS,
   UNLOCKED_KEY,
   loadUnlocked,
+  needsFirstStarter,
   parseUnlocked,
   unlockPokemon,
   type StorageLike,
@@ -20,13 +21,30 @@ function fakeStorage(initial?: string): StorageLike & { data: Map<string, string
   };
 }
 
-test('sin nada guardado, solo están los iniciales por defecto', () => {
-  assert.deepEqual(parseUnlocked(null), [...DEFAULT_STARTERS]);
-  assert.deepEqual(loadUnlocked(fakeStorage()), [...DEFAULT_STARTERS]);
-  assert.deepEqual(loadUnlocked(null), [...DEFAULT_STARTERS]);
+test('sin nada guardado no tienes ningún Pokémon: toca elegir región e inicial', () => {
+  assert.deepEqual(parseUnlocked(null), []);
+  assert.deepEqual(loadUnlocked(fakeStorage()), []);
+  assert.deepEqual(loadUnlocked(null), []);
+  assert.equal(needsFirstStarter(fakeStorage()), true);
 });
 
-test('un guardado corrupto o con otro formato se ignora', () => {
+test('migración: el formato antiguo (array) conserva Bulbasaur, Charmander y Squirtle', () => {
+  assert.deepEqual(parseUnlocked('[]'), [...DEFAULT_STARTERS]);
+  assert.deepEqual(parseUnlocked('[25]'), [1, 4, 7, 25]);
+  assert.equal(needsFirstStarter(fakeStorage('[]')), false);
+});
+
+test('migración: quien ya jugaba sin usar el gacha (monedas o partidas guardadas) conserva los iniciales', () => {
+  const withCoins = fakeStorage();
+  withCoins.data.set(COINS_KEY, '40');
+  assert.deepEqual(loadUnlocked(withCoins), [...DEFAULT_STARTERS]);
+  const withRun = fakeStorage();
+  withRun.data.set('pokeisaac.run.2', '{}');
+  assert.deepEqual(loadUnlocked(withRun), [...DEFAULT_STARTERS]);
+  assert.equal(needsFirstStarter(withRun), false);
+});
+
+test('un guardado corrupto o con otro formato deja los iniciales de siempre', () => {
   assert.deepEqual(parseUnlocked('{'), [...DEFAULT_STARTERS]);
   assert.deepEqual(parseUnlocked('{"a":1}'), [...DEFAULT_STARTERS]);
   assert.deepEqual(parseUnlocked('"hola"'), [...DEFAULT_STARTERS]);
@@ -34,23 +52,32 @@ test('un guardado corrupto o con otro formato se ignora', () => {
 
 test('filtra valores que no son ids y no duplica', () => {
   assert.deepEqual(parseUnlocked(JSON.stringify([25, 'x', -3, 1.5, 25, 4, null])), [1, 4, 7, 25]);
+  assert.deepEqual(parseUnlocked(JSON.stringify({ v: 2, ids: [152, 'x', 152, 0] })), [152]);
 });
 
-test('desbloquear guarda y se recupera', () => {
+test('el primer inicial elegido es el único desbloqueado', () => {
   const s = fakeStorage();
-  assert.deepEqual(unlockPokemon(25, s), [1, 4, 7, 25]);
-  assert.deepEqual(loadUnlocked(s), [1, 4, 7, 25]);
+  assert.deepEqual(unlockPokemon(152, s), [152]);
+  assert.deepEqual(loadUnlocked(s), [152]);
+  assert.equal(needsFirstStarter(s), false);
+});
+
+test('desbloquear guarda en el formato nuevo y se recupera', () => {
+  const s = fakeStorage('[25]');
+  assert.deepEqual(unlockPokemon(26, s), [1, 4, 7, 25, 26]);
+  assert.deepEqual(JSON.parse(s.data.get(UNLOCKED_KEY)!), { v: 2, ids: [1, 4, 7, 25, 26] });
+  assert.deepEqual(loadUnlocked(s), [1, 4, 7, 25, 26]);
 });
 
 test('desbloquear uno que ya está no lo repite', () => {
   const s = fakeStorage();
   unlockPokemon(25, s);
-  assert.deepEqual(unlockPokemon(25, s), [1, 4, 7, 25]);
-  assert.deepEqual(unlockPokemon(4, s), [1, 4, 7, 25]);
+  assert.deepEqual(unlockPokemon(25, s), [25]);
+  assert.deepEqual(unlockPokemon(4, s), [25, 4]);
 });
 
 test('sin almacenamiento o con almacenamiento que falla, no lanza', () => {
-  assert.deepEqual(unlockPokemon(25, null), [1, 4, 7, 25]);
+  assert.deepEqual(unlockPokemon(25, null), [25]);
   const broken: StorageLike = {
     getItem: () => {
       throw new Error('bloqueado');

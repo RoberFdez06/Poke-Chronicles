@@ -8,8 +8,14 @@ export interface StorageLike {
 
 export const UNLOCKED_KEY = 'pokeisaac.unlocked';
 
-/** Iniciales disponibles desde el principio: Bulbasaur, Charmander y Squirtle. */
+/**
+ * Iniciales que tenía todo el mundo antes de poder elegir región (Bulbasaur, Charmander y Squirtle).
+ * Quien ya jugaba los conserva; quien empieza de cero elige región e inicial.
+ */
 export const DEFAULT_STARTERS: readonly number[] = [1, 4, 7];
+
+/** Formato actual de los desbloqueos: `{ v: 2, ids: [...] }`. El antiguo era un array y sumaba DEFAULT_STARTERS. */
+export const UNLOCKED_VERSION = 2;
 
 function browserStorage(): StorageLike | null {
   try {
@@ -19,32 +25,58 @@ function browserStorage(): StorageLike | null {
   }
 }
 
-/** Convierte lo guardado en la lista de Pokémon desbloqueados; siempre incluye los iniciales por defecto. */
+const validIds = (data: unknown[]): number[] => [
+  ...new Set(data.filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n > 0)),
+];
+
+/**
+ * Convierte lo guardado en la lista de Pokémon desbloqueados.
+ * - Nada guardado: lista vacía (primera partida: hay que elegir región e inicial).
+ * - Formato antiguo (array): migra sumando los iniciales de siempre.
+ * - Corrupto: los iniciales de siempre, para no dejar a nadie sin Pokémon.
+ */
 export function parseUnlocked(raw: string | null): number[] {
-  let extra: number[] = [];
+  if (raw === null) return [];
   try {
-    const data: unknown = raw ? JSON.parse(raw) : [];
-    if (Array.isArray(data)) extra = data.filter((n): n is number => Number.isInteger(n) && n > 0);
+    const data: unknown = JSON.parse(raw);
+    if (Array.isArray(data)) return validIds([...DEFAULT_STARTERS, ...data]);
+    if (data && typeof data === 'object' && Array.isArray((data as { ids?: unknown }).ids)) {
+      return validIds((data as { ids: unknown[] }).ids);
+    }
   } catch {
-    // guardado corrupto: se ignora
+    // guardado corrupto
   }
-  return [...new Set([...DEFAULT_STARTERS, ...extra])];
+  return [...DEFAULT_STARTERS];
+}
+
+/** Antes los desbloqueos solo se guardaban al usar el gacha: quien tenga monedas o partidas ya jugaba. */
+function hasOldProgress(storage: StorageLike): boolean {
+  if (storage.getItem(COINS_KEY) !== null) return true;
+  for (let i = 0; i < 3; i++) if (storage.getItem(`pokeisaac.run.${i}`) !== null) return true;
+  return false;
 }
 
 export function loadUnlocked(storage: StorageLike | null = browserStorage()): number[] {
   try {
-    return parseUnlocked(storage?.getItem(UNLOCKED_KEY) ?? null);
+    if (!storage) return [];
+    const raw = storage.getItem(UNLOCKED_KEY);
+    if (raw === null && hasOldProgress(storage)) return [...DEFAULT_STARTERS];
+    return parseUnlocked(raw);
   } catch {
-    return parseUnlocked(null);
+    return [...DEFAULT_STARTERS];
   }
 }
+
+/** Primera partida: aún no tienes ningún Pokémon y toca elegir región e inicial. */
+export const needsFirstStarter = (storage: StorageLike | null = browserStorage()): boolean =>
+  loadUnlocked(storage).length === 0;
 
 /** Desbloquea un Pokémon y devuelve la lista actualizada. */
 export function unlockPokemon(id: number, storage: StorageLike | null = browserStorage()): number[] {
   const list = loadUnlocked(storage);
-  if (!list.includes(id)) list.push(id);
+  if (Number.isInteger(id) && id > 0 && !list.includes(id)) list.push(id);
   try {
-    storage?.setItem(UNLOCKED_KEY, JSON.stringify(list));
+    storage?.setItem(UNLOCKED_KEY, JSON.stringify({ v: UNLOCKED_VERSION, ids: list }));
   } catch {
     // sin almacenamiento: no se guarda
   }

@@ -72,6 +72,46 @@ export class NavInput {
   }
 }
 
+export type PadButton = 'up' | 'down' | 'left' | 'right' | 'A' | 'B' | 'X' | 'Y' | 'LB' | 'RB';
+
+/**
+ * Botones del mando con flanco (una vez por pulsación), para lo que NavInput no cubre (X, Y, LB, RB)
+ * o para pantallas donde el teclado se usa para escribir. Ignora lo que ya estaba pulsado al crearse.
+ */
+export class PadButtons {
+  private prev: Partial<Record<PadButton, boolean>>;
+
+  constructor(private scene: Phaser.Scene) {
+    this.prev = this.now();
+  }
+
+  private now(): Partial<Record<PadButton, boolean>> {
+    const pad = this.scene.input.gamepad?.getPad(0);
+    if (!pad || !pad.connected) return {};
+    return {
+      up: pad.up || pad.leftStick.y < -0.5,
+      down: pad.down || pad.leftStick.y > 0.5,
+      left: pad.left || pad.leftStick.x < -0.5,
+      right: pad.right || pad.leftStick.x > 0.5,
+      A: pad.A,
+      B: pad.B,
+      X: pad.X,
+      Y: pad.Y,
+      LB: !!pad.buttons[4]?.pressed,
+      RB: !!pad.buttons[5]?.pressed,
+    };
+  }
+
+  /** Botones que se acaban de pulsar desde la última llamada. */
+  read(): Set<PadButton> {
+    const now = this.now();
+    const out = new Set<PadButton>();
+    for (const k of Object.keys(now) as PadButton[]) if (now[k] && !this.prev[k]) out.add(k);
+    this.prev = now;
+    return out;
+  }
+}
+
 export interface MenuListOptions {
   w?: number;
   h?: number;

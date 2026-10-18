@@ -23,7 +23,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
   la lista de movimientos; quédate con los que tienen potencia). Nombres en español.
 - Tests de la parte pura (filtrar por tipo).
 
-## [ ] T4 — Primer inicial por región y colección por regiones
+## [x] T4 — Primer inicial por región y colección por regiones
 - Primera vez que se juega (sin ningún Pokémon desbloqueado guardado): eliges **región** (Kanto, Johto,
   Hoenn, Sinnoh, Teselia, Kalos, Alola, Galar, Paldea) y luego **cuál de sus 3 iniciales** quieres. Ese es
   tu primer Pokémon. Quien ya tenga guardados los de antes (1, 4, 7) los conserva (migración).

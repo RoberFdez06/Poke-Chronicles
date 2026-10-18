@@ -60,3 +60,23 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
   `fetchAttackMovesForTypes`; quitado `fetchRandomAttackMove`), `GameScene` (`fillMovePool`), README.
 - **Decisiones**: al continuar una partida antigua se quitan del `movePool` los poderes de otros tipos (los de las
   ranuras se respetan). No cambia el formato de `RunSave`. `localName` servirá para T7.
+
+## T4 — Primer inicial por región y colección por regiones (2026-10-18)
+
+- **Qué**: sin ningún Pokémon guardado, "Jugar" lleva a `FirstStarterScene`: eliges región (lista) y luego uno de
+  sus 3 iniciales (tarjetas); queda desbloqueado y empieza la partida. `StarterScene` rehecha: pestañas Todas +
+  9 regiones con contador, botón "Buscar por nombre" (teclado físico o teclado en pantalla con letras A-Z y Ñ,
+  Borrar, Vaciar y Listo, manejable con flechas, mando y ratón) y botón de rareza que va rotando
+  (Todas → Común → … → Legendario). Tarjetas a 8 por página que se piden a PokeAPI solo al mostrar la página.
+- **Guardado / migración**: `pokeisaac.unlocked` pasa a `{ v: 2, ids }`. El formato antiguo (array) suma 1, 4 y 7
+  como antes. Como antes los desbloqueos solo se escribían al usar el gacha, si no existe la clave pero hay
+  monedas o alguna partida guardada, también se consideran jugadores antiguos y conservan 1, 4 y 7. Guardado
+  corrupto → 1, 4 y 7 (para no dejar a nadie sin Pokémon). No cambia `RunSave`.
+- **Archivos**: `src/data/regions.ts` y `tests/regions.test.ts` (nuevos), `src/data/save.ts` (+tests reescritos),
+  `src/ui/cards.ts` (nuevo: tarjeta compartida, carga de sprites, botón Volver), `src/ui/nav.ts` (`PadButtons`
+  para X/Y/LB/RB), `src/scenes/FirstStarterScene.ts` (nueva, registrada antes de `PauseScene`),
+  `src/scenes/StarterScene.ts`, README.
+- **Decisiones**: el filtro por nombre usa de momento el nombre de `species-index.json` (inglés, casi siempre igual
+  que en español); con T7 pasará a español. La búsqueda ignora tildes y la Ñ cuenta como N.
+- **Dudas para Roberto**: no he podido probar las pantallas en el navegador (no se puede usar `npm run dev`);
+  tsc, tests y build pasan. Atajos elegidos: Q/E y LB/RB región, R y X rareza, F e Y buscar.
