@@ -102,3 +102,16 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
 - **Decisiones / dudas**: `modes.ts` no lee `FLOOR_COUNT` al cargarse (descripción como función) para evitar un
   problema de import circular save → modes → progression → save. Los números de Oleadas y de monedas del Rush
   son a ojo.
+
+## T6 — Efectos por tipo (2026-10-18)
+
+- **Qué**: los poderes (no el disparo normal) aplican el estado de su tipo al golpear. Fuego quema (25 % del golpe
+  por segundo, 3 s), Veneno envenena (15 %/s, 5 s), Hielo congela (velocidad ×0,4, 2,5 s), Eléctrico paraliza
+  (quieto 0,4 s de cada segundo, 3 s), Agua empapa (×0,7), Psíquico y Fantasma confunden (se mueve y apunta en
+  zigzag), Planta y Bicho drenan (recuperas el 30 % del daño) y Lucha, Roca y Tierra empujan. El resto de tipos no
+  aplica estado. Reaplicar renueva la duración sin acumular. Los jefes nunca bajan de ×0,7 ni se paralizan del todo.
+- **Visual**: el enemigo se tiñe del color del estado y sale un texto ("¡Quemado!", "+12 PS"…) que sube y se
+  desvanece. El destello rojo del golpe y el aviso amarillo de embestida tienen prioridad sobre el tinte.
+- **Archivos**: `src/data/status.ts` y `tests/status.test.ts` (nuevos), `GameScene` (`applyStatusTo`,
+  `tickEnemyStatus`, `paintEnemy`, `popup`, `killEnemy`; la IA usa `speedMultiplier` e `isConfused`), README.
+- **Dudas**: duraciones y porcentajes a ojo; están juntos en `STATUS_EFFECTS`.

@@ -27,6 +27,16 @@ import {
   MODE_LABEL,
 } from '../data/modes';
 import { submitRecord } from '../data/save';
+import {
+  applyStatus,
+  drainHeal,
+  isConfused,
+  speedMultiplier,
+  statusForType,
+  statusTint,
+  tickStatuses,
+  ActiveStatus,
+} from '../data/status';
 import type { SpeciesFact } from '../data/gacha';
 import type { PokemonCard } from '../data/pokeapi';
 import {
@@ -105,6 +115,8 @@ interface EnemyAI {
   side: number;
   type: string;
   boss: boolean;
+  /** Hasta cuándo sale despedido por un golpe que empuja (la IA no manda mientras tanto). */
+  knockUntil: number;
 }
 
 /** Velocidad de los proyectiles enemigos (px/s) y cuánto duran. */
@@ -122,6 +134,8 @@ interface ShotOpts {
   pierce: number;
   /** Rebotes en las paredes. */
   bounces: number;
+  /** Tipo del poder: aplica su estado al golpear (quemar, congelar…). Los disparos normales no llevan. */
+  status?: string;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -887,16 +901,27 @@ export class GameScene extends Phaser.Scene {
       until: this.time.now + Phaser.Math.Between(900, 1700),
       dir: new Phaser.Math.Vector2(0, 1),
       side: Math.random() < 0.5 ? 1 : -1,
+      knockUntil: 0,
     };
   }
 
   /** IA de un enemigo según su comportamiento: perseguir, embestir, disparar o saltar. */
   private updateEnemy(e: Sprite, time: number) {
     const ai = e.getData('ai') as EnemyAI | undefined;
-    const speed = e.getData('speed') as number;
+    if (ai && time < ai.knockUntil) return; // sale despedido: conserva la velocidad del empujón
+    const statuses = (e.getData('statuses') as ActiveStatus[] | undefined) ?? [];
+    const slow = speedMultiplier(statuses, time, ai?.boss);
+    if (slow === 0) {
+      // Paralizado: a ratos se queda quieto del todo
+      e.setVelocity(0, 0);
+      return;
+    }
+    const speed = (e.getData('speed') as number) * slow;
     const toPlayer = new Phaser.Math.Vector2(this.player.x - e.x, this.player.y - e.y);
     const dist = toPlayer.length();
     if (dist > 0) toPlayer.normalize();
+    // Confuso: va (y apunta) dando bandazos
+    if (isConfused(statuses, time)) toPlayer.rotate(Math.PI * 0.8 * Math.sin((time / 260) * (ai?.side ?? 1)));
     const walk = (v: Phaser.Math.Vector2) => e.setVelocity(v.x * speed, v.y * speed);
 
     if (!ai || ai.behavior === 'chase') {
@@ -1130,7 +1155,13 @@ export class GameScene extends Phaser.Scene {
     }
 
     // IA de cada enemigo según su comportamiento
-    this.enemies.getChildren().forEach((c) => this.updateEnemy(c as Sprite, time));
+    // Copia: un enemigo puede caer por quemadura o veneno mientras se recorre
+    [...this.enemies.getChildren()].forEach((c) => {
+      const e = c as Sprite;
+      if (!e.active || this.tickEnemyStatus(e, time)) return;
+      this.updateEnemy(e, time);
+      this.paintEnemy(e, time);
+    });
 
     // HUD
     this.hpText.setText(
@@ -1181,6 +1212,7 @@ export class GameScene extends Phaser.Scene {
     s.setTint(o.color).setScale(o.size).setDepth(4).setVelocity(v.x, v.y);
     s.setData('dmg', o.damage).setData('pierce', o.pierce).setData('bounces', o.bounces);
     s.setData('hit', new Set<Sprite>());
+    s.setData('status', o.status);
     if (o.bounces > 0) s.setBounce(1, 1);
     this.time.delayedCall(o.life, () => s.destroy());
   }
@@ -1215,6 +1247,7 @@ export class GameScene extends Phaser.Scene {
       pierce: this.stats.pierce,
       bounces: this.stats.bounces,
       life: this.stats.range + 250,
+      status: m.type,
     };
 
     switch (m.shape) {
@@ -1250,19 +1283,86 @@ export class GameScene extends Phaser.Scene {
     if (hit.has(enemy)) return;
     hit.add(enemy);
 
-    const hp = (enemy.getData('hp') as number) - (shot.getData('dmg') as number);
+    const dmg = shot.getData('dmg') as number;
+    const hp = (enemy.getData('hp') as number) - dmg;
     enemy.setData('hp', hp);
     enemy.setTint(0xff6666);
-    this.time.delayedCall(90, () => enemy.active && enemy.clearTint());
+    enemy.setData('flashUntil', this.time.now + 90);
+    const status = shot.getData('status') as string | undefined;
+    // Drenar cura aunque el golpe lo derrote; el resto solo afecta a quien sigue en pie
+    if (status && (hp > 0 || statusForType(status)?.kind === 'drain')) this.applyStatusTo(enemy, status, dmg);
 
     const pierce = shot.getData('pierce') as number;
     if (pierce > 0) shot.setData('pierce', pierce - 1);
     else shot.destroy();
 
-    if (hp <= 0) {
-      enemy.destroy();
-      this.checkClear();
+    if (hp <= 0) this.killEnemy(enemy);
+  }
+
+  private killEnemy(enemy: Sprite) {
+    enemy.destroy();
+    this.checkClear();
+  }
+
+  // --- Estados (quemar, congelar, paralizar…) ---
+
+  /** Aplica el estado del tipo del poder. Drenar cura al jugador y empujar aparta al enemigo al momento. */
+  private applyStatusTo(enemy: Sprite, type: string, damage: number) {
+    const effect = statusForType(type);
+    if (!effect) return;
+    const now = this.time.now;
+    if (effect.kind === 'drain') {
+      const heal = drainHeal(damage);
+      this.hp = Math.min(this.stats.maxHp, this.hp + heal);
+      this.popup(this.player.x, this.player.y - 50, `+${heal} PS`, effect.color);
+      return;
     }
+    if (effect.kind === 'knockback') {
+      const ai = enemy.getData('ai') as EnemyAI | undefined;
+      const away = new Phaser.Math.Vector2(enemy.x - this.player.x, enemy.y - this.player.y).normalize();
+      const force = ai?.boss ? 240 : 520;
+      enemy.setVelocity(away.x * force, away.y * force);
+      if (ai) ai.knockUntil = now + 200;
+      return;
+    }
+    const prev = (enemy.getData('statuses') as ActiveStatus[] | undefined) ?? [];
+    const fresh = !prev.some((s) => s.kind === effect.kind && now < s.until);
+    enemy.setData('statuses', applyStatus(prev, effect, now, damage));
+    if (fresh) this.popup(enemy.x, enemy.y - (enemy.getData('size') as number) / 2 - 10, effect.label, effect.color);
+  }
+
+  /** Daño de quemaduras y veneno. Devuelve true si el enemigo ha caído. */
+  private tickEnemyStatus(e: Sprite, time: number): boolean {
+    const list = e.getData('statuses') as ActiveStatus[] | undefined;
+    if (!list || list.length === 0) return false;
+    const { damage, list: rest } = tickStatuses(list, time);
+    e.setData('statuses', rest);
+    if (damage <= 0) return false;
+    const hp = (e.getData('hp') as number) - damage;
+    e.setData('hp', hp);
+    if (hp > 0) return false;
+    this.killEnemy(e);
+    return true;
+  }
+
+  /** Tinte del enemigo: destello al recibir un golpe, aviso de embestida o el color de su estado. */
+  private paintEnemy(e: Sprite, time: number) {
+    if (!e.active || time < ((e.getData('flashUntil') as number | undefined) ?? 0)) return;
+    const ai = e.getData('ai') as EnemyAI | undefined;
+    if (ai?.state === 'windup') return;
+    const tint = statusTint((e.getData('statuses') as ActiveStatus[] | undefined) ?? [], time);
+    if (tint !== null) e.setTint(tint);
+    else if (e.isTinted) e.clearTint();
+  }
+
+  /** Texto que sube y se desvanece (estados, curación). */
+  private popup(x: number, y: number, text: string, color: number) {
+    const t = this.add
+      .text(x, y, text, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#' + color.toString(16).padStart(6, '0') })
+      .setOrigin(0.5)
+      .setDepth(15)
+      .setStroke('#1d2848', 4);
+    this.tweens.add({ targets: t, y: y - 30, alpha: 0, duration: 800, onComplete: () => t.destroy() });
   }
 
   // --- Oleadas ---

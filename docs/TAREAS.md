@@ -40,7 +40,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
   **Rush de jefes** (solo jefes legendarios seguidos, objeto entre jefe y jefe).
 - Cada modo guarda récord (ronda/piso/jefes) en `save.ts` y lo muestra en el menú.
 
-## [ ] T6 — Efectos por tipo
+## [x] T6 — Efectos por tipo
 - Los poderes aplican estados según su tipo: fuego quema (daño en el tiempo), hielo congela/ralentiza,
   eléctrico paraliza a ratos, veneno envenena, planta drena vida, etc. Iconos o tinte sobre el enemigo.
 - Tabla de efectos pura en `src/data/` con tests.

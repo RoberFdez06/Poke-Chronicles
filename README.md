@@ -80,6 +80,11 @@ Los desbloqueados se guardan en el navegador (`localStorage`, clave `pokeisaac.u
   dos tipos, se reparten entre los dos) que aparecen como objetos y ocupan una ranura (teclas 1-4).
   La potencia decide cómo salen: disparo rápido (<50), anillo (50-69), abanico (70-99) o proyectil grande
   que atraviesa (100+); a más potencia, más recarga. Con las 4 ranuras llenas, el siguiente sustituye al más antiguo.
+- **Estados por tipo**: al golpear, cada poder aplica el estado de su tipo (tinte en el enemigo y un aviso que sube):
+  Fuego **quema** y Veneno **envenena** (daño en el tiempo), Hielo **congela** (muy lento), Eléctrico **paraliza**
+  (se queda quieto a ratos), Agua **empapa** (algo más lento), Psíquico y Fantasma **confunden** (se mueve y apunta
+  dando bandazos), Planta y Bicho **drenan** (recuperas PS) y Lucha, Roca y Tierra **empujan**. Los jefes resisten la
+  lentitud y la parálisis. Tabla en `src/data/status.ts`.
 - Los objetos salen siempre en la sala de objeto y, a veces (25 %), al limpiar una sala de combate.
 - **Enemigos variados**: cada piso tiene 4 especies al azar de PokeAPI (nunca legendarios, singulares ni
   ultraentes), más fuertes cuanto más hondo (por su suma de estadísticas base: en torno a 280 en el piso 1 y
@@ -112,6 +117,7 @@ src/
   scenes/FirstStarterScene.ts  primera partida: elegir región e inicial
   data/regions.ts      regiones, iniciales y filtros de la colección (puro)
   data/modes.ts        modos de juego, oleadas, arena y récords (puro)
+  data/status.ts       estados por tipo: quemar, congelar, paralizar… (puro)
   scenes/ModeScene.ts  elegir modo de juego
   ui/nav.ts            entrada de menús (NavInput, PadButtons) y botones (MenuList)
   ui/cards.ts          tarjeta de Pokémon, carga de sprites y botón "Volver"
@@ -131,6 +137,7 @@ tests/
   moves.test.ts        tests de poderes por tipo
   regions.test.ts      tests de regiones y filtros
   modes.test.ts        tests de modos y récords
+  status.test.ts       tests de estados
 scripts/
   buildSpeciesIndex.mjs  genera public/data/species-index.json desde PokeAPI
 ```
@@ -165,7 +172,7 @@ En Oleadas, al continuar se repite la ronda en la que estabas.
 ## Siguientes pasos
 
 1. ~~Generación procedural del piso con salas y puertas.~~ Hecho (modo Normal, versión inicial).
-2. ~~Objetos y bayas que modifican estadísticas.~~ Hecho (pasivos y poderes; faltan efectos de estado por tipo).
+2. ~~Objetos y bayas que modifican estadísticas.~~ Hecho (pasivos, poderes y estados por tipo).
 3. ~~Jefes y modos: Normal, Oleadas, Infinito y Rush de jefes.~~ Hecho.
 4. Gacha con monedas ganadas jugando (común, raro, épico, ultraente y legendario).
 5. Empaquetado como app con Tauri o Electron.
