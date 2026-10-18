@@ -262,3 +262,18 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
   `main.ts`, `nav.ts`, `GameScene`, `StarterScene`, `FirstStarterScene`, `GachaScene`, README.
 - **Dudas**: el navegador no deja sonar hasta el primer gesto, así que la música empieza con el primer clic o tecla.
   No lo he podido escuchar: los volúmenes son a ojo.
+
+## T11 — Ajustes (2026-10-18)
+
+- **Qué**: `SettingsScene` (registrada antes de `PauseScene`) con Música y Efectos (◀ ▶ en pasos de 10 %, se oye un
+  "clic" al cambiar), Pantalla completa (`scale.toggleFullscreen`, necesita un gesto: Enter, A o clic lo son),
+  Mostrar controles, Borrar progreso y Volver. Teclado, ratón (clic en la fila; en el volumen, mitad izquierda baja y
+  derecha sube) y mando; Esc/B y botón "← Volver".
+- **Desde la pausa**: nueva opción "Ajustes"; se abre encima (`bringToTop`, la pausa se queda en pausa) y al
+  cerrarla se vuelve a la pausa con la entrada reiniciada para que el B que cerró Ajustes no cierre también la pausa.
+- **Borrar progreso**: doble confirmación; `resetProgress` (en `save.ts`, con test) borra desbloqueos, tickets,
+  récords y los 3 huecos (`removeItem`), no el volumen. Si se hace desde la pausa, sale al menú sin guardar.
+  Después "Jugar" vuelve a pedir región e inicial.
+- **Controles**: añadida la fila "Usar (Centro Pokémon, tienda)" a la lista de controles.
+- **Archivos**: `src/scenes/SettingsScene.ts` (nueva), `save.ts` (+test), `controls.ts`, `MenuScene`, `PauseScene`,
+  `GameScene`, `main.ts`, README.

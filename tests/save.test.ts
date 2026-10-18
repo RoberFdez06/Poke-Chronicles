@@ -18,6 +18,7 @@ function fakeStorage(initial?: string): StorageLike & { data: Map<string, string
     data,
     getItem: (k) => data.get(k) ?? null,
     setItem: (k, v) => void data.set(k, v),
+    removeItem: (k) => void data.delete(k),
   };
 }
 
@@ -115,4 +116,22 @@ test('migración: el saldo de monedas de antes pasa a tickets sin perder nada', 
   // Una vez migrado manda la clave nueva
   st.data.set(COINS_KEY, '9999');
   assert.equal(loadTickets(st), 350);
+});
+
+import { AUDIO_KEY, RECORDS_KEY, resetProgress } from '../src/data/save.ts';
+
+test('borrar progreso lo deja todo como la primera vez, salvo el volumen', () => {
+  const st = fakeStorage();
+  unlockPokemon(152, st);
+  addTickets(500, st);
+  st.data.set(RECORDS_KEY, '{"waves":4}');
+  st.data.set('pokeisaac.run.1', '{}');
+  st.data.set(AUDIO_KEY, '{"music":0.1,"sfx":0.2}');
+  resetProgress(st);
+  assert.equal(needsFirstStarter(st), true);
+  assert.equal(loadTickets(st), 0);
+  assert.equal(st.data.has(RECORDS_KEY), false);
+  assert.equal(st.data.has('pokeisaac.run.1'), false);
+  assert.ok(st.data.has(AUDIO_KEY));
+  resetProgress(null);
 });

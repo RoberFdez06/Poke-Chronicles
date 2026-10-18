@@ -107,7 +107,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 - Efectos sencillos generados con Web Audio (disparo, golpe, recoger objeto, puerta, sala limpia), sin archivos con derechos.
 - Volumen de música/efectos guardado en `save.ts`.
 
-## [ ] T11 — Ajustes
+## [x] T11 — Ajustes
 - Pantalla "Ajustes" desde el menú principal y desde la pausa: volumen, pantalla completa, mostrar controles,
   y "Borrar progreso" con doble confirmación. Teclado, ratón y mando.
 

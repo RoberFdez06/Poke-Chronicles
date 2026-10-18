@@ -46,8 +46,14 @@ efectos se guarda en el navegador (`pokeisaac.audio`, en `src/data/save.ts`).
 
 ## Menú principal
 
-El juego arranca en el menú: **Jugar** (hueco → Pokémon → modo), **Gacha** (gasta tickets para desbloquear Pokémon) y **Controles**. Esc o B vuelven atrás desde la
+El juego arranca en el menú: **Jugar** (hueco → Pokémon → modo), **Gacha** (gasta tickets para desbloquear Pokémon), **Controles** y **Ajustes**. Esc o B vuelven atrás desde la
 selección de inicial. Abajo se ven los Pokémon desbloqueados y el récord de cada modo.
+
+## Ajustes
+
+Desde el menú principal y desde la pausa (`src/scenes/SettingsScene.ts`): volumen de música y de efectos (izquierda/
+derecha, clic en ◀ ▶), pantalla completa, controles y **Borrar progreso** (con doble confirmación: borra Pokémon,
+tickets, récords y partidas, pero no el volumen). Arriba/abajo para elegir, Enter/A/clic para usar, Esc/B o "Volver".
 
 ## Pausa y partidas guardadas
 
@@ -59,7 +65,7 @@ Si sales en mitad de un combate, al continuar esa sala se reinicia con los enemi
 desbloqueos son comunes a los 3 huecos; las monedas son de cada partida. El guardado vive en `src/data/runSave.ts` (claves `pokeisaac.run.0..2`).
 
 La pausa muestra tus estadísticas, objetos y poderes, y tiene *Reanudar*, *Reiniciar* (con confirmación),
-*Controles* y *Salir y guardar*.
+*Controles*, *Ajustes* y *Salir y guardar*.
 
 ## Gacha, tickets y monedas
 
@@ -188,6 +194,7 @@ src/
   data/pokeStats.ts    estadísticas reales de cada Pokémon → estadísticas de juego (puro)
   data/loot.ts         monedas de la partida, bayas, pociones, Centro Pokémon y tienda (puro)
   scenes/ModeScene.ts  elegir modo de juego
+  scenes/SettingsScene.ts ajustes: volumen, pantalla completa, controles y borrar progreso
   ui/nav.ts            entrada de menús (NavInput, PadButtons) y botones (MenuList)
   ui/cards.ts          tarjeta de Pokémon, carga de sprites y botón "Volver"
   ui/audio.ts          efectos, música y gritos con Web Audio

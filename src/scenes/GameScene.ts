@@ -851,6 +851,12 @@ export class GameScene extends Phaser.Scene {
         this.scene.stop('Pause');
         this.scene.start('Menu');
       },
+      onReset: () => {
+        // El progreso ya se ha borrado: se sale sin guardar esta partida
+        this.ended = true;
+        this.scene.stop('Pause');
+        this.scene.start('Menu');
+      },
     };
     this.scene.launch('Pause', data);
     this.scene.pause();

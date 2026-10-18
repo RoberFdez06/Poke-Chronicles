@@ -42,6 +42,7 @@ export class MenuScene extends Phaser.Scene {
       { label: 'Jugar', action: () => goTo(this, 'Slots') },
       { label: 'Gacha', action: () => this.openGacha() },
       { label: 'Controles', action: () => this.showControls() },
+      { label: 'Ajustes', action: () => goTo(this, 'Settings') },
     ];
     this.buttons = [];
     this.selected = 0;
@@ -64,13 +65,13 @@ export class MenuScene extends Phaser.Scene {
       .setAlpha(0.85);
 
     // Botones
-    const top = 290;
+    const top = 270;
     this.items.forEach((item, i) => {
       this.buttons.push(this.buildButton(item, i, 480, top + i * (BTN.h + BTN.gap)));
     });
 
     this.toast = this.add
-      .text(480, 540, '', { fontFamily: FONT, fontSize: '20px', color: '#ffd34d' })
+      .text(480, 548, '', { fontFamily: FONT, fontSize: '20px', color: '#ffd34d' })
       .setOrigin(0.5)
       .setDepth(60);
 
@@ -164,7 +165,7 @@ export class MenuScene extends Phaser.Scene {
         .setOrigin(0.5),
     );
     CONTROLS.forEach(([what, how], k) => {
-      const y = 212 + k * 62;
+      const y = 196 + k * 56;
       parts.push(
         this.add.text(170, y, what, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#2b3a67' }),
         this.add.text(170, y + 28, how, { fontFamily: FONT, fontSize: '18px', color: '#4a5578' }),

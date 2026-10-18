@@ -7,6 +7,8 @@ import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } f
 export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  /** Opcional (localStorage lo tiene): para "Borrar progreso". */
+  removeItem?(key: string): void;
 }
 
 export const UNLOCKED_KEY = 'pokeisaac.unlocked';
@@ -180,5 +182,31 @@ export function saveAudio(settings: AudioSettings, storage: StorageLike | null =
     storage?.setItem(AUDIO_KEY, JSON.stringify(parseAudio(JSON.stringify(settings))));
   } catch {
     // sin almacenamiento: no se guarda
+  }
+}
+
+// --- Borrar progreso (Ajustes) ---
+
+/** Todo lo que se pierde al borrar el progreso: desbloqueos, tickets, récords y partidas. El volumen se queda. */
+export const PROGRESS_KEYS: readonly string[] = [
+  UNLOCKED_KEY,
+  TICKETS_KEY,
+  COINS_KEY,
+  RECORDS_KEY,
+  'pokeisaac.run.0',
+  'pokeisaac.run.1',
+  'pokeisaac.run.2',
+];
+
+/** Vuelve a empezar de cero: al abrir "Jugar" tocará elegir región e inicial otra vez. */
+export function resetProgress(storage: StorageLike | null = browserStorage()) {
+  if (!storage) return;
+  for (const key of PROGRESS_KEYS) {
+    try {
+      if (storage.removeItem) storage.removeItem(key);
+      else storage.setItem(key, '');
+    } catch {
+      // sin almacenamiento: nada que borrar
+    }
   }
 }

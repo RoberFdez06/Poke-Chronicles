@@ -5,6 +5,7 @@ import { typeColor, typeHex, typeNameEs } from '../data/types';
 import { addHpBar, addTypeChip, drawBox } from '../ui/theme';
 import { STAT_KEYS, STAT_LABEL, type BaseStats } from '../data/pokeStats';
 import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
+import type { SettingsData } from './SettingsScene';
 
 export interface PauseData {
   starterName: string;
@@ -29,6 +30,8 @@ export interface PauseData {
   onResume: () => void;
   onRestart: () => void;
   onQuit: () => void;
+  /** Tras borrar el progreso desde Ajustes: salir sin guardar. */
+  onReset: () => void;
 }
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -103,7 +106,7 @@ export class PauseScene extends Phaser.Scene {
       if (m) addTypeChip(this, x + 196, y + 11, typeNameEs(m.type), typeColor(m.type), 64, 20);
     });
 
-    this.menu = new MenuList(this, 760, 200, ['Reanudar', 'Reiniciar', 'Controles', 'Salir y guardar'], (i) => this.pick(i), {
+    this.menu = new MenuList(this, 760, 200, ['Reanudar', 'Reiniciar', 'Controles', 'Ajustes', 'Salir y guardar'], (i) => this.pick(i), {
       w: 290, h: 56, gap: 20,
     });
     this.add
@@ -118,7 +121,24 @@ export class PauseScene extends Phaser.Scene {
     if (i === 0) return this.finish(this.info.onResume);
     if (i === 1) return this.confirmRestart();
     if (i === 2) return this.showControls();
+    if (i === 3) return this.openSettings();
     return this.finish(this.info.onQuit);
+  }
+
+  /** Ajustes encima de la pausa; al cerrarlos se vuelve aquí. */
+  private openSettings() {
+    const data: SettingsData = {
+      overlay: true,
+      onClose: () => {
+        this.scene.resume();
+        // Lo pulsado en Ajustes (B, Esc) no cuenta al volver
+        this.nav = new NavInput(this);
+      },
+      onReset: () => this.finish(this.info.onReset),
+    };
+    this.scene.launch('Settings', data);
+    this.scene.bringToTop('Settings');
+    this.scene.pause();
   }
 
   /** Cierra la pausa y ejecuta la acción en la partida. */
@@ -155,7 +175,7 @@ export class PauseScene extends Phaser.Scene {
     const layer = addPanel(this, 480, 320, 700, 400, 50);
     layer.add(this.add.text(480, 158, 'Controles', { fontFamily: UI.FONT, fontSize: '34px', fontStyle: 'bold', color: '#2b3a67' }).setOrigin(0.5));
     CONTROLS.forEach(([what, how], k) => {
-      const y = 212 + k * 62;
+      const y = 196 + k * 56;
       layer.add(this.add.text(170, y, what, { fontFamily: UI.FONT, fontSize: '22px', fontStyle: 'bold', color: '#2b3a67' }));
       layer.add(this.add.text(170, y + 28, how, { fontFamily: UI.FONT, fontSize: '18px', color: '#4a5578' }));
     });
