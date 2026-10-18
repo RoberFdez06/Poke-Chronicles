@@ -88,7 +88,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 - Los enemigos y jefes también usan sus estadísticas (vida, daño, velocidad), multiplicadas por la dificultad del piso.
 - Se ven en la tarjeta al elegir inicial (barras de las 6 estadísticas, en español) y en la pausa.
 
-## [ ] T19 — Efecto para todos los tipos y colores claros (va antes de T9)
+## [x] T19 — Efecto para todos los tipos y colores claros (va antes de T9)
 - Todos los tipos tienen efecto en `STATUS_EFFECTS`: Volador empuja con viento, Dragón hace +25 % de daño,
   Siniestro asusta (el enemigo huye 1,5 s), Acero atraviesa un enemigo más, Hada debilita (el enemigo hace −30 %
   de daño), Normal aturde 0,3 s. Ajusta el resto si alguno falta.

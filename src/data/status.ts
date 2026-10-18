@@ -1,7 +1,21 @@
 // Estados que aplican los poderes según su tipo: quemar, congelar, paralizar, envenenar, drenar…
 // Lógica pura, sin Phaser ni red, para poder testearla. Los tiempos van en milisegundos.
 
-export type StatusKind = 'burn' | 'freeze' | 'paralysis' | 'poison' | 'drain' | 'knockback' | 'confuse' | 'soak';
+export type StatusKind =
+  | 'burn'
+  | 'freeze'
+  | 'paralysis'
+  | 'poison'
+  | 'drain'
+  | 'knockback'
+  | 'confuse'
+  | 'soak'
+  | 'gust'
+  | 'fury'
+  | 'fear'
+  | 'pierce'
+  | 'weaken'
+  | 'stun';
 
 export interface StatusEffect {
   kind: StatusKind;
@@ -23,9 +37,16 @@ export const STATUS_EFFECTS: Readonly<Record<StatusKind, StatusEffect>> = {
   paralysis: { kind: 'paralysis', label: '¡Paralizado!', color: 0xffe14d, duration: 3000, dpsFraction: 0, slow: 0.8 },
   soak: { kind: 'soak', label: '¡Empapado!', color: 0x7aa7ff, duration: 2500, dpsFraction: 0, slow: 0.7 },
   confuse: { kind: 'confuse', label: '¡Confuso!', color: 0xff8fc7, duration: 2500, dpsFraction: 0, slow: 1 },
+  fear: { kind: 'fear', label: '¡Asustado!', color: 0x8a6f9e, duration: 1500, dpsFraction: 0, slow: 1 },
+  weaken: { kind: 'weaken', label: '¡Debilitado!', color: 0xf4a6d0, duration: 4000, dpsFraction: 0, slow: 1 },
+  stun: { kind: 'stun', label: '¡Aturdido!', color: 0xd8d8c0, duration: 300, dpsFraction: 0, slow: 0 },
   // Instantáneos: drenar cura al jugador y empujar aparta al enemigo; no se quedan en la lista
   drain: { kind: 'drain', label: '¡Drenado!', color: 0x7ac74c, duration: 0, dpsFraction: 0, slow: 1 },
   knockback: { kind: 'knockback', label: '¡Empujado!', color: 0xc8a165, duration: 0, dpsFraction: 0, slow: 1 },
+  gust: { kind: 'gust', label: '¡Ráfaga!', color: 0xb9a6f5, duration: 0, dpsFraction: 0, slow: 1 },
+  // Estos dos actúan al disparar o golpear (ver hitDamageMul y extraPierce), no sobre el enemigo
+  fury: { kind: 'fury', label: '¡Furia!', color: 0x7b4dff, duration: 0, dpsFraction: 0, slow: 1 },
+  pierce: { kind: 'pierce', label: '¡Atraviesa!', color: 0xb7b7ce, duration: 0, dpsFraction: 0, slow: 1 },
 };
 
 /** Qué estado aplica cada tipo (los que no salen aquí no aplican ninguno). */
@@ -42,7 +63,26 @@ export const STATUS_BY_TYPE: Readonly<Partial<Record<string, StatusKind>>> = {
   ground: 'knockback',
   psychic: 'confuse',
   ghost: 'confuse',
+  flying: 'gust',
+  dragon: 'fury',
+  dark: 'fear',
+  steel: 'pierce',
+  fairy: 'weaken',
+  normal: 'stun',
 };
+
+/** Dragón: los poderes hacen un 25 % más de daño. */
+export const FURY_BONUS = 1.25;
+export const hitDamageMul = (type: string): number => (STATUS_BY_TYPE[type] === 'fury' ? FURY_BONUS : 1);
+
+/** Acero: los poderes atraviesan un enemigo más. */
+export const extraPierce = (type: string): number => (STATUS_BY_TYPE[type] === 'pierce' ? 1 : 0);
+
+/** Hada: el enemigo debilitado hace un 30 % menos de daño. */
+export const WEAKEN_FACTOR = 0.7;
+
+/** Fuerza del empujón: Lucha, Roca y Tierra empujan; Volador, con viento, más lejos. */
+export const KNOCKBACK_FORCE: Partial<Record<StatusKind, number>> = { knockback: 520, gust: 760 };
 
 export function statusForType(type: string): StatusEffect | null {
   const k = STATUS_BY_TYPE[type];
@@ -118,6 +158,13 @@ export function speedMultiplier(list: readonly ActiveStatus[], now: number, boss
 
 export const isConfused = (list: readonly ActiveStatus[], now: number): boolean =>
   active(list, now).some((s) => s.kind === 'confuse');
+
+/** Siniestro: asustado, el enemigo huye de ti. */
+export const isFeared = (list: readonly ActiveStatus[], now: number): boolean => active(list, now).some((s) => s.kind === 'fear');
+
+/** Multiplicador del daño que hace el enemigo (debilitado por Hada: ×0,7). */
+export const enemyDamageMul = (list: readonly ActiveStatus[], now: number): number =>
+  active(list, now).some((s) => s.kind === 'weaken') ? WEAKEN_FACTOR : 1;
 
 /** Tinte del enemigo: el del último estado aplicado que siga activo, o null. */
 export function statusTint(list: readonly ActiveStatus[], now: number): number | null {

@@ -130,8 +130,10 @@ vida, mucho daño o mucha velocidad. Las 6 estadísticas se ven en barras en las
 - **Estados por tipo**: al golpear, cada poder aplica el estado de su tipo (tinte en el enemigo y un aviso que sube):
   Fuego **quema** y Veneno **envenena** (daño en el tiempo), Hielo **congela** (muy lento), Eléctrico **paraliza**
   (se queda quieto a ratos), Agua **empapa** (algo más lento), Psíquico y Fantasma **confunden** (se mueve y apunta
-  dando bandazos), Planta y Bicho **drenan** (recuperas PS) y Lucha, Roca y Tierra **empujan**. Los jefes resisten la
-  lentitud y la parálisis. Tabla en `src/data/status.ts`.
+  dando bandazos), Planta y Bicho **drenan** (recuperas PS), Lucha, Roca y Tierra **empujan**, Volador empuja más lejos con
+  **viento**, Dragón hace **+25 % de daño**, Siniestro **asusta** (huye 1,5 s), Acero **atraviesa** un enemigo más, Hada
+  **debilita** (−30 % de daño durante 4 s) y Normal **aturde** 0,3 s. Todos los tipos tienen efecto. Los jefes resisten la
+  lentitud, la parálisis y el aturdimiento. Cada ranura de poder del HUD lleva el nombre de su tipo. Tabla en `src/data/status.ts`.
 - **Vida de los enemigos**: los enemigos chocan entre sí (no se amontonan) y, cuando les has dado, llevan encima una
   barrita de vida verde/amarilla/roja. El jefe tiene una barra grande arriba con su nombre y su tipo.
 - Los objetos salen siempre en la sala de objeto y, a veces (25 %), al limpiar una sala de combate.

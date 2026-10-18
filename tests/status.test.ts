@@ -14,6 +14,13 @@ import {
   statusForType,
   statusTint,
   tickStatuses,
+  enemyDamageMul,
+  extraPierce,
+  hitDamageMul,
+  isFeared,
+  FURY_BONUS,
+  KNOCKBACK_FORCE,
+  WEAKEN_FACTOR,
 } from '../src/data/status.ts';
 import { TYPE_COLORS } from '../src/data/types.ts';
 
@@ -24,7 +31,7 @@ test('cada tipo de la tabla existe y aplica el estado que toca', () => {
   assert.equal(statusForType('electric')?.kind, 'paralysis');
   assert.equal(statusForType('poison')?.kind, 'poison');
   assert.equal(statusForType('grass')?.kind, 'drain');
-  assert.equal(statusForType('normal'), null);
+  assert.equal(statusForType('normal')?.kind, 'stun');
   assert.equal(statusForType('desconocido'), null);
 });
 
@@ -86,4 +93,32 @@ test('confusión y tinte', () => {
   assert.ok(!isConfused(list, 99999));
   assert.equal(statusTint(list, 100), STATUS_EFFECTS.confuse.color);
   assert.equal(statusTint([], 100), null);
+});
+
+test('todos los tipos tienen efecto', () => {
+  for (const t of Object.keys(TYPE_COLORS)) assert.ok(statusForType(t), `${t} sin efecto`);
+  assert.equal(Object.keys(STATUS_BY_TYPE).length, Object.keys(TYPE_COLORS).length);
+  for (const k of Object.values(STATUS_BY_TYPE)) assert.ok(STATUS_EFFECTS[k!].label.length > 2);
+});
+
+test('Volador empuja más que Lucha; Dragón pega más; Acero atraviesa', () => {
+  assert.equal(statusForType('flying')?.kind, 'gust');
+  assert.ok(KNOCKBACK_FORCE.gust! > KNOCKBACK_FORCE.knockback!);
+  assert.equal(hitDamageMul('dragon'), FURY_BONUS);
+  assert.equal(hitDamageMul('fire'), 1);
+  assert.equal(extraPierce('steel'), 1);
+  assert.equal(extraPierce('water'), 0);
+});
+
+test('Siniestro asusta, Hada debilita y Normal aturde', () => {
+  const fear = applyStatus([], STATUS_EFFECTS.fear, 0, 10);
+  assert.ok(isFeared(fear, 1000));
+  assert.ok(!isFeared(fear, 1600));
+  const weak = applyStatus([], STATUS_EFFECTS.weaken, 0, 10);
+  assert.equal(enemyDamageMul(weak, 100), WEAKEN_FACTOR);
+  assert.equal(enemyDamageMul([], 100), 1);
+  const stun = applyStatus([], STATUS_EFFECTS.stun, 0, 10);
+  assert.equal(speedMultiplier(stun, 100), 0);
+  assert.equal(speedMultiplier(stun, 400), 1);
+  assert.equal(speedMultiplier(stun, 100, true), BOSS_MIN_SPEED);
 });

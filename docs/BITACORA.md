@@ -220,3 +220,13 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
   `pokeapi.ts`, `runSave.ts` (+tests), `GameScene`, `PauseScene`, `SlotsScene`, `StarterScene`, `FirstStarterScene`,
   `ui/cards.ts` (`statBars`), README.
 - **Dudas**: los factores k y los límites son a ojo; están juntos en `PLAYER_LIMITS` y `playerBaseStats`.
+
+## T19 — Efecto para todos los tipos y colores claros (2026-10-18)
+
+- **Qué**: los 18 tipos tienen efecto (test que recorre `TYPE_COLORS`). Nuevos: Volador `gust` (empujón de 760 en
+  vez de 520), Dragón `fury` (+25 % de daño del poder, `hitDamageMul`), Siniestro `fear` (huye 1,5 s sin atacar),
+  Acero `pierce` (+1 enemigo atravesado, `extraPierce`), Hada `weaken` (el enemigo hace ×0,7 de daño 4 s, por
+  contacto y en sus proyectiles) y Normal `stun` (quieto 0,3 s; el jefe solo baja a ×0,7). El resto sigue igual.
+- **Colores claros**: cada ranura de poder del HUD lleva encima una ficha con el nombre del tipo ("VOLADOR",
+  "VENENO") del color del tipo; la pausa ya mostraba la ficha de tipo de cada poder desde T8.
+- **Archivos**: `src/data/status.ts`, `tests/status.test.ts`, `GameScene`, README.

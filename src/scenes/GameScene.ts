@@ -50,6 +50,11 @@ import {
   statusForType,
   statusTint,
   tickStatuses,
+  enemyDamageMul,
+  extraPierce,
+  hitDamageMul,
+  isFeared,
+  KNOCKBACK_FORCE,
   ActiveStatus,
 } from '../data/status';
 import type { SpeciesFact } from '../data/gacha';
@@ -268,6 +273,8 @@ export class GameScene extends Phaser.Scene {
   /** Fondo de cada ranura de poder y lo que muestra (para no redibujarlo en cada fotograma). */
   private slotBoxes: Phaser.GameObjects.Graphics[] = [];
   private slotShown: string[] = [];
+  /** Nombre del tipo de cada poder (Volador y Veneno se confundían solo por el color). */
+  private slotTypes: Phaser.GameObjects.Text[] = [];
   private banner!: Phaser.GameObjects.Text;
   private bannerBox!: Phaser.GameObjects.Graphics;
   private bannerTimer?: Phaser.Time.TimerEvent;
@@ -316,6 +323,7 @@ export class GameScene extends Phaser.Scene {
     this.hud = [];
     this.slotBoxes = [];
     this.slotShown = [];
+    this.slotTypes = [];
     this.floorItems = [];
     this.doorMap.clear();
     this.visited.clear();
@@ -639,6 +647,14 @@ export class GameScene extends Phaser.Scene {
     const style = { fontFamily: FONT, fontSize: '19px', fontStyle: 'bold', color: HEX.text };
     for (let i = 0; i < SLOT_COUNT; i++) {
       this.slotBoxes.push(fixed(this.add.graphics()));
+      this.slotTypes.push(
+        this.add
+          .text(84 + i * 210 + 151, 580, '', { fontFamily: FONT, fontSize: '11px', fontStyle: 'bold', color: '#ffffff' })
+          .setOrigin(0.5)
+          .setDepth(12)
+          .setScrollFactor(0)
+          .setShadow(1, 1, '#00000088', 0),
+      );
       this.slotShown.push('');
       const slot = this.add.text(104 + i * 210, 591, '', style).setDepth(11).setScrollFactor(0);
       // Con ratón, un clic en la ranura lanza el poder
@@ -1091,6 +1107,12 @@ export class GameScene extends Phaser.Scene {
     // Confuso: va (y apunta) dando bandazos
     if (isConfused(statuses, time)) toPlayer.rotate(Math.PI * 0.8 * Math.sin((time / 260) * (ai?.side ?? 1)));
     const walk = (v: Phaser.Math.Vector2) => e.setVelocity(v.x * speed, v.y * speed);
+    // Asustado (Siniestro): huye de ti y no ataca
+    if (isFeared(statuses, time)) {
+      walk(toPlayer.clone().negate());
+      this.face(e, toPlayer);
+      return;
+    }
 
     if (!ai || ai.behavior === 'chase') {
       walk(toPlayer);
@@ -1194,7 +1216,8 @@ export class GameScene extends Phaser.Scene {
     const s = this.foeShots.create(e.x, e.y, 'foe-shot') as Sprite;
     s.setTint(typeColor(type)).setScale(0.75).setDepth(4);
     s.setVelocity(dir.x * FOE_SHOT_SPEED, dir.y * FOE_SHOT_SPEED);
-    s.setData('dmg', Math.max(1, Math.round((e.getData('dmg') as number) * 0.8)));
+    const weak = enemyDamageMul((e.getData('statuses') as ActiveStatus[] | undefined) ?? [], this.time.now);
+    s.setData('dmg', Math.max(1, Math.round((e.getData('dmg') as number) * 0.8 * weak)));
     this.time.delayedCall(FOE_SHOT_LIFE, () => s.active && s.destroy());
   }
 
@@ -1381,7 +1404,9 @@ export class GameScene extends Phaser.Scene {
     const v = dir.clone().rotate(angle).scale(o.speed);
     const s = this.shots.create(this.player.x, this.player.y, 'shot') as Sprite;
     s.setTint(o.color).setScale(o.size).setDepth(4).setVelocity(v.x, v.y);
-    s.setData('dmg', o.damage).setData('pierce', o.pierce).setData('bounces', o.bounces);
+    // Acero: los poderes atraviesan un enemigo más
+    const pierce = o.pierce + (o.status ? extraPierce(o.status) : 0);
+    s.setData('dmg', o.damage).setData('pierce', pierce).setData('bounces', o.bounces);
     s.setData('hit', new Set<Sprite>());
     s.setData('status', o.status);
     if (o.bounces > 0) s.setBounce(1, 1);
@@ -1455,12 +1480,13 @@ export class GameScene extends Phaser.Scene {
     if (hit.has(enemy)) return;
     hit.add(enemy);
 
-    const dmg = shot.getData('dmg') as number;
+    const status = shot.getData('status') as string | undefined;
+    // Dragón: los poderes hacen más daño
+    const dmg = (shot.getData('dmg') as number) * (status ? hitDamageMul(status) : 1);
     const hp = (enemy.getData('hp') as number) - dmg;
     enemy.setData('hp', hp);
     enemy.setTint(0xff6666);
     enemy.setData('flashUntil', this.time.now + 90);
-    const status = shot.getData('status') as string | undefined;
     // Drenar cura aunque el golpe lo derrote; el resto solo afecta a quien sigue en pie
     if (status && (hp > 0 || statusForType(status)?.kind === 'drain')) this.applyStatusTo(enemy, status, dmg);
 
@@ -1765,14 +1791,18 @@ export class GameScene extends Phaser.Scene {
       this.popup(this.player.x, this.player.y - 50, `+${heal} PS`, effect.color);
       return;
     }
-    if (effect.kind === 'knockback') {
+    const push = KNOCKBACK_FORCE[effect.kind];
+    if (push) {
+      // Lucha, Roca y Tierra empujan; Volador, con viento, más lejos
       const ai = enemy.getData('ai') as EnemyAI | undefined;
       const away = new Phaser.Math.Vector2(enemy.x - this.player.x, enemy.y - this.player.y).normalize();
-      const force = ai?.boss ? 240 : 520;
+      const force = ai?.boss ? push * 0.45 : push;
       enemy.setVelocity(away.x * force, away.y * force);
       if (ai) ai.knockUntil = now + 200;
       return;
     }
+    // Furia (Dragón) y atravesar (Acero) ya actuaron al disparar y golpear
+    if (effect.duration <= 0) return;
     const prev = (enemy.getData('statuses') as ActiveStatus[] | undefined) ?? [];
     const fresh = !prev.some((s) => s.kind === effect.kind && now < s.until);
     enemy.setData('statuses', applyStatus(prev, effect, now, damage));
@@ -1919,7 +1949,13 @@ export class GameScene extends Phaser.Scene {
     const g = this.slotBoxes[i].clear();
     const x = 84 + i * 210;
     drawBox(g, x, 580, 200, 44, { radius: 10, fillAlpha: m ? 1 : 0.5 });
-    if (m) g.fillStyle(typeColor(m.type), 1).fillRoundedRect(x + 9, 589, 8, 26, 4);
+    if (m) {
+      g.fillStyle(typeColor(m.type), 1).fillRoundedRect(x + 9, 589, 8, 26, 4);
+      // Ficha con el nombre del tipo sobre el borde de arriba
+      g.fillStyle(0x1d2848, 1).fillRoundedRect(x + 110, 571, 82, 18, 9);
+      g.fillStyle(typeColor(m.type), 1).fillRoundedRect(x + 112, 573, 78, 14, 7);
+    }
+    this.slotTypes[i].setText(m ? typeNameEs(m.type).toUpperCase() : '');
     const text = this.hud[i];
     if (!m) text.setText(`${i + 1}  —`).setAlpha(0.6);
     else text.setText(`${i + 1}  ${pretty(m.name)}`).setAlpha(ready ? 1 : 0.4);
@@ -1950,7 +1986,9 @@ export class GameScene extends Phaser.Scene {
     if (ai && ai.behavior === 'hop' && ai.state !== 'walk') return;
     this.invulnUntil = now + 900;
     // Defensa y Def. Esp. reducen el daño recibido
-    this.hp -= Math.max(1, Math.round(((enemy.getData('dmg') as number | undefined) ?? 10) * this.stats.damageTaken));
+    // Los proyectiles ya llevan el debilitamiento; el contacto lo mira ahora (Hada: −30 %)
+    const weak = enemy.getData('ai') ? enemyDamageMul((enemy.getData('statuses') as ActiveStatus[] | undefined) ?? [], now) : 1;
+    this.hp -= Math.max(1, Math.round(((enemy.getData('dmg') as number | undefined) ?? 10) * weak * this.stats.damageTaken));
     this.player.setTint(0xff6666);
     this.time.delayedCall(150, () => this.player.active && this.player.clearTint());
 
