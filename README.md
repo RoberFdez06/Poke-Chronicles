@@ -66,10 +66,17 @@ Los desbloqueados se guardan en el navegador (`localStorage`, clave `pokeisaac.u
   La potencia decide cómo salen: disparo rápido (<50), anillo (50-69), abanico (70-99) o proyectil grande
   que atraviesa (100+); a más potencia, más recarga. Con las 4 ranuras llenas, el siguiente sustituye al más antiguo.
 - Los objetos salen siempre en la sala de objeto y, a veces (25 %), al limpiar una sala de combate.
+- **Enemigos variados**: cada piso tiene 4 especies al azar de PokeAPI (nunca legendarios, singulares ni
+  ultraentes), más fuertes cuanto más hondo (por su suma de estadísticas base: en torno a 280 en el piso 1 y
+  +65 por piso). Su tipo principal decide cómo se comportan: **persiguen** (Normal, Planta, Veneno, Bicho, Hada),
+  **embisten** en línea recta tras pararse y brillar en amarillo (Lucha, Roca, Tierra, Acero, Dragón), **disparan**
+  proyectiles con borde oscuro guardando la distancia (Fuego, Agua, Eléctrico, Hielo) o **saltan**: desaparecen y
+  reaparecen cerca de ti, sin hacer daño durante un instante (Volador, Psíquico, Fantasma, Siniestro). El jefe
+  también se comporta según su tipo. Tabla y estadísticas en `src/data/enemies.ts`.
 
 ## Qué hay en esta base
 
-- Piso con salas, puertas, minimapa, jefe al azar de PokeAPI y objetos.
+- Piso con salas, puertas, minimapa, enemigos variados, jefe legendario de PokeAPI y objetos.
 - Sprites pixel de PokeAPI de frente y de espalda: el personaje mira hacia donde dispara y los enemigos hacia ti.
 - Pantalla de selección de inicial antes de cada partida.
 
@@ -82,6 +89,7 @@ src/
   data/types.ts        colores por tipo
   data/items.ts        estadísticas, objetos pasivos y poderes (puro, testeable)
   data/gacha.ts        rarezas y tiradas del gacha (puro, aún sin conectar al juego)
+  data/enemies.ts      enemigos por piso, comportamiento por tipo y estadísticas (puro)
   data/save.ts         Pokémon desbloqueados guardados en el navegador
   scenes/MenuScene.ts     menú principal
   scenes/StarterScene.ts  pantalla para elegir inicial
@@ -97,6 +105,7 @@ tests/
   save.test.ts         tests del guardado de desbloqueos
   runSave.test.ts      tests de las partidas guardadas (y su migración)
   progression.test.ts  tests de pisos, dificultad y jefes
+  enemies.test.ts      tests de enemigos por piso y comportamientos
 scripts/
   buildSpeciesIndex.mjs  genera public/data/species-index.json desde PokeAPI
 ```

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { fetchPokemon, fetchRandomAttackMove, PokemonData } from '../data/pokeapi';
+import { fetchPokemon, fetchPokemonCard, fetchRandomAttackMove } from '../data/pokeapi';
 import { typeColor, typeHex } from '../data/types';
 import { addCoins } from '../data/save';
 import { clearRun, saveRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop } from '../data/runSave';
@@ -25,7 +25,8 @@ import {
   MovePower,
   PlayerStats,
 } from '../data/items';
-import { generateFloor, DIRS, OPPOSITE, Dir, Floor, Room } from '../level/floorGen';
+import { generateFloor, mulberry32, DIRS, OPPOSITE, Dir, Floor, Room } from '../level/floorGen';
+import { behaviorFor, enemyPool, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES } from '../data/enemies';
 import { drawMinimap } from './minimap';
 
 // Cada sala ocupa una pantalla del mundo; ROOM es su interior relativo a la celda
@@ -69,6 +70,32 @@ export interface GameData {
   carry?: FloorCarry;
 }
 
+/** Una de las especies de enemigo del piso. */
+interface FoeKind {
+  key: string;
+  behavior: EnemyBehavior;
+  bst: number;
+  type: string;
+}
+
+/** Estado de la IA de cada enemigo (guardado en el sprite con setData('ai')). */
+interface EnemyAI {
+  behavior: EnemyBehavior;
+  /** Fase: 'walk' (normal), 'windup'/'dash' (embestir), 'vanish'/'appear' (saltar). */
+  state: 'walk' | 'windup' | 'dash' | 'vanish' | 'appear';
+  /** Momento en que acaba la fase actual (o toca el siguiente disparo). */
+  until: number;
+  dir: Phaser.Math.Vector2;
+  /** Lado hacia el que rodea al jugador quien dispara: 1 o -1. */
+  side: number;
+  type: string;
+  boss: boolean;
+}
+
+/** Velocidad de los proyectiles enemigos (px/s) y cuánto duran. */
+const FOE_SHOT_SPEED = 250;
+const FOE_SHOT_LIFE = 2600;
+
 interface ShotOpts {
   damage: number;
   speed: number;
@@ -86,6 +113,11 @@ export class GameScene extends Phaser.Scene {
   private player!: Sprite;
   private enemies!: Phaser.Physics.Arcade.Group;
   private shots!: Phaser.Physics.Arcade.Group;
+  /** Proyectiles de los enemigos que disparan. */
+  private foeShots!: Phaser.Physics.Arcade.Group;
+  /** Especies de enemigo de este piso (salen de la semilla del piso, así al continuar son las mismas). */
+  private foeKinds: FoeKind[] = [];
+  private bossType = 'normal';
   private pickups!: Phaser.Physics.Arcade.Group;
   private walls!: Phaser.Physics.Arcade.StaticGroup;
   private doorBlocks!: Phaser.Physics.Arcade.StaticGroup;
@@ -233,20 +265,30 @@ export class GameScene extends Phaser.Scene {
     if (r) this.movePool = [...r.movePool];
     else if (this.movePool.length < 4) poolReady = this.fillMovePool(6);
 
-    // El inicial lo elige el jugador; Rattata (#19) hace de enemigo de prueba.
     // El jefe siempre es un legendario o singular, sin repetir en la partida mientras se pueda
+    const index = await loadSpeciesIndex().catch(() => []);
     let bossId = r?.bossId;
     if (bossId === undefined) {
-      const index = await loadSpeciesIndex().catch(() => []);
       bossId = pickBoss(bossPool(index), Math.random, this.bossHistory);
       this.bossHistory.push(bossId);
     }
     this.bossId = bossId;
-    const [starter, foe, boss] = await Promise.all([
+    // Enemigos del piso: más fuertes cuanto más hondo; la semilla del piso los fija (no hace falta guardarlos)
+    const foeIds = pickFloorEnemies(enemyPool(index, this.floorNum), mulberry32(this.floorSeed ^ 0x5bd1e995));
+    const [starter, boss, foeCards] = await Promise.all([
       fetchPokemon(this.starterId),
-      fetchPokemon(19),
       fetchPokemon(bossId),
+      Promise.all(foeIds.map((id) => fetchPokemonCard(id).catch(() => null))),
     ]);
+    let foes = foeCards.filter((c) => c !== null);
+    if (foes.length === 0) foes = [await fetchPokemonCard(FALLBACK_ENEMIES[0])];
+    this.foeKinds = foes.map((c) => ({
+      key: `foe-${c.id}`,
+      behavior: behaviorFor(c.types),
+      bst: index.find((s) => s.id === c.id)?.bst ?? 300,
+      type: c.types[0] ?? 'normal',
+    }));
+    this.bossType = boss.types[0] ?? 'normal';
     this.tearType = starter.types[0] ?? 'normal';
     this.starterName = starter.name;
     // Misma clave que usa StarterScene, así las texturas ya están cargadas
@@ -255,7 +297,11 @@ export class GameScene extends Phaser.Scene {
     await poolReady;
 
     this.load.crossOrigin = 'anonymous';
-    const sheets: [string, PokemonData][] = [[this.playerKey, starter], ['foe', foe], [this.bossKey, boss]];
+    const sheets: [string, { sprites: { front: string; back: string } }][] = [
+      [this.playerKey, starter],
+      [this.bossKey, boss],
+      ...foes.map((c) => [`foe-${c.id}`, c] as [string, typeof c]),
+    ];
     for (const [key, data] of sheets) {
       if (!this.textures.exists(`${key}-front`)) this.load.image(`${key}-front`, data.sprites.front);
       if (!this.textures.exists(`${key}-back`)) this.load.image(`${key}-back`, data.sprites.back);
@@ -312,6 +358,14 @@ export class GameScene extends Phaser.Scene {
       g.generateTexture('shot', 20, 20);
       g.destroy();
     }
+    if (!this.textures.exists('foe-shot')) {
+      // Disparo enemigo: con borde oscuro (el tinte no lo aclara) para distinguirlo de los tuyos
+      const g = this.add.graphics();
+      g.fillStyle(0x1d2848, 1).fillCircle(12, 12, 12);
+      g.fillStyle(0xffffff, 1).fillCircle(12, 12, 8);
+      g.generateTexture('foe-shot', 24, 24);
+      g.destroy();
+    }
 
     this.physics.world.setBounds(0, 0, this.floor.cols * VIEW.w, this.floor.rows * VIEW.h);
     this.walls = this.physics.add.staticGroup();
@@ -333,6 +387,7 @@ export class GameScene extends Phaser.Scene {
 
     this.enemies = this.physics.add.group();
     this.shots = this.physics.add.group();
+    this.foeShots = this.physics.add.group();
 
     this.physics.add.collider(this.player, [this.walls, this.doorBlocks]);
     this.physics.add.collider(this.enemies, [this.walls, this.doorBlocks]);
@@ -340,6 +395,11 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.shots, [this.walls, this.doorBlocks], (s) => this.onShotWall(asSprite(s)));
     this.physics.add.overlap(this.shots, this.enemies, (s, e) => this.onHit(asSprite(s), asSprite(e)));
     this.physics.add.overlap(this.player, this.enemies, (_p, e) => this.hurtPlayer(asSprite(e)));
+    this.physics.add.collider(this.foeShots, [this.walls, this.doorBlocks], (s) => asSprite(s).destroy());
+    this.physics.add.overlap(this.player, this.foeShots, (_p, s) => {
+      this.hurtPlayer(asSprite(s));
+      asSprite(s).destroy();
+    });
     this.physics.add.overlap(this.player, this.pickups, (_p, it) => this.pickItem(asSprite(it)));
 
     // Entrada
@@ -669,6 +729,7 @@ export class GameScene extends Phaser.Scene {
     this.transitioning = true;
     this.player.setVelocity(0, 0);
     this.shots.clear(true, true);
+    this.foeShots.clear(true, true);
 
     // Aparece dentro de la sala nueva, junto a la puerta por la que entra
     const n = this.interior(next);
@@ -715,11 +776,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnEnemy() {
+    const kind = Phaser.Utils.Array.GetRandom(this.foeKinds) as FoeKind;
     const { x, y } = this.randomSpotInRoom(60);
-    const e = this.enemies.create(x, y, 'foe-front') as Sprite;
-    e.setDisplaySize(60, 60).setData('sheet', 'foe').setData('size', 60);
-    const d = this.difficulty;
-    e.setData('hp', Math.round(60 * d.hp)).setData('speed', 80 * d.speed).setData('dmg', Math.round(10 * d.damage));
+    const e = this.enemies.create(x, y, `${kind.key}-front`) as Sprite;
+    e.setDisplaySize(60, 60).setData('sheet', kind.key).setData('size', 60);
+    const st = enemyStats(kind.bst, kind.behavior, this.difficulty);
+    e.setData('hp', st.hp).setData('speed', st.speed).setData('dmg', st.damage);
+    e.setData('ai', this.newAI(kind.behavior, kind.type, false));
   }
 
   private spawnBoss() {
@@ -728,7 +791,137 @@ export class GameScene extends Phaser.Scene {
     b.setDisplaySize(150, 150).setData('sheet', this.bossKey).setData('size', 150);
     const d = this.difficulty;
     b.setData('hp', Math.round(500 * d.hp)).setData('speed', 70 * d.speed).setData('dmg', Math.round(20 * d.damage));
+    // El jefe también se comporta según su tipo
+    b.setData('ai', this.newAI(behaviorFor([this.bossType]), this.bossType, true));
     this.showBanner('¡Jefe legendario!', 1200);
+  }
+
+  /** Estado inicial de la IA; deja un respiro al entrar antes de embestir, disparar o saltar. */
+  private newAI(behavior: EnemyBehavior, type: string, boss: boolean): EnemyAI {
+    return {
+      behavior,
+      type,
+      boss,
+      state: 'walk',
+      until: this.time.now + Phaser.Math.Between(900, 1700),
+      dir: new Phaser.Math.Vector2(0, 1),
+      side: Math.random() < 0.5 ? 1 : -1,
+    };
+  }
+
+  /** IA de un enemigo según su comportamiento: perseguir, embestir, disparar o saltar. */
+  private updateEnemy(e: Sprite, time: number) {
+    const ai = e.getData('ai') as EnemyAI | undefined;
+    const speed = e.getData('speed') as number;
+    const toPlayer = new Phaser.Math.Vector2(this.player.x - e.x, this.player.y - e.y);
+    const dist = toPlayer.length();
+    if (dist > 0) toPlayer.normalize();
+    const walk = (v: Phaser.Math.Vector2) => e.setVelocity(v.x * speed, v.y * speed);
+
+    if (!ai || ai.behavior === 'chase') {
+      walk(toPlayer);
+      this.face(e, toPlayer);
+      return;
+    }
+
+    switch (ai.behavior) {
+      case 'charge':
+        if (ai.state === 'walk') {
+          walk(toPlayer);
+          this.face(e, toPlayer);
+          if (time >= ai.until) {
+            // Se para y avisa (tinte amarillo) antes de lanzarse en línea recta
+            ai.state = 'windup';
+            ai.until = time + 450;
+            e.setVelocity(0, 0).setTint(0xffe082);
+          }
+        } else if (ai.state === 'windup') {
+          e.setVelocity(0, 0);
+          this.face(e, toPlayer);
+          ai.dir.copy(toPlayer);
+          if (time >= ai.until) {
+            ai.state = 'dash';
+            ai.until = time + 600;
+            e.clearTint();
+            e.setVelocity(ai.dir.x * speed * 4.5, ai.dir.y * speed * 4.5);
+          }
+        } else if (time >= ai.until) {
+          ai.state = 'walk';
+          ai.until = time + Phaser.Math.Between(1200, 2000);
+        }
+        break;
+
+      case 'shoot': {
+        // Guarda la distancia: se acerca si estás lejos, se aleja si estás cerca y si no, te rodea
+        const keep = ai.boss ? 260 : 230;
+        if (dist > keep + 90) walk(toPlayer);
+        else if (dist < keep - 50) walk(toPlayer.clone().negate());
+        else walk(new Phaser.Math.Vector2(-toPlayer.y * ai.side, toPlayer.x * ai.side));
+        this.face(e, toPlayer);
+        if (time >= ai.until) {
+          if (Math.random() < 0.3) ai.side = -ai.side;
+          const angles = ai.boss ? [-0.3, 0, 0.3] : [0];
+          for (const a of angles) this.fireFoeShot(e, toPlayer.clone().rotate(a), ai.type);
+          ai.until = time + (ai.boss ? 1100 : Phaser.Math.Between(1500, 2200));
+        }
+        break;
+      }
+
+      case 'hop':
+        if (ai.state === 'walk') {
+          walk(toPlayer);
+          this.face(e, toPlayer);
+          if (time >= ai.until) {
+            // Desaparece un momento (sin cuerpo: ni se le puede dar ni hace daño)
+            ai.state = 'vanish';
+            ai.until = time + 260;
+            e.setVelocity(0, 0).setAlpha(0.15);
+            (e.body as Body).enable = false;
+          }
+        } else if (ai.state === 'vanish') {
+          if (time >= ai.until) {
+            const p = this.hopSpot(ai.boss ? 200 : 140);
+            (e.body as Body).enable = true;
+            (e.body as Body).reset(p.x, p.y);
+            e.setAlpha(0.55);
+            ai.state = 'appear';
+            ai.until = time + 300;
+          }
+        } else {
+          // Recién aparecido no hace daño: da tiempo a reaccionar
+          e.setVelocity(0, 0);
+          this.face(e, toPlayer);
+          if (time >= ai.until) {
+            e.setAlpha(1);
+            ai.state = 'walk';
+            ai.until = time + Phaser.Math.Between(1600, 2500);
+          }
+        }
+        break;
+    }
+  }
+
+  /** Sitio de la sala cerca del jugador (pero no encima) donde aparece quien salta. */
+  private hopSpot(minDist: number) {
+    const i = this.interior(this.current);
+    const m = 50;
+    for (let tries = 0; tries < 30; tries++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = minDist + Math.random() * 90;
+      const x = this.player.x + Math.cos(a) * r;
+      const y = this.player.y + Math.sin(a) * r;
+      if (x > i.x0 + m && x < i.x1 - m && y > i.y0 + m && y < i.y1 - m) return { x, y };
+    }
+    return this.randomSpotInRoom(m);
+  }
+
+  /** Proyectil enemigo del color de su tipo, con borde oscuro para no confundirlo con los tuyos. */
+  private fireFoeShot(e: Sprite, dir: Phaser.Math.Vector2, type: string) {
+    const s = this.foeShots.create(e.x, e.y, 'foe-shot') as Sprite;
+    s.setTint(typeColor(type)).setScale(0.75).setDepth(4);
+    s.setVelocity(dir.x * FOE_SHOT_SPEED, dir.y * FOE_SHOT_SPEED);
+    s.setData('dmg', Math.max(1, Math.round((e.getData('dmg') as number) * 0.8)));
+    this.time.delayedCall(FOE_SHOT_LIFE, () => s.active && s.destroy());
   }
 
   // --- Trampilla al piso siguiente ---
@@ -855,12 +1048,8 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    // IA básica: perseguir al jugador
-    this.enemies.getChildren().forEach((c) => {
-      const e = c as Sprite;
-      this.physics.moveToObject(e, this.player, e.getData('speed') as number);
-      this.face(e, { x: this.player.x - e.x, y: this.player.y - e.y });
-    });
+    // IA de cada enemigo según su comportamiento
+    this.enemies.getChildren().forEach((c) => this.updateEnemy(c as Sprite, time));
 
     // HUD
     this.hpText.setText(
@@ -1000,6 +1189,7 @@ export class GameScene extends Phaser.Scene {
     if (this.cleared.has(room.id) || this.enemies.countActive(true) > 0) return;
     this.cleared.add(room.id);
     this.setDoorsLocked(room, false);
+    this.foeShots.clear(true, true);
     this.hp = Math.min(this.stats.maxHp, this.hp + this.stats.healOnClear);
 
     const reward = room.kind === 'boss' ? bossCoinsFor(this.floorNum) : roomCoinsFor(this.floorNum);
@@ -1042,6 +1232,9 @@ export class GameScene extends Phaser.Scene {
   private hurtPlayer(enemy: Sprite) {
     const now = this.time.now;
     if (this.ended || this.transitioning || now < this.invulnUntil) return;
+    // Quien salta no hace daño mientras desaparece o recién aparecido
+    const ai = enemy.getData('ai') as EnemyAI | undefined;
+    if (ai && ai.behavior === 'hop' && ai.state !== 'walk') return;
     this.invulnUntil = now + 900;
     this.hp -= (enemy.getData('dmg') as number | undefined) ?? 10;
     this.player.setTint(0xff6666);

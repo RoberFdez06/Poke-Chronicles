@@ -27,3 +27,21 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
   que sin legendarios una tirada de legendario da un Ultraente. Color dorado para legendario en `GachaScene`.
   Tests nuevos en `tests/gacha.test.ts`. README actualizado.
 - **N2**: leída. Los botones nuevos usarán `setInteractive(new Rectangle(0, 0, w, h))` o `MenuList`.
+
+## T2 — Enemigos variados (2026-10-18)
+
+- **Qué**: los enemigos ya no son siempre Rattata. Cada piso elige 4 especies de `species-index.json` (sin
+  legendarios, singulares ni ultraentes) dentro de una franja de estadísticas base que sube con el piso
+  (piso 1: 215-345; +65 por piso; tope en torno a 560). Si la franja tiene menos de 12, se cogen las 12 más cercanas.
+  Cuatro comportamientos según el tipo principal: perseguir, embestir (se para 0,45 s con tinte amarillo y carga
+  en línea recta a 4,5× su velocidad), disparar (mantiene la distancia, te rodea y lanza proyectiles del color
+  de su tipo con borde oscuro) y saltar (desaparece, reaparece cerca de ti y durante 0,3 s no hace daño).
+  El jefe usa el comportamiento de su tipo (si dispara, en abanico de 3). PS, daño y velocidad dependen de la
+  suma de estadísticas, del comportamiento y de la dificultad del piso.
+- **Archivos**: `src/data/enemies.ts` (nuevo, puro), `tests/enemies.test.ts` (nuevo), `src/scenes/GameScene.ts`
+  (carga de especies, grupo `foeShots`, `updateEnemy`), README.
+- **Decisiones**: las especies del piso salen de la semilla del piso (`mulberry32(floorSeed ^ 0x5bd1e995)`), así
+  que al continuar una partida son las mismas sin tocar `RunSave` (no ha hecho falta subir `RUN_VERSION`).
+  Se usa `fetchPokemonCard` (una petición por especie, sin movimientos) para sus tipos y sprites.
+- **Dudas para Roberto**: la tabla tipo → comportamiento (`BEHAVIOR_BY_TYPE`) y los multiplicadores de
+  `enemyStats` son a ojo. Los enemigos aún no esquivan obstáculos (llegará con T9).

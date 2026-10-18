@@ -11,7 +11,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 - El guardado (`RunSave`) guarda el número de piso; las monedas por sala/jefe escalan con el piso.
 - HUD: "Piso N". La pausa también muestra el piso.
 
-## [ ] T2 — Enemigos variados
+## [x] T2 — Enemigos variados
 - Los enemigos dejan de ser siempre Rattata: Pokémon al azar de PokeAPI según el piso (piso 1 comunes y
   débiles, luego más fuertes; usa la rareza de `gacha.ts` o la suma de estadísticas).
 - Al menos 4 comportamientos: perseguir, embestir (carga en línea recta), disparar (proyectiles hacia ti)
@@ -63,3 +63,28 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 - Plantillas de sala en datos puros (`src/level/roomLayouts.ts`) elegidas con la semilla del piso, con un test
   que compruebe que todas las puertas quedan conectadas (BFS sobre la cuadrícula de la sala).
 - Los enemigos rodean los obstáculos o al menos no se quedan atascados para siempre.
+
+## [ ] T10 — Sonido
+- Grito del Pokémon (PokeAPI `cries.latest`) al elegir inicial, al salir el jefe y en el gacha.
+- Efectos sencillos generados con Web Audio (disparo, golpe, recoger objeto, puerta, sala limpia), sin archivos con derechos.
+- Volumen de música/efectos guardado en `save.ts`.
+
+## [ ] T11 — Ajustes
+- Pantalla "Ajustes" desde el menú principal y desde la pausa: volumen, pantalla completa, mostrar controles,
+  y "Borrar progreso" con doble confirmación. Teclado, ratón y mando.
+
+## [ ] T12 — Colección y Pokédex
+- Pantalla "Pokédex" en el menú: todos los Pokémon por región, los que tienes en color y los que no en silueta,
+  con rareza y filtros (nombre, rareza, región, tipo). Reutiliza la lógica de filtros de T4.
+
+## [ ] T13 — Mejoras permanentes por Pokémon
+- Como en PokéSurvivor: cada Pokémon tiene sus mejoras (daño, PS, velocidad, cadencia) que se compran con
+  monedas y solo se aplican jugando con él. Pantalla "Mejoras" con los 3 controles; datos en `save.ts` con tests.
+
+## [ ] T14 — Evolución en partida
+- Si tu Pokémon tiene evolución (PokeAPI `evolution-chain`), evoluciona al completar ciertos pisos: cambia
+  sprite y nombre y sube estadísticas. Animación de destello y texto "¡X ha evolucionado!".
+
+## [ ] T15 — Revisión final y pulido
+- Repasa el README y la bitácora, quita código muerto, revisa que todas las pantallas funcionan con los
+  3 controles y deja en la bitácora una lista de "cosas para probar" para Roberto.
