@@ -80,3 +80,25 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
   que en español); con T7 pasará a español. La búsqueda ignora tildes y la Ñ cuenta como N.
 - **Dudas para Roberto**: no he podido probar las pantallas en el navegador (no se puede usar `npm run dev`);
   tsc, tests y build pasan. Atajos elegidos: Q/E y LB/RB región, R y X rareza, F e Y buscar.
+
+## T5 — Modos de juego (2026-10-18)
+
+- **Qué**: tras elegir Pokémon (o el primer inicial) aparece `ModeScene` con Normal, Oleadas, Infinito y Rush de
+  jefes, su descripción y su récord (teclado, ratón, mando; "Volver" vuelve a la colección).
+  - **Oleadas**: arena de una sola sala sin puertas. Ronda r: `2 + ⌈0,8·r⌉` enemigos (máx. 12); cada 3 rondas
+    cae un objeto y sube el nivel (dificultad y especies más fuertes, que se cargan en ese momento).
+    Monedas por ronda: 5 + 2 por ronda.
+  - **Infinito**: como Normal sin final (las salas llegan al tope de 24 y la dificultad sigue subiendo).
+  - **Rush de jefes**: arena con solo el jefe; al vencerlo, objeto + trampilla al siguiente jefe (reutiliza la
+    bajada de piso). Cada jefe da `60 × ⌈n/2⌉` monedas (menos que en Normal porque no hay salas).
+- **Récords**: `pokeisaac.records` en `save.ts` (`loadRecords`, `submitRecord`): pisos completados (Normal,
+  Infinito), rondas superadas (Oleadas) y jefes vencidos (Rush). Se guardan al completar cada piso/ronda/jefe,
+  así cuentan aunque luego mueras o salgas. Se ven en `ModeScene` y en el menú principal. "¡Nuevo récord!" en el cartel.
+- **Guardado**: `RunSave.mode` y `RUN_VERSION` 3 (v1 y v2 migran a Normal). `floor` es el piso, la ronda o el jefe.
+  Pausa y huecos muestran modo y progreso (sin salas en Oleadas/Rush).
+- **Archivos**: `src/data/modes.ts` y `tests/modes.test.ts` (nuevos), `src/scenes/ModeScene.ts` (nueva, antes de
+  `PauseScene`), `save.ts`, `runSave.ts` (+tests), `GameScene`, `PauseScene`, `SlotsScene`, `MenuScene`,
+  `StarterScene`/`FirstStarterScene` (ahora van a `Mode`), README.
+- **Decisiones / dudas**: `modes.ts` no lee `FLOOR_COUNT` al cargarse (descripción como función) para evitar un
+  problema de import circular save → modes → progression → save. Los números de Oleadas y de monedas del Rush
+  son a ojo.

@@ -17,6 +17,19 @@ import {
 } from '../level/progression';
 import type { PauseData } from './PauseScene';
 import {
+  arenaFloor,
+  isLastStage,
+  progressText,
+  waveCoins,
+  waveDropsItem,
+  waveSpec,
+  GameMode,
+  MODE_LABEL,
+} from '../data/modes';
+import { submitRecord } from '../data/save';
+import type { SpeciesFact } from '../data/gacha';
+import type { PokemonCard } from '../data/pokeapi';
+import {
   BASE_STATS,
   computeStats,
   passiveById,
@@ -67,6 +80,7 @@ export type FloorCarry = Pick<
 export interface GameData {
   starterId?: number;
   slot?: number;
+  mode?: GameMode;
   resume?: RunSave;
   carry?: FloorCarry;
 }
@@ -143,6 +157,10 @@ export class GameScene extends Phaser.Scene {
   private resume: RunSave | null = null;
   /** Estado que viene del piso anterior (al bajar por la trampilla). */
   private carry: FloorCarry | null = null;
+  /** Modo de juego. En Oleadas `floorNum` es la ronda y en Rush de jefes, el jefe por el que vas. */
+  private mode: GameMode = 'normal';
+  /** Oleadas: hay una ronda en marcha (sus enemigos ya han salido). */
+  private waveActive = false;
   private floorSeed = 0;
   private bossId = 1;
   /** Número de piso (1 = el primero) y su dificultad. */
@@ -195,6 +213,7 @@ export class GameScene extends Phaser.Scene {
     this.carry = data?.carry ?? null;
     this.slot = data?.slot ?? 0;
     this.starterId = this.resume?.starterId ?? data?.starterId ?? 4;
+    this.mode = this.resume?.mode ?? data?.mode ?? 'normal';
   }
 
   create() {
@@ -256,10 +275,14 @@ export class GameScene extends Phaser.Scene {
       this.floorNum = r.floor;
       this.bossHistory = [...r.bossHistory];
     }
-    this.difficulty = difficultyFor(this.floorNum);
-    // Al continuar, el piso se regenera igual con la misma semilla; cada piso nuevo es más grande
+    this.waveActive = false;
+    this.difficulty = difficultyFor(this.level());
+    // Al continuar, el piso se regenera igual con la misma semilla; cada piso nuevo es más grande.
+    // Oleadas y Rush de jefes se juegan en una sola sala
     this.floorSeed = r?.floorSeed ?? Phaser.Math.Between(0, 0x7fffffff);
-    this.floor = generateFloor({ seed: this.floorSeed, roomCount: r?.roomCount ?? roomCountFor(this.floorNum, Math.random) });
+    if (this.mode === 'waves') this.floor = arenaFloor(this.floorSeed, 'combat');
+    else if (this.mode === 'bossrush') this.floor = arenaFloor(this.floorSeed, 'boss');
+    else this.floor = generateFloor({ seed: this.floorSeed, roomCount: r?.roomCount ?? roomCountFor(this.floorNum, Math.random) });
 
     // Los poderes que saldrán en el suelo son movimientos de los tipos de tu Pokémon; se piden ya, en paralelo
     if (r) this.movePool = [...r.movePool];
@@ -280,7 +303,7 @@ export class GameScene extends Phaser.Scene {
     }
     this.bossId = bossId;
     // Enemigos del piso: más fuertes cuanto más hondo; la semilla del piso los fija (no hace falta guardarlos)
-    const foeIds = pickFloorEnemies(enemyPool(index, this.floorNum), mulberry32(this.floorSeed ^ 0x5bd1e995));
+    const foeIds = pickFloorEnemies(enemyPool(index, this.level()), this.foeRng(this.level()));
     const [starter, boss, foeCards] = await Promise.all([
       fetchPokemon(this.starterId),
       fetchPokemon(bossId),
@@ -288,12 +311,7 @@ export class GameScene extends Phaser.Scene {
     ]);
     let foes = foeCards.filter((c) => c !== null);
     if (foes.length === 0) foes = [await fetchPokemonCard(FALLBACK_ENEMIES[0])];
-    this.foeKinds = foes.map((c) => ({
-      key: `foe-${c.id}`,
-      behavior: behaviorFor(c.types),
-      bst: index.find((s) => s.id === c.id)?.bst ?? 300,
-      type: c.types[0] ?? 'normal',
-    }));
+    this.foeKinds = this.toFoeKinds(foes, index);
     this.bossType = boss.types[0] ?? 'normal';
     this.tearType = starter.types[0] ?? 'normal';
     this.starterName = starter.name;
@@ -324,6 +342,56 @@ export class GameScene extends Phaser.Scene {
       this.startFloor();
     });
     this.load.start();
+  }
+
+  /** Nivel de dificultad: el piso, el jefe por el que vas o, en Oleadas, el que toca a la ronda. */
+  private level(): number {
+    return this.mode === 'waves' ? waveSpec(this.floorNum).level : this.floorNum;
+  }
+
+  /** Semilla de las especies enemigas (en Oleadas cambia con el nivel, en el resto con el piso). */
+  private foeRng(level: number) {
+    const base = this.floorSeed ^ 0x5bd1e995;
+    return mulberry32(this.mode === 'waves' ? base + level * 7919 : base);
+  }
+
+  private toFoeKinds(cards: readonly PokemonCard[], index: readonly SpeciesFact[]): FoeKind[] {
+    return cards.map((c) => ({
+      key: `foe-${c.id}`,
+      behavior: behaviorFor(c.types),
+      bst: index.find((s) => s.id === c.id)?.bst ?? 300,
+      type: c.types[0] ?? 'normal',
+    }));
+  }
+
+  /** Oleadas: al subir de nivel, cambia a especies más fuertes (si no se pueden cargar, siguen las de antes). */
+  private async reloadFoes(level: number) {
+    const index = await loadSpeciesIndex().catch(() => [] as SpeciesFact[]);
+    const ids = pickFloorEnemies(enemyPool(index, level), this.foeRng(level));
+    const cards = (await Promise.all(ids.map((id) => fetchPokemonCard(id).catch(() => null)))).filter((c) => c !== null);
+    if (cards.length === 0 || !this.scene.isActive()) return;
+    await new Promise<void>((resolve) => {
+      let queued = 0;
+      for (const c of cards) {
+        for (const side of ['front', 'back'] as const) {
+          const key = `foe-${c.id}-${side}`;
+          if (this.textures.exists(key)) continue;
+          this.load.image(key, c.sprites[side]);
+          queued++;
+        }
+      }
+      if (queued === 0) return resolve();
+      this.load.once(Phaser.Loader.Events.COMPLETE, () => resolve());
+      this.load.start();
+    });
+    const ok = cards.filter((c) => this.textures.exists(`foe-${c.id}-front`));
+    for (const c of ok) {
+      for (const side of ['front', 'back']) {
+        const tex = `foe-${c.id}-${side}`;
+        if (this.textures.exists(tex)) this.textures.get(tex).setFilter(Phaser.Textures.FilterMode.NEAREST);
+      }
+    }
+    if (ok.length > 0) this.foeKinds = this.toFoeKinds(ok, index);
   }
 
   /** Pide a PokeAPI movimientos de ataque de tus tipos; si alguno falla, simplemente habrá menos. */
@@ -466,13 +534,16 @@ export class GameScene extends Phaser.Scene {
     this.pauseBtn = pb;
 
     // Si ya habías vencido al jefe, la trampilla sigue ahí
-    if (this.cleared.has(this.floor.bossId) && this.floorNum < FLOOR_COUNT) this.spawnTrapdoor();
+    if (this.mode !== 'waves' && this.cleared.has(this.floor.bossId) && !isLastStage(this.mode, this.floorNum)) this.spawnTrapdoor();
 
     this.refreshInventory();
     this.cameras.main.centerOn(si.cx, si.cy);
     this.enterRoom(start);
-    if (r) this.showBanner(`Partida cargada · Piso ${this.floorNum}`, 1200);
-    else this.showBanner(`Piso ${this.floorNum}`, 1200);
+    // En Oleadas el cartel de la ronda lo pone startWave
+    if (this.mode !== 'waves') {
+      const where = progressText(this.mode, this.floorNum);
+      this.showBanner(r ? `Partida cargada · ${where}` : `${MODE_LABEL[this.mode]} · ${where}`, 1200);
+    }
   }
 
   // --- Guardado (como en Isaac: solo, en el hueco elegido) ---
@@ -509,6 +580,7 @@ export class GameScene extends Phaser.Scene {
       savedAt: Date.now(),
       starterId: this.starterId,
       starterName: this.starterName,
+      mode: this.mode,
       floor: this.floorNum,
       bossHistory: [...this.bossHistory],
       floorSeed: this.floorSeed,
@@ -538,8 +610,9 @@ export class GameScene extends Phaser.Scene {
     const data: PauseData = {
       starterName: this.starterName,
       slot: this.slot,
-      floor: this.floorNum,
-      floorCount: FLOOR_COUNT,
+      modeLabel: MODE_LABEL[this.mode],
+      progress: progressText(this.mode, this.floorNum),
+      showRooms: this.mode === 'normal' || this.mode === 'endless',
       hp: this.hp,
       stats: this.stats,
       items: [...counts].map(([id, n]) => (passiveById(id)?.name ?? id) + (n > 1 ? ` x${n}` : '')),
@@ -718,7 +791,8 @@ export class GameScene extends Phaser.Scene {
     this.current = room;
     this.visited.add(room.id);
 
-    if ((room.kind === 'combat' || room.kind === 'boss') && !this.cleared.has(room.id)) {
+    if (this.mode === 'waves') this.startWave(1200);
+    else if ((room.kind === 'combat' || room.kind === 'boss') && !this.cleared.has(room.id)) {
       if (room.kind === 'boss') this.spawnBoss();
       else {
         const n = Phaser.Math.Between(...this.difficulty.enemies);
@@ -974,7 +1048,7 @@ export class GameScene extends Phaser.Scene {
     };
     this.cameras.main.fadeOut(350, 0, 0, 0);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-      this.scene.restart({ slot: this.slot, starterId: this.starterId, carry } satisfies GameData);
+      this.scene.restart({ slot: this.slot, starterId: this.starterId, mode: this.mode, carry } satisfies GameData);
     });
   }
 
@@ -1060,7 +1134,7 @@ export class GameScene extends Phaser.Scene {
 
     // HUD
     this.hpText.setText(
-      `Piso ${this.floorNum}   PS ${Math.max(0, Math.ceil(this.hp))}/${this.stats.maxHp}   Enemigos ${this.enemies.countActive(true)}`,
+      `${progressText(this.mode, this.floorNum)}   PS ${Math.max(0, Math.ceil(this.hp))}/${this.stats.maxHp}   Enemigos ${this.enemies.countActive(true)}`,
     );
     this.slots.forEach((m, i) => {
       const text = this.hud[i];
@@ -1191,20 +1265,71 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // --- Oleadas ---
+
+  /** Empieza la ronda actual tras un momento de respiro. */
+  private startWave(delay: number) {
+    const round = this.floorNum;
+    this.showBanner(`Ronda ${round}`, delay);
+    this.time.delayedCall(delay, () => {
+      if (this.ended || this.floorNum !== round) return;
+      const { count } = waveSpec(round);
+      for (let k = 0; k < count; k++) this.spawnEnemy();
+      this.waveActive = true;
+    });
+  }
+
+  private onWaveCleared() {
+    if (!this.waveActive) return;
+    this.waveActive = false;
+    const round = this.floorNum;
+    this.foeShots.clear(true, true);
+    this.hp = Math.min(this.stats.maxHp, this.hp + this.stats.healOnClear);
+    const reward = waveCoins(round);
+    this.earned += reward;
+    addCoins(reward);
+    const record = submitRecord('waves', round);
+
+    let text = `¡Ronda ${round} superada! +${reward} monedas`;
+    if (record) text += '\n¡Nuevo récord!';
+    if (waveDropsItem(round)) {
+      const i = this.interior(this.current);
+      this.dropItem(this.current.id, i.cx, i.cy);
+      text += '\nHa caído un objeto';
+    }
+    this.showBanner(text, 1600);
+
+    // Siguiente ronda: al subir de nivel, enemigos más fuertes y más dificultad
+    const prevLevel = this.level();
+    this.floorNum = round + 1;
+    this.difficulty = difficultyFor(this.level());
+    this.saveNow();
+    const ready = this.level() !== prevLevel ? this.reloadFoes(this.level()).catch(() => undefined) : Promise.resolve();
+    void ready.then(() => !this.ended && this.time.delayedCall(400, () => this.startWave(1400)));
+  }
+
   private checkClear() {
     const room = this.current;
+    if (this.mode === 'waves') {
+      if (this.enemies.countActive(true) === 0) this.onWaveCleared();
+      return;
+    }
     if (this.cleared.has(room.id) || this.enemies.countActive(true) > 0) return;
     this.cleared.add(room.id);
     this.setDoorsLocked(room, false);
     this.foeShots.clear(true, true);
     this.hp = Math.min(this.stats.maxHp, this.hp + this.stats.healOnClear);
 
-    const reward = room.kind === 'boss' ? bossCoinsFor(this.floorNum) : roomCoinsFor(this.floorNum);
+    // En Rush de jefes no hay salas que den monedas, así que cada jefe da algo menos que en un piso
+    const bossReward = bossCoinsFor(this.mode === 'bossrush' ? Math.ceil(this.floorNum / 2) : this.floorNum);
+    const reward = room.kind === 'boss' ? bossReward : roomCoinsFor(this.floorNum);
     this.earned += reward;
     addCoins(reward);
 
     if (room.kind === 'boss') {
-      if (this.floorNum >= FLOOR_COUNT) {
+      // Récord: pisos completados (Normal, Infinito) o jefes vencidos (Rush)
+      const record = submitRecord(this.mode, this.floorNum);
+      if (isLastStage(this.mode, this.floorNum)) {
         this.finish(
           `¡Has completado los ${FLOOR_COUNT} pisos!\n+${this.earned} monedas en total\nPulsa R, Start o haz clic para empezar otra partida`,
         );
@@ -1214,7 +1339,9 @@ export class GameScene extends Phaser.Scene {
       const i = this.interior(room);
       this.dropItem(room.id, i.cx + 170, i.cy);
       this.spawnTrapdoor();
-      this.showBanner(`¡Jefe derrotado! +${reward} monedas\nPisa la trampilla para bajar al piso ${this.floorNum + 1}`, 2600);
+      const next = this.mode === 'bossrush' ? `ir al jefe ${this.floorNum + 1}` : `bajar al piso ${this.floorNum + 1}`;
+      const best = record ? '\n¡Nuevo récord!' : '';
+      this.showBanner(`¡Jefe derrotado! +${reward} monedas${best}\nPisa la trampilla para ${next}`, 2600);
       this.saveNow();
       return;
     }
@@ -1247,7 +1374,10 @@ export class GameScene extends Phaser.Scene {
     this.player.setTint(0xff6666);
     this.time.delayedCall(150, () => this.player.active && this.player.clearTint());
 
-    if (this.hp <= 0) this.finish(`Has caído · +${this.earned} monedas\nPulsa R, Start o haz clic para volver a empezar`);
+    if (this.hp <= 0) {
+      const where = this.mode === 'normal' ? '' : ` en ${progressText(this.mode, this.floorNum).toLowerCase()}`;
+      this.finish(`Has caído${where} · +${this.earned} monedas\nPulsa R, Start o haz clic para volver a empezar`);
+    }
   }
 
   /** Fin de partida: congela el juego y deja salir con teclado (R), mando (Start / A) o ratón (clic). */

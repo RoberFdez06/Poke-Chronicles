@@ -1,7 +1,14 @@
 import Phaser from 'phaser';
 import { fetchPokemonCard } from '../data/pokeapi';
-import { loadUnlocked } from '../data/save';
+import { loadRecords, loadUnlocked } from '../data/save';
+import { MODES, MODE_LABEL } from '../data/modes';
 import { CONTROLS } from '../data/controls';
+
+/** Récord de cada modo en una línea: "Normal 2 · Oleadas 7 · …". */
+const recordsLine = () => {
+  const r = loadRecords();
+  return MODES.map((m) => `${MODE_LABEL[m]} ${r[m]}`).join(' · ');
+};
 
 const FONT = 'system-ui, sans-serif';
 const NAVY = 0x2b3a67;
@@ -70,7 +77,7 @@ export class MenuScene extends Phaser.Scene {
       .setDepth(60);
 
     this.add
-      .text(480, 584, `Pokémon desbloqueados: ${loadUnlocked().length}`, {
+      .text(480, 584, `Pokémon desbloqueados: ${loadUnlocked().length}   ·   Récords: ${recordsLine()}`, {
         fontFamily: FONT,
         fontSize: '16px',
         color: '#ffffff',

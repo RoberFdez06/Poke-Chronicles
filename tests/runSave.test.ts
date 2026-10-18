@@ -17,6 +17,7 @@ function sample(): RunSave {
     savedAt: 1700000000000,
     starterId: 4,
     starterName: 'charmander',
+    mode: 'normal',
     floor: 2,
     bossHistory: [144, 150],
     floorSeed: 1234,
@@ -68,6 +69,22 @@ test('un guardado v1 (sin pisos) se migra al piso 1', () => {
   assert.equal(run.floor, 1);
   assert.deepEqual(run.bossHistory, [150]);
   assert.equal(run.starterName, 'charmander');
+  assert.equal(run.mode, 'normal');
+});
+
+test('un guardado v2 (sin modo) se migra al modo Normal', () => {
+  const { mode: _m, ...v2 } = sample();
+  const run = parseRun(JSON.stringify({ ...v2, version: 2 }));
+  assert.ok(run);
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.mode, 'normal');
+  assert.equal(run.floor, 2);
+});
+
+test('un modo desconocido invalida el guardado', () => {
+  assert.equal(parseRun(JSON.stringify({ ...sample(), mode: 'otro' })), null);
+  const waves = parseRun(JSON.stringify({ ...sample(), mode: 'waves' }));
+  assert.equal(waves?.mode, 'waves');
 });
 
 test('un piso no válido invalida el guardado', () => {

@@ -34,7 +34,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
   o lista de letras) **y por rareza** (común… ultraente).
 - Lógica de regiones y filtros en `src/data/` con tests.
 
-## [ ] T5 — Modos de juego
+## [x] T5 — Modos de juego
 - En "Jugar" (tras elegir hueco o inicial) se elige modo: **Normal** (lo actual), **Oleadas** (una sala,
   rondas cada vez más duras, objeto cada X rondas), **Infinito** (pisos sin fin hasta morir) y
   **Rush de jefes** (solo jefes legendarios seguidos, objeto entre jefe y jefe).

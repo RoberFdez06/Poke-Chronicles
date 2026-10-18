@@ -134,7 +134,7 @@ export class FirstStarterScene extends Phaser.Scene {
     this.leaving = true;
     const id = this.cards[i].id;
     unlockPokemon(id);
-    this.scene.start('Game', { starterId: id, slot: this.slot });
+    this.scene.start('Mode', { starterId: id, slot: this.slot });
   }
 
   private back() {

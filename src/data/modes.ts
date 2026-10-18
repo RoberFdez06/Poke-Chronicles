@@ -1,0 +1,130 @@
+// Modos de juego: Normal, Oleadas, Infinito y Rush de jefes. Récords y reglas de cada modo.
+// Lógica pura, sin Phaser ni red, para poder testearla.
+import type { Floor, RoomKind } from '../level/floorGen.ts';
+import { FLOOR_COUNT } from '../level/progression.ts';
+
+export const MODES = ['normal', 'waves', 'endless', 'bossrush'] as const;
+export type GameMode = (typeof MODES)[number];
+
+export const isMode = (m: unknown): m is GameMode => typeof m === 'string' && (MODES as readonly string[]).includes(m);
+
+export const MODE_LABEL: Record<GameMode, string> = {
+  normal: 'Normal',
+  waves: 'Oleadas',
+  endless: 'Infinito',
+  bossrush: 'Rush de jefes',
+};
+
+// Función (y no constante) porque save.ts importa este módulo y progression.ts importa save.ts:
+// así FLOOR_COUNT nunca se lee mientras se cargan los módulos
+export function modeDesc(mode: GameMode): string {
+  switch (mode) {
+    case 'normal':
+      return `${FLOOR_COUNT} pisos con salas, objetos y un jefe legendario en cada uno.`;
+    case 'waves':
+      return 'Una sola sala y rondas de enemigos cada vez más duras. Cae un objeto cada 3 rondas.';
+    case 'endless':
+      return 'Pisos sin fin, cada vez más difíciles, hasta que caigas.';
+    case 'bossrush':
+      return 'Solo jefes legendarios, uno detrás de otro. Un objeto entre jefe y jefe.';
+  }
+}
+
+/** Qué cuenta el número `floor` de la partida en cada modo (el piso, la ronda o el jefe por el que vas). */
+export const PROGRESS_LABEL: Record<GameMode, string> = {
+  normal: 'Piso',
+  waves: 'Ronda',
+  endless: 'Piso',
+  bossrush: 'Jefe',
+};
+
+/** Texto de progreso para el HUD, la pausa y los huecos. */
+export function progressText(mode: GameMode, n: number): string {
+  return mode === 'normal' ? `Piso ${n}/${FLOOR_COUNT}` : `${PROGRESS_LABEL[mode]} ${n}`;
+}
+
+/** Normal acaba al completar el último piso; el resto, solo al caer. */
+export const isLastStage = (mode: GameMode, n: number): boolean => mode === 'normal' && n >= FLOOR_COUNT;
+
+// --- Oleadas ---
+
+/** Cada cuántas rondas cae un objeto. */
+export const WAVE_ITEM_EVERY = 3;
+
+export interface WaveSpec {
+  /** Nivel de dificultad (como el número de piso): sube cada 3 rondas. */
+  level: number;
+  /** Enemigos de la ronda. */
+  count: number;
+}
+
+export function waveSpec(round: number): WaveSpec {
+  const r = Math.max(1, Math.floor(round));
+  return { level: 1 + Math.floor((r - 1) / WAVE_ITEM_EVERY), count: Math.min(12, 2 + Math.ceil(r * 0.8)) };
+}
+
+/** Al completar la ronda `round`, ¿cae un objeto? */
+export const waveDropsItem = (round: number): boolean => round > 0 && round % WAVE_ITEM_EVERY === 0;
+
+/** Monedas por ronda completada en Oleadas (menos que una sala, porque son más seguidas). */
+export const waveCoins = (round: number): number => 5 + 2 * Math.max(0, Math.floor(round) - 1);
+
+// --- Sala única para Oleadas y Rush de jefes ---
+
+/** "Piso" de una sola sala, sin puertas: arena de combate (Oleadas) o del jefe (Rush). */
+export function arenaFloor(seed: number, kind: Extract<RoomKind, 'combat' | 'boss'>): Floor {
+  return {
+    seed,
+    cols: 1,
+    rows: 1,
+    rooms: [{ id: 0, gx: 0, gy: 0, kind, depth: 0, doors: {} }],
+    startId: 0,
+    itemId: 0,
+    bossId: 0,
+  };
+}
+
+// --- Récords ---
+
+/** Récord de cada modo: pisos completados (Normal, Infinito), rondas superadas (Oleadas) o jefes vencidos (Rush). */
+export type Records = Record<GameMode, number>;
+
+export const emptyRecords = (): Records => ({ normal: 0, waves: 0, endless: 0, bossrush: 0 });
+
+export function parseRecords(raw: string | null): Records {
+  const out = emptyRecords();
+  if (!raw) return out;
+  try {
+    const d: unknown = JSON.parse(raw);
+    if (d && typeof d === 'object') {
+      for (const m of MODES) {
+        const v = (d as Record<string, unknown>)[m];
+        if (typeof v === 'number' && Number.isInteger(v) && v > 0) out[m] = v;
+      }
+    }
+  } catch {
+    // corrupto: récords a 0
+  }
+  return out;
+}
+
+/** Récords con el nuevo resultado (solo sube). */
+export function withRecord(r: Records, mode: GameMode, value: number): { records: Records; improved: boolean } {
+  const v = Number.isInteger(value) && value > 0 ? value : 0;
+  if (v <= r[mode]) return { records: r, improved: false };
+  return { records: { ...r, [mode]: v }, improved: true };
+}
+
+export function recordText(mode: GameMode, value: number): string {
+  if (value <= 0) return 'Sin récord';
+  switch (mode) {
+    case 'normal':
+      return value >= FLOOR_COUNT ? `Récord: ¡completado!` : `Récord: ${value}/${FLOOR_COUNT} pisos`;
+    case 'endless':
+      return `Récord: ${value} ${value === 1 ? 'piso' : 'pisos'}`;
+    case 'waves':
+      return `Récord: ${value} ${value === 1 ? 'ronda' : 'rondas'}`;
+    case 'bossrush':
+      return `Récord: ${value} ${value === 1 ? 'jefe' : 'jefes'}`;
+  }
+}

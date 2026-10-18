@@ -4,10 +4,14 @@
 // Lógica pura, sin Phaser, para poder testearla.
 import type { StorageLike } from './save';
 import type { MovePower } from './items';
+import { isMode, type GameMode } from './modes.ts';
 
 export const RUN_SLOTS = 3;
-/** v2: número de piso y jefes ya vistos (los guardados v1 se migran al piso 1). */
-export const RUN_VERSION = 2;
+/**
+ * v2: número de piso y jefes ya vistos (los guardados v1 se migran al piso 1).
+ * v3: modo de juego (los v2 eran todos del modo Normal).
+ */
+export const RUN_VERSION = 3;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts). */
@@ -26,7 +30,8 @@ export interface RunSave {
   savedAt: number;
   starterId: number;
   starterName: string;
-  /** Piso en el que estás (1 = el primero). */
+  mode: GameMode;
+  /** Por dónde vas: piso (Normal, Infinito), ronda (Oleadas) o jefe (Rush de jefes); 1 = el primero. */
   floor: number;
   /** Jefes que ya han salido en la partida (para no repetirlos). */
   bossHistory: number[];
@@ -69,6 +74,11 @@ function migrateV1(d: RunSave): RunSave {
   return { ...d, version: 2, floor: 1, bossHistory: isInt(d.bossId) ? [d.bossId] : [] };
 }
 
+/** v2 no tenía modos: todas las partidas eran del modo Normal. */
+function migrateV2(d: RunSave): RunSave {
+  return { ...d, version: 3, mode: 'normal' };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -80,9 +90,10 @@ export function parseRun(raw: string | null): RunSave | null {
   }
   if (!d || typeof d !== 'object') return null;
   if (d.version === 1) d = migrateV1(d);
+  if (d.version === 2) d = migrateV2(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
-    isInt(d.savedAt) && isInt(d.starterId) && typeof d.starterName === 'string' &&
+    isInt(d.savedAt) && isInt(d.starterId) && typeof d.starterName === 'string' && isMode(d.mode) &&
     isInt(d.floor) && d.floor >= 1 && isIntArray(d.bossHistory) &&
     isInt(d.floorSeed) && isInt(d.roomCount) && isInt(d.bossId) && isInt(d.roomId) &&
     isIntArray(d.visited) && isIntArray(d.cleared) && typeof d.hp === 'number' && d.hp > 0 &&

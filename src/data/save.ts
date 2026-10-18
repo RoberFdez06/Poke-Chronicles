@@ -1,6 +1,8 @@
 // Progreso guardado en el navegador. La lógica usa una interfaz mínima de almacenamiento
 // para poder testearla sin navegador; si localStorage no está disponible, no guarda y sigue.
 
+import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } from './modes.ts';
+
 export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
@@ -124,4 +126,29 @@ export function spendCoins(amount: number, storage: StorageLike | null = browser
   if (!Number.isInteger(amount) || amount < 0 || have < amount) return false;
   saveCoins(have - amount, storage);
   return true;
+}
+
+// --- Récords de cada modo (ver modes.ts) ---
+
+export const RECORDS_KEY = 'pokeisaac.records';
+
+export function loadRecords(storage: StorageLike | null = browserStorage()): Records {
+  try {
+    return parseRecords(storage?.getItem(RECORDS_KEY) ?? null);
+  } catch {
+    return emptyRecords();
+  }
+}
+
+/** Guarda el resultado si mejora el récord del modo; devuelve si lo ha mejorado. */
+export function submitRecord(mode: GameMode, value: number, storage: StorageLike | null = browserStorage()): boolean {
+  const { records, improved } = withRecord(loadRecords(storage), mode, value);
+  if (improved) {
+    try {
+      storage?.setItem(RECORDS_KEY, JSON.stringify(records));
+    } catch {
+      // sin almacenamiento: no se guarda
+    }
+  }
+  return improved;
 }

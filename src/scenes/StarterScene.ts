@@ -342,7 +342,7 @@ export class StarterScene extends Phaser.Scene {
     const e = this.view[i];
     if (!e || !this.tiles.length) return;
     this.starting = true;
-    this.scene.start('Game', { starterId: e.id, slot: this.slot });
+    this.scene.start('Mode', { starterId: e.id, slot: this.slot });
   }
 
   // --- Búsqueda por nombre: teclado físico o en pantalla (ratón y mando) ---

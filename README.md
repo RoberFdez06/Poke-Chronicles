@@ -27,8 +27,8 @@ pantalla o acción nueva debe cumplirlo.
 
 ## Menú principal
 
-El juego arranca en el menú: **Jugar** (elegir inicial), **Gacha** (gasta monedas para desbloquear Pokémon) y **Controles**. Esc o B vuelven atrás desde la
-selección de inicial.
+El juego arranca en el menú: **Jugar** (hueco → Pokémon → modo), **Gacha** (gasta monedas para desbloquear Pokémon) y **Controles**. Esc o B vuelven atrás desde la
+selección de inicial. Abajo se ven los Pokémon desbloqueados y el récord de cada modo.
 
 ## Pausa y partidas guardadas
 
@@ -111,6 +111,8 @@ src/
   scenes/StarterScene.ts  elegir Pokémon de tu colección (regiones, búsqueda y rareza)
   scenes/FirstStarterScene.ts  primera partida: elegir región e inicial
   data/regions.ts      regiones, iniciales y filtros de la colección (puro)
+  data/modes.ts        modos de juego, oleadas, arena y récords (puro)
+  scenes/ModeScene.ts  elegir modo de juego
   ui/nav.ts            entrada de menús (NavInput, PadButtons) y botones (MenuList)
   ui/cards.ts          tarjeta de Pokémon, carga de sprites y botón "Volver"
   data/speciesIndex.ts carga (una vez) la lista de especies de public/data
@@ -128,6 +130,7 @@ tests/
   enemies.test.ts      tests de enemigos por piso y comportamientos
   moves.test.ts        tests de poderes por tipo
   regions.test.ts      tests de regiones y filtros
+  modes.test.ts        tests de modos y récords
 scripts/
   buildSpeciesIndex.mjs  genera public/data/species-index.json desde PokeAPI
 ```
@@ -144,10 +147,25 @@ repetir en la partida). Al vencerlo deja un objeto y una **trampilla**: al pisar
 tus objetos, poderes y PS. La partida se gana al vencer al jefe del piso 5 y se pierde al morir. El HUD y la
 pausa muestran el piso actual.
 
+## Modos de juego
+
+Tras elegir Pokémon se elige modo (`src/scenes/ModeScene.ts`, reglas en `src/data/modes.ts`). Cada modo guarda su
+récord en el navegador (`pokeisaac.records`, en `src/data/save.ts`), que se ve al elegir modo y en el menú principal.
+
+| Modo | Cómo es | Récord |
+|---|---|---|
+| **Normal** | 5 pisos (ver arriba). | Pisos completados |
+| **Oleadas** | Una sola sala; rondas cada vez con más enemigos. Cada 3 rondas cae un objeto y suben la dificultad y la fuerza de las especies. | Rondas superadas |
+| **Infinito** | Como Normal, pero los pisos no se acaban y cada uno es más difícil. | Pisos completados |
+| **Rush de jefes** | Solo jefes legendarios en una arena; tras cada uno, un objeto y una trampilla al siguiente. | Jefes vencidos |
+
+Las partidas de cualquier modo se guardan en los huecos (`RunSave.mode`, `RUN_VERSION` 3; las de antes pasan a Normal).
+En Oleadas, al continuar se repite la ronda en la que estabas.
+
 ## Siguientes pasos
 
 1. ~~Generación procedural del piso con salas y puertas.~~ Hecho (modo Normal, versión inicial).
 2. ~~Objetos y bayas que modifican estadísticas.~~ Hecho (pasivos y poderes; faltan efectos de estado por tipo).
-3. Jefes y modos: Normal, Oleadas, Infinito y Rush de jefes.
+3. ~~Jefes y modos: Normal, Oleadas, Infinito y Rush de jefes.~~ Hecho.
 4. Gacha con monedas ganadas jugando (común, raro, épico, ultraente y legendario).
 5. Empaquetado como app con Tauri o Electron.

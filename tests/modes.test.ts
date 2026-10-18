@@ -1,0 +1,89 @@
+// Ejecutar con `npm test`.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  MODES,
+  arenaFloor,
+  emptyRecords,
+  isLastStage,
+  isMode,
+  modeDesc,
+  parseRecords,
+  progressText,
+  recordText,
+  waveDropsItem,
+  waveSpec,
+  withRecord,
+} from '../src/data/modes.ts';
+import { loadRecords, submitRecord, RECORDS_KEY, type StorageLike } from '../src/data/save.ts';
+import { FLOOR_COUNT } from '../src/level/progression.ts';
+
+function fakeStorage(): StorageLike & { data: Map<string, string> } {
+  const data = new Map<string, string>();
+  return { data, getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v) };
+}
+
+test('hay cuatro modos con nombre y descripción', () => {
+  assert.deepEqual([...MODES], ['normal', 'waves', 'endless', 'bossrush']);
+  for (const m of MODES) assert.ok(modeDesc(m).length > 10);
+  assert.ok(isMode('waves'));
+  assert.ok(!isMode('otro'));
+  assert.ok(!isMode(3));
+});
+
+test('solo el modo Normal tiene final', () => {
+  assert.ok(isLastStage('normal', FLOOR_COUNT));
+  assert.ok(!isLastStage('normal', FLOOR_COUNT - 1));
+  for (const m of ['waves', 'endless', 'bossrush'] as const) assert.ok(!isLastStage(m, 999));
+  assert.equal(progressText('normal', 2), `Piso 2/${FLOOR_COUNT}`);
+  assert.equal(progressText('waves', 7), 'Ronda 7');
+  assert.equal(progressText('bossrush', 3), 'Jefe 3');
+});
+
+test('las oleadas se endurecen y dan objeto cada 3 rondas', () => {
+  assert.deepEqual(waveSpec(1), { level: 1, count: 3 });
+  assert.equal(waveSpec(4).level, 2);
+  assert.ok(waveSpec(10).count > waveSpec(1).count);
+  assert.ok(waveSpec(1000).count <= 12);
+  assert.deepEqual([1, 2, 3, 4, 5, 6].map(waveDropsItem), [false, false, true, false, false, true]);
+  assert.ok(!waveDropsItem(0));
+});
+
+test('la arena es una sola sala sin puertas', () => {
+  const f = arenaFloor(5, 'boss');
+  assert.equal(f.rooms.length, 1);
+  assert.equal(f.rooms[0].kind, 'boss');
+  assert.deepEqual(f.rooms[0].doors, {});
+  assert.equal(f.bossId, 0);
+  assert.equal(f.startId, 0);
+});
+
+test('los récords solo suben y se leen aunque estén corruptos', () => {
+  assert.deepEqual(parseRecords(null), emptyRecords());
+  assert.deepEqual(parseRecords('{'), emptyRecords());
+  assert.deepEqual(parseRecords('{"waves": 4, "normal": -2, "otro": 9, "endless": 1.5}'), { ...emptyRecords(), waves: 4 });
+  const a = withRecord(emptyRecords(), 'waves', 5);
+  assert.ok(a.improved);
+  assert.equal(a.records.waves, 5);
+  const b = withRecord(a.records, 'waves', 3);
+  assert.ok(!b.improved);
+  assert.equal(b.records.waves, 5);
+});
+
+test('los récords se guardan en save.ts', () => {
+  const s = fakeStorage();
+  assert.deepEqual(loadRecords(s), emptyRecords());
+  assert.equal(submitRecord('bossrush', 2, s), true);
+  assert.equal(submitRecord('bossrush', 1, s), false);
+  assert.equal(loadRecords(s).bossrush, 2);
+  assert.ok(s.data.has(RECORDS_KEY));
+  assert.deepEqual(loadRecords(null), emptyRecords());
+});
+
+test('texto del récord', () => {
+  assert.equal(recordText('waves', 0), 'Sin récord');
+  assert.equal(recordText('waves', 1), 'Récord: 1 ronda');
+  assert.equal(recordText('bossrush', 3), 'Récord: 3 jefes');
+  assert.equal(recordText('normal', FLOOR_COUNT), 'Récord: ¡completado!');
+  assert.equal(recordText('endless', 2), 'Récord: 2 pisos');
+});

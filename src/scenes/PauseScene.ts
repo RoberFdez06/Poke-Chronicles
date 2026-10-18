@@ -7,9 +7,11 @@ import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
 export interface PauseData {
   starterName: string;
   slot: number;
-  /** Piso actual y pisos que hay que completar para ganar. */
-  floor: number;
-  floorCount: number;
+  /** Modo y progreso ("Normal", "Piso 2/5"). */
+  modeLabel: string;
+  progress: string;
+  /** En Oleadas y Rush de jefes no hay salas que contar. */
+  showRooms: boolean;
   hp: number;
   stats: PlayerStats;
   /** Nombres de los objetos pasivos, ya agrupados ("Lupa x2"). */
@@ -61,7 +63,8 @@ export class PauseScene extends Phaser.Scene {
 
     const st = d.stats;
     t(66, 118, `${capitalize(d.starterName)} · Hueco ${d.slot + 1}`, 24, '#2b3a67', true);
-    t(66, 152, `Piso ${d.floor}/${d.floorCount} · Salas limpias ${d.roomsCleared}/${d.roomCount} · Monedas ganadas ${d.earned}`, 16, '#4a5578');
+    const rooms = d.showRooms ? ` · Salas limpias ${d.roomsCleared}/${d.roomCount}` : '';
+    t(66, 152, `${d.modeLabel} · ${d.progress}${rooms} · Monedas ganadas ${d.earned}`, 16, '#4a5578');
     const rows: [string, string][] = [
       ['PS', `${Math.ceil(d.hp)} / ${st.maxHp}`],
       ['Daño', `${st.damage.toFixed(1)}`],
