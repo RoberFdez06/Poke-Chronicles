@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { loadAllRuns, RunSave } from '../data/runSave';
 import { MODE_LABEL, progressText } from '../data/modes';
 import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
-import { addHpBar, ARROW, drawBox, fadeIn, goTo } from '../ui/theme';
+import { addHpBar, ARROW, drawBox, fadeIn, goTo, strokePixelFrame } from '../ui/theme';
+import { addMenuBackdrop } from '../ui/art/landscape';
 
 const CARD = { w: 600, h: 120, gap: 22 };
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -34,6 +35,7 @@ export class SlotsScene extends Phaser.Scene {
     this.leaving = false;
     this.nav = new NavInput(this);
     fadeIn(this);
+    addMenuBackdrop(this);
 
     this.add.text(480, 56, 'Partidas', { fontFamily: UI.FONT, fontSize: '44px', fontStyle: 'bold', color: '#ffd34d' })
       .setOrigin(0.5).setStroke('#2b3a67', 10);
@@ -60,7 +62,7 @@ export class SlotsScene extends Phaser.Scene {
     const bg = this.add.graphics();
     drawBox(bg, -w / 2, -h / 2, w, h, { radius: 18 });
     const glow = this.add.graphics();
-    glow.lineStyle(8, UI.GOLD, 1).strokeRoundedRect(-w / 2 - 6, -h / 2 - 6, w + 12, h + 12, 26);
+    strokePixelFrame(glow, -w / 2 - 8, -h / 2 - 8, w + 16, h + 16, UI.GOLD, 6);
     // Flecha de selección por fuera del cuadro, a la izquierda
     const arrow = this.add.text(-w / 2 - 34, 0, ARROW, { fontFamily: UI.FONT, fontSize: '28px', color: '#ffd34d' }).setOrigin(0, 0.5);
     const title = this.add.text(-w / 2 + 28, -22, `Hueco ${i + 1}`, {

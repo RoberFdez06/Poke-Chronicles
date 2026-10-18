@@ -9,6 +9,7 @@ import { FilterBar } from '../ui/collection';
 import { addBackButton, buildPokemonCard, loadCardTextures, STATS_EXTRA_H } from '../ui/cards';
 import { fadeIn, goTo, hex, RARITY_COLORS } from '../ui/theme';
 import { cry } from '../ui/audio';
+import { addMenuBackdrop } from '../ui/art/landscape';
 
 /** Pokémon por página: una fila de 4 tarjetas con sus estadísticas. */
 const PAGE_SIZE = 4;
@@ -59,6 +60,7 @@ export class StarterScene extends Phaser.Scene {
 
   create() {
     fadeIn(this);
+    addMenuBackdrop(this);
     this.tiles = [];
     this.grid = undefined;
     this.filters = undefined;

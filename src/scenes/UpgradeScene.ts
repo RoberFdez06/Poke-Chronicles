@@ -6,6 +6,7 @@ import { sfx } from '../ui/audio';
 import { addBackButton, buildPokemonCard, loadCardTextures } from '../ui/cards';
 import { NavInput, PadButtons } from '../ui/nav';
 import { ARROW, COLORS, drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
+import { addMenuBackdrop } from '../ui/art/landscape';
 
 const ROW = { x: 680, w: 420, h: 88, gap: 14, top: 170 };
 const CARD_X = 250;
@@ -34,6 +35,7 @@ export class UpgradeScene extends Phaser.Scene {
 
   create() {
     fadeIn(this);
+    addMenuBackdrop(this);
     this.rows = [];
     this.card = undefined;
     this.index = 0;
