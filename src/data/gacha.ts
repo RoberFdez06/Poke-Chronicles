@@ -111,3 +111,49 @@ export function pull(
   }
   throw new Error('El gacha no tiene ningún Pokémon');
 }
+
+// --- Tirada x10 (supervisor) ---
+
+/** Coste de 10 tiradas de golpe: una gratis respecto a tirar de una en una. */
+export const PULL10_COST = PULL_COST * 9;
+/** En una tirada x10 al menos una sale de esta rareza o mejor. */
+export const PULL10_GUARANTEE: Rarity = 'epic';
+
+/**
+ * Hace `n` tiradas. Si ninguna llega a `guarantee` (o mejor), la última se repite con solo las rarezas que sí
+ * llegan (con sus mismas probabilidades relativas). Los repetidos cuentan también los salidos en esta tanda.
+ */
+export function pullMany(
+  rng: () => number,
+  pools: RarityPools,
+  owned: ReadonlySet<number> = new Set(),
+  n = 10,
+  guarantee: Rarity = PULL10_GUARANTEE,
+  rates: Readonly<Record<Rarity, number>> = GACHA_RATES,
+): PullResult[] {
+  const seen = new Set(owned);
+  const minIdx = RARITIES.indexOf(guarantee);
+  const out: PullResult[] = [];
+  for (let i = 0; i < n; i++) {
+    const last = i === n - 1;
+    const needGuarantee = last && !out.some((r) => RARITIES.indexOf(r.rarity) >= minIdx);
+    const useRates = needGuarantee
+      ? (Object.fromEntries(RARITIES.map((r, k) => [r, k >= minIdx ? rates[r] : 0])) as Record<Rarity, number>)
+      : rates;
+    const r = pull(rng, pools, seen, useRates);
+    seen.add(r.speciesId);
+    out.push(r);
+  }
+  return out;
+}
+
+/** Legendario destacado del día (el mismo durante todo el día), para el escaparate. */
+export function featuredLegendary(pools: RarityPools, day: number): number | null {
+  const pool = pools.legendary;
+  if (pool.length === 0) return null;
+  const i = Math.abs(Math.imul(day, 2654435761) >>> 0) % pool.length;
+  return pool[i];
+}
+
+/** Número de día local (para featuredLegendary): cambia a medianoche. */
+export const dayNumber = (d = new Date()) => Math.floor((d.getTime() - d.getTimezoneOffset() * 60000) / 86400000);
