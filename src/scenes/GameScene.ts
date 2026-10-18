@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { fetchAttackMovesForTypes, fetchMoveInfo, fetchNextEvolutions, fetchPokemon, fetchPokemonCard } from '../data/pokeapi';
 import { pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
-import { typeColor, typeHex, typeNameEs } from '../data/types';
+import { typeColor, typeNameEs } from '../data/types';
 import { addTickets } from '../data/save';
 import { clearRun, saveRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
 import { loadSpeciesIndex } from '../data/speciesIndex';
@@ -243,7 +243,6 @@ export class GameScene extends Phaser.Scene {
   /** Objetos que hay en el suelo (para guardarlos). */
   private floorItems: FloorItemSave[] = [];
   private pauseKey!: Key;
-  private pauseBtn?: Phaser.GameObjects.Text;
 
   // Combate: disparo continuo, objetos pasivos y poderes (movimientos) en ranuras
   private stats: PlayerStats = { ...BASE_STATS };
@@ -732,7 +731,6 @@ export class GameScene extends Phaser.Scene {
     pb.on('pointerover', () => (this.overHud = true));
     pb.on('pointerout', () => (this.overHud = false));
     pb.on('pointerdown', () => this.openPause());
-    this.pauseBtn = pb;
 
     // Tienda: al continuar, lo que quedaba; si no, artículos nuevos para este piso
     if (this.floor.shopId !== undefined) {

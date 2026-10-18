@@ -123,6 +123,6 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 - Si tu Pokémon tiene evolución (PokeAPI `evolution-chain`), evoluciona al completar ciertos pisos: cambia
   sprite y nombre y sube estadísticas. Animación de destello y texto "¡X ha evolucionado!".
 
-## [ ] T15 — Revisión final y pulido
+## [x] T15 — Revisión final y pulido
 - Repasa el README y la bitácora, quita código muerto, revisa que todas las pantallas funcionan con los
   3 controles y deja en la bitácora una lista de "cosas para probar" para Roberto.

@@ -334,3 +334,45 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
   `GameScene`, README.
 - **Dudas**: los poderes ya conseguidos se quedan; los nuevos siguen saliendo de los tipos de la forma con la que
   empezó el piso (si la evolución añade un tipo, como Charizard Volador, sus poderes llegan en el piso siguiente).
+
+## T15 — Revisión final y pulido (2026-10-18)
+
+- **Código muerto**: `fetchPokemon` pedía 14 movimientos de cada Pokémon (y su ilustración) que ya nadie usaba
+  desde T3: ahora es la misma petición que la tarjeta (14 peticiones menos por Pokémon al empezar cada piso).
+  Quitados `fetchSpeciesCount`, `BEHAVIOR_LABEL`, `MoveData`, `pauseBtn` y un import sin usar. `tsc` con
+  `--noUnusedLocals` queda limpio.
+- **README**: estructura reescrita por carpetas (data, level, ui, scenes, scripts, public), fila de controles
+  "Usar", versión del guardado (6), salas especiales en el modo Normal, resumen de lo que hay y aviso de que falta
+  `public/fonts/OFL.txt`; quitados restos ("8 por página", "gacha aún sin conectar").
+- **Tres controles** (repaso del código, sin navegador): todas las pantallas (menú, huecos, colección, primer
+  inicial, modo, partida, pausa, ajustes, gacha, Pokédex, mejoras) usan `NavInput`/`PadButtons` para teclado y
+  mando y tienen botones o zonas de clic y "← Volver" para ratón. En partida: mover y disparar con ratón, clic en
+  ranuras, botón de pausa y clic en mostrador/artículos.
+- Estado final: 125 tests en verde, `tsc` y `build` bien.
+
+## Cosas para probar (para Roberto)
+
+No he podido abrir el juego en el navegador (no se puede usar `npm run dev`), así que todo esto está comprobado
+solo con tests, tipos y build. Lo que más conviene mirar:
+
+1. **Primera vez**: con "Ajustes → Borrar progreso" (doble confirmación) o en una ventana privada, "Jugar" debe
+   pedir región y luego uno de sus 3 iniciales; después, elegir modo.
+2. **Partida guardada antigua**: si tenías huecos de antes, que se carguen (migran hasta la versión 6) y que el
+   saldo de monedas aparezca como tickets en el gacha.
+3. **Textos con Pixelify Sans**: pausa (con un nombre largo y 4 poderes), línea de los huecos, HUD (cuadro de arriba
+   y ranuras), tarjetas con estadísticas, Ajustes y Pokédex. Busca textos que se monten o se salgan.
+4. **Salas con obstáculos**: que nunca te quedes encerrado, que la hierba se rompa con dos disparos, que los
+   enemigos rodeen rocas y agujeros y que los que saltan no aparezcan encima de una roca.
+5. **Centro Pokémon y tienda**: puerta rosa y verde, curar una vez por piso (pisando, Enter/A o clic), comprar
+   pisando, con Enter/A y con clic, y que el botón A cerca del mostrador no lance también el poder 1.
+6. **Estados**: un poder de cada tipo (tinte y aviso), sobre todo Siniestro (huye), Normal (se para) y Hada.
+7. **Evolución**: con Charmander en modo Normal, al bajar al piso 2 y al 4 (destello, sprite, nombre y PS).
+   Con Eevee sale una evolución al azar.
+8. **Sonido**: que suene tras el primer clic, que la música y los efectos no estén demasiado altos y que el volumen
+   de Ajustes se guarde. Gritos al elegir Pokémon, al salir el jefe y en el gacha.
+9. **Ajustes desde la pausa**: abrir, cambiar volumen, volver con B/Esc a la pausa (no al juego directamente) y
+   pantalla completa.
+10. **Mando**: LB/RB (región), X (rareza), Y (buscar), LT/RT (tipo, en la Pokédex) y el teclado de búsqueda.
+11. **Equilibrio**: dificultad por piso, precios de tienda y mejoras, tickets por sala/jefe/ronda y estadísticas
+    de los Pokémon muy fuertes o muy débiles. Todos los números están en `src/data/` y `src/level/` para ajustarlos.
+12. **Licencia de la fuente**: añadir `public/fonts/OFL.txt` (enlace en el README).

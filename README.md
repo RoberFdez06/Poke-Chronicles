@@ -19,8 +19,9 @@ Abre la URL que muestra Vite (normalmente http://localhost:5173).
 | Disparar | Flechas (dos a la vez, en diagonal) | Mantener clic izquierdo hacia el cursor | Stick derecho |
 | Poderes 1-4 | Teclas 1, 2, 3, 4 | Clic en la ranura | A, B, X, Y |
 | Pausa | Esc o P | Botón ❚❚ (arriba a la izquierda) | Start o Select |
+| Usar (Centro Pokémon, tienda) | Enter cerca, o pisarlo | Clic en el mostrador o el artículo | A cerca, o pisarlo |
 | Nueva partida (al morir o ganar) | R | Clic | Start |
-| Menús y elegir inicial | Flechas o W A S D, Enter / espacio, Esc para volver | Pasar el cursor, clic y botón "Volver" | Stick o cruceta, A para elegir, B para volver |
+| Menús | Flechas o W A S D, Enter / espacio, Esc para volver | Pasar el cursor, clic y botón "Volver" | Stick o cruceta, A para elegir, B para volver |
 
 **Regla del proyecto:** todo se puede manejar con teclado, con ratón y con mando, cada uno por sí solo. Cualquier
 pantalla o acción nueva debe cumplirlo.
@@ -31,9 +32,9 @@ Interfaz al estilo de los juegos de Pokémon: cuadros de texto con borde doble y
 en la opción elegida, barras de PS verde/amarilla/roja con la etiqueta "PS", fichas de tipo y fundidos entre
 pantallas. Fuente, colores y piezas comunes en `src/ui/theme.ts`.
 
-La fuente es **Pixelify Sans** (licencia libre OFL), en `public/fonts/PixelifySans.ttf` con su licencia en
-`public/fonts/OFL.txt`; se carga antes de crear el juego. Si el archivo no está, el juego usa la fuente del sistema.
-Para descargarla: `https://github.com/google/fonts/raw/main/ofl/pixelifysans/PixelifySans%5Bwght%5D.ttf` →
+La fuente es **Pixelify Sans** (licencia libre OFL), en `public/fonts/PixelifySans.ttf`; se carga antes de crear el
+juego y, si el archivo no está, el juego usa la fuente del sistema. **Falta su licencia** `public/fonts/OFL.txt`
+(la OFL pide distribuirla junto a la fuente). Se descargan de: `https://github.com/google/fonts/raw/main/ofl/pixelifysans/PixelifySans%5Bwght%5D.ttf` →
 `public/fonts/PixelifySans.ttf` y `https://github.com/google/fonts/raw/main/ofl/pixelifysans/OFL.txt` → `public/fonts/OFL.txt`.
 
 ## Sonido
@@ -81,7 +82,6 @@ compran con dinero real. Todos los nombres (Pokémon, movimientos y tipos) salen
 `species-index.json` (`nameEs`) y, si faltan, de `pokemon-species/{id}`. Una tirada cuesta 100 y da un Pokémon según su rareza (común, raro, épico, ultraente
 o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 tickets. La lista de especies
 se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `node scripts/buildSpeciesIndex.mjs`.
-Con más de 8 desbloqueados, la pantalla de inicial se divide en páginas (◀ ▶ con ratón, izquierda/derecha con teclado o mando).
 
 ## Mejoras
 
@@ -192,75 +192,71 @@ que elegiste.
 
 ## Qué hay en esta base
 
-- Piso con salas, puertas, minimapa, enemigos variados, jefe legendario de PokeAPI y objetos.
+- Pisos con salas, obstáculos, puertas, minimapa, Centro Pokémon, tienda, enemigos variados, jefe legendario y objetos.
+- Cuatro modos de juego con récords, gacha, Pokédex, mejoras permanentes, evolución en partida, sonido y ajustes.
 - Sprites pixel de PokeAPI de frente y de espalda: el personaje mira hacia donde dispara y los enemigos hacia ti.
-- Pantalla de selección de inicial antes de cada partida.
+- Todo en español y manejable con teclado, ratón o mando.
 
 ## Estructura
 
 ```
 src/
-  main.ts              configuración de Phaser
-  data/pokeapi.ts      Pokémon y movimientos desde PokeAPI, con nombres en español (con caché)
-  data/types.ts        colores por tipo
-  data/items.ts        estadísticas, objetos pasivos y poderes (puro, testeable)
-  data/gacha.ts        rarezas y tiradas del gacha (puro, aún sin conectar al juego)
-  data/enemies.ts      enemigos por piso, comportamiento por tipo y estadísticas (puro)
-  data/moves.ts        poderes del tipo de tu Pokémon y nombres en español (puro)
-  data/save.ts         Pokémon desbloqueados guardados en el navegador
-  scenes/MenuScene.ts     menú principal
-  scenes/StarterScene.ts  elegir Pokémon de tu colección (regiones, búsqueda y rareza)
-  scenes/FirstStarterScene.ts  primera partida: elegir región e inicial
-  data/regions.ts      regiones, iniciales y filtros de la colección (puro)
-  data/modes.ts        modos de juego, oleadas, arena y récords (puro)
-  data/status.ts       estados por tipo: quemar, congelar, paralizar… (puro)
-  data/pokeStats.ts    estadísticas reales de cada Pokémon → estadísticas de juego (puro)
-  data/loot.ts         monedas de la partida, bayas, pociones, Centro Pokémon y tienda (puro)
-  scenes/ModeScene.ts  elegir modo de juego
-  scenes/UpgradeScene.ts  mejoras permanentes por Pokémon
-  data/evolution.ts    cadena evolutiva y cuándo se evoluciona en cada modo (puro)
-  data/upgrades.ts     mejoras: costes, niveles y cómo suben las estadísticas (puro)
-  scenes/PokedexScene.ts  Pokédex con todos los Pokémon y filtros
-  ui/collection.ts     barra de filtros (región, nombre, rareza, tipo) y teclado de búsqueda comunes
-  scenes/SettingsScene.ts ajustes: volumen, pantalla completa, controles y borrar progreso
-  ui/nav.ts            entrada de menús (NavInput, PadButtons) y botones (MenuList)
-  ui/cards.ts          tarjeta de Pokémon, carga de sprites y botón "Volver"
-  ui/audio.ts          efectos, música y gritos con Web Audio
-  data/sounds.ts       efectos y música como datos, volumen (puro)
-  ui/theme.ts          tema: fuente, colores, cuadros, barra de PS, fichas de tipo y transiciones
-  data/speciesIndex.ts carga (una vez) la lista de especies de public/data
-  level/floorGen.ts    generador de pisos (puro, determinista por semilla)
-  level/roomLayouts.ts plantillas de sala con obstáculos, conectividad y campo de flujo (puro)
-  level/progression.ts pisos: tamaño, dificultad, tickets y jefes legendarios (puro)
-  scenes/GameScene.ts  piso, salas, puertas, jugador, enemigos, habilidades y HUD
-  scenes/minimap.ts    minimapa
-tests/
-  floorGen.test.ts     tests del generador (`npm test`, runner de Node 22.6+)
-  items.test.ts        tests de objetos y poderes
-  gacha.test.ts        tests de rarezas y gacha
-  save.test.ts         tests del guardado de desbloqueos
-  runSave.test.ts      tests de las partidas guardadas (y su migración)
-  progression.test.ts  tests de pisos, dificultad y jefes
-  enemies.test.ts      tests de enemigos por piso y comportamientos
-  moves.test.ts        tests de poderes por tipo
-  regions.test.ts      tests de regiones y filtros
-  modes.test.ts        tests de modos y récords
-  status.test.ts       tests de estados
-  theme.test.ts        tests del color de la barra de PS
-  pokeStats.test.ts    tests de las estadísticas
-  roomLayouts.test.ts  tests de las salas con obstáculos (puertas conectadas)
-  sounds.test.ts       tests de sonidos y volumen
-  evolution.test.ts    tests de la evolución
-  upgrades.test.ts     tests de las mejoras
-  loot.test.ts         tests de botín, curación y tienda
+  main.ts                 configuración de Phaser (carga la fuente y el audio antes)
+  data/                   lógica pura (sin Phaser), con tests
+    pokeapi.ts            Pokémon, movimientos, gritos y evoluciones desde PokeAPI, en español y con caché (red)
+    speciesIndex.ts       carga (una vez) la lista de especies de public/data (red)
+    types.ts              colores y nombres en español de los tipos
+    items.ts              estadísticas, objetos pasivos y poderes
+    moves.ts              poderes del tipo de tu Pokémon y nombres en español
+    pokeStats.ts          estadísticas reales de cada Pokémon → estadísticas de juego
+    upgrades.ts           mejoras permanentes: costes, niveles y efecto
+    evolution.ts          cadena evolutiva y cuándo se evoluciona en cada modo
+    enemies.ts            enemigos por piso, comportamiento por tipo y estadísticas
+    status.ts             estados por tipo: quemar, congelar, paralizar…
+    loot.ts               monedas de la partida, bayas, pociones, Centro Pokémon y tienda
+    gacha.ts              rarezas y tiradas del gacha
+    regions.ts            regiones, iniciales y filtros de la colección
+    modes.ts              modos de juego, oleadas, arena y récords
+    sounds.ts             efectos y música como datos, volumen
+    save.ts               tickets, desbloqueos, récords, mejoras, volumen y borrar progreso (localStorage)
+    runSave.ts            partidas guardadas en 3 huecos (con migraciones)
+    controls.ts           lista de controles que enseñan el menú, la pausa y los ajustes
+  level/                  lógica pura de los pisos, con tests
+    floorGen.ts           generador de pisos (determinista por semilla), Centro y tienda
+    roomLayouts.ts        plantillas de sala con obstáculos, conectividad y campo de flujo
+    progression.ts        pisos: tamaño, dificultad, tickets y jefes legendarios
+  ui/
+    theme.ts              tema: fuente, colores, cuadros, barra de PS, fichas de tipo y transiciones
+    nav.ts                entrada de menús (NavInput, PadButtons) y botones (MenuList, addPanel)
+    cards.ts              tarjeta de Pokémon con estadísticas, carga de sprites y botón "Volver"
+    collection.ts         barra de filtros (región, nombre, rareza, tipo) y teclado de búsqueda
+    audio.ts              efectos, música y gritos con Web Audio
+  scenes/
+    MenuScene.ts          menú principal
+    SlotsScene.ts         los 3 huecos de partida
+    StarterScene.ts       elegir Pokémon de tu colección
+    FirstStarterScene.ts  primera partida: elegir región e inicial
+    ModeScene.ts          elegir modo de juego
+    GameScene.ts          la partida: salas, jugador, enemigos, poderes, tienda, evolución y HUD
+    minimap.ts            minimapa
+    GachaScene.ts         gacha
+    PokedexScene.ts       Pokédex con todos los Pokémon y filtros
+    UpgradeScene.ts       mejoras permanentes por Pokémon
+    SettingsScene.ts      ajustes: volumen, pantalla completa, controles y borrar progreso
+    PauseScene.ts         pausa (la última escena, se dibuja encima)
+tests/                    un archivo por módulo de data/, level/ y ui/theme.ts (`npm test`, Node 22.6+)
 scripts/
-  buildSpeciesIndex.mjs  genera public/data/species-index.json desde PokeAPI
+  buildSpeciesIndex.mjs   genera public/data/species-index.json desde PokeAPI (nombres en español, tipos, rareza)
+  ensureIndex.mjs         lo genera antes de dev/build si no existe
+public/
+  data/species-index.json lista de las 1025 especies
+  fonts/PixelifySans.ttf  fuente pixel (OFL)
 ```
 
 ## Modo Normal
 
 La partida tiene **5 pisos** (`FLOOR_COUNT` en `src/level/progression.ts`). Cada piso tiene salas de inicio,
-combate, objeto (marco amarillo) y jefe (marco rojo): el primero tiene de 8 a 12 salas y cada piso suma 2 más.
+combate, objeto (marco amarillo), Centro Pokémon (rosa), tienda (verde) y jefe (marco rojo): el primero tiene de 8 a 12 salas y cada piso suma 2 más.
 Las puertas se cierran al entrar en una sala con enemigos y se abren al limpiarla. Los enemigos tienen más
 vida, daño y velocidad (y son más) en cada piso.
 
@@ -281,7 +277,8 @@ récord en el navegador (`pokeisaac.records`, en `src/data/save.ts`), que se ve 
 | **Infinito** | Como Normal, pero los pisos no se acaban y cada uno es más difícil. | Pisos completados |
 | **Rush de jefes** | Solo jefes legendarios en una arena; tras cada uno, un objeto y una trampilla al siguiente. | Jefes vencidos |
 
-Las partidas de cualquier modo se guardan en los huecos (`RunSave.mode`, `RUN_VERSION` 3; las de antes pasan a Normal).
+Las partidas de cualquier modo se guardan en los huecos (`RUN_VERSION` 6; los guardados de versiones
+anteriores se migran solos).
 En Oleadas, al continuar se repite la ronda en la que estabas.
 
 ## Siguientes pasos

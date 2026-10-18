@@ -4,27 +4,7 @@ import { loadSpeciesIndex } from './speciesIndex';
 import { parseApiStats, type BaseStats } from './pokeStats';
 import { nextEvolutionIds, type ChainLink } from './evolution';
 
-export interface MoveData {
-  name: string;
-  type: string;
-  power: number;
-}
-
-export interface PokemonData {
-  id: number;
-  name: string;
-  /** Tipos del Pokémon, en el orden de PokeAPI. */
-  types: string[];
-  artwork: string;
-  /** Sprites pixel de PokeAPI: de frente y de espalda (si no hay, se repite el de frente). */
-  sprites: { front: string; back: string };
-  moves: MoveData[];
-  /** Estadísticas base (PS, Ataque, Defensa, At. Esp., Def. Esp., Velocidad). */
-  stats: BaseStats;
-}
-
 const BASE = 'https://pokeapi.co/api/v2';
-const cache = new Map<number, Promise<PokemonData>>();
 
 async function getJson(url: string) {
   const res = await fetch(url);
@@ -56,14 +36,19 @@ function spritesOf(p: any): { front: string; back: string } {
   return { front, back: p.sprites.back_default ?? front };
 }
 
-/** Lo justo para dibujar a un Pokémon en un menú: una sola petición, sin movimientos. */
+/** Lo que usamos de cada Pokémon: una petición (más el nombre en español, que suele venir del índice). */
 export interface PokemonCard {
   id: number;
   name: string;
+  /** Tipos del Pokémon, en el orden de PokeAPI. */
   types: string[];
+  /** Sprites pixel de PokeAPI: de frente y de espalda (si no hay, se repite el de frente). */
   sprites: { front: string; back: string };
+  /** Estadísticas base (PS, Ataque, Defensa, At. Esp., Def. Esp., Velocidad). */
   stats: BaseStats;
 }
+
+export type PokemonData = PokemonCard;
 
 export async function fetchPokemonCard(id: number): Promise<PokemonCard> {
   const [p, name] = await Promise.all([getPokemonRaw(id), fetchSpeciesName(id)]);
@@ -109,34 +94,8 @@ export async function fetchCryUrl(id: number): Promise<string | null> {
   return (p.cries?.latest as string | undefined) ?? (p.cries?.legacy as string | undefined) ?? null;
 }
 
-export function fetchPokemon(id: number): Promise<PokemonData> {
-  if (!cache.has(id)) cache.set(id, load(id));
-  return cache.get(id)!;
-}
-
-async function load(id: number): Promise<PokemonData> {
-  const [p, name] = await Promise.all([getPokemonRaw(id), fetchSpeciesName(id)]);
-  const urls: string[] = p.moves.slice(0, 14).map((m: any) => m.move.url);
-  const details = await Promise.all(urls.map(getJson));
-
-  const toMove = (m: any): MoveData => ({ name: localName(m.names, m.name), type: m.type.name, power: m.power });
-  const moves: MoveData[] = details.filter((m) => m.power).slice(0, 4).map(toMove);
-  if (moves.length < 4) {
-    // Relleno con Placaje, también desde PokeAPI
-    const filler = toMove(await getJson(`${BASE}/move/tackle`));
-    while (moves.length < 4) moves.push(filler);
-  }
-
-  return {
-    id,
-    name,
-    types: typesOf(p),
-    artwork: p.sprites.other['official-artwork'].front_default ?? p.sprites.front_default,
-    sprites: spritesOf(p),
-    moves,
-    stats: parseApiStats(p.stats),
-  };
-}
+/** Pokémon para jugar con él (mismos datos que la tarjeta: nombre en español, tipos, sprites y estadísticas). */
+export const fetchPokemon = (id: number): Promise<PokemonData> => fetchPokemonCard(id);
 
 /** Cachea una promesa por clave; si falla, se borra para poder reintentar. */
 function cached<K, V>(map: Map<K, Promise<V>>, key: K, make: () => Promise<V>): Promise<V> {
@@ -187,12 +146,4 @@ export async function fetchAttackMovesForTypes(
     for (const m of batch) if (m && out.length < n && isUsableMove(m, types)) out.push(m);
   }
   return out;
-}
-
-let speciesCount: Promise<number> | null = null;
-
-/** Número total de especies que ofrece PokeAPI. */
-export function fetchSpeciesCount(): Promise<number> {
-  speciesCount ??= getJson(`${BASE}/pokemon-species?limit=1`).then((r) => r.count as number);
-  return speciesCount;
 }

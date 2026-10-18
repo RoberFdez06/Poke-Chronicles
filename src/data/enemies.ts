@@ -8,13 +8,6 @@ import type { FloorDifficulty } from '../level/progression.ts';
 export const BEHAVIORS = ['chase', 'charge', 'shoot', 'hop'] as const;
 export type EnemyBehavior = (typeof BEHAVIORS)[number];
 
-export const BEHAVIOR_LABEL: Record<EnemyBehavior, string> = {
-  chase: 'Persigue',
-  charge: 'Embiste',
-  shoot: 'Dispara',
-  hop: 'Salta',
-};
-
 /** Comportamiento según el tipo principal del Pokémon. */
 export const BEHAVIOR_BY_TYPE: Readonly<Record<string, EnemyBehavior>> = {
   normal: 'chase',
