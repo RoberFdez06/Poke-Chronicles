@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { CONTROLS } from '../data/controls';
 import type { MovePower, PlayerStats } from '../data/items';
 import { typeColor, typeHex, typeNameEs } from '../data/types';
-import { addHpBar, addTypeChip, drawBox } from '../ui/theme';
+import { addHpBar, addTypeChip, drawBox, shorten } from '../ui/theme';
 import { STAT_KEYS, STAT_LABEL, type BaseStats } from '../data/pokeStats';
 import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
 import type { SettingsData } from './SettingsScene';
@@ -70,10 +70,12 @@ export class PauseScene extends Phaser.Scene {
       this.add.text(x, y, s, { fontFamily: UI.FONT, fontSize: `${size}px`, color, fontStyle: bold ? 'bold' : 'normal', wordWrap: { width: 470 } });
 
     const st = d.stats;
-    t(66, 118, `${capitalize(d.starterName)} · Hueco ${d.slot + 1}`, 24, '#2b3a67', true);
+    // Cada dato en su línea fija para que nada se monte encima de la tabla (con la fuente pixel ocupa más)
+    t(66, 116, capitalize(d.starterName), 24, '#2b3a67', true);
     addHpBar(this, 340, 126, 190, 12).set(d.hp / st.maxHp);
-    const rooms = d.showRooms ? ` · Salas limpias ${d.roomsCleared}/${d.roomCount}` : '';
-    t(66, 152, `${d.modeLabel} · ${d.progress}${rooms} · Monedas ${d.coins} · Tickets ganados ${d.earned}`, 16, '#4a5578');
+    const rooms = d.showRooms ? ` · Salas ${d.roomsCleared}/${d.roomCount}` : '';
+    t(66, 150, `Hueco ${d.slot + 1} · ${d.modeLabel} · ${d.progress}${rooms}`, 15, '#4a5578');
+    t(66, 170, `Monedas ${d.coins} · Tickets ganados ${d.earned}`, 15, '#4a5578');
     const rows: [string, string][] = [
       ['PS', `${Math.ceil(d.hp)} / ${st.maxHp}`],
       ['Daño', `${st.damage.toFixed(1)}`],
@@ -88,19 +90,22 @@ export class PauseScene extends Phaser.Scene {
     ];
     rows.forEach(([k, v], i) => {
       const x = 66 + (i % 2) * 245;
-      const y = 186 + Math.floor(i / 2) * 28;
+      const y = 198 + Math.floor(i / 2) * 27;
       t(x, y, k, 17, '#4a5578');
       t(x + 140, y, v, 17, '#2b3a67', true);
     });
     // Estadísticas base del Pokémon, como en los juegos
-    t(66, 328, STAT_KEYS.map((k) => `${STAT_LABEL[k]} ${d.baseStats[k]}`).join(' · '), 13, '#4a5578');
-    t(66, 352, 'Objetos', 20, '#2b3a67', true);
-    t(66, 378, d.items.length ? d.items.join(' · ') : 'Ninguno todavía', 16, '#4a5578');
-    t(66, 440, 'Poderes', 20, '#2b3a67', true);
+    // Estadísticas base del Pokémon, como en los juegos: tres por línea
+    const base = STAT_KEYS.map((k) => `${STAT_LABEL[k]} ${d.baseStats[k]}`);
+    t(66, 334, base.slice(0, 3).join(' · '), 13, '#4a5578');
+    t(66, 350, base.slice(3).join(' · '), 13, '#4a5578');
+    t(66, 372, 'Objetos', 20, '#2b3a67', true);
+    t(66, 398, d.items.length ? d.items.join(' · ') : 'Ninguno todavía', 15, '#4a5578');
+    t(66, 448, 'Poderes', 20, '#2b3a67', true);
     d.moves.forEach((m, i) => {
       const x = 66 + (i % 2) * 245;
-      const y = 470 + Math.floor(i / 2) * 34;
-      t(x, y, `${i + 1}  ${m ? pretty(m.name) : '—'}`, 17, m ? typeHex(m.type) : '#9aa5b1', true)
+      const y = 478 + Math.floor(i / 2) * 32;
+      t(x, y, `${i + 1}  ${m ? shorten(pretty(m.name), 13) : '—'}`, 16, m ? typeHex(m.type) : '#9aa5b1', true)
         .setStroke(m ? '#2b3a67' : '#00000000', m ? 2 : 0);
       // Ficha del tipo del poder
       if (m) addTypeChip(this, x + 196, y + 11, typeNameEs(m.type), typeColor(m.type), 64, 20);

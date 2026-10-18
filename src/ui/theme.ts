@@ -162,3 +162,6 @@ export const RARITY_COLORS: Record<Rarity, number> = {
   ultra: 0xe84393,
   legendary: 0xd4a017,
 };
+
+/** Recorta un texto largo con "…" para que quepa en un cuadro (nombres de poderes, por ejemplo). */
+export const shorten = (s: string, max: number): string => (s.length > max ? s.slice(0, max - 1).trimEnd() + '…' : s);

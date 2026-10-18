@@ -52,7 +52,7 @@ import {
   LootDrop,
   ShopSlot,
 } from '../data/loot';
-import { addHpBar, addTypeChip, drawBox, fadeIn, FONT, goTo, HEX, hpColor } from '../ui/theme';
+import { addHpBar, addTypeChip, drawBox, fadeIn, FONT, goTo, HEX, hpColor, shorten } from '../ui/theme';
 import {
   applyStatus,
   drainHeal,
@@ -670,7 +670,7 @@ export class GameScene extends Phaser.Scene {
       .text(560, 14, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff', wordWrap: { width: 240 } })
       .setDepth(10)
       .setScrollFactor(0);
-    const style = { fontFamily: FONT, fontSize: '19px', fontStyle: 'bold', color: HEX.text };
+    const style = { fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: HEX.text };
     for (let i = 0; i < SLOT_COUNT; i++) {
       this.slotBoxes.push(fixed(this.add.graphics()));
       this.slotTypes.push(
@@ -2138,7 +2138,7 @@ export class GameScene extends Phaser.Scene {
     this.slotTypes[i].setText(m ? typeNameEs(m.type).toUpperCase() : '');
     const text = this.hud[i];
     if (!m) text.setText(`${i + 1}  —`).setAlpha(0.6);
-    else text.setText(`${i + 1}  ${pretty(m.name)}`).setAlpha(ready ? 1 : 0.4);
+    else text.setText(`${i + 1}  ${shorten(pretty(m.name), 13)}`).setAlpha(ready ? 1 : 0.4);
     g.setAlpha(ready ? 1 : 0.7);
   }
 

@@ -277,3 +277,14 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
 - **Controles**: añadida la fila "Usar (Centro Pokémon, tienda)" a la lista de controles.
 - **Archivos**: `src/scenes/SettingsScene.ts` (nueva), `save.ts` (+test), `controls.ts`, `MenuScene`, `PauseScene`,
   `GameScene`, `main.ts`, README.
+
+## N4 — Pausa: la línea de progreso se montaba sobre las estadísticas (2026-10-18)
+
+- La pausa tiene ahora cada dato en una línea fija: nombre (24 px); "Hueco · modo · piso · salas" (15 px);
+  "Monedas · Tickets ganados" (15 px); la tabla baja a y = 198 con filas de 27 px; las estadísticas base van en dos
+  líneas de tres; objetos y poderes bajan en proporción. Los nombres de poderes se recortan con "…" a 13 letras en
+  la pausa y en las ranuras del HUD (`shorten` en `theme.ts`), y la letra de las ranuras baja de 19 a 17 px.
+- Repaso de huecos y HUD: en los huecos la línea de la partida ya tenía `wordWrap` y cabe en dos líneas dentro del
+  cuadro; en el HUD nombre, progreso, PS y monedas tienen sitio de sobra con nombres de hasta 12 letras.
+- **Límite**: no puedo abrir el navegador, así que los anchos los he calculado a mano (unos 0,55 em por letra con
+  Pixelify Sans). Conviene un vistazo a la pausa con un nombre largo.
