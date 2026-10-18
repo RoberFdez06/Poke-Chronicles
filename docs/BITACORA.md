@@ -115,3 +115,17 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
 - **Archivos**: `src/data/status.ts` y `tests/status.test.ts` (nuevos), `GameScene` (`applyStatusTo`,
   `tickEnemyStatus`, `paintEnemy`, `popup`, `killEnemy`; la IA usa `speedMultiplier` e `isConfused`), README.
 - **Dudas**: duraciones y porcentajes a ojo; están juntos en `STATUS_EFFECTS`.
+
+## T7 — Español en todo lo que viene de PokeAPI (2026-10-18)
+
+- **Qué**: `species-index.json` regenerado con `nameEs` (los 1025 tienen nombre en español: "Código Cero",
+  "Mr. Mime", "Nidoran♀"…; el resto de datos es idéntico al de antes). `fetchSpeciesName(id)` (con caché) lo saca
+  del índice y, si falta, de `pokemon-species/{id}`; `fetchPokemonCard` y `fetchPokemon` ya devuelven el nombre en
+  español, así que salen en español en gacha, colección, primer inicial, HUD, pausa, huecos y cartel del jefe
+  ("¡Lugia, jefe legendario!"). Los movimientos del Pokémon usan `localName`. Los tipos ya iban con `typeNameEs`.
+  La búsqueda de la colección usa el nombre en español.
+- **Partidas antiguas**: al continuar, los poderes con nombre en inglés (ranuras, reserva y suelo) se traducen con
+  `fetchMoveInfo` (`spanishMoves`); el nombre del Pokémon se actualiza en el siguiente guardado. En la pantalla de
+  huecos, una partida antigua sigue mostrando el nombre en inglés hasta que se continúe y se guarde.
+- **Archivos**: `scripts/buildSpeciesIndex.mjs`, `public/data/species-index.json`, `src/data/gacha.ts` (`nameEs?`),
+  `src/data/pokeapi.ts`, `GameScene`, `StarterScene`, README.

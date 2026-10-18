@@ -45,7 +45,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
   eléctrico paraliza a ratos, veneno envenena, planta drena vida, etc. Iconos o tinte sobre el enemigo.
 - Tabla de efectos pura en `src/data/` con tests.
 
-## [ ] T7 — Español en todo lo que viene de PokeAPI
+## [x] T7 — Español en todo lo que viene de PokeAPI
 - Nombres de Pokémon (`pokemon-species/{id}` → `names` es), movimientos (`move/{id}` → `names` es) y tipos
   en español en todas las pantallas (gacha, iniciales, pausa, objetos, HUD). Con caché.
 

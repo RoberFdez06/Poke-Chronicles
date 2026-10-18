@@ -141,7 +141,7 @@ export class StarterScene extends Phaser.Scene {
     const byId = new Map(index.map((s) => [s.id, s]));
     this.entries = unlocked.map((id) => {
       const s = byId.get(id);
-      return { id, name: s?.name ?? `#${id}`, rarity: s ? classifyRarity(s) : 'common' };
+      return { id, name: s?.nameEs ?? s?.name ?? `#${id}`, rarity: s ? classifyRarity(s) : 'common' };
     });
     loading.destroy();
     this.buildMenu();

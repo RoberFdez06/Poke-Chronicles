@@ -1,5 +1,6 @@
 import type { MoveInfo } from './items';
 import { isUsableMove, localName, pickMoveIds, typeMoveIds } from './moves';
+import { loadSpeciesIndex } from './speciesIndex';
 
 export interface MoveData {
   name: string;
@@ -60,8 +61,28 @@ export interface PokemonCard {
 }
 
 export async function fetchPokemonCard(id: number): Promise<PokemonCard> {
-  const p = await getPokemonRaw(id);
-  return { id, name: p.name, types: typesOf(p), sprites: spritesOf(p) };
+  const [p, name] = await Promise.all([getPokemonRaw(id), fetchSpeciesName(id)]);
+  return { id, name, types: typesOf(p), sprites: spritesOf(p) };
+}
+
+const speciesNameCache = new Map<number, Promise<string>>();
+
+/**
+ * Nombre en español de la especie: de species-index.json si lo tiene (sin peticiones) y, si no,
+ * de `pokemon-species/{id}`. Si todo falla, el nombre en inglés de PokeAPI.
+ */
+export function fetchSpeciesName(id: number): Promise<string> {
+  return cached(speciesNameCache, id, async () => {
+    const index = await loadSpeciesIndex().catch(() => []);
+    const fromIndex = index.find((s) => s.id === id)?.nameEs;
+    if (fromIndex) return fromIndex;
+    try {
+      const sp = await getJson(`${BASE}/pokemon-species/${id}`);
+      return localName(sp.names, sp.name);
+    } catch {
+      return (await getPokemonRaw(id)).name as string;
+    }
+  });
 }
 
 export function fetchPokemon(id: number): Promise<PokemonData> {
@@ -70,11 +91,11 @@ export function fetchPokemon(id: number): Promise<PokemonData> {
 }
 
 async function load(id: number): Promise<PokemonData> {
-  const p = await getPokemonRaw(id);
+  const [p, name] = await Promise.all([getPokemonRaw(id), fetchSpeciesName(id)]);
   const urls: string[] = p.moves.slice(0, 14).map((m: any) => m.move.url);
   const details = await Promise.all(urls.map(getJson));
 
-  const toMove = (m: any): MoveData => ({ name: m.name, type: m.type.name, power: m.power });
+  const toMove = (m: any): MoveData => ({ name: localName(m.names, m.name), type: m.type.name, power: m.power });
   const moves: MoveData[] = details.filter((m) => m.power).slice(0, 4).map(toMove);
   if (moves.length < 4) {
     // Relleno con Placaje, también desde PokeAPI
@@ -84,7 +105,7 @@ async function load(id: number): Promise<PokemonData> {
 
   return {
     id,
-    name: p.name,
+    name,
     types: typesOf(p),
     artwork: p.sprites.other['official-artwork'].front_default ?? p.sprites.front_default,
     sprites: spritesOf(p),

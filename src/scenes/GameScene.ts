@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { fetchAttackMovesForTypes, fetchPokemon, fetchPokemonCard } from '../data/pokeapi';
+import { fetchAttackMovesForTypes, fetchMoveInfo, fetchPokemon, fetchPokemonCard } from '../data/pokeapi';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeHex } from '../data/types';
 import { addCoins } from '../data/save';
@@ -147,6 +147,7 @@ export class GameScene extends Phaser.Scene {
   /** Especies de enemigo de este piso (salen de la semilla del piso, así al continuar son las mismas). */
   private foeKinds: FoeKind[] = [];
   private bossType = 'normal';
+  private bossName = '';
   private pickups!: Phaser.Physics.Arcade.Group;
   private walls!: Phaser.Physics.Arcade.StaticGroup;
   private doorBlocks!: Phaser.Physics.Arcade.StaticGroup;
@@ -299,7 +300,10 @@ export class GameScene extends Phaser.Scene {
     else this.floor = generateFloor({ seed: this.floorSeed, roomCount: r?.roomCount ?? roomCountFor(this.floorNum, Math.random) });
 
     // Los poderes que saldrán en el suelo son movimientos de los tipos de tu Pokémon; se piden ya, en paralelo
-    if (r) this.movePool = [...r.movePool];
+    if (r) {
+      await this.spanishMoves(r);
+      this.movePool = [...r.movePool];
+    }
     const poolReady = fetchPokemon(this.starterId)
       .then(async (s) => {
         // Las partidas guardadas antes de esto podían traer poderes de otros tipos
@@ -327,6 +331,7 @@ export class GameScene extends Phaser.Scene {
     if (foes.length === 0) foes = [await fetchPokemonCard(FALLBACK_ENEMIES[0])];
     this.foeKinds = this.toFoeKinds(foes, index);
     this.bossType = boss.types[0] ?? 'normal';
+    this.bossName = boss.name;
     this.tearType = starter.types[0] ?? 'normal';
     this.starterName = starter.name;
     // Misma clave que usa StarterScene, así las texturas ya están cargadas
@@ -356,6 +361,26 @@ export class GameScene extends Phaser.Scene {
       this.startFloor();
     });
     this.load.start();
+  }
+
+  /**
+   * Partidas guardadas antes de tener nombres en español: sus poderes (en ranuras, en reserva y en el suelo)
+   * venían con el nombre en inglés de PokeAPI ("flame-wheel"). Se traducen al continuar; si falla, se quedan.
+   */
+  private async spanishMoves(r: RunSave) {
+    const tr = async (m: MovePower): Promise<MovePower> => {
+      if (!/^[a-z0-9-]+$/.test(m.name)) return m; // ya está en español
+      try {
+        return { ...m, name: (await fetchMoveInfo(m.id)).name };
+      } catch {
+        return m;
+      }
+    };
+    r.slots = await Promise.all(r.slots.map((m) => (m ? tr(m) : null)));
+    r.movePool = await Promise.all(r.movePool.map(tr));
+    r.floorItems = await Promise.all(
+      r.floorItems.map(async (f) => (f.drop.kind === 'move' ? { ...f, drop: { kind: 'move' as const, move: await tr(f.drop.move) } } : f)),
+    );
   }
 
   /** Nivel de dificultad: el piso, el jefe por el que vas o, en Oleadas, el que toca a la ronda. */
@@ -888,7 +913,7 @@ export class GameScene extends Phaser.Scene {
     b.setData('hp', Math.round(500 * d.hp)).setData('speed', 70 * d.speed).setData('dmg', Math.round(20 * d.damage));
     // El jefe también se comporta según su tipo
     b.setData('ai', this.newAI(behaviorFor([this.bossType]), this.bossType, true));
-    this.showBanner('¡Jefe legendario!', 1200);
+    this.showBanner(`¡${this.bossName}, jefe legendario!`, 1400);
   }
 
   /** Estado inicial de la IA; deja un respiro al entrar antes de embestir, disparar o saltar. */

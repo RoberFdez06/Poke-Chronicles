@@ -38,6 +38,8 @@ async function worker() {
     index[id - 1] = {
       id,
       name: species.name,
+      // Nombre en español (si PokeAPI no lo tiene, el de siempre)
+      nameEs: species.names.find((n) => n.language.name === 'es')?.name ?? species.name,
       bst: pokemon.stats.reduce((sum, s) => sum + s.base_stat, 0),
       legendary: species.is_legendary,
       mythical: species.is_mythical,

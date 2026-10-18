@@ -45,7 +45,8 @@ La pausa muestra tus estadísticas, objetos y poderes, y tiene *Reanudar*, *Rein
 ## Gacha y monedas
 
 Las monedas se ganan jugando (15 por sala limpiada, +5 por cada piso; 60 × número de piso por el jefe) y se guardan en el navegador; nunca se
-compran con dinero real. Una tirada cuesta 100 y da un Pokémon según su rareza (común, raro, épico, ultraente
+compran con dinero real. Todos los nombres (Pokémon, movimientos y tipos) salen en español: los de Pokémon vienen en
+`species-index.json` (`nameEs`) y, si faltan, de `pokemon-species/{id}`. Una tirada cuesta 100 y da un Pokémon según su rareza (común, raro, épico, ultraente
 o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 monedas. La lista de especies
 se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `node scripts/buildSpeciesIndex.mjs`.
 Con más de 8 desbloqueados, la pantalla de inicial se divide en páginas (◀ ▶ con ratón, izquierda/derecha con teclado o mando).
@@ -105,7 +106,7 @@ Los desbloqueados se guardan en el navegador (`localStorage`, clave `pokeisaac.u
 ```
 src/
   main.ts              configuración de Phaser
-  data/pokeapi.ts      Pokémon y movimientos desde PokeAPI (con caché)
+  data/pokeapi.ts      Pokémon y movimientos desde PokeAPI, con nombres en español (con caché)
   data/types.ts        colores por tipo
   data/items.ts        estadísticas, objetos pasivos y poderes (puro, testeable)
   data/gacha.ts        rarezas y tiradas del gacha (puro, aún sin conectar al juego)

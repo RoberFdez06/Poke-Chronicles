@@ -17,6 +17,8 @@ export const RARITY_LABEL: Record<Rarity, string> = {
 export interface SpeciesFact {
   id: number;
   name: string;
+  /** Nombre en español (lo añade scripts/buildSpeciesIndex.mjs; las listas antiguas no lo tienen). */
+  nameEs?: string;
   /** Suma de estadísticas base. */
   bst: number;
   legendary: boolean;
