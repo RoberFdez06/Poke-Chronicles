@@ -438,3 +438,21 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   `ui/cards.ts`, `GachaScene`, `StarterScene`, `PokedexScene`, `GameScene`, README.
 - **Dudas**: si tienes el shiny, siempre juegas con él (no hay opción de elegir el normal). Un shiny no se puede
   conseguir venciéndolo, solo en el gacha.
+
+## N6 — Partidas que no se guardan y Esc en "Partidas" (2026-10-18)
+
+- **Causa del guardado**: la que apuntaba el supervisor. Con la T21 a medias, `runSave.ts` ya pedía la versión 7 con
+  `keys`, `bombs`, `openedChests` y `revealedDoors`, pero `GameScene` seguía guardando sin ellos; Vite no se para por
+  errores de tipos, así que el juego corría, guardaba y `parseRun` rechazaba el guardado (hueco vacío). Con la T21
+  terminada (commit c01b59d) `GameScene` guarda todos los campos.
+- **Comprobado en navegador**: he adelantado parte de la T29. Playwright 1.48 (dependencia de desarrollo, para las
+  pruebas de navegador que pide esa tarea) y `tests/e2e/flow.spec.ts` con PokeAPI falsa (`page.route`). Recorre con
+  teclado: Menú → Huecos → Esc → Menú, lo mismo con Retroceso, hueco vacío → primer inicial → Esc → Huecos, región
+  e inicial → Modo → Esc → colección → Esc → Huecos, colección → Modo → partida; comprueba que hay guardado v7 al
+  entrar en la sala, pausa → "Salir y guardar", hueco ocupado → diálogo → Esc lo cierra → Esc vuelve al menú, y
+  "Continuar" abre la partida. Sin errores en consola. **Pasa.** Se lanza con `npm run e2e`.
+- **Esc**: en Chromium, Esc y Retroceso vuelven desde Huecos, Inicial y Modo, con y sin partidas guardadas y con el
+  diálogo abierto o cerrado. No he encontrado otro fallo en el código; si a Roberto le sigue pasando, puede ser que
+  la página haya perdido el foco del teclado (un clic en el juego lo devuelve) o la pantalla completa (Esc la usa el
+  navegador; el supervisor ya añadió `keyboard.lock` y Retroceso).
+- `src/main.ts` deja el juego en `window.__POKEISAAC__` para que las pruebas sepan qué pantalla está activa.

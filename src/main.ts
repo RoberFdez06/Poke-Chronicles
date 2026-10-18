@@ -35,6 +35,8 @@ function startGame() {
     scene: [MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, PauseScene],
   });
   lockEscapeInFullscreen(game);
+  // Para las pruebas de navegador (npm run e2e): saber qué pantalla está activa
+  (window as Window & { __POKEISAAC__?: Phaser.Game }).__POKEISAAC__ = game;
 }
 
 /**
