@@ -230,3 +230,19 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
 - **Colores claros**: cada ranura de poder del HUD lleva encima una ficha con el nombre del tipo ("VOLADOR",
   "VENENO") del color del tipo; la pausa ya mostraba la ficha de tipo de cada poder desde T8.
 - **Archivos**: `src/data/status.ts`, `tests/status.test.ts`, `GameScene`, README.
+
+## T9 — Salas con obstáculos (2026-10-18)
+
+- **Qué**: `src/level/roomLayouts.ts` con 8 plantillas de 20 × 12 casillas de 40 px (rocas en las esquinas,
+  columnas, hierba alta, agujeros, charcos, muros, matorrales y foso). `layoutFor(semilla, sala, tipo)` solo pone
+  obstáculos en salas de combate (también la arena de Oleadas), 20 % vacías, y con espejo horizontal/vertical al azar.
+  Rocas y columnas van a `walls` (paran disparos y rebotan); la hierba alta es un grupo propio que para disparos y se
+  rompe con dos; los agujeros paran a pie pero no a los disparos; los charcos frenan al jugador (×0,6).
+- **Enemigos**: campo de flujo (BFS) hacia la casilla del jugador, recalculado solo cuando cambia de casilla o se
+  rompe hierba; para acercarse van a la casilla vecina más cercana a ti (para apuntar y mirar siguen usando la
+  línea recta). Aparecen y saltan solo a casillas libres, y el botín cae en una casilla libre.
+- **Tests**: todas las plantillas (y sus 4 espejos) dejan conectadas las entradas de las 4 puertas y el centro;
+  300 semillas × 12 salas igual, incluida la casilla donde apareces al entrar; el campo de flujo rodea un muro.
+- **Archivos**: `src/level/roomLayouts.ts`, `tests/roomLayouts.test.ts` (nuevos), `GameScene`, README.
+- **Dudas**: la hierba rota no se guarda (al continuar vuelve a estar). Los que embisten pueden chocar contra una roca
+  al lanzarse (se paran, no se atascan).

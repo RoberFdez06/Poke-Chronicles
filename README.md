@@ -89,6 +89,14 @@ Los desbloqueados se guardan en el navegador (`localStorage`, clave `pokeisaac.u
 `{ v: 2, ids: [...] }`); el gacha añade más con `unlockPokemon(id)` de `src/data/save.ts`. Regiones y filtros en
 `src/data/regions.ts`.
 
+## Salas con obstáculos
+
+Las salas de combate tienen diseños variados (`src/level/roomLayouts.ts`, elegidos con la semilla del piso y a veces
+en espejo; una de cada cinco va vacía): **rocas** y **columnas** que bloquean el paso y los disparos, **hierba alta**
+que bloquea el paso y se rompe con dos disparos, **agujeros** que no se cruzan a pie (los disparos pasan por encima)
+y **charcos** que te frenan. Nunca tapan el paso entre puertas ni el centro de la sala (lo comprueba un test con BFS).
+Los enemigos rodean los obstáculos siguiendo un campo de flujo hacia ti.
+
 ## Recuperar vida, Centro Pokémon y tienda
 
 - **Bayas**: los enemigos a veces sueltan una Baya Aranja (+20 PS) o Zidra (+40 PS); el jefe siempre suelta una Zidra.
@@ -177,6 +185,7 @@ src/
   ui/theme.ts          tema: fuente, colores, cuadros, barra de PS, fichas de tipo y transiciones
   data/speciesIndex.ts carga (una vez) la lista de especies de public/data
   level/floorGen.ts    generador de pisos (puro, determinista por semilla)
+  level/roomLayouts.ts plantillas de sala con obstáculos, conectividad y campo de flujo (puro)
   level/progression.ts pisos: tamaño, dificultad, tickets y jefes legendarios (puro)
   scenes/GameScene.ts  piso, salas, puertas, jugador, enemigos, habilidades y HUD
   scenes/minimap.ts    minimapa
@@ -194,6 +203,7 @@ tests/
   status.test.ts       tests de estados
   theme.test.ts        tests del color de la barra de PS
   pokeStats.test.ts    tests de las estadísticas
+  roomLayouts.test.ts  tests de las salas con obstáculos (puertas conectadas)
   loot.test.ts         tests de botín, curación y tienda
 scripts/
   buildSpeciesIndex.mjs  genera public/data/species-index.json desde PokeAPI

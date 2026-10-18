@@ -27,6 +27,16 @@ import {
   MODE_LABEL,
 } from '../data/modes';
 import { submitRecord } from '../data/save';
+import {
+  flowField,
+  isWalkable,
+  layoutFor,
+  nearestWalkable,
+  stepToward,
+  Cell,
+  Grid,
+  TILE,
+} from '../level/roomLayouts';
 import { bossStats, playerBaseStats, shapeEnemyStats, AVERAGE_STATS, BaseStats } from '../data/pokeStats';
 import {
   BERRIES,
@@ -181,6 +191,13 @@ export class GameScene extends Phaser.Scene {
   private bossName = '';
   private pickups!: Phaser.Physics.Arcade.Group;
   private walls!: Phaser.Physics.Arcade.StaticGroup;
+  /** Obstáculos: hierba alta (se rompe a disparos) y agujeros (los disparos pasan por encima). */
+  private bushes!: Phaser.Physics.Arcade.StaticGroup;
+  private holes!: Phaser.Physics.Arcade.StaticGroup;
+  /** Cuadrícula de obstáculos de cada sala (ver roomLayouts.ts). */
+  private grids = new Map<number, Grid>();
+  /** Campo de flujo hacia el jugador en la sala actual, para que los enemigos rodeen los obstáculos. */
+  private flow?: { roomId: number; tx: number; ty: number; dist: number[][] };
   private doorBlocks!: Phaser.Physics.Arcade.StaticGroup;
   private doorMap = new Map<string, Phaser.GameObjects.Rectangle>();
   private wasd!: Record<'W' | 'A' | 'S' | 'D', Key>;
@@ -578,6 +595,11 @@ export class GameScene extends Phaser.Scene {
 
     this.physics.world.setBounds(0, 0, this.floor.cols * VIEW.w, this.floor.rows * VIEW.h);
     this.walls = this.physics.add.staticGroup();
+    this.bushes = this.physics.add.staticGroup();
+    this.holes = this.physics.add.staticGroup();
+    this.grids.clear();
+    this.flow = undefined;
+    this.makeObstacleTextures();
     this.doorBlocks = this.physics.add.staticGroup();
     this.pickups = this.physics.add.group();
     this.loot = this.physics.add.group();
@@ -600,15 +622,18 @@ export class GameScene extends Phaser.Scene {
     this.shots = this.physics.add.group();
     this.foeShots = this.physics.add.group();
 
-    this.physics.add.collider(this.player, [this.walls, this.doorBlocks]);
-    this.physics.add.collider(this.enemies, [this.walls, this.doorBlocks]);
+    this.physics.add.collider(this.player, [this.walls, this.doorBlocks, this.bushes, this.holes]);
+    this.physics.add.collider(this.enemies, [this.walls, this.doorBlocks, this.bushes, this.holes]);
     // Los enemigos se empujan entre sí para no amontonarse en el mismo sitio
     this.physics.add.collider(this.enemies, this.enemies);
     // Collider (no overlap) para que los disparos con rebote reboten de verdad
     this.physics.add.collider(this.shots, [this.walls, this.doorBlocks], (s) => this.onShotWall(asSprite(s)));
+    // La hierba alta para los disparos y se rompe con ellos; los agujeros no paran nada
+    this.physics.add.overlap(this.shots, this.bushes, (s, b) => this.onShotBush(asSprite(s), asSprite(b)));
     this.physics.add.overlap(this.shots, this.enemies, (s, e) => this.onHit(asSprite(s), asSprite(e)));
     this.physics.add.overlap(this.player, this.enemies, (_p, e) => this.hurtPlayer(asSprite(e)));
     this.physics.add.collider(this.foeShots, [this.walls, this.doorBlocks], (s) => asSprite(s).destroy());
+    this.physics.add.overlap(this.foeShots, this.bushes, (s) => asSprite(s).destroy());
     this.physics.add.overlap(this.player, this.foeShots, (_p, s) => {
       this.hurtPlayer(asSprite(s));
       asSprite(s).destroy();
@@ -897,6 +922,7 @@ export class GameScene extends Phaser.Scene {
     hSide(i.y1, has('down'));
     vSide(i.x0 - WALL, has('left'));
     vSide(i.x1, has('right'));
+    this.buildObstacles(room);
 
     this.setDoorsLocked(room, false);
     // Al continuar, los objetos salen del guardado (restoreRun)
@@ -1037,6 +1063,136 @@ export class GameScene extends Phaser.Scene {
     if (exit && this.current.doors[exit] !== undefined) this.transition(exit);
   }
 
+  // --- Obstáculos (roomLayouts.ts) ---
+
+  private makeObstacleTextures() {
+    if (this.textures.exists('bush')) return;
+    const g = this.add.graphics();
+    g.fillStyle(0x2e6b2a, 1).fillCircle(20, 22, 17);
+    g.fillStyle(0x3f8f3a, 1).fillCircle(13, 18, 11).fillCircle(27, 18, 11).fillCircle(20, 12, 11);
+    g.fillStyle(0x6cc05a, 1).fillCircle(15, 13, 4).fillCircle(25, 11, 3);
+    g.generateTexture('bush', 40, 40);
+    g.destroy();
+  }
+
+  /** Dibuja y crea los cuerpos de los obstáculos de la sala. */
+  private buildObstacles(room: Room) {
+    const grid = layoutFor(this.floorSeed, room.id, room.kind);
+    this.grids.set(room.id, grid);
+    const i = this.interior(room);
+    const g = this.add.graphics().setDepth(1);
+    grid.forEach((row, ty) =>
+      row.forEach((c, tx) => {
+        const x = i.x0 + tx * TILE;
+        const y = i.y0 + ty * TILE;
+        const cx = x + TILE / 2;
+        const cy = y + TILE / 2;
+        switch (c) {
+          case 'R':
+            g.fillStyle(0x5f5f6e, 1).fillRoundedRect(x + 2, y + 4, TILE - 4, TILE - 6, 8);
+            g.fillStyle(0x8d8d9c, 1).fillRoundedRect(x + 4, y + 3, TILE - 8, TILE - 12, 7);
+            this.addWall(x, y, TILE, TILE);
+            break;
+          case 'P':
+            g.fillStyle(0x3d4466, 1).fillRect(x + 4, y + 2, TILE - 8, TILE - 4);
+            g.fillStyle(0x6c75a3, 1).fillRect(x + 8, y + 2, TILE - 20, TILE - 4);
+            this.addWall(x, y, TILE, TILE);
+            break;
+          case 'H': {
+            g.fillStyle(0x1a1410, 1).fillRoundedRect(x + 1, y + 1, TILE - 2, TILE - 2, 10);
+            g.fillStyle(0x0b0806, 1).fillRoundedRect(x + 6, y + 8, TILE - 12, TILE - 12, 8);
+            const hole = this.add.rectangle(cx, cy, TILE - 6, TILE - 6).setVisible(false);
+            this.holes.add(hole);
+            break;
+          }
+          case 'W':
+            g.fillStyle(0x6fa8dc, 0.55).fillRoundedRect(x, y, TILE, TILE, 12);
+            break;
+          case 'B': {
+            const bush = this.bushes.create(cx, cy, 'bush') as Sprite;
+            bush.setDepth(2).setData('hp', 2).setData('room', room.id).setData('tile', [tx, ty]);
+            break;
+          }
+        }
+      }),
+    );
+  }
+
+  /** Un disparo rompe un poco la hierba alta: con dos golpes desaparece y deja pasar. */
+  private onShotBush(shot: Sprite, bush: Sprite) {
+    if (!shot.active || !bush.active) return;
+    shot.destroy();
+    const hp = (bush.getData('hp') as number) - 1;
+    bush.setData('hp', hp);
+    if (hp > 0) {
+      bush.setTint(0xb8e0a8);
+      return;
+    }
+    const [tx, ty] = bush.getData('tile') as [number, number];
+    const grid = this.grids.get(bush.getData('room') as number);
+    if (grid) grid[ty][tx] = '.';
+    bush.destroy();
+    this.flow = undefined; // el camino ha cambiado
+  }
+
+  /** Casilla de la sala actual en (x, y) del mundo. */
+  private tileOf(x: number, y: number): [number, number] {
+    const i = this.interior(this.current);
+    return [Math.floor((x - i.x0) / TILE), Math.floor((y - i.y0) / TILE)];
+  }
+
+  private cellAt(x: number, y: number): Cell | undefined {
+    const grid = this.current && this.grids.get(this.current.id);
+    if (!grid) return undefined;
+    const [tx, ty] = this.tileOf(x, y);
+    return grid[ty]?.[tx];
+  }
+
+  /** Se puede estar en (x, y): dentro de la sala y sin obstáculo. */
+  private freeAt(x: number, y: number): boolean {
+    const c = this.cellAt(x, y);
+    return c === undefined || isWalkable(c);
+  }
+
+  /** El punto libre más cercano a (x, y) en la sala actual (centro de su casilla si estaba ocupado). */
+  private freeSpot(x: number, y: number) {
+    if (this.freeAt(x, y)) return { x, y };
+    const grid = this.grids.get(this.current.id)!;
+    const [tx, ty] = nearestWalkable(grid, ...this.tileOf(x, y));
+    const i = this.interior(this.current);
+    return { x: i.x0 + tx * TILE + TILE / 2, y: i.y0 + ty * TILE + TILE / 2 };
+  }
+
+  /** Recalcula el campo de flujo cuando el jugador cambia de casilla (solo en salas con obstáculos). */
+  private updateFlow() {
+    const grid = this.grids.get(this.current.id);
+    if (!grid || grid.every((row) => row.every((c) => c === '.' || c === 'W'))) {
+      this.flow = undefined;
+      return;
+    }
+    const [tx, ty] = this.tileOf(this.player.x, this.player.y);
+    const f = this.flow;
+    if (f && f.roomId === this.current.id && f.tx === tx && f.ty === ty) return;
+    this.flow = { roomId: this.current.id, tx, ty, dist: flowField(grid, tx, ty) };
+  }
+
+  /** Dirección para acercarse al jugador rodeando obstáculos; sin campo de flujo, en línea recta. */
+  private flowDir(e: Sprite, toPlayer: Phaser.Math.Vector2): Phaser.Math.Vector2 {
+    const f = this.flow;
+    if (!f || f.roomId !== this.current.id) return toPlayer.clone();
+    const [tx, ty] = this.tileOf(e.x, e.y);
+    const here = f.dist[ty]?.[tx];
+    // Cerca del jugador, o fuera del mapa de casillas, va directo
+    if (here === undefined || here <= 1 || here === Infinity) return toPlayer.clone();
+    const step = stepToward(f.dist, tx, ty);
+    if (!step) return toPlayer.clone();
+    const i = this.interior(this.current);
+    const gx = i.x0 + (tx + step[0]) * TILE + TILE / 2;
+    const gy = i.y0 + (ty + step[1]) * TILE + TILE / 2;
+    const v = new Phaser.Math.Vector2(gx - e.x, gy - e.y);
+    return v.length() > 0 ? v.normalize() : toPlayer.clone();
+  }
+
   // --- Enemigos ---
 
   private randomSpotInRoom(margin: number) {
@@ -1046,7 +1202,7 @@ export class GameScene extends Phaser.Scene {
     for (let tries = 0; tries < 50; tries++) {
       x = Phaser.Math.Between(i.x0 + margin, i.x1 - margin);
       y = Phaser.Math.Between(i.y0 + margin, i.y1 - margin);
-      if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) >= 220) break;
+      if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) >= 220 && this.freeAt(x, y)) break;
     }
     return { x, y };
   }
@@ -1105,7 +1261,13 @@ export class GameScene extends Phaser.Scene {
     const dist = toPlayer.length();
     if (dist > 0) toPlayer.normalize();
     // Confuso: va (y apunta) dando bandazos
-    if (isConfused(statuses, time)) toPlayer.rotate(Math.PI * 0.8 * Math.sin((time / 260) * (ai?.side ?? 1)));
+    // Para acercarse, rodea los obstáculos siguiendo el campo de flujo (para apuntar sigue mirando a ti)
+    const toward = this.flowDir(e, toPlayer);
+    if (isConfused(statuses, time)) {
+      const wobble = Math.PI * 0.8 * Math.sin((time / 260) * (ai?.side ?? 1));
+      toPlayer.rotate(wobble);
+      toward.rotate(wobble);
+    }
     const walk = (v: Phaser.Math.Vector2) => e.setVelocity(v.x * speed, v.y * speed);
     // Asustado (Siniestro): huye de ti y no ataca
     if (isFeared(statuses, time)) {
@@ -1115,7 +1277,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (!ai || ai.behavior === 'chase') {
-      walk(toPlayer);
+      walk(toward);
       this.face(e, toPlayer);
       return;
     }
@@ -1123,7 +1285,7 @@ export class GameScene extends Phaser.Scene {
     switch (ai.behavior) {
       case 'charge':
         if (ai.state === 'walk') {
-          walk(toPlayer);
+          walk(toward);
           this.face(e, toPlayer);
           if (time >= ai.until) {
             // Se para y avisa (tinte amarillo) antes de lanzarse en línea recta
@@ -1150,7 +1312,7 @@ export class GameScene extends Phaser.Scene {
       case 'shoot': {
         // Guarda la distancia: se acerca si estás lejos, se aleja si estás cerca y si no, te rodea
         const keep = ai.boss ? 260 : 230;
-        if (dist > keep + 90) walk(toPlayer);
+        if (dist > keep + 90) walk(toward);
         else if (dist < keep - 50) walk(toPlayer.clone().negate());
         else walk(new Phaser.Math.Vector2(-toPlayer.y * ai.side, toPlayer.x * ai.side));
         this.face(e, toPlayer);
@@ -1165,7 +1327,7 @@ export class GameScene extends Phaser.Scene {
 
       case 'hop':
         if (ai.state === 'walk') {
-          walk(toPlayer);
+          walk(toward);
           this.face(e, toPlayer);
           if (time >= ai.until) {
             // Desaparece un momento (sin cuerpo: ni se le puede dar ni hace daño)
@@ -1206,7 +1368,7 @@ export class GameScene extends Phaser.Scene {
       const r = minDist + Math.random() * 90;
       const x = this.player.x + Math.cos(a) * r;
       const y = this.player.y + Math.sin(a) * r;
-      if (x > i.x0 + m && x < i.x1 - m && y > i.y0 + m && y < i.y1 - m) return { x, y };
+      if (x > i.x0 + m && x < i.x1 - m && y > i.y0 + m && y < i.y1 - m && this.freeAt(x, y)) return { x, y };
     }
     return this.randomSpotInRoom(m);
   }
@@ -1319,7 +1481,10 @@ export class GameScene extends Phaser.Scene {
     }
     const dir = new Phaser.Math.Vector2(mx, my);
     if (dir.length() > 1) dir.normalize();
-    this.player.setVelocity(dir.x * this.stats.speed, dir.y * this.stats.speed);
+    // En los charcos vas más despacio
+    const wade = this.cellAt(this.player.x, this.player.y) === 'W' ? 0.6 : 1;
+    this.player.setVelocity(dir.x * this.stats.speed * wade, dir.y * this.stats.speed * wade);
+    this.updateFlow();
 
     // Disparo continuo como en Isaac: flechas (o clic / stick derecho) y mira hacia donde dispara
     const shoot = this.readShootDir(hasPad ? pad! : null);
@@ -1574,12 +1739,8 @@ export class GameScene extends Phaser.Scene {
   /** Suelta botín dentro de la sala actual. */
   private dropLoot(x: number, y: number, drop: LootDrop) {
     const i = this.interior(this.current);
-    this.spawnLoot(
-      this.current.id,
-      Phaser.Math.Clamp(x, i.x0 + 30, i.x1 - 30),
-      Phaser.Math.Clamp(y, i.y0 + 30, i.y1 - 30),
-      drop,
-    );
+    const p = this.freeSpot(Phaser.Math.Clamp(x, i.x0 + 30, i.x1 - 30), Phaser.Math.Clamp(y, i.y0 + 30, i.y1 - 30));
+    this.spawnLoot(this.current.id, p.x, p.y, drop);
   }
 
   private spawnLoot(roomId: number, x: number, y: number, drop: LootDrop) {
