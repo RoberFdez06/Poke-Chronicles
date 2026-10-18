@@ -34,7 +34,8 @@ selección de inicial.
 
 Funciona como en Isaac. **Jugar** abre los 3 huecos de partida: uno vacío empieza una nueva; uno ocupado deja
 *Continuar* o *Nueva partida* (pide confirmación antes de sobrescribir). La partida se guarda sola al entrar en
-una sala, al limpiarla, al coger un objeto y al salir desde la pausa; se borra al morir o al completar el piso.
+una sala, al limpiarla, al coger un objeto y al salir desde la pausa (con el número de piso); se borra al morir o
+al completar la partida.
 Si sales en mitad de un combate, al continuar esa sala se reinicia con los enemigos enteros. Monedas y
 desbloqueos son comunes a los 3 huecos. El guardado vive en `src/data/runSave.ts` (claves `pokeisaac.run.0..2`).
 
@@ -43,7 +44,7 @@ La pausa muestra tus estadísticas, objetos y poderes, y tiene *Reanudar*, *Rein
 
 ## Gacha y monedas
 
-Las monedas se ganan jugando (15 por sala limpiada, 60 por el jefe) y se guardan en el navegador; nunca se
+Las monedas se ganan jugando (15 por sala limpiada, +5 por cada piso; 60 × número de piso por el jefe) y se guardan en el navegador; nunca se
 compran con dinero real. Una tirada cuesta 100 y da un Pokémon según su rareza (común, raro, épico, legendario
 o ultraente; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 monedas. La lista de especies
 se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `node scripts/buildSpeciesIndex.mjs`.
@@ -84,7 +85,9 @@ src/
   data/save.ts         Pokémon desbloqueados guardados en el navegador
   scenes/MenuScene.ts     menú principal
   scenes/StarterScene.ts  pantalla para elegir inicial
+  data/speciesIndex.ts carga (una vez) la lista de especies de public/data
   level/floorGen.ts    generador de pisos (puro, determinista por semilla)
+  level/progression.ts pisos: tamaño, dificultad, monedas y jefes legendarios (puro)
   scenes/GameScene.ts  piso, salas, puertas, jugador, enemigos, habilidades y HUD
   scenes/minimap.ts    minimapa
 tests/
@@ -92,15 +95,23 @@ tests/
   items.test.ts        tests de objetos y poderes
   gacha.test.ts        tests de rarezas y gacha
   save.test.ts         tests del guardado de desbloqueos
+  runSave.test.ts      tests de las partidas guardadas (y su migración)
+  progression.test.ts  tests de pisos, dificultad y jefes
 scripts/
   buildSpeciesIndex.mjs  genera public/data/species-index.json desde PokeAPI
 ```
 
 ## Modo Normal
 
-Cada partida genera un piso de 8 a 12 salas: inicial, combate, objeto (marco amarillo) y jefe (marco rojo).
-Las puertas se cierran al entrar en una sala con enemigos y se abren al limpiarla. El jefe es un
-Pokémon al azar de PokeAPI; al vencerlo se completa el piso.
+La partida tiene **5 pisos** (`FLOOR_COUNT` en `src/level/progression.ts`). Cada piso tiene salas de inicio,
+combate, objeto (marco amarillo) y jefe (marco rojo): el primero tiene de 8 a 12 salas y cada piso suma 2 más.
+Las puertas se cierran al entrar en una sala con enemigos y se abren al limpiarla. Los enemigos tienen más
+vida, daño y velocidad (y son más) en cada piso.
+
+El jefe siempre es un Pokémon **legendario o singular** (sacado de `public/data/species-index.json`, sin
+repetir en la partida). Al vencerlo deja un objeto y una **trampilla**: al pisarla bajas al piso siguiente con
+tus objetos, poderes y PS. La partida se gana al vencer al jefe del piso 5 y se pierde al morir. El HUD y la
+pausa muestran el piso actual.
 
 ## Siguientes pasos
 

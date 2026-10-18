@@ -17,6 +17,8 @@ function sample(): RunSave {
     savedAt: 1700000000000,
     starterId: 4,
     starterName: 'charmander',
+    floor: 2,
+    bossHistory: [144, 150],
     floorSeed: 1234,
     roomCount: 10,
     bossId: 150,
@@ -56,6 +58,21 @@ test('guardados corruptos, de otra versión o con datos mal se ignoran', () => {
   assert.equal(parseRun(JSON.stringify({ ...sample(), visited: ['x'] })), null);
   assert.equal(parseRun(JSON.stringify({ ...sample(), slots: [{ name: 'x' }] })), null);
   assert.equal(parseRun(JSON.stringify({ ...sample(), floorItems: [{ roomId: 1, x: 0, y: 0, drop: { kind: 'otro' } }] })), null);
+});
+
+test('un guardado v1 (sin pisos) se migra al piso 1', () => {
+  const { floor: _f, bossHistory: _b, ...v1 } = sample();
+  const run = parseRun(JSON.stringify({ ...v1, version: 1 }));
+  assert.ok(run);
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.floor, 1);
+  assert.deepEqual(run.bossHistory, [150]);
+  assert.equal(run.starterName, 'charmander');
+});
+
+test('un piso no válido invalida el guardado', () => {
+  assert.equal(parseRun(JSON.stringify({ ...sample(), floor: 0 })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), bossHistory: 'x' })), null);
 });
 
 test('huecos fuera de rango no hacen nada', () => {

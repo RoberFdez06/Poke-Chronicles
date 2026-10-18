@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { fetchPokemonCard } from '../data/pokeapi';
-import { buildPools, GACHA_RATES, pull, PULL_COST, RARITIES, RARITY_LABEL, Rarity, RarityPools, SpeciesFact } from '../data/gacha';
+import { buildPools, GACHA_RATES, pull, PULL_COST, RARITIES, RARITY_LABEL, Rarity, RarityPools } from '../data/gacha';
+import { loadSpeciesIndex } from '../data/speciesIndex';
 import { addCoins, loadCoins, loadUnlocked, spendCoins, unlockPokemon } from '../data/save';
 import { typeNameEs } from '../data/types';
 
@@ -87,11 +88,7 @@ export class GachaScene extends Phaser.Scene {
   }
 
   private async loadIndex() {
-    const res = await fetch(`${import.meta.env.BASE_URL}data/species-index.json`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const index = (await res.json()) as SpeciesFact[];
-    if (!Array.isArray(index) || index.length === 0) throw new Error('lista vacía');
-    this.pools = buildPools(index);
+    this.pools = buildPools(await loadSpeciesIndex());
     if (this.alive) this.message.setText('Tira para conseguir un Pokémon nuevo');
   }
 

@@ -3,7 +3,7 @@
 Estados: `[ ]` pendiente · `[en curso]` · `[x]` hecha · `[bloqueada: motivo]`.
 Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md` y un commit `T<n>: ...`.
 
-## [ ] T1 — Varios pisos y jefes legendarios
+## [x] T1 — Varios pisos y jefes legendarios
 - Al vencer al jefe aparece una trampilla (como en Isaac): al pisarla bajas al piso siguiente con tus objetos,
   poderes y PS. Cada piso es más grande y difícil (más enemigos, más vida y daño); la partida termina al
   completar el piso 5 (constante ajustable) o al morir.

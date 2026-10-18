@@ -1,8 +1,19 @@
 import Phaser from 'phaser';
-import { fetchPokemon, fetchRandomAttackMove, fetchSpeciesCount, PokemonData } from '../data/pokeapi';
+import { fetchPokemon, fetchRandomAttackMove, PokemonData } from '../data/pokeapi';
 import { typeColor, typeHex } from '../data/types';
-import { addCoins, BOSS_COINS, ROOM_COINS } from '../data/save';
+import { addCoins } from '../data/save';
 import { clearRun, saveRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop } from '../data/runSave';
+import { loadSpeciesIndex } from '../data/speciesIndex';
+import {
+  bossCoinsFor,
+  bossPool,
+  difficultyFor,
+  pickBoss,
+  roomCoinsFor,
+  roomCountFor,
+  FloorDifficulty,
+  FLOOR_COUNT,
+} from '../level/progression';
 import type { PauseData } from './PauseScene';
 import {
   BASE_STATS,
@@ -45,6 +56,19 @@ type Key = Phaser.Input.Keyboard.Key;
 const asSprite = (o: unknown) => o as Sprite;
 const pretty = (s: string) => s.replace(/-/g, ' ');
 
+/** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
+export type FloorCarry = Pick<
+  RunSave,
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned'
+>;
+
+export interface GameData {
+  starterId?: number;
+  slot?: number;
+  resume?: RunSave;
+  carry?: FloorCarry;
+}
+
 interface ShotOpts {
   damage: number;
   speed: number;
@@ -84,8 +108,16 @@ export class GameScene extends Phaser.Scene {
   /** Hueco donde se guarda la partida y, si se continúa, lo guardado. */
   private slot = 0;
   private resume: RunSave | null = null;
+  /** Estado que viene del piso anterior (al bajar por la trampilla). */
+  private carry: FloorCarry | null = null;
   private floorSeed = 0;
   private bossId = 1;
+  /** Número de piso (1 = el primero) y su dificultad. */
+  private floorNum = 1;
+  private difficulty: FloorDifficulty = difficultyFor(1);
+  private bossHistory: number[] = [];
+  /** Trampilla al piso siguiente: aparece al vencer al jefe y se activa cuando te alejas de ella. */
+  private trapdoor?: { x: number; y: number; armed: boolean };
   /** Objetos que hay en el suelo (para guardarlos). */
   private floorItems: FloorItemSave[] = [];
   private pauseKey!: Key;
@@ -125,8 +157,9 @@ export class GameScene extends Phaser.Scene {
     super('Game');
   }
 
-  init(data?: { starterId?: number; slot?: number; resume?: RunSave }) {
+  init(data?: GameData) {
     this.resume = data?.resume ?? null;
+    this.carry = data?.carry ?? null;
     this.slot = data?.slot ?? 0;
     this.starterId = this.resume?.starterId ?? data?.starterId ?? 4;
   }
@@ -156,7 +189,24 @@ export class GameScene extends Phaser.Scene {
     this.visited.clear();
     this.cleared.clear();
     this.bannerTimer = undefined;
+    this.trapdoor = undefined;
+    this.floorNum = 1;
+    this.bossHistory = [];
+    const c = this.carry;
+    if (c) {
+      // Bajas al piso siguiente con tus objetos, poderes y PS
+      this.floorNum = c.floor;
+      this.bossHistory = [...c.bossHistory];
+      this.passives = [...c.passives];
+      this.stats = computeStats(this.passives);
+      this.hp = Math.min(this.stats.maxHp, c.hp);
+      this.slots = Array.from({ length: SLOT_COUNT }, (_, i) => c.slots[i] ?? null);
+      this.nextSlotReplace = c.nextSlotReplace;
+      this.movePool = [...c.movePool];
+      this.earned = c.earned;
+    }
     this.cameras.main.setScroll(0, 0);
+    this.cameras.main.resetFX();
 
     const loading = this.add
       .text(480, 320, 'Cargando Pokémon…', { fontFamily: FONT, fontSize: '28px', color: '#ffffff' })
@@ -169,17 +219,28 @@ export class GameScene extends Phaser.Scene {
 
   private async boot(loading: Phaser.GameObjects.Text) {
     const r = this.resume;
-    // Al continuar, el piso se regenera igual con la misma semilla
+    if (r) {
+      this.floorNum = r.floor;
+      this.bossHistory = [...r.bossHistory];
+    }
+    this.difficulty = difficultyFor(this.floorNum);
+    // Al continuar, el piso se regenera igual con la misma semilla; cada piso nuevo es más grande
     this.floorSeed = r?.floorSeed ?? Phaser.Math.Between(0, 0x7fffffff);
-    this.floor = generateFloor({ seed: this.floorSeed, roomCount: r?.roomCount ?? Phaser.Math.Between(8, 12) });
+    this.floor = generateFloor({ seed: this.floorSeed, roomCount: r?.roomCount ?? roomCountFor(this.floorNum, Math.random) });
 
     // Los poderes que saldrán en el suelo se piden ya, en paralelo con los Pokémon
     let poolReady: Promise<void> = Promise.resolve();
     if (r) this.movePool = [...r.movePool];
-    else poolReady = this.fillMovePool(6);
+    else if (this.movePool.length < 4) poolReady = this.fillMovePool(6);
 
-    // El inicial lo elige el jugador; Rattata (#19) hace de enemigo de prueba y el jefe sale al azar
-    const bossId = r?.bossId ?? Phaser.Math.Between(1, await fetchSpeciesCount());
+    // El inicial lo elige el jugador; Rattata (#19) hace de enemigo de prueba.
+    // El jefe siempre es un legendario o singular, sin repetir en la partida mientras se pueda
+    let bossId = r?.bossId;
+    if (bossId === undefined) {
+      const index = await loadSpeciesIndex().catch(() => []);
+      bossId = pickBoss(bossPool(index), Math.random, this.bossHistory);
+      this.bossHistory.push(bossId);
+    }
     this.bossId = bossId;
     const [starter, foe, boss] = await Promise.all([
       fetchPokemon(this.starterId),
@@ -337,10 +398,14 @@ export class GameScene extends Phaser.Scene {
     pb.on('pointerdown', () => this.openPause());
     this.pauseBtn = pb;
 
+    // Si ya habías vencido al jefe, la trampilla sigue ahí
+    if (this.cleared.has(this.floor.bossId) && this.floorNum < FLOOR_COUNT) this.spawnTrapdoor();
+
     this.refreshInventory();
     this.cameras.main.centerOn(si.cx, si.cy);
     this.enterRoom(start);
-    if (r) this.showBanner('Partida cargada', 1200);
+    if (r) this.showBanner(`Partida cargada · Piso ${this.floorNum}`, 1200);
+    else this.showBanner(`Piso ${this.floorNum}`, 1200);
   }
 
   // --- Guardado (como en Isaac: solo, en el hueco elegido) ---
@@ -377,6 +442,8 @@ export class GameScene extends Phaser.Scene {
       savedAt: Date.now(),
       starterId: this.starterId,
       starterName: this.starterName,
+      floor: this.floorNum,
+      bossHistory: [...this.bossHistory],
       floorSeed: this.floorSeed,
       roomCount: this.floor.rooms.length,
       bossId: this.bossId,
@@ -404,6 +471,8 @@ export class GameScene extends Phaser.Scene {
     const data: PauseData = {
       starterName: this.starterName,
       slot: this.slot,
+      floor: this.floorNum,
+      floorCount: FLOOR_COUNT,
       hp: this.hp,
       stats: this.stats,
       items: [...counts].map(([id, n]) => (passiveById(id)?.name ?? id) + (n > 1 ? ` x${n}` : '')),
@@ -585,7 +654,7 @@ export class GameScene extends Phaser.Scene {
     if ((room.kind === 'combat' || room.kind === 'boss') && !this.cleared.has(room.id)) {
       if (room.kind === 'boss') this.spawnBoss();
       else {
-        const n = Phaser.Math.Between(3, 5);
+        const n = Phaser.Math.Between(...this.difficulty.enemies);
         for (let k = 0; k < n; k++) this.spawnEnemy();
       }
       this.setDoorsLocked(room, true);
@@ -649,15 +718,64 @@ export class GameScene extends Phaser.Scene {
     const { x, y } = this.randomSpotInRoom(60);
     const e = this.enemies.create(x, y, 'foe-front') as Sprite;
     e.setDisplaySize(60, 60).setData('sheet', 'foe').setData('size', 60);
-    e.setData('hp', 60).setData('speed', 80).setData('dmg', 10);
+    const d = this.difficulty;
+    e.setData('hp', Math.round(60 * d.hp)).setData('speed', 80 * d.speed).setData('dmg', Math.round(10 * d.damage));
   }
 
   private spawnBoss() {
     const { x, y } = this.randomSpotInRoom(110);
     const b = this.enemies.create(x, y, `${this.bossKey}-front`) as Sprite;
     b.setDisplaySize(150, 150).setData('sheet', this.bossKey).setData('size', 150);
-    b.setData('hp', 500).setData('speed', 70).setData('dmg', 20);
-    this.showBanner('¡Jefe!', 1200);
+    const d = this.difficulty;
+    b.setData('hp', Math.round(500 * d.hp)).setData('speed', 70 * d.speed).setData('dmg', Math.round(20 * d.damage));
+    this.showBanner('¡Jefe legendario!', 1200);
+  }
+
+  // --- Trampilla al piso siguiente ---
+
+  private spawnTrapdoor() {
+    const i = this.interior(this.floor.rooms[this.floor.bossId]);
+    const g = this.add.graphics().setDepth(1);
+    g.fillStyle(0x3b2a1e, 1).fillRoundedRect(i.cx - 46, i.cy - 34, 92, 68, 10);
+    g.fillStyle(0x0d0905, 1).fillRoundedRect(i.cx - 36, i.cy - 25, 72, 50, 8);
+    g.lineStyle(4, 0xffd34d, 1).strokeRoundedRect(i.cx - 46, i.cy - 34, 92, 68, 10);
+    this.add
+      .text(i.cx, i.cy - 52, 'Trampilla', { fontFamily: FONT, fontSize: '16px', color: '#2b3a67' })
+      .setOrigin(0.5)
+      .setDepth(3);
+    this.trapdoor = { x: i.cx, y: i.cy, armed: false };
+  }
+
+  /** Pisar la trampilla: se activa cuando te has alejado de ella (así no bajas sin querer). */
+  private checkTrapdoor() {
+    const t = this.trapdoor;
+    if (!t || this.current.id !== this.floor.bossId) return;
+    const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, t.x, t.y);
+    if (!t.armed) {
+      if (dist > 90) t.armed = true;
+      return;
+    }
+    if (dist < 36) this.descend();
+  }
+
+  private descend() {
+    this.transitioning = true;
+    this.trapdoor = undefined;
+    this.player.setVelocity(0, 0);
+    const carry: FloorCarry = {
+      floor: this.floorNum + 1,
+      bossHistory: [...this.bossHistory],
+      hp: this.hp,
+      passives: [...this.passives],
+      slots: [...this.slots],
+      nextSlotReplace: this.nextSlotReplace,
+      movePool: [...this.movePool],
+      earned: this.earned,
+    };
+    this.cameras.main.fadeOut(350, 0, 0, 0);
+    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+      this.scene.restart({ slot: this.slot, starterId: this.starterId, carry } satisfies GameData);
+    });
   }
 
   // --- Bucle ---
@@ -745,7 +863,9 @@ export class GameScene extends Phaser.Scene {
     });
 
     // HUD
-    this.hpText.setText(`PS ${Math.max(0, Math.ceil(this.hp))}/${this.stats.maxHp}   Enemigos ${this.enemies.countActive(true)}`);
+    this.hpText.setText(
+      `Piso ${this.floorNum}   PS ${Math.max(0, Math.ceil(this.hp))}/${this.stats.maxHp}   Enemigos ${this.enemies.countActive(true)}`,
+    );
     this.slots.forEach((m, i) => {
       const text = this.hud[i];
       if (!m) {
@@ -756,7 +876,8 @@ export class GameScene extends Phaser.Scene {
       text.setText(`${i + 1}  ${pretty(m.name)}`).setColor(typeHex(m.type)).setAlpha(ready ? 1 : 0.35);
     });
 
-    this.checkExit();
+    this.checkTrapdoor();
+    if (!this.transitioning) this.checkExit();
   }
 
   /**
@@ -881,12 +1002,23 @@ export class GameScene extends Phaser.Scene {
     this.setDoorsLocked(room, false);
     this.hp = Math.min(this.stats.maxHp, this.hp + this.stats.healOnClear);
 
-    const reward = room.kind === 'boss' ? BOSS_COINS : ROOM_COINS;
+    const reward = room.kind === 'boss' ? bossCoinsFor(this.floorNum) : roomCoinsFor(this.floorNum);
     this.earned += reward;
     addCoins(reward);
 
     if (room.kind === 'boss') {
-      this.finish('¡Piso completado!\n+' + this.earned + ' monedas en total\nPulsa R, Start o haz clic para empezar otra partida');
+      if (this.floorNum >= FLOOR_COUNT) {
+        this.finish(
+          `¡Has completado los ${FLOOR_COUNT} pisos!\n+${this.earned} monedas en total\nPulsa R, Start o haz clic para empezar otra partida`,
+        );
+        return;
+      }
+      // Como en Isaac: el jefe deja un objeto y una trampilla al piso siguiente
+      const i = this.interior(room);
+      this.dropItem(room.id, i.cx + 170, i.cy);
+      this.spawnTrapdoor();
+      this.showBanner(`¡Jefe derrotado! +${reward} monedas\nPisa la trampilla para bajar al piso ${this.floorNum + 1}`, 2600);
+      this.saveNow();
       return;
     }
 
@@ -927,6 +1059,6 @@ export class GameScene extends Phaser.Scene {
     this.physics.pause();
     this.showBanner(message);
     // Un momento de margen y un clic nuevo, para no saltarse la pantalla si estabas disparando
-    this.time.delayedCall(700, () => this.input.once('pointerdown', () => this.scene.start('Starter')));
+    this.time.delayedCall(700, () => this.input.once('pointerdown', () => this.scene.start('Starter', { slot: this.slot })));
   }
 }

@@ -6,7 +6,8 @@ import type { StorageLike } from './save';
 import type { MovePower } from './items';
 
 export const RUN_SLOTS = 3;
-export const RUN_VERSION = 1;
+/** v2: número de piso y jefes ya vistos (los guardados v1 se migran al piso 1). */
+export const RUN_VERSION = 2;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts). */
@@ -25,6 +26,10 @@ export interface RunSave {
   savedAt: number;
   starterId: number;
   starterName: string;
+  /** Piso en el que estás (1 = el primero). */
+  floor: number;
+  /** Jefes que ya han salido en la partida (para no repetirlos). */
+  bossHistory: number[];
   /** El piso se regenera igual a partir de la semilla y el número de salas. */
   floorSeed: number;
   roomCount: number;
@@ -59,6 +64,11 @@ function isDrop(d: unknown): d is SavedDrop {
   return o.kind === 'move' && isMove(o.move);
 }
 
+/** v1 no tenía pisos: la partida estaba siempre en el primero. */
+function migrateV1(d: RunSave): RunSave {
+  return { ...d, version: 2, floor: 1, bossHistory: isInt(d.bossId) ? [d.bossId] : [] };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -68,9 +78,12 @@ export function parseRun(raw: string | null): RunSave | null {
   } catch {
     return null;
   }
-  if (!d || typeof d !== 'object' || d.version !== RUN_VERSION) return null;
+  if (!d || typeof d !== 'object') return null;
+  if (d.version === 1) d = migrateV1(d);
+  if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && typeof d.starterName === 'string' &&
+    isInt(d.floor) && d.floor >= 1 && isIntArray(d.bossHistory) &&
     isInt(d.floorSeed) && isInt(d.roomCount) && isInt(d.bossId) && isInt(d.roomId) &&
     isIntArray(d.visited) && isIntArray(d.cleared) && typeof d.hp === 'number' && d.hp > 0 &&
     Array.isArray(d.passives) && d.passives.every((p) => typeof p === 'string') &&
