@@ -43,6 +43,7 @@ function sample(): RunSave {
     bombs: 2,
     openedChests: [4],
     revealedDoors: ['3:up'],
+    active: { id: 'pokeblock', charge: 2 },
   };
 }
 
@@ -143,6 +144,15 @@ test('un guardado v6 (sin llaves ni bombas) empieza con una bomba y conserva su 
   assert.deepEqual([run.keys, run.bombs, run.layout], [0, 1, 2]);
   assert.deepEqual(run.openedChests, []);
   assert.equal(parseRun(JSON.stringify({ ...sample(), bombs: -1 })), null);
+});
+
+test('un guardado v7 (sin objeto activo) se migra sin él', () => {
+  const { active: _a, ...v7 } = sample();
+  const run = parseRun(JSON.stringify({ ...v7, version: 7 }));
+  assert.ok(run);
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.active, null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), active: { id: 'x', charge: -1 } })), null);
 });
 
 test('un piso no válido invalida el guardado', () => {

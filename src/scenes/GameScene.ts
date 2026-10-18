@@ -27,6 +27,16 @@ import {
   MODE_LABEL,
 } from '../data/modes';
 import { loadShinies, loadUpgrades, submitRecord } from '../data/save';
+import {
+  ACTIVE_DROP_CHANCE,
+  ACTIVE_EFFECT,
+  ACTIVE_IDS,
+  activeById,
+  applySynergies,
+  chargeAfterClear,
+  isCharged,
+  SYNERGIES,
+} from '../data/synergies';
 import { rollShiny, SHINY_ENEMY, SHINY_ODDS } from '../data/shiny';
 import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
@@ -67,6 +77,7 @@ import { addHpBar, addTypeChip, drawBox, fadeIn, FONT, goTo, HEX, hpColor, short
 import {
   applyStatus,
   drainHeal,
+  STATUS_EFFECTS,
   isConfused,
   speedMultiplier,
   statusForType,
@@ -140,7 +151,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active'
 >;
 
 export interface GameData {
@@ -316,6 +327,22 @@ export class GameScene extends Phaser.Scene {
   private rocks = new Map<string, Phaser.GameObjects.GameObject[]>();
   /** Sala de desafío: oleada en curso (0 = no ha empezado). */
   private challengeWave = 0;
+  /** Objeto activo (Espacio, LB o clic en su cuadro) y cuántas salas lleva cargadas. */
+  private active: { id: string; charge: number } | null = null;
+  private activeKey!: Key;
+  private lbPrev = false;
+  private activeHud?: { g: Phaser.GameObjects.Graphics; text: Phaser.GameObjects.Text; shown: string };
+  /** Sinergias activas (ids) para avisar cuando aparece una nueva. */
+  private synergies: string[] = [];
+  /** Ataque X: hasta cuándo dura el daño extra. */
+  private buffUntil = 0;
+  /** Escudo de esta sala, Banda Focus de este piso y Hierba Blanca ya usada. */
+  private shieldLeft = 0;
+  private focusLeft = 0;
+  private lowHpUsed = false;
+  private shieldRing?: Phaser.GameObjects.Arc;
+  /** Restos de PS del robo de vida (se cura de uno en uno). */
+  private lifestealAcc = 0;
   /** Barra grande del jefe arriba de la pantalla (nombre, tipo y vida), como en Isaac. */
   private bossBar?: { boss: Sprite; bar: ReturnType<typeof addHpBar>; objects: Phaser.GameObjects.GameObject[] };
   private escKey!: Phaser.Input.Keyboard.Key;
@@ -385,6 +412,14 @@ export class GameScene extends Phaser.Scene {
     this.secretWalls.clear();
     this.rocks.clear();
     this.challengeWave = 0;
+    this.active = null;
+    this.lbPrev = false;
+    this.activeHud = undefined;
+    this.synergies = [];
+    this.buffUntil = 0;
+    this.shieldLeft = 0;
+    this.lowHpUsed = false;
+    this.lifestealAcc = 0;
     this.centerUsed = false;
     this.shop = [];
     this.layout = FLOOR_LAYOUT;
@@ -423,6 +458,7 @@ export class GameScene extends Phaser.Scene {
       this.coins = c.coins;
       this.keys = c.keys;
       this.bombs = c.bombs;
+      this.active = c.active ? { ...c.active } : null;
     }
     this.cameras.main.setScroll(0, 0);
     this.cameras.main.resetFX();
@@ -563,7 +599,15 @@ export class GameScene extends Phaser.Scene {
 
   /** Tus estadísticas: las de tu Pokémon con los objetos pasivos encima. */
   private calcStats(): PlayerStats {
-    return computeStats(this.passives, this.base);
+    const types = this.slots.flatMap((m) => (m ? [m.type] : []));
+    const { stats, active } = applySynergies(computeStats(this.passives, this.base), this.passives, types);
+    this.synergies = active.map((syn) => syn.id);
+    return stats;
+  }
+
+  /** Multiplicador de daño de Ataque X mientras dura. */
+  private dmgMul(): number {
+    return this.time.now < this.buffUntil ? ACTIVE_EFFECT.buffMul : 1;
   }
 
   /** Nivel de dificultad: el piso, el jefe por el que vas o, en Oleadas, el que toca a la ronda. */
@@ -727,6 +771,7 @@ export class GameScene extends Phaser.Scene {
     this.restartKey = kb.addKey(K.R);
     this.enterKey = kb.addKey(K.ENTER);
     this.bombKey = kb.addKey(K.E);
+    this.activeKey = kb.addKey(K.SPACE);
     this.escKey = kb.addKey(K.ESC);
     this.pauseKey = kb.addKey(K.P);
     this.menuPadPrev = false;
@@ -797,6 +842,19 @@ export class GameScene extends Phaser.Scene {
     this.minimap = this.add.graphics().setDepth(30).setScrollFactor(0);
 
     // Botón de pausa para jugar solo con ratón
+    // Objeto activo: cuadro abajo a la izquierda (clic para usarlo)
+    this.activeHud = {
+      g: fixed(this.add.graphics()),
+      text: fixed(this.add.text(43, 572, '', { fontFamily: FONT, fontSize: '11px', fontStyle: 'bold', color: '#3fc35a' }).setOrigin(0.5).setStroke('#1d2848', 3)),
+      shown: '',
+    };
+    const activeBtn = fixed(this.add.zone(43, 602, 62, 52).setInteractive({ useHandCursor: true }));
+    activeBtn.on('pointerover', () => (this.overHud = true));
+    activeBtn.on('pointerout', () => (this.overHud = false));
+    activeBtn.on('pointerdown', () => this.useActive());
+    this.shieldRing = this.add.circle(0, 0, 50).setStrokeStyle(4, 0x6ad0f0, 0.85).setDepth(6).setVisible(false);
+    this.focusLeft = this.stats.focusBand;
+    this.lowHpUsed = false;
     fixed(drawBox(this.add.graphics(), 12, 14, 54, 54, { radius: 10 }));
     const pb = this.add
       .text(39, 41, '❚❚', { fontFamily: FONT, fontSize: '22px', color: HEX.text })
@@ -910,11 +968,13 @@ ${where} — ${this.biome.name}`, 1600);
   // --- Guardado (como en Isaac: solo, en el hueco elegido) ---
 
   private toSaved(item: DroppedItem): SavedDrop {
+    if (item.kind === 'active') return { kind: 'active', id: item.id };
     return item.kind === 'passive' ? { kind: 'passive', id: item.item.id } : { kind: 'move', move: item.move };
   }
 
   private fromSaved(d: SavedDrop): DroppedItem | null {
     if (d.kind === 'move') return { kind: 'move', move: d.move };
+    if (d.kind === 'active') return activeById(d.id) ? { kind: 'active', id: d.id } : null;
     if (d.kind !== 'passive') return null;
     const item = passiveById(d.id);
     return item ? { kind: 'passive', item } : null;
@@ -932,6 +992,7 @@ ${where} — ${this.biome.name}`, 1600);
     this.coins = r.coins;
     this.keys = r.keys;
     this.bombs = r.bombs;
+    this.active = r.active && activeById(r.active.id) ? { ...r.active } : null;
     this.centerUsed = r.centerUsed;
     this.shop = r.shop.map((s) => ({ ...s }));
     for (const f of r.floorItems) {
@@ -977,6 +1038,7 @@ ${where} — ${this.biome.name}`, 1600);
       bombs: this.bombs,
       openedChests: [...this.openedChests],
       revealedDoors: [...this.revealedDoors],
+      active: this.active ? { ...this.active } : null,
     });
   }
 
@@ -997,7 +1059,11 @@ ${where} — ${this.biome.name}`, 1600);
       hp: this.hp,
       stats: this.stats,
       baseStats: this.baseStats,
-      items: [...counts].map(([id, n]) => (passiveById(id)?.name ?? id) + (n > 1 ? ` x${n}` : '')),
+      items: [
+        ...[...counts].map(([id, n]) => (passiveById(id)?.name ?? id) + (n > 1 ? ` x${n}` : '')),
+        ...(this.active ? [`Activo: ${activeById(this.active.id)?.name} (${this.active.charge}/${activeById(this.active.id)?.charge})`] : []),
+        ...this.synergies.map((id) => `¡Sinergia! ${SYNERGIES.find((syn) => syn.id === id)?.name}`),
+      ],
       moves: [...this.slots],
       roomsCleared: this.cleared.size,
       coins: this.coins,
@@ -1352,14 +1418,15 @@ ${where} — ${this.biome.name}`, 1600);
 
   /** Deja en el suelo un objeto al azar: un pasivo propio o un poder (movimiento de PokeAPI). */
   private dropItem(roomId: number, x: number, y: number) {
-    this.spawnPickup(roomId, x, y, rollItem(Math.random, new Set(this.passives), this.movePool));
+    this.spawnPickup(roomId, x, y, rollItem(Math.random, new Set(this.passives), this.movePool, ACTIVE_DROP_CHANCE, ACTIVE_IDS));
   }
 
   private spawnPickup(roomId: number, x: number, y: number, item: DroppedItem) {
     const entry: FloorItemSave = { roomId, x, y, drop: this.toSaved(item) };
     this.floorItems.push(entry);
-    const color = item.kind === 'passive' ? item.item.color : typeColor(item.move.type);
-    const name = item.kind === 'passive' ? item.item.name : pretty(item.move.name);
+    const act = item.kind === 'active' ? activeById(item.id) : undefined;
+    const color = item.kind === 'passive' ? item.item.color : item.kind === 'move' ? typeColor(item.move.type) : (act?.color ?? 0xffffff);
+    const name = item.kind === 'passive' ? item.item.name : item.kind === 'move' ? pretty(item.move.name) : `${act?.name ?? item.id} (activo)`;
 
     const shadow = this.add.ellipse(x, y + 18, 90, 34, 0xc9b27a).setDepth(1);
     const s = this.pickups.create(x, y, 'shot') as Sprite;
@@ -1387,7 +1454,15 @@ ${where} — ${this.biome.name}`, 1600);
   /** Te quedas un pasivo o un poder (cogido del suelo o comprado). */
   private gainItem(item: DroppedItem) {
     sfx('pickup');
-    if (item.kind === 'passive') {
+    const before = new Set(this.synergies);
+    if (item.kind === 'active') {
+      // Como en Isaac: si ya llevabas uno, se queda en el suelo
+      if (this.active && this.player) this.spawnPickup(this.current.id, this.player.x + 70, this.player.y, { kind: 'active', id: this.active.id });
+      const a = activeById(item.id);
+      this.active = { id: item.id, charge: a?.charge ?? 1 };
+      this.showBanner(`${a?.name ?? item.id}\n${a?.description ?? ''}\nEspacio, LB o clic en su cuadro`, 2600);
+    } else if (item.kind === 'passive') {
+      if (item.item.id === 'banda-focus') this.focusLeft++;
       const prevMax = this.stats.maxHp;
       this.passives.push(item.item.id);
       this.stats = this.calcStats();
@@ -1399,10 +1474,78 @@ ${where} — ${this.biome.name}`, 1600);
       const slot = free !== -1 ? free : this.nextSlotReplace++ % SLOT_COUNT;
       this.slots[slot] = item.move;
       this.slotReady[slot] = 0;
+      this.stats = this.calcStats();
       this.showBanner(`${pretty(item.move.name)}\nTecla ${slot + 1}`, 2400);
+    }
+    // ¡Sinergia! nueva (objeto + objeto o objeto + poder)
+    const fresh = this.synergies.filter((id) => !before.has(id));
+    for (const id of fresh) {
+      const syn = SYNERGIES.find((x) => x.id === id);
+      if (syn) this.time.delayedCall(1400, () => !this.ended && this.showBanner(`¡Sinergia!\n${syn.name}: ${syn.description}`, 2800));
     }
     this.refreshInventory();
     this.saveNow();
+  }
+
+  // --- Objeto activo ---
+
+  private useActive() {
+    if (this.ended || this.transitioning || !this.active || !this.player?.active) return;
+    const a = activeById(this.active.id);
+    if (!a) return;
+    if (!isCharged(this.active.charge, a.charge)) {
+      this.showBanner(`${a.name}: aún no está cargado (${this.active.charge}/${a.charge})\nSe carga limpiando salas`, 1300);
+      return;
+    }
+    this.active.charge = 0;
+    const now = this.time.now;
+    sfx('heal');
+    const all = this.enemies.getChildren() as Sprite[];
+    if (a.id === 'poke-flauta' || a.id === 'repelente') {
+      const base = a.id === 'poke-flauta' ? STATUS_EFFECTS.stun : STATUS_EFFECTS.fear;
+      const effect = { ...base, duration: a.id === 'poke-flauta' ? ACTIVE_EFFECT.stunMs : ACTIVE_EFFECT.fearMs };
+      for (const e of all) {
+        if (!e.active) continue;
+        const prev = (e.getData('statuses') as ActiveStatus[] | undefined) ?? [];
+        e.setData('statuses', applyStatus(prev, effect, now, 0));
+        this.popup(e.x, e.y - 40, effect.label, effect.color);
+      }
+    } else if (a.id === 'pokeblock') {
+      this.hp = Math.min(this.stats.maxHp, this.hp + ACTIVE_EFFECT.heal);
+      this.popup(this.player.x, this.player.y - 50, `+${ACTIVE_EFFECT.heal} PS`, a.color);
+    } else if (a.id === 'ataque-x') {
+      this.buffUntil = now + ACTIVE_EFFECT.buffMs;
+      this.popup(this.player.x, this.player.y - 50, '¡Ataque X!', a.color);
+    }
+    this.showBanner(a.name, 900);
+    this.saveNow();
+  }
+
+  /** Limpiar una sala recarga el objeto activo. */
+  private chargeActive() {
+    if (!this.active) return;
+    const a = activeById(this.active.id);
+    if (a) this.active.charge = chargeAfterClear(this.active.charge, a.charge);
+  }
+
+  /** Cuadro del objeto activo abajo a la izquierda: color, nombre corto y carga por casillas. */
+  private paintActive() {
+    const h = this.activeHud;
+    if (!h) return;
+    const a = this.active ? activeById(this.active.id) : undefined;
+    const key = a ? `${a.id}:${this.active!.charge}` : 'nada';
+    if (h.shown === key) return;
+    h.shown = key;
+    const g = h.g.clear();
+    drawBox(g, 12, 576, 62, 52, { radius: 10, fillAlpha: a ? 1 : 0.5 });
+    if (!a) return void h.text.setText('');
+    const ready = isCharged(this.active!.charge, a.charge);
+    g.fillStyle(a.color, ready ? 1 : 0.45).fillCircle(43, 596, 11);
+    const w = 44 / a.charge;
+    for (let k = 0; k < a.charge; k++) {
+      g.fillStyle(k < this.active!.charge ? 0x3fc35a : 0x404a5c, 1).fillRect(21 + k * w, 614, w - 2, 6);
+    }
+    h.text.setText(ready ? '¡YA!' : '');
   }
 
   private refreshInventory() {
@@ -1416,6 +1559,7 @@ ${where} — ${this.biome.name}`, 1600);
 
   private enterRoom(room: Room) {
     this.current = room;
+    this.shieldLeft = this.stats.shieldPerRoom;
     this.visited.add(room.id);
 
     if (this.mode === 'waves') this.startWave(1200);
@@ -1859,6 +2003,7 @@ ${where} — ${this.biome.name}`, 1600);
       formId: this.formId,
       keys: this.keys,
       bombs: this.bombs,
+      active: this.active ? { ...this.active } : null,
     };
     this.cameras.main.fadeOut(350, 0, 0, 0);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
@@ -1868,7 +2013,7 @@ ${where} — ${this.biome.name}`, 1600);
 
   // --- Bucle ---
 
-  update(time: number) {
+  update(time: number, delta = 16) {
     // Esc (teclado) o Select/Back (mando) vuelven al menú en cualquier momento
     const menuPad = this.input.gamepad?.getPad(0);
     const menuPadNow = !!menuPad && menuPad.connected && (!!menuPad.buttons[8]?.pressed || (!this.ended && !!menuPad.buttons[9]?.pressed));
@@ -1940,6 +2085,11 @@ ${where} — ${this.biome.name}`, 1600);
     const rbNow = hasPad && !!pad!.buttons[5]?.pressed;
     if (Phaser.Input.Keyboard.JustDown(this.bombKey) || (rbNow && !this.rbPrev)) this.placeBomb();
     this.rbPrev = rbNow;
+    // Objeto activo: Espacio o LB (el clic va en su cuadro)
+    const lbNow = hasPad && !!pad!.buttons[4]?.pressed;
+    if (Phaser.Input.Keyboard.JustDown(this.activeKey) || (lbNow && !this.lbPrev)) this.useActive();
+    this.lbPrev = lbNow;
+    if (this.stats.homing > 0) this.steerShots(delta);
     const padA = hasPad && pad!.A && !this.padPrev[0];
     const usedA = this.updateInteract(Phaser.Input.Keyboard.JustDown(this.enterKey), padA);
 
@@ -1972,6 +2122,8 @@ ${where} — ${this.biome.name}`, 1600);
     this.hpBar.set(this.hp / this.stats.maxHp);
     const bb = this.bossBar;
     if (bb) bb.bar.set((bb.boss.getData('hp') as number) / (bb.boss.getData('maxHp') as number));
+    this.paintActive();
+    if (this.shieldRing) this.shieldRing.setPosition(this.player.x, this.player.y).setVisible(this.shieldLeft > 0);
     this.coinsHud.setText(String(this.coins));
     this.keysHud.setText(String(this.keys));
     this.bombsHud.setText(String(this.bombs));
@@ -2006,6 +2158,35 @@ ${where} — ${this.biome.name}`, 1600);
     return null;
   }
 
+  /** Telescopio: tus disparos giran poco a poco hacia el enemigo más cercano. */
+  private steerShots(delta: number) {
+    const enemies = (this.enemies.getChildren() as Sprite[]).filter((e) => e.active && (e.body as Body).enable);
+    if (enemies.length === 0) return;
+    const maxTurn = this.stats.homing * (delta / 1000);
+    for (const c of this.shots.getChildren()) {
+      const shot = c as Sprite;
+      const body = shot.body as Body | null;
+      if (!shot.active || !body) continue;
+      let best: Sprite | null = null;
+      let bestD = 360 * 360;
+      for (const e of enemies) {
+        const d = (e.x - shot.x) ** 2 + (e.y - shot.y) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = e;
+        }
+      }
+      if (!best) continue;
+      const v = body.velocity;
+      const speed = v.length();
+      const cur = Math.atan2(v.y, v.x);
+      const want = Math.atan2(best.y - shot.y, best.x - shot.x);
+      const diff = Phaser.Math.Angle.Wrap(want - cur);
+      const turn = Phaser.Math.Clamp(diff, -maxTurn, maxTurn);
+      shot.setVelocity(Math.cos(cur + turn) * speed, Math.sin(cur + turn) * speed);
+    }
+  }
+
   private spawnShot(dir: Phaser.Math.Vector2, angle: number, o: ShotOpts) {
     const v = dir.clone().rotate(angle).scale(o.speed);
     const s = this.shots.create(this.player.x, this.player.y, 'shot') as Sprite;
@@ -2024,17 +2205,19 @@ ${where} — ${this.biome.name}`, 1600);
     sfx('shot');
     const s = this.stats;
     const n = 1 + s.extraShots;
-    for (let k = 0; k < n; k++) {
-      this.spawnShot(dir, (k - (n - 1) / 2) * SPREAD, {
-        damage: s.damage,
-        speed: s.shotSpeed,
-        life: s.range,
-        size: 0.7,
-        color: typeColor(this.tearType),
-        pierce: s.pierce,
-        bounces: s.bounces,
-      });
-    }
+    const opts = {
+      damage: s.damage * this.dmgMul(),
+      speed: s.shotSpeed,
+      // Pokéradar: más alcance cuantos más enemigos queden
+      life: s.range * (1 + s.rangePerEnemy * this.enemies.countActive(true)),
+      size: 0.7 * s.shotScale,
+      color: typeColor(this.tearType),
+      pierce: s.pierce,
+      bounces: s.bounces,
+    };
+    for (let k = 0; k < n; k++) this.spawnShot(dir, (k - (n - 1) / 2) * SPREAD, opts);
+    // Cola Gemela: también hacia atrás
+    for (let k = 0; k < s.backShots; k++) this.spawnShot(dir.clone().negate(), (k - (s.backShots - 1) / 2) * SPREAD, opts);
   }
 
   /** Poder activo: el movimiento de la ranura sale hacia donde miras. */
@@ -2046,7 +2229,9 @@ ${where} — ${this.biome.name}`, 1600);
 
     const dir = this.aim.clone();
     // At. Esp. del Pokémon y, encima, lo que suban el daño los objetos
-    const dmg = Math.max(6, Math.round(m.power * 0.5 * this.stats.powerMul * (this.stats.damage / this.base.damage)));
+    // Potenciadores de tipo (Carbón, Imán…) y Ataque X van encima
+    const boost = 1 + (this.stats.typeBoost[m.type] ?? 0);
+    const dmg = Math.max(6, Math.round(m.power * 0.5 * this.stats.powerMul * (this.stats.damage / this.base.damage) * boost * this.dmgMul()));
     const base = {
       color: typeColor(m.type),
       pierce: this.stats.pierce,
@@ -2090,7 +2275,20 @@ ${where} — ${this.biome.name}`, 1600);
 
     const status = shot.getData('status') as string | undefined;
     // Dragón: los poderes hacen más daño
-    const dmg = (shot.getData('dmg') as number) * (status ? hitDamageMul(status) : 1);
+    let dmg = (shot.getData('dmg') as number) * (status ? hitDamageMul(status) : 1);
+    if (this.stats.critChance > 0 && Math.random() < this.stats.critChance) {
+      dmg *= this.stats.critMul;
+      this.popup(enemy.x, enemy.y - 30, '¡Crítico!', 0xffd34d);
+    }
+    // Concha Campana: parte del daño vuelve como PS
+    if (this.stats.lifesteal > 0) {
+      this.lifestealAcc += dmg * this.stats.lifesteal;
+      const heal = Math.floor(this.lifestealAcc);
+      if (heal > 0) {
+        this.lifestealAcc -= heal;
+        this.hp = Math.min(this.stats.maxHp, this.hp + heal);
+      }
+    }
     const hp = (enemy.getData('hp') as number) - dmg;
     sfx('hit');
     enemy.setData('hp', hp);
@@ -2215,9 +2413,10 @@ ${where} — ${this.biome.name}`, 1600);
       sfx('heal');
       this.popup(this.player.x, this.player.y - 50, `${b.name} +${b.heal} PS`, b.color);
     } else if (drop.kind === 'coin') {
-      this.coins += drop.value;
+      const value = Math.round(drop.value * this.stats.coinMul);
+      this.coins += value;
       sfx('coin');
-      this.popup(sprite.x, sprite.y - 16, `+${drop.value}`, 0xffd34d);
+      this.popup(sprite.x, sprite.y - 16, `+${value}`, 0xffd34d);
     } else if (drop.kind === 'key') {
       this.keys++;
       sfx('coin');
@@ -2422,8 +2621,19 @@ ${where} — ${this.biome.name}`, 1600);
 
   /** Aplica el estado del tipo del poder. Drenar cura al jugador y empujar aparta al enemigo al momento. */
   private applyStatusTo(enemy: Sprite, type: string, damage: number) {
-    const effect = statusForType(type);
-    if (!effect) return;
+    const baseEffect = statusForType(type);
+    if (!baseEffect) return;
+    // Sinergias (Carbón + Fuego…): el estado dura más y pega o frena más
+    const boost = this.stats.statusBoost[type] ?? 1;
+    const effect =
+      boost === 1 || baseEffect.duration <= 0
+        ? baseEffect
+        : {
+            ...baseEffect,
+            duration: baseEffect.duration * boost,
+            dpsFraction: baseEffect.dpsFraction * boost,
+            slow: baseEffect.slow > 0 && baseEffect.slow < 1 ? Math.max(0.1, 1 - (1 - baseEffect.slow) * boost) : baseEffect.slow,
+          };
     const now = this.time.now;
     if (effect.kind === 'drain') {
       const heal = drainHeal(damage);
@@ -2500,6 +2710,7 @@ ${where} — ${this.biome.name}`, 1600);
   private onWaveCleared() {
     if (!this.waveActive) return;
     this.waveActive = false;
+    this.chargeActive();
     sfx('clear');
     const round = this.floorNum;
     this.foeShots.clear(true, true);
@@ -2542,6 +2753,7 @@ ${where} — ${this.biome.name}`, 1600);
       return;
     }
     this.cleared.add(room.id);
+    this.chargeActive();
     sfx('clear');
     this.setDoorsLocked(room, false);
     this.foeShots.clear(true, true);
@@ -2643,12 +2855,41 @@ ${where} — ${this.biome.name}`, 1600);
     // Quien salta no hace daño mientras desaparece o recién aparecido
     const ai = enemy.getData('ai') as EnemyAI | undefined;
     if (ai && ai.behavior === 'hop' && ai.state !== 'walk') return;
+    if (this.stats.dodge > 0 && Math.random() < this.stats.dodge) {
+      this.invulnUntil = now + 500;
+      this.popup(this.player.x, this.player.y - 50, '¡Esquivado!', 0xfff8c0);
+      return;
+    }
+    if (this.shieldLeft > 0) {
+      this.shieldLeft--;
+      this.invulnUntil = now + 700;
+      this.popup(this.player.x, this.player.y - 50, '¡Escudo!', 0x6ad0f0);
+      return;
+    }
     this.invulnUntil = now + 900;
     sfx('hurt');
+    // Casco Dentado: quien te toca se hace daño
+    if (ai && this.stats.thorns > 0 && enemy.active) {
+      const ehp = (enemy.getData('hp') as number) - this.stats.thorns;
+      enemy.setData('hp', ehp).setData('flashUntil', now + 90).setTint(0xff6666);
+      if (ehp <= 0) this.time.delayedCall(0, () => enemy.active && this.killEnemy(enemy));
+    }
     // Defensa y Def. Esp. reducen el daño recibido
     // Los proyectiles ya llevan el debilitamiento; el contacto lo mira ahora (Hada: −30 %)
     const weak = enemy.getData('ai') ? enemyDamageMul((enemy.getData('statuses') as ActiveStatus[] | undefined) ?? [], now) : 1;
-    this.hp -= Math.max(1, Math.round(((enemy.getData('dmg') as number | undefined) ?? 10) * weak * this.stats.damageTaken));
+    const taken = Math.max(1, Math.round(((enemy.getData('dmg') as number | undefined) ?? 10) * weak * this.stats.damageTaken));
+    if (this.hp - taken <= 0 && this.focusLeft > 0) {
+      // Banda Focus: aguanta con 1 PS
+      this.focusLeft--;
+      this.hp = 1;
+      this.showBanner('¡Aguantó gracias a la Banda Focus!', 1400);
+    } else this.hp -= taken;
+    if (!this.lowHpUsed && this.stats.lowHpHeal > 0 && this.hp > 0 && this.hp < this.stats.maxHp * 0.25) {
+      // Hierba Blanca: una vez por piso
+      this.lowHpUsed = true;
+      this.hp = Math.min(this.stats.maxHp, this.hp + this.stats.lowHpHeal);
+      this.popup(this.player.x, this.player.y - 50, `Hierba Blanca +${this.stats.lowHpHeal} PS`, 0xf0f0e0);
+    }
     this.player.setTint(0xff6666);
     this.time.delayedCall(150, () => this.player.active && this.player.clearTint());
 

@@ -191,7 +191,7 @@ también. Ajusta (todo en constantes con tests que fijen los nuevos rangos):
 - Si eliges un shiny de inicial, juegas con su sprite shiny. Enemigo shiny: más vida y suelta más premio.
 - Pokédex: marca de shiny y contador de shinies conseguidos.
 
-## [ ] T23 — Más objetos y sinergias
+## [x] T23 — Más objetos y sinergias
 - Al menos 25 pasivos nuevos (nombres de objetos Pokémon en español: Cinta Elegida, Lente Zoom, Vidasfera,
   Restos, Banda Focus, Hierba Blanca…) con efectos variados, no solo números: disparos que siguen al enemigo,
   disparo hacia atrás, escudo que para un golpe por sala, más alcance por cada enemigo vivo, etc.

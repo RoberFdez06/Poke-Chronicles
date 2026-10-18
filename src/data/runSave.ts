@@ -17,8 +17,9 @@ export const RUN_SLOTS = 3;
  * v6: forma actual del Pokémon (evoluciona durante la partida); los v5 aún no habían evolucionado.
  * v7: llaves, bombas, cofres abiertos y paredes secretas abiertas. Los pisos de v6 siguen con su diseño (2),
  *     sin sala secreta, de desafío ni cofres.
+ * v8: objeto activo (y su carga) y objetos activos en el suelo.
  */
-export const RUN_VERSION = 7;
+export const RUN_VERSION = 8;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -28,7 +29,8 @@ export type SavedDrop =
   | { kind: 'coin'; value: number }
   | { kind: 'berry'; id: keyof typeof BERRIES }
   | { kind: 'key' }
-  | { kind: 'bomb' };
+  | { kind: 'bomb' }
+  | { kind: 'active'; id: string };
 
 /**
  * Diseño del piso: 1 = sin Centro ni tienda (partidas de antes de v4), 2 = con ellos, 3 = además sala secreta,
@@ -86,6 +88,8 @@ export interface RunSave {
   /** Salas cuyo cofre ya se ha abierto y puertas ocultas ya abiertas con bomba ("sala:dirección"). */
   openedChests: number[];
   revealedDoors: string[];
+  /** Objeto activo que llevas y cuántas salas lleva cargadas (null = ninguno). */
+  active: { id: string; charge: number } | null;
 }
 
 const isInt = (n: unknown): n is number => Number.isInteger(n);
@@ -104,6 +108,7 @@ function isDrop(d: unknown): d is SavedDrop {
   if (o.kind === 'coin') return isInt(o.value) && o.value > 0;
   if (o.kind === 'berry') return o.id in BERRIES;
   if (o.kind === 'key' || o.kind === 'bomb') return true;
+  if (o.kind === 'active') return typeof o.id === 'string';
   return o.kind === 'move' && isMove(o.move);
 }
 
@@ -147,6 +152,11 @@ function migrateV6(d: RunSave): RunSave {
   return { ...d, version: 7, keys: 0, bombs: 1, openedChests: [], revealedDoors: [] };
 }
 
+/** v7 no tenía objetos activos. */
+function migrateV7(d: RunSave): RunSave {
+  return { ...d, version: 8, active: null };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -163,6 +173,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 4) d = migrateV4(d);
   if (d.version === 5) d = migrateV5(d);
   if (d.version === 6) d = migrateV6(d);
+  if (d.version === 7) d = migrateV7(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
@@ -177,7 +188,8 @@ export function parseRun(raw: string | null): RunSave | null {
     isInt(d.earned) && isInt(d.coins) && d.coins >= 0 && typeof d.centerUsed === 'boolean' &&
     Array.isArray(d.shop) && d.shop.every(isShopSlot) && [1, 2, 3].includes(d.layout) &&
     isInt(d.keys) && d.keys >= 0 && isInt(d.bombs) && d.bombs >= 0 && isIntArray(d.openedChests) &&
-    Array.isArray(d.revealedDoors) && d.revealedDoors.every((k) => typeof k === 'string');
+    Array.isArray(d.revealedDoors) && d.revealedDoors.every((k) => typeof k === 'string') &&
+    (d.active === null || (!!d.active && typeof d.active.id === 'string' && isInt(d.active.charge) && d.active.charge >= 0));
   return ok ? d : null;
 }
 

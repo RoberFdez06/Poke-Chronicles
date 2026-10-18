@@ -456,3 +456,24 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   la página haya perdido el foco del teclado (un clic en el juego lo devuelve) o la pantalla completa (Esc la usa el
   navegador; el supervisor ya añadió `keyboard.lock` y Retroceso).
 - `src/main.ts` deja el juego en `window.__POKEISAAC__` para que las pruebas sepan qué pantalla está activa.
+
+## T23 — Más objetos y sinergias (2026-10-18)
+
+- **Pasivos nuevos** (34, en `items.ts`): Cinta/Gafas/Pañuelo Elegido, Lente Zoom, Periscopio, Garra Afilada,
+  Banda Focus, Hierba Blanca, Concha Campana, Casco Dentado, Polvo Brillo, Gafas Protectoras, Chaleco Asalto,
+  Telescopio, Cola Gemela, Pokéradar, Moneda Amuleto, Bola Férrea y 16 potenciadores de tipo (Carbón, Agua Mística,
+  Imán, Semilla Milagro, Hielo Eterno, Cinturón Negro, Cuchara Torcida, Colmillo Dragón, Hechizo, Gafas de Sol,
+  Revestimiento Metálico, Seda Fina, Pico Afilado, Polvo Plata, Flecha Venenosa, Arena Fina). `PlayerStats` tiene
+  campos nuevos (críticos, robo de vida, espinas, esquivar, escudo, Banda Focus, Hierba Blanca, persecución, disparos
+  atrás, alcance por enemigo, monedas, tamaño, `typeBoost` y `statusBoost` por tipo); `computeStats` copia los mapas.
+- **Activos** (`synergies.ts`): Poké Flauta (aturde 2,5 s, 3 salas), Repelente (miedo 4 s, 2), Pokéblock (+35 PS, 3),
+  Ataque X (+50 % 8 s, 2). Caen en el 15 % de los objetos. Espacio, **LB** o clic en su cuadro (abajo a la izquierda,
+  con la carga en casillas y "¡YA!"). Limpiar una sala (o una ronda) los recarga.
+- **Sinergias** (11, tabla pura con tests): Fuego interior, Marea, Sobrecarga, Ventisca y Tóxico (potenciador + poder
+  de su tipo → estado más fuerte), Elección, Francotirador, Vampiro, Muralla, Buscador y Tormenta. Al aparecer una:
+  cartel "¡Sinergia!"; en la pausa se listan junto al objeto activo.
+- **Guardado**: `RUN_VERSION` 8 con `active` (y activos en el suelo); los v7 migran sin activo.
+- **Archivos**: `items.ts`, `synergies.ts` (nuevo), `runSave.ts`, `controls.ts`, `GameScene`, tests
+  (`synergies.test.ts` nuevo, `pokeStats`, `runSave`), `tests/e2e/flow.spec.ts` (versión del guardado), README.
+- **Dudas**: números a ojo (los dejo para el equilibrio de la T25). La fila de controles junta poderes y objeto
+  activo para que la lista quepa en el panel del menú (N5).

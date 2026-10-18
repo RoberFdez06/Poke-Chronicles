@@ -2,6 +2,7 @@
 // continuar, y Esc / Retroceso para volver en cada pantalla. Falla si hay errores en consola.
 import { test, expect } from '@playwright/test';
 import { activeScenes, collectErrors, mockPokeApi, press, runSaved, waitScene } from './helpers';
+import { RUN_VERSION } from '../../src/data/runSave';
 
 test.beforeEach(async ({ page }) => {
   await mockPokeApi(page);
@@ -55,7 +56,7 @@ test('con teclado: se juega, se guarda, se continúa y Esc vuelve atrás', async
   // Se guarda al entrar en la sala
   const saved = await runSaved(page, 0);
   expect(saved, 'partida guardada al empezar').not.toBeNull();
-  expect(saved!.version).toBe(7);
+  expect(saved!.version).toBe(RUN_VERSION);
 
   // Pausa → Salir y guardar (la quinta opción)
   await press(page, 'Escape');

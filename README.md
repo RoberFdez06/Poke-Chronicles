@@ -21,6 +21,7 @@ Abre la URL que muestra Vite (normalmente http://localhost:5173).
 | Pausa | Esc o P | Botón ❚❚ (arriba a la izquierda) | Start o Select |
 | Usar (Centro Pokémon, tienda, cofre) | Enter cerca, o pisarlo | Clic en el mostrador, el artículo o el cofre | A cerca, o pisarlo |
 | Soltar bomba | E | Clic en la bomba del HUD | RB |
+| Objeto activo | Espacio | Clic en su cuadro (abajo a la izquierda) | LB |
 | Nueva partida (al morir o ganar) | R | Clic | Start |
 | Menús | Flechas o W A S D, Enter / espacio, Esc para volver | Pasar el cursor, clic y botón "Volver" | Stick o cruceta, A para elegir, B para volver |
 
@@ -197,8 +198,18 @@ que elegiste.
 
 - **Disparo continuo** como en Isaac: mantén una flecha y el Pokémon dispara solo, mirando hacia esa dirección.
   Los disparos tienen el color del tipo de tu inicial.
-- **Objetos pasivos** (nombres provisionales): mejoran daño, cadencia, alcance, velocidad, PS, disparos extra,
-  atravesar enemigos, rebotes y curación al limpiar salas. Se acumulan.
+- **Objetos pasivos** (más de 40, con nombres de objetos de Pokémon): además de mejorar daño, cadencia, alcance,
+  velocidad o PS, hay efectos especiales: críticos (Lente Zoom, Periscopio, Garra Afilada), disparos que persiguen
+  (Telescopio), disparo hacia atrás (Cola Gemela), escudo para el primer golpe de cada sala (Gafas Protectoras),
+  aguantar con 1 PS (Banda Focus), robo de vida (Concha Campana), daño a quien te toca (Casco Dentado), esquivar
+  (Polvo Brillo), más alcance por enemigo vivo (Pokéradar), monedas dobles (Moneda Amuleto) y un potenciador por
+  tipo (Carbón, Agua Mística, Imán…: +25 % a los poderes de su tipo). Se acumulan.
+- **Objetos activos** (una ranura aparte, se usan con Espacio, LB o clic y se recargan limpiando salas): Poké Flauta
+  (aturde a todos), Repelente (los enemigos huyen), Pokéblock (cura 35 PS) y Ataque X (+50 % de daño 8 s). Si coges
+  otro, el que llevabas se queda en el suelo.
+- **Sinergias** (`src/data/synergies.ts`): ciertas combinaciones dan un efecto extra y avisan con "¡Sinergia!", por
+  ejemplo Carbón + un poder de Fuego (quemaduras el doble de fuertes), dos objetos "Elegido", Lente Zoom + Periscopio
+  o Concha Campana + Restos. Se ven en la pausa.
 - **Poderes**: movimientos de PokeAPI **de los tipos de tu Pokémon** (con potencia y nombre en español; si tiene
   dos tipos, se reparten entre los dos) que aparecen como objetos y ocupan una ranura (teclas 1-4).
   La potencia decide cómo salen: disparo rápido (<50), anillo (50-69), abanico (70-99) o proyectil grande
@@ -244,6 +255,8 @@ src/
     evolution.ts          cadena evolutiva y cuándo se evoluciona en cada modo
     enemies.ts            enemigos por piso, comportamiento por tipo y estadísticas
     status.ts             estados por tipo: quemar, congelar, paralizar…
+    synergies.ts          objetos activos y sinergias entre objetos y poderes
+    shiny.ts              probabilidades y efectos de los shinies
     loot.ts               monedas de la partida, bayas, pociones, Centro Pokémon y tienda
     gacha.ts              rarezas y tiradas del gacha
     regions.ts            regiones, iniciales y filtros de la colección
@@ -309,7 +322,7 @@ récord en el navegador (`pokeisaac.records`, en `src/data/save.ts`), que se ve 
 | **Infinito** | Como Normal, pero los pisos no se acaban y cada uno es más difícil. | Pisos completados |
 | **Rush de jefes** | Solo jefes legendarios en una arena; tras cada uno, un objeto y una trampilla al siguiente. | Jefes vencidos |
 
-Las partidas de cualquier modo se guardan en los huecos (`RUN_VERSION` 7; los guardados de versiones
+Las partidas de cualquier modo se guardan en los huecos (`RUN_VERSION` 8; los guardados de versiones
 anteriores se migran solos).
 En Oleadas, al continuar se repite la ronda en la que estabas.
 

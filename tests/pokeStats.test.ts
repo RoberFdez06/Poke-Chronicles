@@ -37,7 +37,11 @@ test('lee las estadísticas de PokeAPI', () => {
 
 test('el Pokémon medio juega como antes', () => {
   const s = playerBaseStats(AVERAGE_STATS);
-  for (const k of Object.keys(BASE_STATS) as (keyof typeof BASE_STATS)[]) assert.ok(close(s[k], BASE_STATS[k]), k);
+  for (const k of Object.keys(BASE_STATS) as (keyof typeof BASE_STATS)[]) {
+    const v = BASE_STATS[k];
+    if (typeof v === 'number') assert.ok(close(s[k] as number, v), k);
+    else assert.deepEqual(s[k], v, k);
+  }
 });
 
 test('cada estadística mueve lo suyo', () => {
