@@ -19,6 +19,8 @@ export interface SpeciesFact {
   name: string;
   /** Nombre en español (lo añade scripts/buildSpeciesIndex.mjs; las listas antiguas no lo tienen). */
   nameEs?: string;
+  /** Tipos de su forma normal (las listas antiguas no los tienen). */
+  types?: string[];
   /** Suma de estadísticas base. */
   bst: number;
   legendary: boolean;

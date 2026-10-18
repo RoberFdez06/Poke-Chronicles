@@ -111,7 +111,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 - Pantalla "Ajustes" desde el menú principal y desde la pausa: volumen, pantalla completa, mostrar controles,
   y "Borrar progreso" con doble confirmación. Teclado, ratón y mando.
 
-## [ ] T12 — Colección y Pokédex
+## [x] T12 — Colección y Pokédex
 - Pantalla "Pokédex" en el menú: todos los Pokémon por región, los que tienes en color y los que no en silueta,
   con rareza y filtros (nombre, rareza, región, tipo). Reutiliza la lógica de filtros de T4.
 

@@ -46,6 +46,8 @@ export interface CollectionEntry {
   id: number;
   name: string;
   rarity: Rarity;
+  /** Tipos (de species-index.json); sin ellos, el filtro por tipo no lo deja pasar. */
+  types?: readonly string[];
 }
 
 export interface CollectionFilter {
@@ -55,6 +57,8 @@ export interface CollectionFilter {
   rarity?: Rarity | null;
   /** Texto que tiene que aparecer en el nombre. */
   query?: string;
+  /** Tipo ("fire"…), o null para todos. */
+  type?: string | null;
 }
 
 /** Colección filtrada y ordenada por número de Pokédex. */
@@ -64,6 +68,7 @@ export function filterCollection<T extends CollectionEntry>(entries: readonly T[
   return entries
     .filter((e) => !region || (e.id >= region.first && e.id <= region.last))
     .filter((e) => !f.rarity || e.rarity === f.rarity)
+    .filter((e) => !f.type || (e.types ?? []).includes(f.type))
     .filter((e) => q === '' || normalizeText(e.name).includes(q))
     .sort((a, b) => a.id - b.id);
 }

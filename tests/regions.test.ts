@@ -57,3 +57,15 @@ test('cuenta cuántos tienes por región', () => {
   assert.equal(c.paldea, 0);
   assert.equal(Object.keys(c).length, 9);
 });
+
+test('filtra por tipo', () => {
+  const typed = [
+    { id: 4, name: 'charmander', rarity: 'common' as const, types: ['fire'] },
+    { id: 6, name: 'charizard', rarity: 'epic' as const, types: ['fire', 'flying'] },
+    { id: 16, name: 'pidgey', rarity: 'common' as const, types: ['normal', 'flying'] },
+    { id: 999, name: 'sin tipos', rarity: 'common' as const },
+  ];
+  assert.deepEqual(filterCollection(typed, { type: 'flying' }).map((e) => e.id), [6, 16]);
+  assert.deepEqual(filterCollection(typed, { type: 'fire', rarity: 'epic' }).map((e) => e.id), [6]);
+  assert.equal(filterCollection(typed, { type: null }).length, 4);
+});

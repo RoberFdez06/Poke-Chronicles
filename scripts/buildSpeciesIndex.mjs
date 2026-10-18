@@ -41,6 +41,8 @@ async function worker() {
       // Nombre en español (si PokeAPI no lo tiene, el de siempre)
       nameEs: species.names.find((n) => n.language.name === 'es')?.name ?? species.name,
       bst: pokemon.stats.reduce((sum, s) => sum + s.base_stat, 0),
+      // Tipos (para el filtro de la Pokédex), en el orden de PokeAPI
+      types: pokemon.types.map((t) => t.type.name),
       legendary: species.is_legendary,
       mythical: species.is_mythical,
     };

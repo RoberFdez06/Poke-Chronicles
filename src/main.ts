@@ -7,6 +7,7 @@ import { SlotsScene } from './scenes/SlotsScene';
 import { FirstStarterScene } from './scenes/FirstStarterScene';
 import { ModeScene } from './scenes/ModeScene';
 import { SettingsScene } from './scenes/SettingsScene';
+import { PokedexScene } from './scenes/PokedexScene';
 import { PauseScene } from './scenes/PauseScene';
 import { COLORS, hex, loadThemeFont } from './ui/theme';
 import { initAudio, playMusic } from './ui/audio';
@@ -30,6 +31,6 @@ function startGame() {
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     // La primera escena es la que arranca; añade las nuevas (p. ej. GachaScene) al final
     // PauseScene va la última para dibujarse encima de la partida
-    scene: [MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PauseScene],
+    scene: [MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, PauseScene],
   });
 }

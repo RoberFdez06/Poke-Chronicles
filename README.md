@@ -46,7 +46,7 @@ efectos se guarda en el navegador (`pokeisaac.audio`, en `src/data/save.ts`).
 
 ## Menú principal
 
-El juego arranca en el menú: **Jugar** (hueco → Pokémon → modo), **Gacha** (gasta tickets para desbloquear Pokémon), **Controles** y **Ajustes**. Esc o B vuelven atrás desde la
+El juego arranca en el menú: **Jugar** (hueco → Pokémon → modo), **Gacha** (gasta tickets para desbloquear Pokémon), **Pokédex**, **Controles** y **Ajustes**. Esc o B vuelven atrás desde la
 selección de inicial. Abajo se ven los Pokémon desbloqueados y el récord de cada modo.
 
 ## Ajustes
@@ -82,6 +82,13 @@ compran con dinero real. Todos los nombres (Pokémon, movimientos y tipos) salen
 o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 tickets. La lista de especies
 se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `node scripts/buildSpeciesIndex.mjs`.
 Con más de 8 desbloqueados, la pantalla de inicial se divide en páginas (◀ ▶ con ratón, izquierda/derecha con teclado o mando).
+
+## Pokédex
+
+Desde el menú (`src/scenes/PokedexScene.ts`): los 1025 Pokémon, 21 por página, los que tienes en color (con el borde
+del color de su rareza) y los que no en silueta. Filtros por región (pestañas con cuántos tienes), nombre, rareza y
+**tipo** (T, LT/RT o clic). Enter, A o clic en uno que tengas: suena su grito. Abajo se ve su número, nombre,
+rareza y tipos. Los tipos vienen en `species-index.json`.
 
 ## Elegir inicial
 
@@ -194,6 +201,8 @@ src/
   data/pokeStats.ts    estadísticas reales de cada Pokémon → estadísticas de juego (puro)
   data/loot.ts         monedas de la partida, bayas, pociones, Centro Pokémon y tienda (puro)
   scenes/ModeScene.ts  elegir modo de juego
+  scenes/PokedexScene.ts  Pokédex con todos los Pokémon y filtros
+  ui/collection.ts     barra de filtros (región, nombre, rareza, tipo) y teclado de búsqueda comunes
   scenes/SettingsScene.ts ajustes: volumen, pantalla completa, controles y borrar progreso
   ui/nav.ts            entrada de menús (NavInput, PadButtons) y botones (MenuList)
   ui/cards.ts          tarjeta de Pokémon, carga de sprites y botón "Volver"

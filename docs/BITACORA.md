@@ -288,3 +288,17 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
   cuadro; en el HUD nombre, progreso, PS y monedas tienen sitio de sobra con nombres de hasta 12 letras.
 - **Límite**: no puedo abrir el navegador, así que los anchos los he calculado a mano (unos 0,55 em por letra con
   Pixelify Sans). Conviene un vistazo a la pausa con un nombre largo.
+
+## T12 — Colección y Pokédex (2026-10-18)
+
+- **Qué**: `PokedexScene` desde el menú (botón "Pokédex"; el menú tiene ahora 5 botones algo más bajos): los 1025
+  Pokémon en cuadrícula de 7 × 3 por página, en color si los tienes (borde del color de la rareza) y en silueta si
+  no; cuadro inferior con número, nombre, rareza, tipos y si lo tienes. Enter/A/clic en uno tuyo: su grito.
+- **Filtros**: los de T4 (región, nombre con teclado en pantalla, rareza) más **tipo**. Para no repetir código,
+  las pestañas, los botones y el teclado de búsqueda pasan a `src/ui/collection.ts` (`FilterBar`, `SearchPad`,
+  `makeChip`) y `StarterScene` los usa también. `filterCollection` acepta `type` (test nuevo).
+- **Datos**: `species-index.json` regenerado con `types` de cada especie (lo demás sale idéntico, comprobado).
+  Los sprites de la Pokédex se cargan directamente del repositorio de sprites de PokeAPI por página.
+- **Mando**: LB/RB región, X rareza, LT/RT tipo, Y buscar. `PadButtons` lee ahora también LT y RT.
+- **Archivos**: `src/scenes/PokedexScene.ts`, `src/ui/collection.ts` (nuevos), `StarterScene` (usa la barra común),
+  `regions.ts` (+test), `gacha.ts` (`types?`), `nav.ts`, `MenuScene`, `main.ts`, script e índice, README.
