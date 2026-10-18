@@ -26,7 +26,8 @@ import {
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
-import { submitRecord } from '../data/save';
+import { loadUpgrades, submitRecord } from '../data/save';
+import { applyUpgrades, levelsFor } from '../data/upgrades';
 import { cry, sfx } from '../ui/audio';
 import {
   flowField,
@@ -436,7 +437,8 @@ export class GameScene extends Phaser.Scene {
     this.bossBase = boss.stats;
     // Tus estadísticas salen de las de tu Pokémon; los objetos van encima
     this.baseStats = starter.stats;
-    this.base = playerBaseStats(starter.stats);
+    // Mejoras permanentes compradas para este Pokémon (pantalla Mejoras)
+    this.base = applyUpgrades(playerBaseStats(starter.stats), levelsFor(loadUpgrades(), this.starterId));
     this.stats = this.calcStats();
     this.hp = !r && !this.carry ? this.stats.maxHp : Math.min(this.stats.maxHp, this.hp);
     this.tearType = starter.types[0] ?? 'normal';

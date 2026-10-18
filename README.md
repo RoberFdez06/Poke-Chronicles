@@ -46,7 +46,7 @@ efectos se guarda en el navegador (`pokeisaac.audio`, en `src/data/save.ts`).
 
 ## Menú principal
 
-El juego arranca en el menú: **Jugar** (hueco → Pokémon → modo), **Gacha** (gasta tickets para desbloquear Pokémon), **Pokédex**, **Controles** y **Ajustes**. Esc o B vuelven atrás desde la
+El juego arranca en el menú: **Jugar** (hueco → Pokémon → modo), **Gacha** (gasta tickets para desbloquear Pokémon), **Pokédex**, **Mejoras**, **Controles** y **Ajustes**. Esc o B vuelven atrás desde la
 selección de inicial. Abajo se ven los Pokémon desbloqueados y el récord de cada modo.
 
 ## Ajustes
@@ -71,7 +71,7 @@ La pausa muestra tus estadísticas, objetos y poderes, y tiene *Reanudar*, *Rein
 
 Hay dos monedas distintas:
 
-- **Tickets** (fuera de la partida, `src/data/save.ts`): solo sirven para el gacha. Antes se llamaban "monedas"; el
+- **Tickets** (fuera de la partida, `src/data/save.ts`): sirven para el gacha y las mejoras. Antes se llamaban "monedas"; el
   saldo guardado se pasa solo a tickets (`pokeisaac.coins` → `pokeisaac.tickets`).
 - **Monedas** (dentro de la partida, `src/data/loot.ts`): caen a veces de los enemigos y al limpiar salas, se recogen
   pisándolas, se ven en el HUD (●) y en la pausa, y solo sirven en la tienda. Se pierden al acabar la partida.
@@ -82,6 +82,14 @@ compran con dinero real. Todos los nombres (Pokémon, movimientos y tipos) salen
 o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 tickets. La lista de especies
 se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `node scripts/buildSpeciesIndex.mjs`.
 Con más de 8 desbloqueados, la pantalla de inicial se divide en páginas (◀ ▶ con ratón, izquierda/derecha con teclado o mando).
+
+## Mejoras
+
+Como en PokéSurvivor, cada Pokémon tiene sus mejoras permanentes (`src/scenes/UpgradeScene.ts`, reglas en
+`src/data/upgrades.ts`): **Daño** (+8 % por nivel), **PS** (+10), **Velocidad** (+4 %) y **Cadencia** (+6 %), hasta el
+nivel 5. Cuestan tickets (40, 80, 120, 160 y 200) y solo se aplican jugando con ese Pokémon, encima de sus
+estadísticas y debajo de los objetos de la partida. Izquierda/derecha (o ◀ ▶, LB/RB) cambia de Pokémon, arriba/abajo
+elige la mejora y Enter/A/clic la compra. Se guardan en `pokeisaac.upgrades` (`src/data/save.ts`).
 
 ## Pokédex
 
@@ -201,6 +209,8 @@ src/
   data/pokeStats.ts    estadísticas reales de cada Pokémon → estadísticas de juego (puro)
   data/loot.ts         monedas de la partida, bayas, pociones, Centro Pokémon y tienda (puro)
   scenes/ModeScene.ts  elegir modo de juego
+  scenes/UpgradeScene.ts  mejoras permanentes por Pokémon
+  data/upgrades.ts     mejoras: costes, niveles y cómo suben las estadísticas (puro)
   scenes/PokedexScene.ts  Pokédex con todos los Pokémon y filtros
   ui/collection.ts     barra de filtros (región, nombre, rareza, tipo) y teclado de búsqueda comunes
   scenes/SettingsScene.ts ajustes: volumen, pantalla completa, controles y borrar progreso
@@ -231,6 +241,7 @@ tests/
   pokeStats.test.ts    tests de las estadísticas
   roomLayouts.test.ts  tests de las salas con obstáculos (puertas conectadas)
   sounds.test.ts       tests de sonidos y volumen
+  upgrades.test.ts     tests de las mejoras
   loot.test.ts         tests de botín, curación y tienda
 scripts/
   buildSpeciesIndex.mjs  genera public/data/species-index.json desde PokeAPI

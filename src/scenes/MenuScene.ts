@@ -11,7 +11,7 @@ const recordsLine = () => {
   return MODES.map((m) => `${MODE_LABEL[m]} ${r[m]}`).join(' · ');
 };
 
-const BTN = { w: 320, h: 50, gap: 12 };
+const BTN = { w: 320, h: 46, gap: 10 };
 
 type Key = Phaser.Input.Keyboard.Key;
 type KeyName = 'UP' | 'DOWN' | 'W' | 'S' | 'ENTER' | 'SPACE' | 'ESC';
@@ -42,6 +42,7 @@ export class MenuScene extends Phaser.Scene {
       { label: 'Jugar', action: () => goTo(this, 'Slots') },
       { label: 'Gacha', action: () => this.openGacha() },
       { label: 'Pokédex', action: () => goTo(this, 'Pokedex') },
+      { label: 'Mejoras', action: () => goTo(this, 'Upgrades') },
       { label: 'Controles', action: () => this.showControls() },
       { label: 'Ajustes', action: () => goTo(this, 'Settings') },
     ];
@@ -66,13 +67,13 @@ export class MenuScene extends Phaser.Scene {
       .setAlpha(0.85);
 
     // Botones
-    const top = 262;
+    const top = 246;
     this.items.forEach((item, i) => {
       this.buttons.push(this.buildButton(item, i, 480, top + i * (BTN.h + BTN.gap)));
     });
 
     this.toast = this.add
-      .text(480, 560, '', { fontFamily: FONT, fontSize: '20px', color: '#ffd34d' })
+      .text(480, 562, '', { fontFamily: FONT, fontSize: '20px', color: '#ffd34d' })
       .setOrigin(0.5)
       .setDepth(60);
 

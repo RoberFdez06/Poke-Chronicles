@@ -115,7 +115,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 - Pantalla "Pokédex" en el menú: todos los Pokémon por región, los que tienes en color y los que no en silueta,
   con rareza y filtros (nombre, rareza, región, tipo). Reutiliza la lógica de filtros de T4.
 
-## [ ] T13 — Mejoras permanentes por Pokémon
+## [x] T13 — Mejoras permanentes por Pokémon
 - Como en PokéSurvivor: cada Pokémon tiene sus mejoras (daño, PS, velocidad, cadencia) que se compran con
   monedas y solo se aplican jugando con él. Pantalla "Mejoras" con los 3 controles; datos en `save.ts` con tests.
 

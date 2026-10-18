@@ -2,6 +2,7 @@
 // para poder testearla sin navegador; si localStorage no está disponible, no guarda y sigue.
 
 import { parseAudio, type AudioSettings } from './sounds.ts';
+import { levelsFor, parseUpgrades, upgradeCost, type UpgradeBook, type UpgradeKind } from './upgrades.ts';
 import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } from './modes.ts';
 
 export interface StorageLike {
@@ -185,6 +186,36 @@ export function saveAudio(settings: AudioSettings, storage: StorageLike | null =
   }
 }
 
+// --- Mejoras permanentes por Pokémon (ver upgrades.ts) ---
+
+export const UPGRADES_KEY = 'pokeisaac.upgrades';
+
+export function loadUpgrades(storage: StorageLike | null = browserStorage()): UpgradeBook {
+  try {
+    return parseUpgrades(storage?.getItem(UPGRADES_KEY) ?? null);
+  } catch {
+    return {};
+  }
+}
+
+export type BuyUpgradeResult = 'ok' | 'max' | 'poor';
+
+/** Compra un nivel de una mejora de un Pokémon con tickets. */
+export function buyUpgrade(id: number, kind: UpgradeKind, storage: StorageLike | null = browserStorage()): BuyUpgradeResult {
+  const book = loadUpgrades(storage);
+  const lv = levelsFor(book, id);
+  const cost = upgradeCost(lv[kind]);
+  if (cost === null) return 'max';
+  if (!spendTickets(cost, storage)) return 'poor';
+  book[id] = { ...lv, [kind]: lv[kind] + 1 };
+  try {
+    storage?.setItem(UPGRADES_KEY, JSON.stringify(book));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+  return 'ok';
+}
+
 // --- Borrar progreso (Ajustes) ---
 
 /** Todo lo que se pierde al borrar el progreso: desbloqueos, tickets, récords y partidas. El volumen se queda. */
@@ -193,6 +224,7 @@ export const PROGRESS_KEYS: readonly string[] = [
   TICKETS_KEY,
   COINS_KEY,
   RECORDS_KEY,
+  UPGRADES_KEY,
   'pokeisaac.run.0',
   'pokeisaac.run.1',
   'pokeisaac.run.2',

@@ -302,3 +302,18 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
 - **Mando**: LB/RB región, X rareza, LT/RT tipo, Y buscar. `PadButtons` lee ahora también LT y RT.
 - **Archivos**: `src/scenes/PokedexScene.ts`, `src/ui/collection.ts` (nuevos), `StarterScene` (usa la barra común),
   `regions.ts` (+test), `gacha.ts` (`types?`), `nav.ts`, `MenuScene`, `main.ts`, script e índice, README.
+
+## T13 — Mejoras permanentes por Pokémon (2026-10-18)
+
+- **Qué**: `src/data/upgrades.ts` (puro): Daño +8 %, PS +10, Velocidad +4 % y Cadencia ×0,94 por nivel, hasta 5;
+  coste 40 × (nivel + 1) tickets (600 por mejora completa). `save.ts`: `pokeisaac.upgrades` por id de Pokémon,
+  `loadUpgrades` y `buyUpgrade` (gasta tickets; 'ok' / 'max' / 'poor'), y "Borrar progreso" también las borra.
+- **Pantalla**: `UpgradeScene` desde el botón "Mejoras" del menú (el menú tiene 6 botones algo más bajos): tarjeta
+  del Pokémon con sus estadísticas, ◀ ▶ para cambiar entre los tuyos, 4 filas con casillas de nivel, coste y
+  descripción; compra con Enter/A/clic. Saldo de tickets arriba a la derecha.
+- **En partida**: `GameScene` aplica las mejoras del Pokémon elegido sobre sus estadísticas base (T18) y los objetos
+  pasivos van encima.
+- **Archivos**: `src/data/upgrades.ts`, `src/scenes/UpgradeScene.ts`, `tests/upgrades.test.ts` (nuevos), `save.ts`,
+  `GameScene`, `MenuScene`, `main.ts`, README.
+- **Dudas**: la mejora de Daño sube el disparo; los poderes siguen dependiendo del At. Esp. y de los objetos.
+  Precios y porcentajes a ojo.
