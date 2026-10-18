@@ -393,3 +393,8 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   piso, así que no cambia `RunSave`.
 - **Dudas**: en Oleadas la sala no cambia de colores al cambiar de bioma (solo los enemigos y el cartel).
 - **Archivos**: `src/level/biomes.ts`, `tests/biomes.test.ts` (nuevos), `GameScene`, README.
+
+## N5 — El arte de los menús lo hace el supervisor (2026-10-18)
+
+- Leída. No toco `src/scenes/MenuScene.ts`, `src/ui/theme.ts`, la parte visual de `MenuList` ni `src/ui/art/`.
+  Lo que necesite cambiar ahí (por ejemplo botones nuevos en el menú para Misiones o Historial) lo apunto aquí.
