@@ -182,7 +182,18 @@ export function goTo(scene: Phaser.Scene, key: string, data?: object, ms = FADE_
     return true;
   }
   cam.fadeOut(ms, 0, 0, 0);
-  cam.once('camerafadeoutcomplete', () => scene.scene.start(key, data));
+  // El fundido va en tiempo de juego: si el juego va a pocos FPS (o la pestaña estuvo en segundo plano) puede
+  // tardar mucho, y parecía que Esc/Enter no hacían nada. Pasado su tiempo real, se cambia de pantalla igualmente.
+  let done = false;
+  const go = () => {
+    if (done) return;
+    done = true;
+    scene.scene.start(key, data);
+  };
+  cam.once('camerafadeoutcomplete', go);
+  window.setTimeout(() => {
+    if (scene.sys.isActive() || scene.sys.isVisible()) go();
+  }, ms + 120);
   return true;
 }
 
