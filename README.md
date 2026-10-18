@@ -62,7 +62,8 @@ Los desbloqueados se guardan en el navegador (`localStorage`, clave `pokeisaac.u
   Los disparos tienen el color del tipo de tu inicial.
 - **Objetos pasivos** (nombres provisionales): mejoran daño, cadencia, alcance, velocidad, PS, disparos extra,
   atravesar enemigos, rebotes y curación al limpiar salas. Se acumulan.
-- **Poderes**: movimientos al azar de PokeAPI que aparecen como objetos y ocupan una ranura (teclas 1-4).
+- **Poderes**: movimientos de PokeAPI **de los tipos de tu Pokémon** (con potencia y nombre en español; si tiene
+  dos tipos, se reparten entre los dos) que aparecen como objetos y ocupan una ranura (teclas 1-4).
   La potencia decide cómo salen: disparo rápido (<50), anillo (50-69), abanico (70-99) o proyectil grande
   que atraviesa (100+); a más potencia, más recarga. Con las 4 ranuras llenas, el siguiente sustituye al más antiguo.
 - Los objetos salen siempre en la sala de objeto y, a veces (25 %), al limpiar una sala de combate.
@@ -90,6 +91,7 @@ src/
   data/items.ts        estadísticas, objetos pasivos y poderes (puro, testeable)
   data/gacha.ts        rarezas y tiradas del gacha (puro, aún sin conectar al juego)
   data/enemies.ts      enemigos por piso, comportamiento por tipo y estadísticas (puro)
+  data/moves.ts        poderes del tipo de tu Pokémon y nombres en español (puro)
   data/save.ts         Pokémon desbloqueados guardados en el navegador
   scenes/MenuScene.ts     menú principal
   scenes/StarterScene.ts  pantalla para elegir inicial
@@ -106,6 +108,7 @@ tests/
   runSave.test.ts      tests de las partidas guardadas (y su migración)
   progression.test.ts  tests de pisos, dificultad y jefes
   enemies.test.ts      tests de enemigos por piso y comportamientos
+  moves.test.ts        tests de poderes por tipo
 scripts/
   buildSpeciesIndex.mjs  genera public/data/species-index.json desde PokeAPI
 ```

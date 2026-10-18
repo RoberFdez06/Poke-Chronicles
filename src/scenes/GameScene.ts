@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
-import { fetchPokemon, fetchPokemonCard, fetchRandomAttackMove } from '../data/pokeapi';
+import { fetchAttackMovesForTypes, fetchPokemon, fetchPokemonCard } from '../data/pokeapi';
+import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeHex } from '../data/types';
 import { addCoins } from '../data/save';
 import { clearRun, saveRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop } from '../data/runSave';
@@ -260,10 +261,15 @@ export class GameScene extends Phaser.Scene {
     this.floorSeed = r?.floorSeed ?? Phaser.Math.Between(0, 0x7fffffff);
     this.floor = generateFloor({ seed: this.floorSeed, roomCount: r?.roomCount ?? roomCountFor(this.floorNum, Math.random) });
 
-    // Los poderes que saldrán en el suelo se piden ya, en paralelo con los Pokémon
-    let poolReady: Promise<void> = Promise.resolve();
+    // Los poderes que saldrán en el suelo son movimientos de los tipos de tu Pokémon; se piden ya, en paralelo
     if (r) this.movePool = [...r.movePool];
-    else if (this.movePool.length < 4) poolReady = this.fillMovePool(6);
+    const poolReady = fetchPokemon(this.starterId)
+      .then(async (s) => {
+        // Las partidas guardadas antes de esto podían traer poderes de otros tipos
+        this.movePool = filterMovesByTypes(this.movePool, s.types);
+        if (this.movePool.length < 4) await this.fillMovePool(s.types, 6);
+      })
+      .catch(() => undefined);
 
     // El jefe siempre es un legendario o singular, sin repetir en la partida mientras se pueda
     const index = await loadSpeciesIndex().catch(() => []);
@@ -320,12 +326,13 @@ export class GameScene extends Phaser.Scene {
     this.load.start();
   }
 
-  /** Pide movimientos de ataque al azar a PokeAPI; si alguno falla, simplemente habrá menos. */
-  private async fillMovePool(n: number) {
-    const found = await Promise.all(Array.from({ length: n }, () => fetchRandomAttackMove().catch(() => null)));
-    const seen = new Set<number>();
+  /** Pide a PokeAPI movimientos de ataque de tus tipos; si alguno falla, simplemente habrá menos. */
+  private async fillMovePool(types: readonly string[], n: number) {
+    const found = await fetchAttackMovesForTypes(types, n + 4);
+    // Sin repetir los que ya están en el suelo o en tus ranuras
+    const seen = new Set<number>([...this.movePool, ...this.slots].flatMap((m) => (m ? [m.id] : [])));
     for (const m of found) {
-      if (!m || seen.has(m.id)) continue;
+      if (seen.has(m.id) || this.movePool.length >= n) continue;
       seen.add(m.id);
       this.movePool.push(toMovePower(m));
     }

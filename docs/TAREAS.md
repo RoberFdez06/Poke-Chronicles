@@ -18,7 +18,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
   y saltar/teletransportarse. El comportamiento puede depender del tipo del Pokémon.
 - Lógica de elegir enemigos por piso en `src/data/` con tests.
 
-## [ ] T3 — Poderes del tipo de tu Pokémon
+## [x] T3 — Poderes del tipo de tu Pokémon
 - Los poderes que caen solo pueden ser movimientos de los tipos de tu Pokémon (PokeAPI `/type/{tipo}` da
   la lista de movimientos; quédate con los que tienen potencia). Nombres en español.
 - Tests de la parte pura (filtrar por tipo).

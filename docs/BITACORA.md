@@ -45,3 +45,18 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
   Se usa `fetchPokemonCard` (una petición por especie, sin movimientos) para sus tipos y sprites.
 - **Dudas para Roberto**: la tabla tipo → comportamiento (`BEHAVIOR_BY_TYPE`) y los multiplicadores de
   `enemyStats` son a ojo. Los enemigos aún no esquivan obstáculos (llegará con T9).
+
+## N3 — Skills y tareas nuevas (2026-10-18)
+
+- Leídas las skills `comprobar`, `pokeapi-es` y `ui-phaser`. Las tareas T10–T15 entraron en el commit de T2.
+
+## T3 — Poderes del tipo de tu Pokémon (2026-10-18)
+
+- **Qué**: los poderes que caen ya no son movimientos al azar de todo PokeAPI: salen de `/type/{tipo}` de los tipos
+  de tu inicial, solo los que tienen potencia, repartidos por turnos entre sus dos tipos y con el nombre en
+  español (`names` es; si falta, el inglés sin guiones). Se piden de 6 en 6 con caché por tipo y por movimiento.
+- **Archivos**: `src/data/moves.ts` (nuevo, puro: `localName`, `typeMoveIds`, `isUsableMove`, `filterMovesByTypes`,
+  `pickMoveIds`), `tests/moves.test.ts`, `src/data/pokeapi.ts` (`fetchTypeMoveIds`, `fetchMoveInfo`,
+  `fetchAttackMovesForTypes`; quitado `fetchRandomAttackMove`), `GameScene` (`fillMovePool`), README.
+- **Decisiones**: al continuar una partida antigua se quitan del `movePool` los poderes de otros tipos (los de las
+  ranuras se respetan). No cambia el formato de `RunSave`. `localName` servirá para T7.
