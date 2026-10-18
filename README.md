@@ -38,7 +38,7 @@ Para descargarla: `https://github.com/google/fonts/raw/main/ofl/pixelifysans/Pix
 
 ## Menú principal
 
-El juego arranca en el menú: **Jugar** (hueco → Pokémon → modo), **Gacha** (gasta monedas para desbloquear Pokémon) y **Controles**. Esc o B vuelven atrás desde la
+El juego arranca en el menú: **Jugar** (hueco → Pokémon → modo), **Gacha** (gasta tickets para desbloquear Pokémon) y **Controles**. Esc o B vuelven atrás desde la
 selección de inicial. Abajo se ven los Pokémon desbloqueados y el récord de cada modo.
 
 ## Pausa y partidas guardadas
@@ -47,18 +47,25 @@ Funciona como en Isaac. **Jugar** abre los 3 huecos de partida: uno vacío empie
 *Continuar* o *Nueva partida* (pide confirmación antes de sobrescribir). La partida se guarda sola al entrar en
 una sala, al limpiarla, al coger un objeto y al salir desde la pausa (con el número de piso); se borra al morir o
 al completar la partida.
-Si sales en mitad de un combate, al continuar esa sala se reinicia con los enemigos enteros. Monedas y
-desbloqueos son comunes a los 3 huecos. El guardado vive en `src/data/runSave.ts` (claves `pokeisaac.run.0..2`).
+Si sales en mitad de un combate, al continuar esa sala se reinicia con los enemigos enteros. Tickets y
+desbloqueos son comunes a los 3 huecos; las monedas son de cada partida. El guardado vive en `src/data/runSave.ts` (claves `pokeisaac.run.0..2`).
 
 La pausa muestra tus estadísticas, objetos y poderes, y tiene *Reanudar*, *Reiniciar* (con confirmación),
 *Controles* y *Salir y guardar*.
 
-## Gacha y monedas
+## Gacha, tickets y monedas
 
-Las monedas se ganan jugando (15 por sala limpiada, +5 por cada piso; 60 × número de piso por el jefe) y se guardan en el navegador; nunca se
+Hay dos monedas distintas:
+
+- **Tickets** (fuera de la partida, `src/data/save.ts`): solo sirven para el gacha. Antes se llamaban "monedas"; el
+  saldo guardado se pasa solo a tickets (`pokeisaac.coins` → `pokeisaac.tickets`).
+- **Monedas** (dentro de la partida, `src/data/loot.ts`): caen a veces de los enemigos y al limpiar salas, se recogen
+  pisándolas, se ven en el HUD (●) y en la pausa, y solo sirven en la tienda. Se pierden al acabar la partida.
+
+Los tickets se ganan jugando (15 por sala limpiada, +5 por cada piso; 60 × número de piso por el jefe) y se guardan en el navegador; nunca se
 compran con dinero real. Todos los nombres (Pokémon, movimientos y tipos) salen en español: los de Pokémon vienen en
 `species-index.json` (`nameEs`) y, si faltan, de `pokemon-species/{id}`. Una tirada cuesta 100 y da un Pokémon según su rareza (común, raro, épico, ultraente
-o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 monedas. La lista de especies
+o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 tickets. La lista de especies
 se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `node scripts/buildSpeciesIndex.mjs`.
 Con más de 8 desbloqueados, la pantalla de inicial se divide en páginas (◀ ▶ con ratón, izquierda/derecha con teclado o mando).
 
@@ -81,6 +88,18 @@ cada una) y con **filtros por nombre y por rareza**. Cada tarjeta muestra tipos 
 Los desbloqueados se guardan en el navegador (`localStorage`, clave `pokeisaac.unlocked`, formato
 `{ v: 2, ids: [...] }`); el gacha añade más con `unlockPokemon(id)` de `src/data/save.ts`. Regiones y filtros en
 `src/data/regions.ts`.
+
+## Recuperar vida, Centro Pokémon y tienda
+
+- **Bayas**: los enemigos a veces sueltan una Baya Aranja (+20 PS) o Zidra (+40 PS); el jefe siempre suelta una Zidra.
+  Se recogen al pisarlas; con los PS al máximo se quedan en el suelo.
+- **Centro Pokémon** (marco rosa en la puerta y el minimapa): su mostrador cura la mitad de tus PS máximos, una vez
+  por piso. Se usa pisándolo, o cerca con Enter / A, o con clic en el mostrador.
+- **Tienda** (marco verde): Poción (+20 PS, 5 monedas), Superpoción (+50 PS, 12) y un pasivo o poder al azar (15).
+  Se compra pisando el artículo, cerca con Enter / A, o con clic. Sin monedas suficientes (o con los PS al máximo,
+  las pociones) no se compra.
+- Cada piso de Normal e Infinito tiene un Centro y una tienda (`floorGen` los pone en salas sin salida, nunca en la
+  del jefe). Oleadas y Rush de jefes no tienen, así que allí solo caen bayas.
 
 ## Combate
 
@@ -130,13 +149,14 @@ src/
   data/regions.ts      regiones, iniciales y filtros de la colección (puro)
   data/modes.ts        modos de juego, oleadas, arena y récords (puro)
   data/status.ts       estados por tipo: quemar, congelar, paralizar… (puro)
+  data/loot.ts         monedas de la partida, bayas, pociones, Centro Pokémon y tienda (puro)
   scenes/ModeScene.ts  elegir modo de juego
   ui/nav.ts            entrada de menús (NavInput, PadButtons) y botones (MenuList)
   ui/cards.ts          tarjeta de Pokémon, carga de sprites y botón "Volver"
   ui/theme.ts          tema: fuente, colores, cuadros, barra de PS, fichas de tipo y transiciones
   data/speciesIndex.ts carga (una vez) la lista de especies de public/data
   level/floorGen.ts    generador de pisos (puro, determinista por semilla)
-  level/progression.ts pisos: tamaño, dificultad, monedas y jefes legendarios (puro)
+  level/progression.ts pisos: tamaño, dificultad, tickets y jefes legendarios (puro)
   scenes/GameScene.ts  piso, salas, puertas, jugador, enemigos, habilidades y HUD
   scenes/minimap.ts    minimapa
 tests/
@@ -152,6 +172,7 @@ tests/
   modes.test.ts        tests de modos y récords
   status.test.ts       tests de estados
   theme.test.ts        tests del color de la barra de PS
+  loot.test.ts         tests de botín, curación y tienda
 scripts/
   buildSpeciesIndex.mjs  genera public/data/species-index.json desde PokeAPI
 ```
@@ -188,5 +209,5 @@ En Oleadas, al continuar se repite la ronda en la que estabas.
 1. ~~Generación procedural del piso con salas y puertas.~~ Hecho (modo Normal, versión inicial).
 2. ~~Objetos y bayas que modifican estadísticas.~~ Hecho (pasivos, poderes y estados por tipo).
 3. ~~Jefes y modos: Normal, Oleadas, Infinito y Rush de jefes.~~ Hecho.
-4. Gacha con monedas ganadas jugando (común, raro, épico, ultraente y legendario).
+4. ~~Gacha con tickets ganados jugando~~ Hecho (común, raro, épico, ultraente y legendario).
 5. Empaquetado como app con Tauri o Electron.

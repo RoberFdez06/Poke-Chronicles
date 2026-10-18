@@ -66,8 +66,8 @@ export function waveSpec(round: number): WaveSpec {
 /** Al completar la ronda `round`, ¿cae un objeto? */
 export const waveDropsItem = (round: number): boolean => round > 0 && round % WAVE_ITEM_EVERY === 0;
 
-/** Monedas por ronda completada en Oleadas (menos que una sala, porque son más seguidas). */
-export const waveCoins = (round: number): number => 5 + 2 * Math.max(0, Math.floor(round) - 1);
+/** Tickets por ronda completada en Oleadas (menos que una sala, porque son más seguidas). */
+export const waveTickets = (round: number): number => 5 + 2 * Math.max(0, Math.floor(round) - 1);
 
 // --- Sala única para Oleadas y Rush de jefes ---
 

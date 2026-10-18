@@ -2,10 +2,10 @@ import Phaser from 'phaser';
 import { fetchPokemonCard } from '../data/pokeapi';
 import { buildPools, GACHA_RATES, pull, PULL_COST, RARITIES, RARITY_LABEL, Rarity, RarityPools } from '../data/gacha';
 import { loadSpeciesIndex } from '../data/speciesIndex';
-import { addCoins, loadCoins, loadUnlocked, spendCoins, unlockPokemon } from '../data/save';
+import { addTickets, loadTickets, loadUnlocked, spendTickets, unlockPokemon } from '../data/save';
 import { typeColor, typeNameEs } from '../data/types';
 import { ARROW, addTypeChip, drawBox, fadeIn, FONT, goTo, hex, RARITY_COLORS } from '../ui/theme';
-/** Monedas que devuelve una tirada repetida. */
+/** Tickets que devuelve una tirada repetida. */
 const DUPLICATE_REFUND = 30;
 const BTN = { w: 300, h: 54 };
 
@@ -15,7 +15,7 @@ type KeyName = 'LEFT' | 'RIGHT' | 'UP' | 'DOWN' | 'A' | 'D' | 'W' | 'S' | 'ENTER
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Gacha: gasta monedas (ganadas jugando) para desbloquear Pokémon. Teclado, ratón y mando. */
+/** Gacha: gasta tickets (ganados jugando) para desbloquear Pokémon. Teclado, ratón y mando. */
 export class GachaScene extends Phaser.Scene {
   private pools: RarityPools | null = null;
   private buttons: { box: Phaser.GameObjects.Container; bg: Phaser.GameObjects.Graphics; arrow: Phaser.GameObjects.Text }[] = [];
@@ -25,7 +25,7 @@ export class GachaScene extends Phaser.Scene {
   private leaving = false;
   private keys!: Record<KeyName, Key>;
   private padPrev = { dir: 0, ok: false, back: false };
-  private coinsText!: Phaser.GameObjects.Text;
+  private ticketsText!: Phaser.GameObjects.Text;
   private message!: Phaser.GameObjects.Text;
   private ownedText!: Phaser.GameObjects.Text;
   private resultLayer?: Phaser.GameObjects.Container;
@@ -48,9 +48,9 @@ export class GachaScene extends Phaser.Scene {
     fadeIn(this);
 
     this.add.text(480, 56, 'Gacha', { fontFamily: FONT, fontSize: '52px', fontStyle: 'bold', color: '#ffd34d' }).setOrigin(0.5).setStroke('#2b3a67', 10);
-    // Monedas y desbloqueados en un cuadro arriba a la derecha
+    // Tickets y desbloqueados en un cuadro arriba a la derecha
     drawBox(this.add.graphics(), 690, 14, 254, 80, { radius: 12 });
-    this.coinsText = this.add.text(924, 40, '', { fontFamily: FONT, fontSize: '24px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(1, 0.5);
+    this.ticketsText = this.add.text(924, 40, '', { fontFamily: FONT, fontSize: '24px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(1, 0.5);
     this.ownedText = this.add.text(924, 70, '', { fontFamily: FONT, fontSize: '16px', color: '#4a5578' }).setOrigin(1, 0.5);
     // Cuadro de texto como los de los juegos para los mensajes
     drawBox(this.add.graphics(), 140, 344, 680, 62, { radius: 12 });
@@ -70,7 +70,7 @@ export class GachaScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setAlpha(0.5);
 
-    this.buildButton(`Tirar (${PULL_COST} monedas)`, 480, 440, () => this.doPull());
+    this.buildButton(`Tirar (${PULL_COST} tickets)`, 480, 440, () => this.doPull());
     this.buildButton('Volver', 480, 506, () => this.goBack());
     this.actions = [() => this.doPull(), () => this.goBack()];
 
@@ -88,7 +88,7 @@ export class GachaScene extends Phaser.Scene {
   }
 
   private refreshHud() {
-    this.coinsText.setText(`Monedas: ${loadCoins()}`);
+    this.ticketsText.setText(`Tickets: ${loadTickets()}`);
     this.ownedText.setText(`Desbloqueados: ${loadUnlocked().length}`);
   }
 
@@ -137,8 +137,8 @@ export class GachaScene extends Phaser.Scene {
       this.say('La lista de Pokémon aún no está lista');
       return;
     }
-    if (!spendCoins(PULL_COST)) {
-      this.say(`Te faltan monedas (hacen falta ${PULL_COST}).\nSe ganan limpiando salas en el juego`);
+    if (!spendTickets(PULL_COST)) {
+      this.say(`Te faltan tickets (hacen falta ${PULL_COST}).\nSe ganan limpiando salas en el juego`);
       return;
     }
     this.busy = true;
@@ -162,8 +162,8 @@ export class GachaScene extends Phaser.Scene {
 
       let note: string;
       if (result.duplicate) {
-        addCoins(DUPLICATE_REFUND);
-        note = `¡Repetido! Te devolvemos ${DUPLICATE_REFUND} monedas`;
+        addTickets(DUPLICATE_REFUND);
+        note = `¡Repetido! Te devolvemos ${DUPLICATE_REFUND} tickets`;
       } else {
         unlockPokemon(result.speciesId);
         note = '¡Nuevo Pokémon desbloqueado!';
@@ -172,7 +172,7 @@ export class GachaScene extends Phaser.Scene {
     } catch (err) {
       // La tirada no se pierde si no se pudo mostrar: se desbloquea igual y se avisa
       if (!result.duplicate) unlockPokemon(result.speciesId);
-      else addCoins(DUPLICATE_REFUND);
+      else addTickets(DUPLICATE_REFUND);
       this.say(`Ha salido el Pokémon nº ${result.speciesId} (${RARITY_LABEL[result.rarity]})\npero no se pudo cargar su imagen`);
     } finally {
       this.busy = false;

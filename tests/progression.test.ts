@@ -2,18 +2,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  bossCoinsFor,
+  bossTicketsFor,
   bossPool,
   difficultyFor,
   pickBoss,
-  roomCoinsFor,
+  roomTicketsFor,
   roomCountFor,
   FALLBACK_BOSSES,
   FLOOR_COUNT,
   MAX_ROOMS,
 } from '../src/level/progression.ts';
 import { generateFloor, mulberry32 } from '../src/level/floorGen.ts';
-import { BOSS_COINS, ROOM_COINS } from '../src/data/save.ts';
+import { BOSS_TICKETS, ROOM_TICKETS } from '../src/data/save.ts';
 
 test('cada piso tiene más salas y nunca pasa del máximo', () => {
   assert.equal(roomCountFor(1, () => 0), 8);
@@ -41,11 +41,11 @@ test('la dificultad sube con el piso', () => {
   assert.ok(difficultyFor(100).speed <= 1.6);
 });
 
-test('las monedas escalan con el piso', () => {
-  assert.equal(roomCoinsFor(1), ROOM_COINS);
-  assert.equal(bossCoinsFor(1), BOSS_COINS);
-  assert.equal(roomCoinsFor(3), ROOM_COINS + 10);
-  assert.equal(bossCoinsFor(3), BOSS_COINS * 3);
+test('los tickets escalan con el piso', () => {
+  assert.equal(roomTicketsFor(1), ROOM_TICKETS);
+  assert.equal(bossTicketsFor(1), BOSS_TICKETS);
+  assert.equal(roomTicketsFor(3), ROOM_TICKETS + 10);
+  assert.equal(bossTicketsFor(3), BOSS_TICKETS * 3);
 });
 
 test('el jefe siempre es legendario o singular', () => {

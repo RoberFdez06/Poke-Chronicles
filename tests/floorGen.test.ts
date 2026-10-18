@@ -61,3 +61,44 @@ for (const roomCount of [6, 10, 14]) {
     }
   });
 }
+
+test('con salas especiales siempre hay Centro Pokémon y tienda, nunca en la sala del jefe', () => {
+  for (const seed of SEEDS) {
+    for (const roomCount of [8, 12, 18, 24]) {
+      const f = generateFloor({ seed, roomCount, special: true });
+      assert.ok(f.centerId !== undefined && f.shopId !== undefined, `semilla ${seed}`);
+      assert.notEqual(f.centerId, f.shopId);
+      for (const id of [f.centerId!, f.shopId!]) {
+        assert.ok(![f.bossId, f.startId, f.itemId].includes(id));
+      }
+      assert.equal(f.rooms[f.centerId!].kind, 'center');
+      assert.equal(f.rooms[f.shopId!].kind, 'shop');
+      assert.equal(f.rooms.filter((r) => r.kind === 'center').length, 1);
+      assert.equal(reachable(f).size, f.rooms.length);
+    }
+  }
+});
+
+test('las salas especiales no cambian el resto del piso (partidas guardadas antiguas)', () => {
+  for (const seed of SEEDS.slice(0, 50)) {
+    const a = generateFloor({ seed, roomCount: 12 });
+    const b = generateFloor({ seed, roomCount: 12, special: true });
+    assert.deepEqual(b.rooms.map((r) => [r.gx, r.gy, r.doors]), a.rooms.map((r) => [r.gx, r.gy, r.doors]));
+    assert.equal(b.bossId, a.bossId);
+    assert.equal(b.itemId, a.itemId);
+    assert.equal(a.centerId, undefined);
+  }
+});
+
+test('Centro y tienda van en salas sin salida cuando hay bastantes', () => {
+  let deadEnd = 0;
+  let total = 0;
+  for (const seed of SEEDS) {
+    const f = generateFloor({ seed, roomCount: 14, special: true });
+    for (const id of [f.centerId!, f.shopId!]) {
+      total++;
+      if (Object.keys(f.rooms[id].doors).length === 1) deadEnd++;
+    }
+  }
+  assert.ok(deadEnd / total > 0.6, `${deadEnd}/${total}`);
+});

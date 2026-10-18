@@ -21,6 +21,8 @@ export interface PauseData {
   roomsCleared: number;
   roomCount: number;
   earned: number;
+  /** Monedas de la partida (para la tienda). */
+  coins: number;
   onResume: () => void;
   onRestart: () => void;
   onQuit: () => void;
@@ -65,7 +67,7 @@ export class PauseScene extends Phaser.Scene {
     t(66, 118, `${capitalize(d.starterName)} · Hueco ${d.slot + 1}`, 24, '#2b3a67', true);
     addHpBar(this, 340, 126, 190, 12).set(d.hp / st.maxHp);
     const rooms = d.showRooms ? ` · Salas limpias ${d.roomsCleared}/${d.roomCount}` : '';
-    t(66, 152, `${d.modeLabel} · ${d.progress}${rooms} · Monedas ganadas ${d.earned}`, 16, '#4a5578');
+    t(66, 152, `${d.modeLabel} · ${d.progress}${rooms} · Monedas ${d.coins} · Tickets ganados ${d.earned}`, 16, '#4a5578');
     const rows: [string, string][] = [
       ['PS', `${Math.ceil(d.hp)} / ${st.maxHp}`],
       ['Daño', `${st.damage.toFixed(1)}`],

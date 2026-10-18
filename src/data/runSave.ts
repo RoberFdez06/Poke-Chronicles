@@ -1,21 +1,31 @@
 // Partida en curso guardada en 3 huecos, como en Isaac: se guarda sola (al entrar en una sala,
 // al limpiarla, al coger un objeto y al salir desde la pausa) y se borra al morir o al ganar.
-// Monedas y desbloqueos NO van aquí: son comunes a todos los huecos (ver save.ts).
+// Tickets y desbloqueos NO van aquí: son comunes a todos los huecos (ver save.ts).
 // Lógica pura, sin Phaser, para poder testearla.
 import type { StorageLike } from './save';
 import type { MovePower } from './items';
 import { isMode, type GameMode } from './modes.ts';
+import { BERRIES, POTIONS, type ShopSlot } from './loot.ts';
 
 export const RUN_SLOTS = 3;
 /**
  * v2: número de piso y jefes ya vistos (los guardados v1 se migran al piso 1).
  * v3: modo de juego (los v2 eran todos del modo Normal).
+ * v4: monedas de la partida, Centro Pokémon, tienda y monedas/bayas en el suelo. Los pisos v3 se
+ *     generaron sin Centro ni tienda (`layout` 1) y se siguen generando así para que cuadren.
  */
-export const RUN_VERSION = 3;
+export const RUN_VERSION = 4;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
-/** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts). */
-export type SavedDrop = { kind: 'passive'; id: string } | { kind: 'move'; move: MovePower };
+/** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
+export type SavedDrop =
+  | { kind: 'passive'; id: string }
+  | { kind: 'move'; move: MovePower }
+  | { kind: 'coin'; value: number }
+  | { kind: 'berry'; id: keyof typeof BERRIES };
+
+/** Diseño del piso: 1 = sin Centro ni tienda (partidas de antes de v4), 2 = con ellos. */
+export const FLOOR_LAYOUT = 2;
 
 export interface FloorItemSave {
   roomId: number;
@@ -49,8 +59,15 @@ export interface RunSave {
   nextSlotReplace: number;
   movePool: MovePower[];
   floorItems: FloorItemSave[];
-  /** Monedas ganadas en esta partida (ya están sumadas al total). */
+  /** Tickets ganados en esta partida (ya están sumados al total). */
   earned: number;
+  /** Monedas de la partida (solo para la tienda; se pierden al acabar). */
+  coins: number;
+  /** El Centro Pokémon de este piso ya se ha usado. */
+  centerUsed: boolean;
+  /** Artículos de la tienda de este piso (vacío si aún no se ha generado o no hay tienda). */
+  shop: ShopSlot[];
+  layout: number;
 }
 
 const isInt = (n: unknown): n is number => Number.isInteger(n);
@@ -66,6 +83,8 @@ function isDrop(d: unknown): d is SavedDrop {
   const o = d as SavedDrop;
   if (!o) return false;
   if (o.kind === 'passive') return typeof o.id === 'string';
+  if (o.kind === 'coin') return isInt(o.value) && o.value > 0;
+  if (o.kind === 'berry') return o.id in BERRIES;
   return o.kind === 'move' && isMove(o.move);
 }
 
@@ -77,6 +96,20 @@ function migrateV1(d: RunSave): RunSave {
 /** v2 no tenía modos: todas las partidas eran del modo Normal. */
 function migrateV2(d: RunSave): RunSave {
   return { ...d, version: 3, mode: 'normal' };
+}
+
+/** v3 no tenía monedas, Centro ni tienda; su piso se generó sin ellos. */
+function migrateV3(d: RunSave): RunSave {
+  return { ...d, version: 4, coins: 0, centerUsed: false, shop: [], layout: 1 };
+}
+
+function isShopSlot(s: unknown): s is ShopSlot {
+  const o = s as ShopSlot;
+  if (!o || !isInt(o.price) || typeof o.sold !== 'boolean' || !o.goods) return false;
+  const g = o.goods;
+  if (g.kind === 'potion') return g.id in POTIONS;
+  if (g.kind === 'passive') return typeof g.id === 'string';
+  return g.kind === 'move' && isMove(g.move);
 }
 
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
@@ -91,6 +124,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (!d || typeof d !== 'object') return null;
   if (d.version === 1) d = migrateV1(d);
   if (d.version === 2) d = migrateV2(d);
+  if (d.version === 3) d = migrateV3(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && typeof d.starterName === 'string' && isMode(d.mode) &&
@@ -102,7 +136,8 @@ export function parseRun(raw: string | null): RunSave | null {
     isInt(d.nextSlotReplace) && Array.isArray(d.movePool) && d.movePool.every(isMove) &&
     Array.isArray(d.floorItems) &&
     d.floorItems.every((f) => !!f && isInt(f.roomId) && typeof f.x === 'number' && typeof f.y === 'number' && isDrop(f.drop)) &&
-    isInt(d.earned);
+    isInt(d.earned) && isInt(d.coins) && d.coins >= 0 && typeof d.centerUsed === 'boolean' &&
+    Array.isArray(d.shop) && d.shop.every(isShopSlot) && (d.layout === 1 || d.layout === 2);
   return ok ? d : null;
 }
 

@@ -2,15 +2,15 @@ import Phaser from 'phaser';
 import { fetchAttackMovesForTypes, fetchMoveInfo, fetchPokemon, fetchPokemonCard } from '../data/pokeapi';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeHex } from '../data/types';
-import { addCoins } from '../data/save';
-import { clearRun, saveRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop } from '../data/runSave';
+import { addTickets } from '../data/save';
+import { clearRun, saveRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
 import { loadSpeciesIndex } from '../data/speciesIndex';
 import {
-  bossCoinsFor,
+  bossTicketsFor,
   bossPool,
   difficultyFor,
   pickBoss,
-  roomCoinsFor,
+  roomTicketsFor,
   roomCountFor,
   FloorDifficulty,
   FLOOR_COUNT,
@@ -20,13 +20,26 @@ import {
   arenaFloor,
   isLastStage,
   progressText,
-  waveCoins,
+  waveTickets,
   waveDropsItem,
   waveSpec,
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
 import { submitRecord } from '../data/save';
+import {
+  BERRIES,
+  POTIONS,
+  canBuy,
+  canHeal,
+  centerHeal,
+  healed,
+  rollEnemyLoot,
+  rollShop,
+  roomClearCoins,
+  LootDrop,
+  ShopSlot,
+} from '../data/loot';
 import { addHpBar, drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import {
   applyStatus,
@@ -72,7 +85,17 @@ const FLOOR_COLORS: Record<Room['kind'], number> = {
   combat: 0xcdeee0,
   item: 0xfff1c9,
   boss: 0xf6d6d6,
+  center: 0xffe3ef,
+  shop: 0xe2f4e4,
 };
+/** Marco de las puertas que llevan a cada sala especial (y su icono en el minimapa). */
+const CENTER_PINK = 0xff6fae;
+const SHOP_GREEN = 0x2ecc71;
+/** Distancia para usar el mostrador o un artículo con Enter / A, y para usarlo al pisarlo. */
+const NEAR = 120;
+const TOUCH = 46;
+/** Posiciones de los 3 artículos de la tienda respecto al centro de la sala. */
+const SHOP_OFFSETS = [-200, 0, 200];
 
 type Sprite = Phaser.Physics.Arcade.Sprite;
 type Body = Phaser.Physics.Arcade.Body;
@@ -84,7 +107,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins'
 >;
 
 export interface GameData {
@@ -207,6 +230,20 @@ export class GameScene extends Phaser.Scene {
   private ended = false;
   private endedAt = 0;
   private earned = 0;
+  /** Monedas de la partida (solo para la tienda) y estado del Centro y la tienda de este piso. */
+  private coins = 0;
+  private centerUsed = false;
+  private shop: ShopSlot[] = [];
+  private layout = FLOOR_LAYOUT;
+  private loot!: Phaser.Physics.Arcade.Group;
+  private counter?: { x: number; y: number; g: Phaser.GameObjects.Graphics };
+  private shopViews: Phaser.GameObjects.GameObject[][] = [];
+  /** Artículo de la tienda que estás pisando (para no repetir el aviso de "te faltan monedas"). */
+  private shopTouch = -1;
+  private counterTouch = false;
+  private prompt!: Phaser.GameObjects.Text;
+  private enterKey!: Key;
+  private coinsHud!: Phaser.GameObjects.Text;
   private escKey!: Phaser.Input.Keyboard.Key;
   private menuPadPrev = false;
   /** El cursor está sobre una ranura de poder: ahí un clic no dispara. */
@@ -255,6 +292,14 @@ export class GameScene extends Phaser.Scene {
     this.ended = false;
     this.endedAt = 0;
     this.earned = 0;
+    this.coins = 0;
+    this.centerUsed = false;
+    this.shop = [];
+    this.layout = FLOOR_LAYOUT;
+    this.counter = undefined;
+    this.shopViews = [];
+    this.shopTouch = -1;
+    this.counterTouch = false;
     this.overHud = false;
     this.transitioning = false;
     this.padPrev = [false, false, false, false];
@@ -281,6 +326,7 @@ export class GameScene extends Phaser.Scene {
       this.nextSlotReplace = c.nextSlotReplace;
       this.movePool = [...c.movePool];
       this.earned = c.earned;
+      this.coins = c.coins;
     }
     this.cameras.main.setScroll(0, 0);
     this.cameras.main.resetFX();
@@ -308,7 +354,14 @@ export class GameScene extends Phaser.Scene {
     this.floorSeed = r?.floorSeed ?? Phaser.Math.Between(0, 0x7fffffff);
     if (this.mode === 'waves') this.floor = arenaFloor(this.floorSeed, 'combat');
     else if (this.mode === 'bossrush') this.floor = arenaFloor(this.floorSeed, 'boss');
-    else this.floor = generateFloor({ seed: this.floorSeed, roomCount: r?.roomCount ?? roomCountFor(this.floorNum, Math.random) });
+    else {
+      this.layout = r?.layout ?? FLOOR_LAYOUT;
+      this.floor = generateFloor({
+        seed: this.floorSeed,
+        roomCount: r?.roomCount ?? roomCountFor(this.floorNum, Math.random),
+        special: this.layout >= 2,
+      });
+    }
 
     // Los poderes que saldrán en el suelo son movimientos de los tipos de tu Pokémon; se piden ya, en paralelo
     if (r) {
@@ -496,6 +549,8 @@ export class GameScene extends Phaser.Scene {
     this.walls = this.physics.add.staticGroup();
     this.doorBlocks = this.physics.add.staticGroup();
     this.pickups = this.physics.add.group();
+    this.loot = this.physics.add.group();
+    this.makeLootTextures();
     this.floor.rooms.forEach((r) => this.buildRoom(r));
 
     // Al continuar: objetos, estado del jugador y sala donde estabas
@@ -526,6 +581,7 @@ export class GameScene extends Phaser.Scene {
       asSprite(s).destroy();
     });
     this.physics.add.overlap(this.player, this.pickups, (_p, it) => this.pickItem(asSprite(it)));
+    this.physics.add.overlap(this.player, this.loot, (_p, it) => this.pickLoot(asSprite(it)));
 
     // Entrada
     const kb = this.input.keyboard!;
@@ -534,6 +590,7 @@ export class GameScene extends Phaser.Scene {
     const K = Phaser.Input.Keyboard.KeyCodes;
     this.abilityKeys = [K.ONE, K.TWO, K.THREE, K.FOUR].map((c) => kb.addKey(c));
     this.restartKey = kb.addKey(K.R);
+    this.enterKey = kb.addKey(K.ENTER);
     this.escKey = kb.addKey(K.ESC);
     this.pauseKey = kb.addKey(K.P);
     this.menuPadPrev = false;
@@ -543,14 +600,15 @@ export class GameScene extends Phaser.Scene {
     // HUD fijo en pantalla, en cuadros como los de los combates de Pokémon
     const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T) =>
       o.setDepth(10).setScrollFactor(0);
-    fixed(drawBox(this.add.graphics(), 76, 6, 360, 70, { radius: 12 }));
+    fixed(drawBox(this.add.graphics(), 76, 6, 470, 70, { radius: 12 }));
     this.nameText = fixed(this.add.text(94, 24, '', { fontFamily: FONT, fontSize: '19px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5));
-    this.progressHud = fixed(this.add.text(420, 24, '', { fontFamily: FONT, fontSize: '15px', color: HEX.textSoft }).setOrigin(1, 0.5));
+    this.progressHud = fixed(this.add.text(530, 24, '', { fontFamily: FONT, fontSize: '15px', color: HEX.textSoft }).setOrigin(1, 0.5));
     this.hpBar = addHpBar(this, 94, 46, 236, 10);
     this.hpBar.objects.forEach((o) => fixed(o as Phaser.GameObjects.Text));
-    this.hpText = fixed(this.add.text(420, 51, '', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: HEX.text }).setOrigin(1, 0.5));
+    this.hpText = fixed(this.add.text(410, 51, '', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: HEX.text }).setOrigin(1, 0.5));
+    this.coinsHud = fixed(this.add.text(530, 51, '', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(1, 0.5));
     this.invText = this.add
-      .text(452, 14, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff', wordWrap: { width: 340 } })
+      .text(560, 14, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff', wordWrap: { width: 240 } })
       .setDepth(10)
       .setScrollFactor(0);
     const style = { fontFamily: FONT, fontSize: '19px', fontStyle: 'bold', color: HEX.text };
@@ -597,6 +655,17 @@ export class GameScene extends Phaser.Scene {
     pb.on('pointerdown', () => this.openPause());
     this.pauseBtn = pb;
 
+    // Tienda: al continuar, lo que quedaba; si no, artículos nuevos para este piso
+    if (this.floor.shopId !== undefined) {
+      if (this.shop.length === 0) this.shop = rollShop(Math.random, new Set(this.passives), this.movePool);
+      this.buildShop(this.floor.rooms[this.floor.shopId]);
+    }
+    this.prompt = this.add
+      .text(0, 0, '', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#ffffff', align: 'center' })
+      .setOrigin(0.5, 1)
+      .setDepth(12)
+      .setStroke('#1d2848', 5);
+
     // Si ya habías vencido al jefe, la trampilla sigue ahí
     if (this.mode !== 'waves' && this.cleared.has(this.floor.bossId) && !isLastStage(this.mode, this.floorNum)) this.spawnTrapdoor();
 
@@ -618,6 +687,7 @@ export class GameScene extends Phaser.Scene {
 
   private fromSaved(d: SavedDrop): DroppedItem | null {
     if (d.kind === 'move') return { kind: 'move', move: d.move };
+    if (d.kind !== 'passive') return null;
     const item = passiveById(d.id);
     return item ? { kind: 'passive', item } : null;
   }
@@ -631,7 +701,14 @@ export class GameScene extends Phaser.Scene {
     this.earned = r.earned;
     r.visited.forEach((id) => this.visited.add(id));
     r.cleared.forEach((id) => this.cleared.add(id));
+    this.coins = r.coins;
+    this.centerUsed = r.centerUsed;
+    this.shop = r.shop.map((s) => ({ ...s }));
     for (const f of r.floorItems) {
+      if (f.drop.kind === 'coin' || f.drop.kind === 'berry') {
+        this.spawnLoot(f.roomId, f.x, f.y, f.drop);
+        continue;
+      }
       const item = this.fromSaved(f.drop);
       if (item) this.spawnPickup(f.roomId, f.x, f.y, item);
     }
@@ -660,6 +737,10 @@ export class GameScene extends Phaser.Scene {
       movePool: [...this.movePool],
       floorItems: this.floorItems.map((f) => ({ ...f })),
       earned: this.earned,
+      coins: this.coins,
+      centerUsed: this.centerUsed,
+      shop: this.shop.map((sl) => ({ ...sl })),
+      layout: this.layout,
     });
   }
 
@@ -682,6 +763,7 @@ export class GameScene extends Phaser.Scene {
       items: [...counts].map(([id, n]) => (passiveById(id)?.name ?? id) + (n > 1 ? ` x${n}` : '')),
       moves: [...this.slots],
       roomsCleared: this.cleared.size,
+      coins: this.coins,
       roomCount: this.floor.rooms.length,
       earned: this.earned,
       onResume: () => {
@@ -745,7 +827,8 @@ export class GameScene extends Phaser.Scene {
       // El suelo atraviesa la pared; el marco indica si lleva al jefe o al objeto
       g.fillStyle(floorColor, 1).fillRect(r.x, r.y, r.w, r.h);
       const kind = this.floor.rooms[to].kind;
-      const frame = kind === 'boss' ? 0xe53935 : kind === 'item' ? 0xffc107 : 0x1d2848;
+      const frame =
+        kind === 'boss' ? 0xe53935 : kind === 'item' ? 0xffc107 : kind === 'center' ? CENTER_PINK : kind === 'shop' ? SHOP_GREEN : 0x1d2848;
       g.lineStyle(6, frame, 1).strokeRect(r.x, r.y, r.w, r.h);
 
       const block = this.add.rectangle(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h, DOOR_COLOR).setDepth(1);
@@ -775,6 +858,7 @@ export class GameScene extends Phaser.Scene {
     this.setDoorsLocked(room, false);
     // Al continuar, los objetos salen del guardado (restoreRun)
     if (room.kind === 'item' && !this.resume) this.dropItem(room.id, i.cx, i.cy);
+    if (room.kind === 'center') this.buildCenter(room);
   }
 
   private addWall(x: number, y: number, w: number, h: number) {
@@ -823,7 +907,11 @@ export class GameScene extends Phaser.Scene {
     this.floorItems = this.floorItems.filter((f) => f !== sprite.getData('entry'));
     this.tweens.killTweensOf(sprite);
     sprite.destroy();
+    this.gainItem(item);
+  }
 
+  /** Te quedas un pasivo o un poder (cogido del suelo o comprado). */
+  private gainItem(item: DroppedItem) {
     if (item.kind === 'passive') {
       const prevMax = this.stats.maxHp;
       this.passives.push(item.item.id);
@@ -1120,6 +1208,7 @@ export class GameScene extends Phaser.Scene {
       nextSlotReplace: this.nextSlotReplace,
       movePool: [...this.movePool],
       earned: this.earned,
+      coins: this.coins,
     };
     this.cameras.main.fadeOut(350, 0, 0, 0);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
@@ -1193,13 +1282,17 @@ export class GameScene extends Phaser.Scene {
       this.face(this.player, dir);
     }
 
+    // Centro Pokémon y tienda: Enter o A cerca del mostrador o de un artículo (A no lanza entonces el poder 1)
+    const padA = hasPad && pad!.A && !this.padPrev[0];
+    const usedA = this.updateInteract(Phaser.Input.Keyboard.JustDown(this.enterKey), padA);
+
     // Poderes: teclas 1-4 o botones A, B, X, Y
     this.abilityKeys.forEach((k, i) => {
       if (Phaser.Input.Keyboard.JustDown(k)) this.castSlot(i, time);
     });
     if (hasPad) {
       [pad!.A, pad!.B, pad!.X, pad!.Y].forEach((down, i) => {
-        if (down && !this.padPrev[i]) this.castSlot(i, time);
+        if (down && !this.padPrev[i] && !(i === 0 && usedA)) this.castSlot(i, time);
         this.padPrev[i] = down;
       });
     }
@@ -1219,6 +1312,7 @@ export class GameScene extends Phaser.Scene {
     this.progressHud.setText(`${progressText(this.mode, this.floorNum)}${foes ? ` · ${foes} enem.` : ''}`);
     this.hpText.setText(`${Math.max(0, Math.ceil(this.hp))}/${this.stats.maxHp}`);
     this.hpBar.set(this.hp / this.stats.maxHp);
+    this.coinsHud.setText(`● ${this.coins}`);
     this.slots.forEach((m, i) => this.paintSlot(i, m, !m || time >= this.slotReady[i]));
 
     this.checkTrapdoor();
@@ -1344,8 +1438,242 @@ export class GameScene extends Phaser.Scene {
   }
 
   private killEnemy(enemy: Sprite) {
+    const boss = !!(enemy.getData('ai') as EnemyAI | undefined)?.boss;
+    // Monedas solo donde hay tienda en la que gastarlas; bayas siempre
+    const hasShop = this.floor.shopId !== undefined;
+    rollEnemyLoot(Math.random, boss)
+      .filter((d) => hasShop || d.kind !== 'coin')
+      .forEach((d, k) => this.dropLoot(enemy.x + (k - 1) * 26, enemy.y + 10, d));
     enemy.destroy();
     this.checkClear();
+  }
+
+  // --- Monedas y bayas en el suelo ---
+
+  private makeLootTextures() {
+    if (!this.textures.exists('coin')) {
+      const g = this.add.graphics();
+      g.fillStyle(0x8a6d1a, 1).fillCircle(9, 9, 9);
+      g.fillStyle(0xffd34d, 1).fillCircle(9, 9, 7);
+      g.fillStyle(0xfff1b8, 1).fillCircle(7, 7, 2.5);
+      g.generateTexture('coin', 18, 18);
+      g.destroy();
+    }
+    if (!this.textures.exists('berry')) {
+      const g = this.add.graphics();
+      g.fillStyle(0x1d2848, 1).fillCircle(12, 14, 10);
+      g.fillStyle(0xffffff, 1).fillCircle(12, 14, 8);
+      g.fillStyle(0x3fa34d, 1).fillEllipse(12, 4, 12, 6);
+      g.generateTexture('berry', 24, 24);
+      g.destroy();
+    }
+  }
+
+  /** Suelta botín dentro de la sala actual. */
+  private dropLoot(x: number, y: number, drop: LootDrop) {
+    const i = this.interior(this.current);
+    this.spawnLoot(
+      this.current.id,
+      Phaser.Math.Clamp(x, i.x0 + 30, i.x1 - 30),
+      Phaser.Math.Clamp(y, i.y0 + 30, i.y1 - 30),
+      drop,
+    );
+  }
+
+  private spawnLoot(roomId: number, x: number, y: number, drop: LootDrop) {
+    const entry: FloorItemSave = { roomId, x, y, drop };
+    this.floorItems.push(entry);
+    const s = this.loot.create(x, y, drop.kind === 'coin' ? 'coin' : 'berry') as Sprite;
+    if (drop.kind === 'coin') s.setScale(drop.value > 1 ? 1.3 : 1);
+    else s.setTint(BERRIES[drop.id].color);
+    s.setDepth(2).setData('drop', drop).setData('entry', entry);
+    this.tweens.add({ targets: s, y: y - 5, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+  }
+
+  private pickLoot(sprite: Sprite) {
+    if (!sprite.active) return;
+    const drop = sprite.getData('drop') as LootDrop;
+    if (drop.kind === 'berry') {
+      // Con los PS al máximo la baya se queda en el suelo
+      if (!canHeal(this.hp, this.stats.maxHp)) return;
+      const b = BERRIES[drop.id];
+      this.hp = healed(this.hp, this.stats.maxHp, b.heal);
+      this.popup(this.player.x, this.player.y - 50, `${b.name} +${b.heal} PS`, b.color);
+    } else {
+      this.coins += drop.value;
+      this.popup(sprite.x, sprite.y - 16, `+${drop.value}`, 0xffd34d);
+    }
+    this.floorItems = this.floorItems.filter((f) => f !== sprite.getData('entry'));
+    this.tweens.killTweensOf(sprite);
+    sprite.destroy();
+  }
+
+  // --- Centro Pokémon ---
+
+  private buildCenter(room: Room) {
+    const i = this.interior(room);
+    const x = i.cx;
+    const y = i.cy - 60;
+    const g = this.add.graphics().setDepth(1);
+    this.counter = { x, y, g };
+    this.paintCounter();
+    this.add
+      .text(x, y - 56, 'Centro Pokémon', { fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: '#c2185b' })
+      .setOrigin(0.5)
+      .setDepth(3);
+    // Con ratón: clic en el mostrador
+    const hit = this.add.zone(x, y, 160, 70).setInteractive({ useHandCursor: true });
+    hit.on('pointerover', () => (this.overHud = true));
+    hit.on('pointerout', () => (this.overHud = false));
+    hit.on('pointerdown', () => this.current?.id === room.id && this.useCenter());
+  }
+
+  private paintCounter() {
+    const c = this.counter;
+    if (!c) return;
+    const g = c.g.clear();
+    drawBox(g, c.x - 80, c.y - 35, 160, 70, { radius: 12, border: this.centerUsed ? 0x9aa5b1 : CENTER_PINK });
+    const cross = this.centerUsed ? 0x9aa5b1 : 0xe53935;
+    g.fillStyle(cross, 1).fillRect(c.x - 6, c.y - 20, 12, 40).fillRect(c.x - 20, c.y - 6, 40, 12);
+  }
+
+  /** El mostrador cura la mitad de tus PS máximos, una vez por piso (si te falta vida). */
+  private useCenter() {
+    if (this.ended || this.transitioning) return;
+    if (this.centerUsed) return this.showBanner('Ya te has curado en este piso', 1200);
+    if (!canHeal(this.hp, this.stats.maxHp)) return this.showBanner('Ya tienes todos los PS', 1200);
+    const amount = centerHeal(this.stats.maxHp);
+    this.hp = healed(this.hp, this.stats.maxHp, amount);
+    this.centerUsed = true;
+    this.paintCounter();
+    this.popup(this.player.x, this.player.y - 50, `+${amount} PS`, CENTER_PINK);
+    this.showBanner(`¡Centro Pokémon!\n+${amount} PS`, 1600);
+    this.saveNow();
+  }
+
+  // --- Tienda ---
+
+  private buildShop(room: Room) {
+    const i = this.interior(room);
+    this.add
+      .text(i.cx, i.cy - 120, 'Tienda', { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#1e8449' })
+      .setOrigin(0.5)
+      .setDepth(3);
+    this.shopViews = this.shop.map((slot, k) => {
+      if (slot.sold) return [];
+      const x = i.cx + SHOP_OFFSETS[k];
+      const y = i.cy;
+      const { name, color } = this.goodsInfo(slot);
+      const shadow = this.add.ellipse(x, y + 18, 80, 30, 0xa8c9a8).setDepth(1);
+      const icon = this.add.image(x, y, 'shot').setTint(color).setScale(1.5).setDepth(2);
+      const label = this.add
+        .text(x, y - 40, name, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: HEX.text })
+        .setOrigin(0.5)
+        .setDepth(3);
+      const price = this.add
+        .text(x, y + 44, `● ${slot.price}`, { fontFamily: FONT, fontSize: '18px', fontStyle: 'bold', color: '#b8860b' })
+        .setOrigin(0.5)
+        .setDepth(3)
+        .setStroke('#ffffff', 4);
+      // Con ratón: clic en el artículo para comprarlo
+      icon.setInteractive({ useHandCursor: true });
+      icon.on('pointerover', () => (this.overHud = true));
+      icon.on('pointerout', () => (this.overHud = false));
+      icon.on('pointerdown', () => this.current?.id === room.id && this.buy(k));
+      return [shadow, icon, label, price];
+    });
+  }
+
+  private goodsInfo(slot: ShopSlot): { name: string; color: number } {
+    const g = slot.goods;
+    if (g.kind === 'potion') return { name: POTIONS[g.id].name, color: POTIONS[g.id].color };
+    if (g.kind === 'move') return { name: pretty(g.move.name), color: typeColor(g.move.type) };
+    const item = passiveById(g.id);
+    return { name: item?.name ?? g.id, color: item?.color ?? 0xffffff };
+  }
+
+  private shopPos(k: number) {
+    const i = this.interior(this.floor.rooms[this.floor.shopId!]);
+    return { x: i.cx + SHOP_OFFSETS[k], y: i.cy };
+  }
+
+  private buy(k: number) {
+    if (this.ended || this.transitioning) return;
+    const slot = this.shop[k];
+    if (!slot) return;
+    const res = canBuy(slot, this.coins, this.hp, this.stats.maxHp);
+    if (res === 'sold') return;
+    if (res === 'poor') return this.showBanner(`Te faltan monedas\n(cuesta ${slot.price}, tienes ${this.coins})`, 1400);
+    if (res === 'full') return this.showBanner('Ya tienes todos los PS', 1200);
+    this.coins -= slot.price;
+    slot.sold = true;
+    this.shopViews[k]?.forEach((o) => o.destroy());
+    this.shopViews[k] = [];
+    const g = slot.goods;
+    if (g.kind === 'potion') {
+      const p = POTIONS[g.id];
+      this.hp = healed(this.hp, this.stats.maxHp, p.heal);
+      this.showBanner(`${p.name}\n+${p.heal} PS`, 1400);
+    } else if (g.kind === 'move') {
+      this.gainItem({ kind: 'move', move: g.move });
+    } else {
+      const item = passiveById(g.id);
+      if (item) this.gainItem({ kind: 'passive', item });
+    }
+    this.refreshInventory();
+    this.saveNow();
+  }
+
+  /**
+   * Mostrador y tienda: al pisarlos se usan; cerca, aparece un aviso y se usan con Enter o A.
+   * Devuelve true si este fotograma ha usado el botón A (para no lanzar también el poder 1).
+   */
+  private updateInteract(enter: boolean, padA: boolean): boolean {
+    this.prompt.setText('');
+    const px = this.player.x;
+    const py = this.player.y;
+    const act = enter || padA;
+    if (this.current.kind === 'center' && this.counter) {
+      const d = Phaser.Math.Distance.Between(px, py, this.counter.x, this.counter.y);
+      const touching = d < TOUCH + 30;
+      if (touching && !this.counterTouch) this.useCenter();
+      this.counterTouch = touching;
+      if (d < NEAR + 30 && !this.centerUsed) {
+        this.prompt.setText('Enter / A / clic: curarte').setPosition(this.counter.x, this.counter.y - 70);
+        if (act) {
+          this.useCenter();
+          return padA;
+        }
+      }
+      return false;
+    }
+    if (this.current.kind === 'shop') {
+      let touched = -1;
+      let nearest = -1;
+      let best = NEAR;
+      this.shop.forEach((slot, k) => {
+        if (slot.sold) return;
+        const pos = this.shopPos(k);
+        const d = Phaser.Math.Distance.Between(px, py, pos.x, pos.y);
+        if (d < TOUCH) touched = k;
+        if (d < best) {
+          best = d;
+          nearest = k;
+        }
+      });
+      // Pisar un artículo lo compra (una vez por pisada, como en Isaac)
+      if (touched !== -1 && touched !== this.shopTouch) this.buy(touched);
+      this.shopTouch = touched;
+      if (nearest !== -1 && !this.shop[nearest].sold) {
+        const pos = this.shopPos(nearest);
+        this.prompt.setText(`Enter / A / clic: comprar (● ${this.shop[nearest].price})`).setPosition(pos.x, pos.y - 60);
+        if (act) {
+          this.buy(nearest);
+          return padA;
+        }
+      }
+    }
+    return false;
   }
 
   // --- Estados (quemar, congelar, paralizar…) ---
@@ -1429,12 +1757,12 @@ export class GameScene extends Phaser.Scene {
     const round = this.floorNum;
     this.foeShots.clear(true, true);
     this.hp = Math.min(this.stats.maxHp, this.hp + this.stats.healOnClear);
-    const reward = waveCoins(round);
+    const reward = waveTickets(round);
     this.earned += reward;
-    addCoins(reward);
+    addTickets(reward);
     const record = submitRecord('waves', round);
 
-    let text = `¡Ronda ${round} superada! +${reward} monedas`;
+    let text = `¡Ronda ${round} superada! +${reward} tickets`;
     if (record) text += '\n¡Nuevo récord!';
     if (waveDropsItem(round)) {
       const i = this.interior(this.current);
@@ -1464,18 +1792,18 @@ export class GameScene extends Phaser.Scene {
     this.foeShots.clear(true, true);
     this.hp = Math.min(this.stats.maxHp, this.hp + this.stats.healOnClear);
 
-    // En Rush de jefes no hay salas que den monedas, así que cada jefe da algo menos que en un piso
-    const bossReward = bossCoinsFor(this.mode === 'bossrush' ? Math.ceil(this.floorNum / 2) : this.floorNum);
-    const reward = room.kind === 'boss' ? bossReward : roomCoinsFor(this.floorNum);
+    // En Rush de jefes no hay salas que den tickets, así que cada jefe da algo menos que en un piso
+    const bossReward = bossTicketsFor(this.mode === 'bossrush' ? Math.ceil(this.floorNum / 2) : this.floorNum);
+    const reward = room.kind === 'boss' ? bossReward : roomTicketsFor(this.floorNum);
     this.earned += reward;
-    addCoins(reward);
+    addTickets(reward);
 
     if (room.kind === 'boss') {
       // Récord: pisos completados (Normal, Infinito) o jefes vencidos (Rush)
       const record = submitRecord(this.mode, this.floorNum);
       if (isLastStage(this.mode, this.floorNum)) {
         this.finish(
-          `¡Has completado los ${FLOOR_COUNT} pisos!\n+${this.earned} monedas en total\nPulsa R, Start o haz clic para empezar otra partida`,
+          `¡Has completado los ${FLOOR_COUNT} pisos!\n+${this.earned} tickets en total\nPulsa R, Start o haz clic para empezar otra partida`,
         );
         return;
       }
@@ -1485,18 +1813,24 @@ export class GameScene extends Phaser.Scene {
       this.spawnTrapdoor();
       const next = this.mode === 'bossrush' ? `ir al jefe ${this.floorNum + 1}` : `bajar al piso ${this.floorNum + 1}`;
       const best = record ? '\n¡Nuevo récord!' : '';
-      this.showBanner(`¡Jefe derrotado! +${reward} monedas${best}\nPisa la trampilla para ${next}`, 2600);
+      this.showBanner(`¡Jefe derrotado! +${reward} tickets${best}\nPisa la trampilla para ${next}`, 2600);
       this.saveNow();
       return;
+    }
+
+    // Monedas de la partida al limpiar la sala (solo si hay tienda en el piso)
+    if (this.floor.shopId !== undefined) {
+      const i = this.interior(room);
+      this.dropLoot(i.cx - 60, i.cy + 40, { kind: 'coin', value: roomClearCoins(Math.random, this.floorNum) });
     }
 
     // A veces la sala limpiada deja un objeto, como en Isaac
     if (Math.random() < CLEAR_DROP_CHANCE) {
       const i = this.interior(room);
       this.dropItem(room.id, i.cx, i.cy);
-      this.showBanner(`¡Sala limpia! +${reward} monedas\nHa caído un objeto`, 1400);
+      this.showBanner(`¡Sala limpia! +${reward} tickets\nHa caído un objeto`, 1400);
     } else {
-      this.showBanner(`¡Sala limpia! +${reward} monedas`, 1000);
+      this.showBanner(`¡Sala limpia! +${reward} tickets`, 1000);
     }
     this.saveNow();
   }
@@ -1545,7 +1879,7 @@ export class GameScene extends Phaser.Scene {
 
     if (this.hp <= 0) {
       const where = this.mode === 'normal' ? '' : ` en ${progressText(this.mode, this.floorNum).toLowerCase()}`;
-      this.finish(`Has caído${where} · +${this.earned} monedas\nPulsa R, Start o haz clic para volver a empezar`);
+      this.finish(`Has caído${where} · +${this.earned} tickets\nPulsa R, Start o haz clic para volver a empezar`);
     }
   }
 

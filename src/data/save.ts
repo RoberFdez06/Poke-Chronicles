@@ -51,9 +51,9 @@ export function parseUnlocked(raw: string | null): number[] {
   return [...DEFAULT_STARTERS];
 }
 
-/** Antes los desbloqueos solo se guardaban al usar el gacha: quien tenga monedas o partidas ya jugaba. */
+/** Antes los desbloqueos solo se guardaban al usar el gacha: quien tenga tickets (antes "monedas") o partidas ya jugaba. */
 function hasOldProgress(storage: StorageLike): boolean {
-  if (storage.getItem(COINS_KEY) !== null) return true;
+  if (storage.getItem(COINS_KEY) !== null || storage.getItem(TICKETS_KEY) !== null) return true;
   for (let i = 0; i < 3; i++) if (storage.getItem(`pokeisaac.run.${i}`) !== null) return true;
   return false;
 }
@@ -85,46 +85,55 @@ export function unlockPokemon(id: number, storage: StorageLike | null = browserS
   return list;
 }
 
-// --- Monedas (se ganan jugando; nunca se compran con dinero real) ---
+// --- Tickets (se ganan jugando; nunca se compran con dinero real) ---
+// Se gastan fuera de la partida (gacha). No confundir con las monedas de la partida (loot.ts), que se
+// pierden al acabarla. Antes los tickets se llamaban "monedas" y se guardaban en COINS_KEY.
 
+export const TICKETS_KEY = 'pokeisaac.tickets';
+/** Clave antigua del saldo: se migra a TICKETS_KEY la primera vez que se lee. */
 export const COINS_KEY = 'pokeisaac.coins';
-/** Monedas por sala de combate limpiada y por vencer al jefe. Ajustables. */
-export const ROOM_COINS = 15;
-export const BOSS_COINS = 60;
+/** Tickets por sala de combate limpiada y por vencer al jefe. Ajustables. */
+export const ROOM_TICKETS = 15;
+export const BOSS_TICKETS = 60;
 
-export function parseCoins(raw: string | null): number {
+export function parseTickets(raw: string | null): number {
   const n = Number(raw);
   return Number.isInteger(n) && n > 0 ? n : 0;
 }
 
-export function loadCoins(storage: StorageLike | null = browserStorage()): number {
+export function loadTickets(storage: StorageLike | null = browserStorage()): number {
   try {
-    return parseCoins(storage?.getItem(COINS_KEY) ?? null);
+    const raw = storage?.getItem(TICKETS_KEY) ?? null;
+    if (raw !== null) return parseTickets(raw);
+    // Migración: el saldo de "monedas" de antes pasa a ser de tickets
+    const old = parseTickets(storage?.getItem(COINS_KEY) ?? null);
+    if (old > 0) saveTickets(old, storage);
+    return old;
   } catch {
     return 0;
   }
 }
 
-function saveCoins(n: number, storage: StorageLike | null) {
+function saveTickets(n: number, storage: StorageLike | null) {
   try {
-    storage?.setItem(COINS_KEY, String(n));
+    storage?.setItem(TICKETS_KEY, String(n));
   } catch {
     // sin almacenamiento: no se guarda
   }
 }
 
-/** Suma monedas (ignora cantidades no válidas) y devuelve el total. */
-export function addCoins(amount: number, storage: StorageLike | null = browserStorage()): number {
-  const total = loadCoins(storage) + (Number.isInteger(amount) && amount > 0 ? amount : 0);
-  saveCoins(total, storage);
+/** Suma tickets (ignora cantidades no válidas) y devuelve el total. */
+export function addTickets(amount: number, storage: StorageLike | null = browserStorage()): number {
+  const total = loadTickets(storage) + (Number.isInteger(amount) && amount > 0 ? amount : 0);
+  saveTickets(total, storage);
   return total;
 }
 
-/** Gasta monedas si hay suficientes; devuelve true si pudo. */
-export function spendCoins(amount: number, storage: StorageLike | null = browserStorage()): boolean {
-  const have = loadCoins(storage);
+/** Gasta tickets si hay suficientes; devuelve true si pudo. */
+export function spendTickets(amount: number, storage: StorageLike | null = browserStorage()): boolean {
+  const have = loadTickets(storage);
   if (!Number.isInteger(amount) || amount < 0 || have < amount) return false;
-  saveCoins(have - amount, storage);
+  saveTickets(have - amount, storage);
   return true;
 }
 

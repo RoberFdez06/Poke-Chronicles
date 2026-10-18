@@ -57,16 +57,22 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
   oficiales ni logos de Pokémon. Centraliza fuente y colores en un archivo de tema (`src/ui/theme.ts`).
 - Aplícalo a todas las escenas (menú, huecos, inicial, gacha, pausa, HUD) y mantén teclado, ratón y mando.
 
-## [ ] T16 — Recuperar vida (pedido por Roberto; va antes de T9)
-- **Bayas**: al morir, un enemigo a veces suelta una baya (Aranja cura 20 PS, Zidra cura 40; más raras en jefes no,
-  el jefe siempre suelta una Zidra). Se recogen al pisarlas; si estás al máximo no se gastan.
-- **Centro Pokémon**: una sala especial por piso (marco rosa en puerta y minimapa) con una enfermera/mostrador
-  que te cura entero **una sola vez** por piso (acercarte + Enter/A/clic, o al pisar el mostrador).
-- **Tienda**: una sala tienda por piso con 3 artículos en el suelo con precio: Poción (cura 20), Superpoción (cura 50)
-  y un objeto pasivo o poder al azar. Se paga con las **monedas ganadas en esta partida** (`earned`): comprar resta
-  de `earned` y del total guardado. No se puede comprar si no llegan. Con teclado, ratón (clic en el artículo) y mando.
+## [x] T16 — Recuperar vida y dos monedas: tickets y monedas (pedido por Roberto; va antes de T9)
+- **Dos monedas distintas**:
+  - **Tickets** (fuera de la partida): lo que hoy se llama "monedas" en `save.ts` pasa a llamarse tickets. Se ganan
+    igual (salas limpias, jefes, récords) y solo sirven para el **gacha** (y luego para las mejoras de T13). Migra
+    el saldo guardado (`pokeisaac.coins` → tickets) para que nadie pierda nada. Cambia todos los textos ("Tickets").
+  - **Monedas** (dentro de la partida): caen de los enemigos al morir (a veces) y al limpiar sala, se recogen
+    pisándolas, se ven en el HUD y en la pausa, se guardan en `RunSave` y **se pierden al acabar la partida**.
+    Solo sirven en la tienda.
+- **Bayas**: al morir, un enemigo a veces suelta una baya (Aranja cura 20 PS, Zidra cura 40); el jefe siempre
+  suelta una Zidra. Se recogen al pisarlas; si estás al máximo de PS no se gastan.
+- **Centro Pokémon**: una sala especial por piso (marco rosa en puerta y minimapa) con un mostrador que te cura
+  **la mitad de tus PS máximos, una sola vez por piso** (acercarte + Enter/A/clic, o pisar el mostrador).
+- **Tienda**: una sala por piso con 3 artículos con precio en monedas: Poción (cura 20), Superpoción (cura 50) y
+  un objeto pasivo o poder al azar. Si no llegan las monedas, no se compra. Teclado, ratón (clic en el artículo) y mando.
 - `floorGen` coloca las salas nuevas (sin salida preferiblemente, nunca la del jefe); tests de que siempre existen.
-- El guardado (`RunSave`) recuerda si el Centro ya se usó y qué queda en la tienda (sube `RUN_VERSION`, migra).
+- `RunSave` guarda monedas, si el Centro ya se usó y qué queda en la tienda (sube `RUN_VERSION`, migra).
 
 ## [ ] T17 — Vida de los enemigos y colisiones entre ellos (va antes de T9)
 - Los enemigos chocan entre sí (collider enemigos↔enemigos) para no amontonarse en el mismo sitio.

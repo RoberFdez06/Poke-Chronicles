@@ -1,6 +1,7 @@
 // Generador de pisos: lógica pura, sin Phaser, determinista por semilla.
 
-export type RoomKind = 'start' | 'combat' | 'item' | 'boss';
+/** center = Centro Pokémon (te cura una vez por piso); shop = tienda (se paga con monedas de la partida). */
+export type RoomKind = 'start' | 'combat' | 'item' | 'boss' | 'center' | 'shop';
 export type Dir = 'up' | 'down' | 'left' | 'right';
 
 export const DIRS: readonly Dir[] = ['up', 'down', 'left', 'right'];
@@ -31,6 +32,9 @@ export interface Floor {
   startId: number;
   itemId: number;
   bossId: number;
+  /** Centro Pokémon y tienda (solo con `special: true`). */
+  centerId?: number;
+  shopId?: number;
 }
 
 export interface FloorOptions {
@@ -38,6 +42,11 @@ export interface FloorOptions {
   roomCount?: number;
   cols?: number;
   rows?: number;
+  /**
+   * Añade Centro Pokémon y tienda. Se eligen con un generador aparte a partir de la semilla, así el resto
+   * del piso sale igual que sin ellas (las partidas guardadas antes de tenerlas se siguen cargando bien).
+   */
+  special?: boolean;
 }
 
 /** PRNG mulberry32: rápido y reproducible a partir de una semilla de 32 bits. */
@@ -69,7 +78,7 @@ export function generateFloor(opts: FloorOptions): Floor {
   const rng = mulberry32(opts.seed);
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const floor = tryGenerate(rng, opts.seed, cols, rows, target);
-    if (floor) return floor;
+    if (floor) return opts.special ? addSpecialRooms(floor) : floor;
   }
   throw new Error(`No se pudo generar un piso con ${target} salas`);
 }
@@ -133,6 +142,32 @@ function tryGenerate(rng: () => number, seed: number, cols: number, rows: number
   item.kind = 'item';
 
   return { seed, cols, rows, rooms, startId: start.id, itemId: item.id, bossId: boss.id };
+}
+
+/**
+ * Convierte dos salas de combate en Centro Pokémon y tienda: mejor sin salida, nunca la de inicio, la del
+ * objeto ni la del jefe.
+ */
+export function addSpecialRooms(floor: Floor): Floor {
+  const rng = mulberry32(floor.seed ^ 0xc3a5c85c);
+  const rooms = floor.rooms.map((r) => ({ ...r, doors: { ...r.doors } }));
+  const candidates = rooms.filter((r) => r.kind === 'combat');
+  const deadEnds = candidates.filter((r) => Object.keys(r.doors).length === 1);
+  const pick = (): Room | undefined => {
+    const pool = deadEnds.length > 0 ? deadEnds : candidates;
+    if (pool.length === 0) return undefined;
+    const room = pool[Math.floor(rng() * pool.length)];
+    for (const list of [deadEnds, candidates]) {
+      const i = list.indexOf(room);
+      if (i !== -1) list.splice(i, 1);
+    }
+    return room;
+  };
+  const center = pick();
+  if (center) center.kind = 'center';
+  const shop = pick();
+  if (shop) shop.kind = 'shop';
+  return { ...floor, rooms, centerId: center?.id, shopId: shop?.id };
 }
 
 function shuffled<T>(items: readonly T[], rng: () => number): T[] {

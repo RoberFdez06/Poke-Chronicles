@@ -44,7 +44,8 @@ export function drawMinimap(
     g.fillStyle(color, 1).fillRect(x, y, CELL_W, CELL_H);
     if (isCurrent) g.lineStyle(2, 0xffd34d, 1).strokeRect(x - 1, y - 1, CELL_W + 2, CELL_H + 2);
 
-    const icon = r.kind === 'boss' ? 0xe53935 : r.kind === 'item' ? 0xffc107 : null;
+    const icon =
+      r.kind === 'boss' ? 0xe53935 : r.kind === 'item' ? 0xffc107 : r.kind === 'center' ? 0xff6fae : r.kind === 'shop' ? 0x2ecc71 : null;
     if (icon !== null) g.fillStyle(icon, 1).fillCircle(x + CELL_W / 2, y + CELL_H / 2, 4);
   }
 }

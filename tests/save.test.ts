@@ -90,18 +90,29 @@ test('sin almacenamiento o con almacenamiento que falla, no lanza', () => {
   assert.deepEqual(unlockPokemon(25, broken), [1, 4, 7, 25]);
 });
 
-import { addCoins, loadCoins, spendCoins, COINS_KEY } from '../src/data/save.ts';
+import { addTickets, loadTickets, spendTickets, COINS_KEY, TICKETS_KEY } from '../src/data/save.ts';
 
-test('monedas: se suman, se gastan y no bajan de 0', () => {
+test('tickets: se suman, se gastan y no bajan de 0', () => {
   const st = fakeStorage();
-  assert.equal(loadCoins(st), 0);
-  assert.equal(addCoins(150, st), 150);
-  assert.equal(addCoins(-5, st), 150);
-  assert.equal(spendCoins(100, st), true);
-  assert.equal(loadCoins(st), 50);
-  assert.equal(spendCoins(100, st), false);
-  assert.equal(loadCoins(st), 50);
-  st.data.set(COINS_KEY, 'basura');
-  assert.equal(loadCoins(st), 0);
-  assert.equal(loadCoins(null), 0);
+  assert.equal(loadTickets(st), 0);
+  assert.equal(addTickets(150, st), 150);
+  assert.equal(addTickets(-5, st), 150);
+  assert.equal(spendTickets(100, st), true);
+  assert.equal(loadTickets(st), 50);
+  assert.equal(spendTickets(100, st), false);
+  assert.equal(loadTickets(st), 50);
+  st.data.set(TICKETS_KEY, 'basura');
+  assert.equal(loadTickets(st), 0);
+  assert.equal(loadTickets(null), 0);
+});
+
+test('migración: el saldo de monedas de antes pasa a tickets sin perder nada', () => {
+  const st = fakeStorage();
+  st.data.set(COINS_KEY, '340');
+  assert.equal(loadTickets(st), 340);
+  assert.equal(st.data.get(TICKETS_KEY), '340');
+  assert.equal(addTickets(10, st), 350);
+  // Una vez migrado manda la clave nueva
+  st.data.set(COINS_KEY, '9999');
+  assert.equal(loadTickets(st), 350);
 });

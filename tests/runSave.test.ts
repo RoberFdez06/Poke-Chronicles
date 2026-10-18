@@ -33,6 +33,10 @@ function sample(): RunSave {
     movePool: [move],
     floorItems: [{ roomId: 2, x: 100, y: 200, drop: { kind: 'passive', id: 'restos' } }],
     earned: 15,
+    coins: 7,
+    centerUsed: true,
+    shop: [{ goods: { kind: 'potion', id: 'pocion' }, price: 5, sold: false }],
+    layout: 2,
   };
 }
 
@@ -85,6 +89,25 @@ test('un modo desconocido invalida el guardado', () => {
   assert.equal(parseRun(JSON.stringify({ ...sample(), mode: 'otro' })), null);
   const waves = parseRun(JSON.stringify({ ...sample(), mode: 'waves' }));
   assert.equal(waves?.mode, 'waves');
+});
+
+test('un guardado v3 (sin monedas ni tienda) se migra con el piso de antes', () => {
+  const { coins: _c, centerUsed: _u, shop: _s, layout: _l, ...v3 } = sample();
+  const run = parseRun(JSON.stringify({ ...v3, version: 3 }));
+  assert.ok(run);
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.coins, 0);
+  assert.equal(run.centerUsed, false);
+  assert.deepEqual(run.shop, []);
+  assert.equal(run.layout, 1);
+});
+
+test('monedas y bayas en el suelo se guardan; las raras invalidan', () => {
+  const ok = { ...sample(), floorItems: [{ roomId: 1, x: 0, y: 0, drop: { kind: 'coin', value: 5 } }, { roomId: 1, x: 0, y: 0, drop: { kind: 'berry', id: 'zidra' } }] };
+  assert.ok(parseRun(JSON.stringify(ok)));
+  assert.equal(parseRun(JSON.stringify({ ...sample(), floorItems: [{ roomId: 1, x: 0, y: 0, drop: { kind: 'berry', id: 'nada' } }] })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), coins: -1 })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), shop: [{ goods: { kind: 'potion', id: 'x' }, price: 5, sold: false }] })), null);
 });
 
 test('un piso no válido invalida el guardado', () => {

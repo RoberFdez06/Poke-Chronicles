@@ -159,3 +159,34 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
 ## Parada antes de T9 (2026-10-18)
 
 - Hechas T7 y T8. Por indicación de Roberto paro aquí: **T9 sin empezar**, porque antes quiere pedir otra cosa.
+
+## Fuente (2026-10-18)
+
+- Apareció `public/fonts/PixelifySans.ttf` (la habrá puesto Roberto o el supervisor) y la he subido en un commit aparte.
+  **Falta `public/fonts/OFL.txt`** (la licencia, que la OFL pide acompañar a la fuente): no lo he escrito de memoria
+  para no poner un texto legal inexacto; se descarga de `https://github.com/google/fonts/raw/main/ofl/pixelifysans/OFL.txt`.
+
+## T16 — Recuperar vida y dos monedas: tickets y monedas (2026-10-18)
+
+- **Tickets**: lo que se llamaba "monedas" fuera de la partida ahora son tickets (`loadTickets`, `addTickets`,
+  `spendTickets`, `ROOM_TICKETS`, `BOSS_TICKETS`, `roomTicketsFor`, `bossTicketsFor`, `waveTickets`). Clave nueva
+  `pokeisaac.tickets`; la primera vez que se lee, si no existe, copia el saldo de `pokeisaac.coins` (no se pierde
+  nada). Textos del gacha, carteles y pausa cambiados ("+N tickets", "Tickets ganados").
+- **Monedas de la partida** (`src/data/loot.ts`): 35 % de que un enemigo suelte una (12 % de ellas valen 5), 1-3 al
+  limpiar sala (+1 cada dos pisos), el jefe suelta 2 de 5. Solo caen en pisos con tienda (Normal/Infinito).
+  Se recogen al pisarlas; HUD "● N" en el cuadro de arriba y en la pausa; se guardan en `RunSave` y se pierden al acabar.
+- **Bayas**: 10 % Aranja (+20), 3 % Zidra (+40), el jefe siempre Zidra. Con la vida llena no se recogen.
+- **Centro Pokémon** (marco rosa y punto rosa en el minimapa): mostrador con cruz que cura la mitad de los PS
+  máximos una vez por piso; se usa al pisarlo, con Enter/A cerca (aparece un aviso) o con clic. Con la vida llena
+  no se gasta. Gris cuando ya se ha usado.
+- **Tienda** (marco verde): Poción 5, Superpoción 12 y un pasivo o poder (sacado del `movePool`, así que siempre es
+  de tus tipos) 15. Se compra pisando (una vez por pisada, como en Isaac), con Enter/A cerca o con clic.
+  Con el botón A cerca del mostrador o de un artículo, A no lanza además el poder 1.
+- **floorGen**: `generateFloor({ special: true })` convierte dos salas de combate (mejor sin salida; nunca inicio,
+  objeto ni jefe) en Centro y tienda con un generador aparte, así el resto del piso sale idéntico. Tests: siempre
+  existen (300 semillas × 4 tamaños), no tocan el resto del piso y van en salas sin salida casi siempre.
+- **Guardado**: `RUN_VERSION` 4 con `coins`, `centerUsed`, `shop` y `layout`; monedas y bayas del suelo en
+  `floorItems`. Los v3 migran con `layout: 1` para que su piso se regenere sin Centro ni tienda y cuadre con lo guardado.
+- **Archivos**: `src/data/loot.ts`, `tests/loot.test.ts` (nuevos), `save.ts`, `runSave.ts`, `progression.ts`,
+  `modes.ts`, `floorGen.ts`, `GameScene`, `PauseScene`, `GachaScene`, `minimap.ts`, tests, README.
+- **Dudas**: precios y probabilidades a ojo (en `loot.ts`). En Oleadas y Rush no hay tienda, así que no caen monedas.

@@ -55,7 +55,7 @@ export const GACHA_RATES: Readonly<Record<Rarity, number>> = {
   legendary: 1,
 };
 
-/** Monedas por tirada. Ajustable cuando sepamos cuánto se gana por partida. */
+/** Tickets por tirada. Ajustable cuando sepamos cuánto se gana por partida. */
 export const PULL_COST = 100;
 
 export type RarityPools = Record<Rarity, number[]>;
@@ -85,7 +85,7 @@ export interface PullResult {
   /** Rareza que ha salido (puede diferir de la tirada si esa rareza no tiene Pokémon). */
   rarity: Rarity;
   speciesId: number;
-  /** Ya lo tenías: más adelante decidimos si devuelve monedas. */
+  /** Ya lo tenías: devuelve algunos tickets (GachaScene). */
   duplicate: boolean;
 }
 

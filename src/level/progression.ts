@@ -1,7 +1,7 @@
 // Progresión entre pisos: tamaño, dificultad, recompensas y jefes legendarios.
 // Lógica pura, sin Phaser ni red, para poder testearla.
 // Con extensión .ts para que los tests (node --test) puedan importarlo sin bundler
-import { BOSS_COINS, ROOM_COINS } from '../data/save.ts';
+import { BOSS_TICKETS, ROOM_TICKETS } from '../data/save.ts';
 
 /** Pisos que hay que completar para ganar la partida (modo Normal). Ajustable. */
 export const FLOOR_COUNT = 5;
@@ -35,10 +35,10 @@ export function difficultyFor(floor: number): FloorDifficulty {
   };
 }
 
-/** Monedas por sala limpiada: +5 por piso. */
-export const roomCoinsFor = (floor: number): number => ROOM_COINS + 5 * Math.max(0, Math.floor(floor) - 1);
-/** Monedas por vencer al jefe: se multiplican por el número de piso. */
-export const bossCoinsFor = (floor: number): number => BOSS_COINS * Math.max(1, Math.floor(floor));
+/** Tickets por sala limpiada: +5 por piso. */
+export const roomTicketsFor = (floor: number): number => ROOM_TICKETS + 5 * Math.max(0, Math.floor(floor) - 1);
+/** Tickets por vencer al jefe: se multiplican por el número de piso. */
+export const bossTicketsFor = (floor: number): number => BOSS_TICKETS * Math.max(1, Math.floor(floor));
 
 /** Lo mínimo de cada especie para elegir jefe (encaja con SpeciesFact de gacha.ts). */
 export interface BossCandidate {
