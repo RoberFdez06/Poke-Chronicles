@@ -8,6 +8,8 @@ import type { Rarity } from '../data/gacha.ts';
 export const FONT_FAMILY = 'Pixelify Sans';
 export const FONT = `"${FONT_FAMILY}", system-ui, sans-serif`;
 export const FONT_URL = 'fonts/PixelifySans.ttf';
+/** Números 0-9 pixel hechos para el juego (public/fonts/PokeIsaacDigits.ttf), más claros que los de Pixelify. */
+export const DIGITS_URL = 'fonts/PokeIsaacDigits.ttf';
 
 export const COLORS = {
   /** Fondo de las pantallas. */
@@ -54,9 +56,13 @@ export async function loadThemeFont(timeoutMs = 2500): Promise<boolean> {
     const face = new FontFace(FONT_FAMILY, `url(${import.meta.env.BASE_URL}${FONT_URL})`);
     // El tipo FontFaceSet de esta versión de TypeScript no declara add()
     (document.fonts as unknown as { add(f: FontFace): void }).add(face);
+    // Los números de Pixelify Sans (2 y 5) parecen una S: van con una fuente pixel propia, solo para 0-9
+    const digits = new FontFace(FONT_FAMILY, `url(${import.meta.env.BASE_URL}${DIGITS_URL})`, { unicodeRange: 'U+0030-0039' });
+    (document.fonts as unknown as { add(f: FontFace): void }).add(digits);
+    void digits.load().catch(() => undefined);
     const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('tiempo')), timeoutMs));
     await Promise.race([face.load(), timeout]);
-    await document.fonts.load(`16px "${FONT_FAMILY}"`);
+    await document.fonts.load(`16px "${FONT_FAMILY}"`, 'Aa0123456789');
     return true;
   } catch {
     return false;
