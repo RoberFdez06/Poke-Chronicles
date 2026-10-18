@@ -7,7 +7,7 @@ const PANEL = COLORS.panel;
 const GOLD = COLORS.gold;
 
 type Key = Phaser.Input.Keyboard.Key;
-type KeyName = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT' | 'W' | 'A' | 'S' | 'D' | 'ENTER' | 'SPACE' | 'ESC' | 'P';
+type KeyName = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT' | 'W' | 'A' | 'S' | 'D' | 'ENTER' | 'SPACE' | 'ESC' | 'BACKSPACE' | 'P';
 
 export interface NavState {
   dx: number;
@@ -29,7 +29,7 @@ export class NavInput {
   private prev: Record<string, boolean>;
 
   constructor(private scene: Phaser.Scene) {
-    this.keys = scene.input.keyboard!.addKeys('UP,DOWN,LEFT,RIGHT,W,A,S,D,ENTER,SPACE,ESC,P', false) as Record<KeyName, Key>;
+    this.keys = scene.input.keyboard!.addKeys('UP,DOWN,LEFT,RIGHT,W,A,S,D,ENTER,SPACE,ESC,BACKSPACE,P', false) as Record<KeyName, Key>;
     // Las teclas que ya estaban pulsadas al abrir no cuentan
     Object.values(this.keys).forEach((k) => (k as Key & { _justDown: boolean })._justDown = false);
     this.prev = this.padNow();
@@ -56,7 +56,8 @@ export class NavInput {
       dx: (J(k.RIGHT) || J(k.D) ? 1 : 0) - (J(k.LEFT) || J(k.A) ? 1 : 0),
       dy: (J(k.DOWN) || J(k.S) ? 1 : 0) - (J(k.UP) || J(k.W) ? 1 : 0),
       ok: J(k.ENTER) || J(k.SPACE),
-      back: J(k.ESC),
+      // Retroceso también vuelve: en pantalla completa el navegador se queda el Esc
+      back: J(k.ESC) || J(k.BACKSPACE),
       pause: J(k.P),
     };
     const now = this.padNow();

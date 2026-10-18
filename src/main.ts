@@ -21,7 +21,7 @@ playMusic();
 void loadThemeFont().then(() => startGame());
 
 function startGame() {
-  new Phaser.Game({
+  const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
     width: 960,
@@ -34,4 +34,18 @@ function startGame() {
     // PauseScene va la última para dibujarse encima de la partida
     scene: [MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, PauseScene],
   });
+  lockEscapeInFullscreen(game);
 }
+
+/**
+ * En pantalla completa el navegador usa Esc para salir y el juego no lo recibe. En Chrome y Edge,
+ * `navigator.keyboard.lock` deja que Esc llegue al juego (para salir de pantalla completa hay que mantenerlo pulsado).
+ */
+function lockEscapeInFullscreen(game: Phaser.Game) {
+  type KeyboardLock = { lock?: (codes: string[]) => Promise<void>; unlock?: () => void };
+  const kb = (navigator as Navigator & { keyboard?: KeyboardLock }).keyboard;
+  if (!kb?.lock) return;
+  game.scale.on(Phaser.Scale.Events.ENTER_FULLSCREEN, () => void kb.lock!(['Escape']).catch(() => undefined));
+  game.scale.on(Phaser.Scale.Events.LEAVE_FULLSCREEN, () => kb.unlock?.());
+}
+
