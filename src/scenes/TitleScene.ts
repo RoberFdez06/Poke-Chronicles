@@ -3,6 +3,7 @@ import { addMenuBackdrop } from '../ui/art/landscape';
 import { addLogo, addSparkles } from '../ui/art/logo';
 import { addIcon } from '../ui/art/icons';
 import { FONT, fadeIn, goTo } from '../ui/theme';
+import { DH, DW, fitDesign } from '../ui/layout';
 
 /**
  * Pantalla de título al abrir el juego: cae una Poké Ball, se abre con un destello y aparece el logo.
@@ -19,9 +20,11 @@ export class TitleScene extends Phaser.Scene {
   create() {
     this.leaving = false;
     fadeIn(this);
-    const W = this.scale.width;
-    const H = this.scale.height;
-    const u = H / 640; // 1 a 960×640, 1,6875 a 1920×1080
+    // T30: como el resto de menús, en el espacio de diseño de 960×640 que la cámara escala a la pantalla
+    fitDesign(this);
+    const W = DW;
+    const H = DH;
+    const u = H / 640;
     addMenuBackdrop(this, 0.15);
 
     // Poké Ball que cae, bota y tiembla
@@ -67,7 +70,7 @@ export class TitleScene extends Phaser.Scene {
   private showReady(logo: Phaser.GameObjects.Text, press: Phaser.GameObjects.Text) {
     this.tweens.add({ targets: logo, y: logo.y + 8, duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.tweens.add({ targets: press, alpha: { from: 1, to: 0.15 }, duration: 650, yoyo: true, repeat: -1 });
-    addSparkles(this, logo.getBounds(), 6, Math.max(3, Math.round(4 * (this.scale.height / 640)))).forEach((s) => s.setDepth(7));
+    addSparkles(this, logo.getBounds(), 6, Math.max(3, 4)).forEach((s) => s.setDepth(7));
   }
 
   private next() {

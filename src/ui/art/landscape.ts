@@ -2,6 +2,7 @@
 // Game Boy Advance) y se escala x4 sin suavizar, así 960x640 queda con píxeles gordos y nítidos.
 // Capas con parallax: cielo con bandas, sol, nubes, montañas, colinas (o mar) y suelo con camino.
 import Phaser from 'phaser';
+import { BAND, COVER_H, COVER_W, DCX, DCY } from '../layout';
 import { mulberry32 } from '../../level/floorGen';
 
 export const PIX = { w: 240, h: 160, scale: 4 } as const;
@@ -223,12 +224,15 @@ export function addLandscape(scene: Phaser.Scene, art: LandscapeArt, seed = 7): 
   const near = bake(scene, k('near'), PIX.h, (g) => drawNear(g, art, rng));
 
   const S = PIX.scale;
-  scene.add.image(0, 0, sky).setOrigin(0).setScale(S).setDepth(-10);
+  // T30: en 16:9 se ve más ancho que los 960 del diseño; el cielo se estira y las capas se repiten hasta los bordes
+  const x0 = -Math.ceil(BAND / S) * S;
+  const tilesW = Math.ceil(COVER_W / S) + 2;
+  scene.add.image(x0, 0, sky).setOrigin(0).setDisplaySize(tilesW * S, PIX.h * S).setDepth(-10);
   const layers: [Phaser.GameObjects.TileSprite, number][] = [
-    [scene.add.tileSprite(0, 0, PIX.w, 64, clouds), 3],
-    [scene.add.tileSprite(0, 0, PIX.w, PIX.h, far), 1.5],
-    [scene.add.tileSprite(0, 0, PIX.w, PIX.h, mid), 4],
-    [scene.add.tileSprite(0, 0, PIX.w, PIX.h, near), 8],
+    [scene.add.tileSprite(x0, 0, tilesW, 64, clouds), 3],
+    [scene.add.tileSprite(x0, 0, tilesW, PIX.h, far), 1.5],
+    [scene.add.tileSprite(x0, 0, tilesW, PIX.h, mid), 4],
+    [scene.add.tileSprite(x0, 0, tilesW, PIX.h, near), 8],
   ];
   layers.forEach(([t], i) => t.setOrigin(0).setScale(S).setDepth(-9 + i));
   return {
@@ -257,7 +261,7 @@ export function nextLandscape(scene: Phaser.Scene): LandscapeArt {
 export function addMenuBackdrop(scene: Phaser.Scene, dim = 0.55): Landscape {
   const art = (scene.registry.get('landscapeArt') as LandscapeArt | undefined) ?? LANDSCAPES[0];
   const land = addLandscape(scene, art);
-  scene.add.rectangle(480, 320, 960, 640, 0x101828, dim).setDepth(-4);
+  scene.add.rectangle(DCX, DCY, COVER_W + 4, COVER_H + 4, 0x101828, dim).setDepth(-4);
   const tick = (_t: number, delta: number) => land.update(delta);
   scene.events.on(Phaser.Scenes.Events.UPDATE, tick);
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.events.off(Phaser.Scenes.Events.UPDATE, tick));

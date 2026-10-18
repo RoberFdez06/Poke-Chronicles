@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { CONTROLS } from '../data/controls';
 import type { MovePower, PlayerStats } from '../data/items';
 import { typeColor, typeHex, typeNameEs } from '../data/types';
@@ -60,8 +61,9 @@ export class PauseScene extends Phaser.Scene {
     this.sub = undefined;
     this.done = false;
     this.nav = new NavInput(this);
+    fitDesign(this);
 
-    this.add.rectangle(480, 320, 960, 640, 0x0d1425, 0.75).setInteractive(); // tapa la partida y sus clics
+    this.add.rectangle(DCX, DCY, COVER_W + 4, COVER_H + 4, 0x0d1425, 0.75).setInteractive(); // tapa la partida y sus clics
     this.add.text(480, 52, 'Pausa', { fontFamily: UI.FONT, fontSize: '48px', fontStyle: 'bold', color: '#ffd34d' })
       .setOrigin(0.5).setStroke('#2b3a67', 10);
 

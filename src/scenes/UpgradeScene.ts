@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { fitDesign } from '../ui/layout';
 import { fetchPokemonCard } from '../data/pokeapi';
 import { buyUpgrade, loadTickets, loadUnlocked, loadUpgrades } from '../data/save';
 import { levelsFor, MAX_UPGRADE_LEVEL, UPGRADE_DESC, UPGRADE_KINDS, UPGRADE_LABEL, upgradeCost } from '../data/upgrades';
@@ -35,6 +36,7 @@ export class UpgradeScene extends Phaser.Scene {
 
   create() {
     fadeIn(this);
+    fitDesign(this);
     addMenuBackdrop(this);
     this.rows = [];
     this.card = undefined;

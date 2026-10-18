@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { fitDesign } from '../ui/layout';
 import { emptyRecords, MODES, MODE_LABEL, modeDesc, recordText, Records } from '../data/modes';
 import { loadRecords } from '../data/save';
 import { MenuList, NavInput, UI } from '../ui/nav';
@@ -36,6 +37,7 @@ export class ModeScene extends Phaser.Scene {
 
   create() {
     fadeIn(this);
+    fitDesign(this);
     addMenuBackdrop(this);
     this.leaving = false;
     this.shown = -1;

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { fitDesign, COVER_H, COVER_W, DCX, DCY } from '../ui/layout';
 import { CONTROLS } from '../data/controls';
 import { resetProgress } from '../data/save';
 import { stepVolume } from '../data/sounds';
@@ -38,6 +39,9 @@ export class SettingsScene extends Phaser.Scene {
 
   init(data?: SettingsData) {
     this.args = data ?? {};
+    // Phaser guarda los datos del último arranque y los reutiliza si el siguiente no trae: sin esto, abrir Ajustes
+    // desde el menú después de abrirlos desde la pausa creía estar encima de la pausa (y Esc "reanudaba" una vieja)
+    this.sys.settings.data = {};
   }
 
   create() {
@@ -46,9 +50,10 @@ export class SettingsScene extends Phaser.Scene {
     this.closing = false;
     this.selected = 0;
     this.nav = new NavInput(this);
+    fitDesign(this);
     if (this.args.overlay) {
       // Encima de la pausa: tapa lo de debajo y sus clics
-      this.add.rectangle(480, 320, 960, 640, 0x0d1425, 0.92).setInteractive();
+      this.add.rectangle(DCX, DCY, COVER_W + 4, COVER_H + 4, 0x0d1425, 0.92).setInteractive();
     } else {
       fadeIn(this);
       addMenuBackdrop(this);
@@ -71,7 +76,7 @@ export class SettingsScene extends Phaser.Scene {
       zone.on('pointerdown', (p: Phaser.Input.Pointer) => {
         if (this.dialog) return;
         this.select(i);
-        if (row === 'music' || row === 'sfx') this.adjust(row, p.x < 480 ? -1 : 1);
+        if (row === 'music' || row === 'sfx') this.adjust(row, p.worldX < 480 ? -1 : 1);
         else this.activate();
       });
       this.rows.push({ bg, text, arrow, y });

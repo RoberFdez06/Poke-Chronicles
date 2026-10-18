@@ -13,6 +13,15 @@ import { UpgradeScene } from './scenes/UpgradeScene';
 import { PauseScene } from './scenes/PauseScene';
 import { COLORS, hex, loadThemeFont } from './ui/theme';
 import { initAudio, playMusic } from './ui/audio';
+import { H, U, W } from './ui/layout';
+
+// T30: los menús se escalan ×1,6875 desde su diseño de 960×640; para que el texto no se vea borroso, todos los
+// textos se generan a doble resolución (Phaser los rasteriza en un canvas aparte).
+const TEXT_RESOLUTION = Math.ceil(U);
+const makeText = Phaser.GameObjects.GameObjectFactory.prototype.text;
+Phaser.GameObjects.GameObjectFactory.prototype.text = function (this: Phaser.GameObjects.GameObjectFactory, ...args: Parameters<typeof makeText>) {
+  return makeText.apply(this, args).setResolution(TEXT_RESOLUTION);
+};
 
 // El audio se desbloquea con el primer clic, tecla o botón; la música empieza entonces
 initAudio();
@@ -25,11 +34,12 @@ function startGame() {
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
-    width: 960,
-    height: 640,
+    width: W,
+    height: H,
     backgroundColor: hex(COLORS.bg),
     physics: { default: 'arcade', arcade: { debug: false } },
     input: { gamepad: true },
+    // 16:9: en pantallas 16:9 llena la ventana; en otras deja bandas
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     // La primera escena es la que arranca; añade las nuevas (p. ej. GachaScene) al final
     // PauseScene va la última para dibujarse encima de la partida

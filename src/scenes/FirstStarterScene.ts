@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { fitDesign } from '../ui/layout';
 import { fetchPokemonCard, PokemonCard } from '../data/pokeapi';
 import { REGIONS, Region } from '../data/regions';
 import { unlockPokemon } from '../data/save';
@@ -40,6 +41,7 @@ export class FirstStarterScene extends Phaser.Scene {
 
   create() {
     fadeIn(this);
+    fitDesign(this);
     addMenuBackdrop(this);
     this.leaving = false;
     this.tiles = [];

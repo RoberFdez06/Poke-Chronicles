@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { fitDesign } from '../ui/layout';
 import { classifyRarity, RARITY_LABEL } from '../data/gacha';
 import { countByRegion, filterCollection, type CollectionEntry } from '../data/regions';
 import { loadShinies, loadUnlocked } from '../data/save';
@@ -58,6 +59,7 @@ export class PokedexScene extends Phaser.Scene {
 
   create() {
     fadeIn(this);
+    fitDesign(this);
     addMenuBackdrop(this);
     this.tiles = [];
     this.grid = undefined;

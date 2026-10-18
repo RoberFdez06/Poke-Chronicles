@@ -160,7 +160,7 @@ también. Ajusta (todo en constantes con tests que fijen los nuevos rangos):
 - Enemigos algo más duros por piso. Usa la simulación de T25 si ya existe; si no, haz una versión mínima para
   comprobar los números y explica en la bitácora los valores de antes y después.
 
-## [ ] T30 — Resolución 1920×1080 y adaptable (pedido por Roberto; va justo después de T21)
+## [x] T30 — Resolución 1920×1080 y adaptable (pedido por Roberto; va justo después de T21)
 - El juego pasa de 960×640 a **1920×1080** (16:9) y se adapta a cualquier ventana: `Scale.FIT` + `CENTER_BOTH`
   (en pantallas 16:9 la llena entera; en otras deja bandas). Que se vea nítido: el pixel art con NEAREST y los
   textos al nuevo tamaño (no escales todo con un zoom borroso).

@@ -28,6 +28,15 @@ Abre la URL que muestra Vite (normalmente http://localhost:5173).
 **Regla del proyecto:** todo se puede manejar con teclado, con ratón y con mando, cada uno por sí solo. Cualquier
 pantalla o acción nueva debe cumplirlo.
 
+## Pantalla
+
+El juego se dibuja a **1920×1080** (16:9) y se adapta a cualquier ventana (en pantallas 16:9 la llena; en otras deja
+bandas). Los tamaños están en `src/ui/layout.ts`. Las pantallas de menú se componen en un espacio de diseño de
+960×640 que la cámara escala ×1,6875 sin suavizar (los textos se generan a doble resolución, así que se ven nítidos) y
+los fondos llenan también los lados. En la partida la sala se ve **entera en el centro** (×1,5, con sus cuatro
+puertas) y el HUD va en las franjas de alrededor: a la izquierda la pausa, tu Pokémon con sus PS, monedas, llaves y
+bombas, los objetos y el objeto activo; a la derecha el minimapa y los cuatro poderes; arriba la barra del jefe.
+
 ## Aspecto
 
 Interfaz al estilo de los juegos de Pokémon: cuadros de texto con borde doble y esquinas redondeadas, flecha ▶
@@ -281,6 +290,7 @@ src/
     roomLayouts.ts        plantillas de sala con obstáculos, conectividad y campo de flujo
     progression.ts        pisos: tamaño, dificultad, tickets y jefes legendarios
   ui/
+    layout.ts             tamaños de pantalla (1920×1080), espacio de diseño de los menús y franjas del HUD
     theme.ts              tema: fuente, colores, cuadros, barra de PS, fichas de tipo y transiciones
     nav.ts                entrada de menús (NavInput, PadButtons) y botones (MenuList, addPanel)
     cards.ts              tarjeta de Pokémon con estadísticas, carga de sprites y botón "Volver"
@@ -299,6 +309,7 @@ src/
     UpgradeScene.ts       mejoras permanentes por Pokémon
     SettingsScene.ts      ajustes: volumen, pantalla completa, controles y borrar progreso
     PauseScene.ts         pausa (la última escena, se dibuja encima)
+tests/e2e/                pruebas en navegador con Playwright (npm run e2e): recorrido con teclado y capturas
 tests/                    un archivo por módulo de data/, level/ y ui/theme.ts (`npm test`, Node 22.6+)
 scripts/
   buildSpeciesIndex.mjs   genera public/data/species-index.json desde PokeAPI (nombres en español, tipos, rareza)

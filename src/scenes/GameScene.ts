@@ -53,6 +53,7 @@ import { rollShiny, SHINY_ENEMY, SHINY_ODDS } from '../data/shiny';
 import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
 import { cry, sfx } from '../ui/audio';
+import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, W } from '../ui/layout';
 import {
   flowField,
   isWalkable,
@@ -384,6 +385,9 @@ export class GameScene extends Phaser.Scene {
   private bannerBox!: Phaser.GameObjects.Graphics;
   private bannerTimer?: Phaser.Time.TimerEvent;
   private minimap!: Phaser.GameObjects.Graphics;
+  /** HUD (T30/N8): capa en coordenadas reales, con su propia cámara sin zoom, en las franjas de alrededor de la sala. */
+  private hudLayer!: Phaser.GameObjects.Container;
+  private hudCam?: Phaser.Cameras.Scene2D.Camera;
 
   constructor() {
     super('Game');
@@ -480,6 +484,10 @@ export class GameScene extends Phaser.Scene {
     }
     this.cameras.main.setScroll(0, 0);
     this.cameras.main.resetFX();
+    // La sala ocupa el centro de la pantalla; alrededor quedan las franjas del HUD
+    for (const c of [...this.cameras.cameras]) if (c !== this.cameras.main) this.cameras.remove(c);
+    this.hudCam = undefined;
+    this.cameras.main.setViewport(GAME_VIEW.x, GAME_VIEW.y, GAME_VIEW.w, GAME_VIEW.h).setZoom(GAME_ZOOM).centerOn(DCX, DCY);
     fadeIn(this);
 
     const loading = this.add
@@ -797,93 +805,97 @@ export class GameScene extends Phaser.Scene {
     // El clic derecho sirve para moverse con el ratón, así que sin menú contextual
     this.input.mouse?.disableContextMenu();
 
-    // HUD fijo en pantalla, en cuadros como los de los combates de Pokémon
-    const fixed = <T extends Phaser.GameObjects.Components.ScrollFactor & Phaser.GameObjects.Components.Depth>(o: T) =>
-      o.setDepth(10).setScrollFactor(0);
-    fixed(drawBox(this.add.graphics(), 76, 6, 470, 70, { radius: 12 }));
-    this.nameText = fixed(this.add.text(94, 24, '', { fontFamily: FONT, fontSize: '19px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5));
-    this.progressHud = fixed(this.add.text(530, 24, '', { fontFamily: FONT, fontSize: '15px', color: HEX.textSoft }).setOrigin(1, 0.5));
-    this.hpBar = addHpBar(this, 94, 46, 236, 10);
-    this.hpBar.objects.forEach((o) => fixed(o as Phaser.GameObjects.Text));
-    this.hpText = fixed(this.add.text(410, 51, '', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: HEX.text }).setOrigin(1, 0.5));
-    const count = (iconKey: string, x: number) => {
-      fixed(this.add.image(x, 51, iconKey).setScale(0.8));
-      return fixed(this.add.text(x + 10, 51, '', { fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5));
+    // HUD (N8): fuera de la sala, en las franjas de alrededor, con una cámara sin zoom (coordenadas reales).
+    // Lo que se crea en la escena no sale en esa cámara salvo lo que va en la capa del HUD.
+    this.hudLayer = this.add.container(0, 0).setDepth(50);
+    this.cameras.main.ignore(this.hudLayer);
+    const hudCam = this.cameras.add(0, 0, W, H).setName('hud');
+    this.hudCam = hudCam;
+    hudCam.ignore(this.children.list.filter((o) => o !== this.hudLayer));
+    const onAdded = (go: Phaser.GameObjects.GameObject) => go !== this.hudLayer && hudCam.ignore(go);
+    this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, onAdded);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, onAdded));
+    const hud = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
+      this.hudLayer.add(o);
+      o.cameraFilter &= ~hudCam.id;
+      return o;
     };
-    this.coinsHud = count('coin', 422);
-    this.keysHud = count('key', 466);
-    this.bombsHud = count('bomb', 506);
-    // Con ratón: clic en la bomba del HUD para soltar una
-    const bombBtn = fixed(this.add.zone(518, 51, 40, 30).setInteractive({ useHandCursor: true }));
-    bombBtn.on('pointerover', () => (this.overHud = true));
-    bombBtn.on('pointerout', () => (this.overHud = false));
+    const txt = (x: number, y: number, size: number, color: string = HEX.text, bold = false) =>
+      hud(this.add.text(x, y, '', { fontFamily: FONT, fontSize: `${size}px`, fontStyle: bold ? 'bold' : 'normal', color }));
+    const over = (o: Phaser.GameObjects.Zone | Phaser.GameObjects.Text) => {
+      o.on('pointerover', () => (this.overHud = true));
+      o.on('pointerout', () => (this.overHud = false));
+      return o;
+    };
+    const LX = HUD.left.x + HUD.pad;
+    const LW = HUD.left.w - HUD.pad * 2;
+    const RX = HUD.right.x + HUD.pad;
+    const RW = HUD.right.w - HUD.pad * 2;
+
+    // Pausa (arriba a la izquierda), para jugar solo con ratón
+    hud(drawBox(this.add.graphics(), LX, 16, 64, 64, { radius: 12 }));
+    const pb = over(
+      hud(this.add.text(LX + 32, 48, '❚❚', { fontFamily: FONT, fontSize: '28px', color: HEX.text }))
+        .setOrigin(0.5)
+        .setPadding(14, 12)
+        .setInteractive({ useHandCursor: true }),
+    );
+    // Ficha del Pokémon: nombre, progreso y PS
+    hud(drawBox(this.add.graphics(), LX, 96, LW, 150, { radius: 14 }));
+    this.nameText = txt(LX + 16, 124, 24, HEX.text, true).setOrigin(0, 0.5);
+    this.progressHud = txt(LX + 16, 154, 16, HEX.textSoft).setOrigin(0, 0.5);
+    this.hpBar = addHpBar(this, LX + 16, 180, LW - 32, 14);
+    this.hpBar.objects.forEach((o) => hud(o));
+    this.hpText = txt(LX + LW - 16, 222, 20, HEX.text, true).setOrigin(1, 0.5);
+    // Monedas, llaves y bombas (clic en la bomba para soltar una)
+    hud(drawBox(this.add.graphics(), LX, 258, LW, 60, { radius: 12 }));
+    const count = (iconKey: string, x: number) => {
+      hud(this.add.image(x, 288, iconKey).setScale(1.2));
+      return txt(x + 16, 288, 20, HEX.text, true).setOrigin(0, 0.5);
+    };
+    this.coinsHud = count('coin', LX + 26);
+    this.keysHud = count('key', LX + 94);
+    this.bombsHud = count('bomb', LX + 160);
+    const bombBtn = over(hud(this.add.zone(LX + 172, 288, 64, 52).setInteractive({ useHandCursor: true })));
     bombBtn.on('pointerdown', () => this.placeBomb());
-    this.invText = this.add
-      .text(560, 14, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff', wordWrap: { width: 240 } })
-      .setDepth(10)
-      .setScrollFactor(0);
-    const style = { fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: HEX.text };
+    // Objetos pasivos
+    this.invText = hud(
+      this.add.text(LX, 334, '', { fontFamily: FONT, fontSize: '15px', color: '#ffffff', wordWrap: { width: LW }, lineSpacing: 4 }),
+    );
+    // Objeto activo: abajo a la izquierda (clic para usarlo)
+    this.activeHud = {
+      g: hud(this.add.graphics()),
+      text: txt(LX + 70, H - 82, 15, HEX.text, true).setOrigin(0, 0.5),
+      shown: '',
+    };
+    const activeBtn = over(hud(this.add.zone(LX + LW / 2, H - 71, LW, 110).setInteractive({ useHandCursor: true })));
+    activeBtn.on('pointerdown', () => this.useActive());
+    // Poderes: cuatro cuadros abajo a la derecha (clic para lanzar)
     for (let i = 0; i < SLOT_COUNT; i++) {
-      this.slotBoxes.push(fixed(this.add.graphics()));
+      const y = this.slotY(i);
+      this.slotBoxes.push(hud(this.add.graphics()));
       this.slotTypes.push(
-        this.add
-          .text(84 + i * 210 + 151, 580, '', { fontFamily: FONT, fontSize: '11px', fontStyle: 'bold', color: '#ffffff' })
-          .setOrigin(0.5)
-          .setDepth(12)
-          .setScrollFactor(0)
-          .setShadow(1, 1, '#00000088', 0),
+        txt(RX + RW - 52, y + 2, 12, '#ffffff', true).setOrigin(0.5).setShadow(1, 1, '#00000088', 0),
       );
       this.slotShown.push('');
-      const slot = this.add.text(104 + i * 210, 591, '', style).setDepth(11).setScrollFactor(0);
-      // Con ratón, un clic en la ranura lanza el poder
-      // Área fija: el texto cambia de tamaño y el área de clic no se actualizaría sola
-      slot.setInteractive(new Phaser.Geom.Rectangle(-20, -11, 200, 44), Phaser.Geom.Rectangle.Contains);
-      if (slot.input) slot.input.cursor = 'pointer';
-      slot.on('pointerover', () => (this.overHud = true));
-      slot.on('pointerout', () => (this.overHud = false));
-      slot.on('pointerdown', () => !this.ended && !this.transitioning && this.castSlot(i, this.time.now));
-      this.hud.push(slot);
+      this.hud.push(txt(RX + 30, y + 34, 18, HEX.text, true).setOrigin(0, 0.5));
+      const zone = over(hud(this.add.zone(RX + RW / 2, y + 32, RW, 64).setInteractive({ useHandCursor: true })));
+      zone.on('pointerdown', () => !this.ended && !this.transitioning && this.castSlot(i, this.time.now));
     }
-    // Carteles en un cuadro de texto, como los diálogos de los juegos
-    this.bannerBox = this.add.graphics().setDepth(19).setScrollFactor(0);
-    this.banner = this.add
-      .text(480, 320, '', {
+    // Minimapa arriba a la derecha
+    this.minimap = hud(this.add.graphics());
+    // Carteles en un cuadro de texto en el centro de la sala, como los diálogos de los juegos
+    this.bannerBox = hud(this.add.graphics());
+    this.banner = hud(
+      this.add.text(CX, CY, '', {
         fontFamily: FONT,
-        fontSize: '34px',
+        fontSize: '46px',
         fontStyle: 'bold',
         color: HEX.text,
         align: 'center',
-        wordWrap: { width: 800 },
-      })
-      .setOrigin(0.5)
-      .setDepth(20)
-      .setScrollFactor(0);
-    this.minimap = this.add.graphics().setDepth(30).setScrollFactor(0);
-
-    // Botón de pausa para jugar solo con ratón
-    // Objeto activo: cuadro abajo a la izquierda (clic para usarlo)
-    this.activeHud = {
-      g: fixed(this.add.graphics()),
-      text: fixed(this.add.text(43, 572, '', { fontFamily: FONT, fontSize: '11px', fontStyle: 'bold', color: '#3fc35a' }).setOrigin(0.5).setStroke('#1d2848', 3)),
-      shown: '',
-    };
-    const activeBtn = fixed(this.add.zone(43, 602, 62, 52).setInteractive({ useHandCursor: true }));
-    activeBtn.on('pointerover', () => (this.overHud = true));
-    activeBtn.on('pointerout', () => (this.overHud = false));
-    activeBtn.on('pointerdown', () => this.useActive());
-    this.shieldRing = this.add.circle(0, 0, 50).setStrokeStyle(4, 0x6ad0f0, 0.85).setDepth(6).setVisible(false);
-    this.focusLeft = this.stats.focusBand;
-    this.lowHpUsed = false;
-    fixed(drawBox(this.add.graphics(), 12, 14, 54, 54, { radius: 10 }));
-    const pb = this.add
-      .text(39, 41, '❚❚', { fontFamily: FONT, fontSize: '22px', color: HEX.text })
-      .setOrigin(0.5)
-      .setPadding(10, 8)
-      .setDepth(11)
-      .setScrollFactor(0)
-      .setInteractive({ useHandCursor: true });
-    pb.on('pointerover', () => (this.overHud = true));
-    pb.on('pointerout', () => (this.overHud = false));
+        wordWrap: { width: GAME_VIEW.w - 200 },
+      }),
+    ).setOrigin(0.5);
     pb.on('pointerdown', () => this.openPause());
 
     // Tienda: al continuar, lo que quedaba; si no, artículos nuevos para este piso
@@ -1093,6 +1105,8 @@ ${where} — ${this.biome.name}`, 1600);
       onResume: () => {
         this.scene.stop('Pause');
         this.scene.resume();
+        // Mientras estaba en pausa no se enteró de que soltaste Esc/P: sin esto, la siguiente Esc no pausaba
+        this.input.keyboard?.resetKeys();
         this.menuPadPrev = true; // Start/Select aún pulsado no vuelve a pausar
         this.padPrev = [true, true, true, true]; // ni A/B lanza un poder al volver
       },
@@ -1421,7 +1435,7 @@ ${where} — ${this.biome.name}`, 1600);
       const open = Object.entries(this.floor.rooms[sid].doors).some(([d]) => this.revealedDoors.has(doorKey(sid, d as Dir)));
       if (!open) hidden.add(sid);
     }
-    drawMinimap(this.minimap, this.floor, this.current.id, this.visited, 940, 12, hidden);
+    drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2);
   }
 
   private setDoorsLocked(room: Room, locked: boolean) {
@@ -1556,15 +1570,18 @@ ${where} — ${this.biome.name}`, 1600);
     if (h.shown === key) return;
     h.shown = key;
     const g = h.g.clear();
-    drawBox(g, 12, 576, 62, 52, { radius: 10, fillAlpha: a ? 1 : 0.5 });
-    if (!a) return void h.text.setText('');
+    const x = HUD.left.x + HUD.pad;
+    const bw = HUD.left.w - HUD.pad * 2;
+    const y = H - HUD.pad - 110;
+    drawBox(g, x, y, bw, 110, { radius: 14, fillAlpha: a ? 1 : 0.5 });
+    if (!a) return void h.text.setText('Sin objeto activo');
     const ready = isCharged(this.active!.charge, a.charge);
-    g.fillStyle(a.color, ready ? 1 : 0.45).fillCircle(43, 596, 11);
-    const w = 44 / a.charge;
+    g.fillStyle(a.color, ready ? 1 : 0.45).fillCircle(x + 36, y + 40, 20);
+    const sw = (bw - 32) / a.charge;
     for (let k = 0; k < a.charge; k++) {
-      g.fillStyle(k < this.active!.charge ? 0x3fc35a : 0x404a5c, 1).fillRect(21 + k * w, 614, w - 2, 6);
+      g.fillStyle(k < this.active!.charge ? 0x3fc35a : 0x404a5c, 1).fillRect(x + 16 + k * sw, y + 80, sw - 4, 12);
     }
-    h.text.setText(ready ? '¡YA!' : '');
+    h.text.setText(`${shorten(a.name, 12)}\n${ready ? '¡LISTO!' : `${this.active!.charge}/${a.charge}`}`);
   }
 
   private refreshInventory() {
@@ -2165,7 +2182,7 @@ ${where} — ${this.biome.name}`, 1600);
     }
     // Ratón: mantener el clic derecho lleva al personaje hacia el cursor
     const pointer = this.input.activePointer;
-    if (mx === 0 && my === 0 && pointer.rightButtonDown()) {
+    if (mx === 0 && my === 0 && pointer.rightButtonDown() && this.inGameView(pointer)) {
       const p = pointer.positionToCamera(this.cameras.main) as Phaser.Math.Vector2;
       const tx = p.x - this.player.x;
       const ty = p.y - this.player.y;
@@ -2253,6 +2270,11 @@ ${where} — ${this.biome.name}`, 1600);
    * Dirección de disparo. Flechas (dos a la vez disparan en diagonal; dos opuestas se anulan),
    * si no, clic mantenido hacia el ratón, y si no, stick derecho.
    */
+  /** El puntero está sobre la sala (no sobre las franjas del HUD). */
+  private inGameView(p: Phaser.Input.Pointer): boolean {
+    return p.x >= GAME_VIEW.x && p.x <= GAME_VIEW.x + GAME_VIEW.w && p.y >= GAME_VIEW.y && p.y <= GAME_VIEW.y + GAME_VIEW.h;
+  }
+
   private readShootDir(pad: Phaser.Input.Gamepad.Gamepad | null): Phaser.Math.Vector2 | null {
     const { left, right, up, down } = this.arrows;
     const ax = (right.isDown ? 1 : 0) - (left.isDown ? 1 : 0);
@@ -2261,7 +2283,7 @@ ${where} — ${this.biome.name}`, 1600);
 
     const pointer = this.input.activePointer;
     // Solo el clic izquierdo dispara (el derecho es para moverse) y no sobre las ranuras de poder
-    if (pointer.leftButtonDown() && !this.overHud) {
+    if (pointer.leftButtonDown() && !this.overHud && this.inGameView(pointer)) {
       // Se recalcula con la cámara actual: worldX se queda viejo si la cámara se mueve
       const p = pointer.positionToCamera(this.cameras.main) as Phaser.Math.Vector2;
       const d = new Phaser.Math.Vector2(p.x - this.player.x, p.y - this.player.y);
@@ -2471,12 +2493,18 @@ ${where} — ${this.biome.name}`, 1600);
 
   private buildBossBar(boss: Sprite) {
     this.bossBar?.objects.forEach((o) => o.destroy());
-    const box = drawBox(this.add.graphics(), 230, 84, 500, 50, { radius: 12 });
-    const name = this.add.text(248, 109, this.bossName, { fontFamily: FONT, fontSize: '18px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5);
-    const chip = addTypeChip(this, 248 + name.width + 46, 109, typeNameEs(this.bossType), typeColor(this.bossType), 78, 22);
-    const bar = addHpBar(this, 248 + name.width + 96, 103, 712 - (248 + name.width + 96), 12);
+    // En la franja de arriba, encima de la sala (no la tapa)
+    const bx = CX - 440;
+    const box = drawBox(this.add.graphics(), bx, 4, 880, 52, { radius: 12 });
+    const name = this.add.text(bx + 20, 30, this.bossName, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5);
+    const chip = addTypeChip(this, bx + 20 + name.width + 56, 30, typeNameEs(this.bossType), typeColor(this.bossType), 92, 24);
+    const barX = bx + 20 + name.width + 116;
+    const bar = addHpBar(this, barX, 23, bx + 860 - barX, 14);
     const objects = [box, name, ...chip, ...bar.objects];
-    objects.forEach((o) => (o as Phaser.GameObjects.Text).setScrollFactor(0).setDepth(10));
+    for (const o of objects) {
+      this.hudLayer.add(o);
+      if (this.hudCam) o.cameraFilter &= ~this.hudCam.id;
+    }
     this.bossBar = { boss, bar, objects };
   }
 
@@ -2929,19 +2957,26 @@ ${where} — ${this.biome.name}`, 1600);
     this.saveNow();
   }
 
+  /** Alto de cada ranura de poder en el HUD (abajo a la derecha). */
+  private slotY(i: number): number {
+    return H - HUD.pad - (SLOT_COUNT - i) * 74;
+  }
+
   /** Ranura de poder: cuadro con una franja del color del tipo; apagada mientras recarga. */
   private paintSlot(i: number, m: MovePower | null, ready: boolean) {
     const key = m ? `${m.id}:${m.name}:${ready}` : 'vacía';
     if (this.slotShown[i] === key) return;
     this.slotShown[i] = key;
     const g = this.slotBoxes[i].clear();
-    const x = 84 + i * 210;
-    drawBox(g, x, 580, 200, 44, { radius: 10, fillAlpha: m ? 1 : 0.5 });
+    const x = HUD.right.x + HUD.pad;
+    const w = HUD.right.w - HUD.pad * 2;
+    const y = this.slotY(i);
+    drawBox(g, x, y, w, 64, { radius: 12, fillAlpha: m ? 1 : 0.5 });
     if (m) {
-      g.fillStyle(typeColor(m.type), 1).fillRoundedRect(x + 9, 589, 8, 26, 4);
+      g.fillStyle(typeColor(m.type), 1).fillRoundedRect(x + 12, y + 14, 10, 36, 5);
       // Ficha con el nombre del tipo sobre el borde de arriba
-      g.fillStyle(0x1d2848, 1).fillRoundedRect(x + 110, 571, 82, 18, 9);
-      g.fillStyle(typeColor(m.type), 1).fillRoundedRect(x + 112, 573, 78, 14, 7);
+      g.fillStyle(0x1d2848, 1).fillRoundedRect(x + w - 98, y - 9, 92, 22, 11);
+      g.fillStyle(typeColor(m.type), 1).fillRoundedRect(x + w - 96, y - 7, 88, 18, 9);
     }
     this.slotTypes[i].setText(m ? typeNameEs(m.type).toUpperCase() : '');
     const text = this.hud[i];
@@ -2961,9 +2996,9 @@ ${where} — ${this.biome.name}`, 1600);
     this.banner.setText(text);
     this.bannerBox.clear();
     if (!text) return;
-    const w = Math.min(880, this.banner.width + 70);
-    const h = this.banner.height + 44;
-    drawBox(this.bannerBox, 480 - w / 2, 320 - h / 2, w, h, { radius: 16 });
+    const w = Math.min(GAME_VIEW.w - 80, this.banner.width + 100);
+    const h = this.banner.height + 60;
+    drawBox(this.bannerBox, CX - w / 2, CY - h / 2, w, h, { radius: 20 });
   }
 
   private hurtPlayer(enemy: Sprite) {

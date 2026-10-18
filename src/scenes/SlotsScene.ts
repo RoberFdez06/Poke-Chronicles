@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { fitDesign } from '../ui/layout';
 import { loadAllRuns, RunSave } from '../data/runSave';
 import { MODE_LABEL, progressText } from '../data/modes';
 import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
@@ -35,6 +36,7 @@ export class SlotsScene extends Phaser.Scene {
     this.leaving = false;
     this.nav = new NavInput(this);
     fadeIn(this);
+    fitDesign(this);
     addMenuBackdrop(this);
 
     this.add.text(480, 56, 'Partidas', { fontFamily: UI.FONT, fontSize: '44px', fontStyle: 'bold', color: '#ffd34d' })

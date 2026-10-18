@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { fitDesign } from '../ui/layout';
 import { fetchPokemonCard } from '../data/pokeapi';
 import { buildPools, GACHA_RATES, pull, PULL_COST, RARITIES, RARITY_LABEL, Rarity, RarityPools } from '../data/gacha';
 import { loadSpeciesIndex } from '../data/speciesIndex';
@@ -50,6 +51,7 @@ export class GachaScene extends Phaser.Scene {
     this.alive = true;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (this.alive = false));
     fadeIn(this);
+    fitDesign(this);
     addMenuBackdrop(this);
 
     this.add.text(480, 56, 'Gacha', { fontFamily: FONT, fontSize: '52px', fontStyle: 'bold', color: '#ffd34d' }).setOrigin(0.5).setStroke('#2b3a67', 10);
@@ -80,6 +82,7 @@ export class GachaScene extends Phaser.Scene {
     this.actions = [() => this.doPull(), () => this.goBack()];
 
     this.keys = this.input.keyboard!.addKeys('LEFT,RIGHT,UP,DOWN,A,D,W,S,ENTER,SPACE,ESC') as Record<KeyName, Key>;
+    Object.values(this.keys).forEach((k) => k.reset()); // ver NavInput: olvida pulsaciones viejas
     this.select(0);
     this.refreshHud();
     this.loadIndex().catch((err) => {

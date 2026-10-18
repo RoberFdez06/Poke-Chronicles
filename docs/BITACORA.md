@@ -525,3 +525,33 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   `test-results/` sale del repositorio (se había colado antes de ponerlo en `.gitignore`).
 - **Dudas**: el "DPS del jugador" de la simulación es una suposición (disparo normal y un poder, acertando el 70 %);
   si Roberto ve los jefes largos o cortos, el número a tocar es `BOSS_BASE.hp`.
+
+## T30 — Resolución 1920×1080 y adaptable, con N8, N10 y N11 (2026-10-19)
+
+- **Cómo**: `src/ui/layout.ts` centraliza tamaños (`W`, `H`, `CX`, `CY`, el diseño `DW`×`DH` y su escala `U`, el
+  ancho que se ve con las bandas `COVER_W`, `fromLeft`/`fromRight`, y la vista y franjas de la partida). El juego va a
+  1920×1080 con `Scale.FIT` + `CENTER_BOTH`.
+- **Decisión importante**: rehacer a mano las coordenadas de las 12 pantallas (más de 4000 líneas) era mucho riesgo para
+  poco beneficio, así que las pantallas de menú siguen compuestas en 960×640 y `fitDesign` pone su cámara ×1,6875
+  centrada. **No queda borroso**: los cuadros son gráficos vectoriales, el pixel art va con NEAREST y todos los
+  textos se generan a resolución ×2 (`main.ts` lo hace para cualquier `add.text`). Lo que sobra a los lados en 16:9
+  se rellena: el paisaje del supervisor alarga sus capas hasta los bordes, y las capas que tapan la pantalla (diálogos,
+  pausa, ajustes, controles, franja inferior del menú) usan `COVER_W`. La pantalla de título también pasa a este
+  espacio (su fondo se quedaba en una esquina). Los objetos con `setScrollFactor(0)` en menús se descolocaban con la
+  cámara escalada; el único caso (`addPanel`) ya no lo usa.
+- **Partida y N8**: la cámara de la sala tiene su propia vista (1440×960 en el centro, ×1,5): la celda de la sala se
+  ve **entera, con sus puertas**. El HUD pasa a una capa con su propia cámara sin zoom en coordenadas reales, en las
+  franjas: izquierda (pausa, ficha con nombre, piso y PS, monedas/llaves/bombas, objetos y objeto activo abajo),
+  derecha (minimapa arriba y los 4 poderes abajo), arriba (barra del jefe) y el cartel en el centro. Lo que se crea en
+  la escena no sale en la cámara del HUD (`ADDED_TO_SCENE`) salvo lo que va en la capa. El ratón solo apunta y mueve
+  dentro de la sala (`inGameView`). El minimapa acepta tamaño y ancho máximo.
+- **Fallo encontrado y arreglado**: Phaser reutiliza los datos del último arranque de una escena si el siguiente no
+  trae. Tras abrir Ajustes desde la pausa, al abrirlos desde el menú seguían creyéndose encima de la pausa y Esc
+  "reanudaba" una pausa vieja (te quedabas en la pausa). `SettingsScene` olvida esos datos al leerlos.
+- **Comprobado con capturas** (`tests/e2e/screens.spec.ts`, a 1920×1080, en `test-results/screens/`): título, menú,
+  huecos, región, iniciales, modo, colección, partida, pausa, ajustes (desde la pausa y desde el menú), gacha,
+  Pokédex y mejoras. Todo se ve nítido y nada se monta; la partida enseña la sala entera y el HUD fuera. Las pruebas
+  esperan ahora al estado real de las pantallas (`waitSceneProp`) en lugar de tiempos fijos.
+- **N10**: incluido el arreglo del supervisor (`k.reset()` en `NavInput`, `MenuScene`, `GachaScene` y
+  `resetKeys()` al reanudar). **N11**: a partir de este commit no toco `GachaScene.ts` (aquí solo lleva la cámara).
+- **No verificado**: los sprites reales de PokeAPI (en las pruebas son cuadrados de 1 px) y el mando.

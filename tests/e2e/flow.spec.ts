@@ -1,7 +1,7 @@
 // Recorrido completo con teclado: menú → huecos → primer inicial → modo → partida → pausa → salir y guardar,
 // continuar, y Esc / Retroceso para volver en cada pantalla. Falla si hay errores en consola.
 import { test, expect } from '@playwright/test';
-import { activeScenes, collectErrors, mockPokeApi, press, runSaved, waitScene } from './helpers';
+import { activeScenes, collectErrors, mockPokeApi, press, runSaved, waitScene, waitSceneProp } from './helpers';
 import { RUN_VERSION } from '../../src/data/runSave';
 
 test.beforeEach(async ({ page }) => {
@@ -38,7 +38,7 @@ test('con teclado: se juega, se guarda, se continúa y Esc vuelve atrás', async
   await press(page, 'Enter');
   await waitScene(page, 'FirstStarter');
   await press(page, 'Enter'); // Kanto
-  await page.waitForTimeout(800);
+  await waitSceneProp(page, 'FirstStarter', 'step', 'starter');
   await press(page, 'Enter'); // inicial del medio
   await waitScene(page, 'Mode');
 

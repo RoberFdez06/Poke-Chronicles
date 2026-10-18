@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { fitDesign, COVER_H, COVER_W, DCX, DCY } from '../ui/layout';
 import { fetchPokemonCard } from '../data/pokeapi';
 import { loadRecords, loadUnlocked } from '../data/save';
 import { MODES, MODE_LABEL } from '../data/modes';
@@ -70,6 +71,7 @@ export class MenuScene extends Phaser.Scene {
     this.alive = true;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (this.alive = false));
     fadeIn(this);
+    fitDesign(this);
 
     // Fondo: un ambiente distinto cada vez que vuelves al menú
     this.land = addLandscape(this, nextLandscape(this));
@@ -86,7 +88,7 @@ export class MenuScene extends Phaser.Scene {
     this.buildMenu();
 
     // Franja de abajo: progreso y ayuda
-    this.add.rectangle(480, 620, 960, 40, 0x101828, 0.85).setDepth(20);
+    this.add.rectangle(DCX, 620, COVER_W + 4, 40, 0x101828, 0.85).setDepth(20);
     this.add
       .text(480, 610, `Pokémon desbloqueados: ${loadUnlocked().length}   ·   Récords: ${recordsLine()}`, {
         fontFamily: FONT, fontSize: '14px', color: '#f8f8f8',
@@ -105,6 +107,7 @@ export class MenuScene extends Phaser.Scene {
     this.toast = this.add.container(0, 510, [tg, this.toastText]).setDepth(40).setVisible(false);
 
     this.keys = this.input.keyboard!.addKeys('UP,DOWN,W,S,ENTER,SPACE,ESC,BACKSPACE') as Record<KeyName, Key>;
+    Object.values(this.keys).forEach((k) => k.reset()); // ver NavInput: olvida pulsaciones viejas
     this.select(0);
 
     // Pokémon de tu colección paseando por el camino. Se cargan en segundo plano.
@@ -168,7 +171,7 @@ export class MenuScene extends Phaser.Scene {
   // --- Panel de controles ---
 
   private showControls() {
-    const dim = this.add.rectangle(480, 320, 960, 640, 0x000000, 0.55).setInteractive();
+    const dim = this.add.rectangle(DCX, DCY, COVER_W + 4, COVER_H + 4, 0x000000, 0.55).setInteractive();
     dim.on('pointerdown', () => this.closeControls());
 
     const panel = this.add.graphics();

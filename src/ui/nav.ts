@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { COVER_H, COVER_W, DCX, DCY } from './layout';
 import { ARROW, COLORS, FONT, drawBox, textStyle } from './theme';
 import { sfx } from './audio';
 
@@ -31,7 +32,9 @@ export class NavInput {
   constructor(private scene: Phaser.Scene) {
     this.keys = scene.input.keyboard!.addKeys('UP,DOWN,LEFT,RIGHT,W,A,S,D,ENTER,SPACE,ESC,BACKSPACE,P', false) as Record<KeyName, Key>;
     // Las teclas que ya estaban pulsadas al abrir no cuentan
-    Object.values(this.keys).forEach((k) => (k as Key & { _justDown: boolean })._justDown = false);
+    // Las teclas pulsadas al abrir no cuentan, y se olvida un "pulsada" viejo: si su soltar llegó mientras esta
+    // escena estaba parada, Phaser la creería aún pulsada y la siguiente pulsación no contaría (había que darle 2 veces)
+    Object.values(this.keys).forEach((k) => k.reset());
     this.prev = this.padNow();
   }
 
@@ -196,8 +199,8 @@ export class MenuList {
 
 /** Fondo oscuro + panel para diálogos. El fondo se traga los clics. */
 export function addPanel(scene: Phaser.Scene, x: number, y: number, w: number, h: number, depth: number) {
-  const dim = scene.add.rectangle(480, 320, 960, 640, 0x000000, 0.65).setInteractive().setScrollFactor(0);
-  const panel = scene.add.graphics().setScrollFactor(0);
+  const dim = scene.add.rectangle(DCX, DCY, COVER_W + 4, COVER_H + 4, 0x000000, 0.65).setInteractive();
+  const panel = scene.add.graphics();
   drawBox(panel, x - w / 2, y - h / 2, w, h, { radius: 20 });
   return scene.add.container(0, 0, [dim, panel]).setDepth(depth);
 }

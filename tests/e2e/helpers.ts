@@ -93,3 +93,21 @@ export const runSaved = (page: Page, slot: number) =>
     const raw = localStorage.getItem(`pokeisaac.run.${s}`);
     return raw ? (JSON.parse(raw) as { version: number; floor: number }) : null;
   }, slot);
+
+/** Espera a que una propiedad de una escena tenga un valor (p. ej. el paso de FirstStarter). */
+export async function waitSceneProp(page: Page, key: string, prop: string, value: unknown, settleMs = 400) {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          ([k, pr]) => {
+            const g = (window as unknown as { __POKEISAAC__?: { scene: { getScene(k: string): Record<string, unknown> } } }).__POKEISAAC__;
+            return g?.scene.getScene(k)?.[pr];
+          },
+          [key, prop] as const,
+        ),
+      { timeout: 20_000, message: `${key}.${prop}` },
+    )
+    .toBe(value);
+  await page.waitForTimeout(settleMs);
+}
