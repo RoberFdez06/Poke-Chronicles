@@ -246,3 +246,19 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
 - **Archivos**: `src/level/roomLayouts.ts`, `tests/roomLayouts.test.ts` (nuevos), `GameScene`, README.
 - **Dudas**: la hierba rota no se guarda (al continuar vuelve a estar). Los que embisten pueden chocar contra una roca
   al lanzarse (se paran, no se atascan).
+
+## T10 — Sonido (2026-10-18)
+
+- **Qué**: `src/data/sounds.ts` describe 10 efectos como tonos (onda, frecuencia, deslizamiento, volumen) y una
+  música de fondo propia (melodía de onda cuadrada + bajo triangular, 132 ppm, 32 corcheas en bucle);
+  `src/ui/audio.ts` los genera con Web Audio (ruido blanco filtrado para golpes) y programa la música por adelantado.
+  Gritos: `fetchCryUrl(id)` (`cries.latest`, si no `legacy`) reproducidos con `Audio` al elegir Pokémon, al
+  salir el jefe y al sacar uno en el gacha.
+- **Dónde suenan**: disparo y poderes, golpe, recoger objeto, moneda, baya/Centro (curación), puerta al cerrarse,
+  sala/ronda limpia, daño recibido, compra en la tienda y elegir en los menús (`MenuList`).
+- **Volumen**: `pokeisaac.audio` en `save.ts` (`loadAudio`/`saveAudio`, música 0,5 y efectos 0,8 por defecto,
+  siempre entre 0 y 1). Se cambiará desde Ajustes (T11) con `setAudioSettings`.
+- **Archivos**: `src/data/sounds.ts`, `src/ui/audio.ts`, `tests/sounds.test.ts` (nuevos), `save.ts`, `pokeapi.ts`,
+  `main.ts`, `nav.ts`, `GameScene`, `StarterScene`, `FirstStarterScene`, `GachaScene`, README.
+- **Dudas**: el navegador no deja sonar hasta el primer gesto, así que la música empieza con el primer clic o tecla.
+  No lo he podido escuchar: los volúmenes son a ojo.

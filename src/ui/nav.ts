@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { ARROW, COLORS, FONT, drawBox, textStyle } from './theme';
+import { sfx } from './audio';
 
 const NAVY = COLORS.navy;
 const PANEL = COLORS.panel;
@@ -155,6 +156,7 @@ export class MenuList {
       box.on('pointerdown', () => {
         if (!this.active) return;
         this.select(i);
+        sfx('select');
         this.onPick(i);
       });
       this.container.add(box);
@@ -180,6 +182,7 @@ export class MenuList {
   }
 
   activate() {
+    sfx('select');
     this.onPick(this.selected);
   }
 

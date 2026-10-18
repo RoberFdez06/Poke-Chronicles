@@ -27,6 +27,7 @@ import {
   MODE_LABEL,
 } from '../data/modes';
 import { submitRecord } from '../data/save';
+import { cry, sfx } from '../ui/audio';
 import {
   flowField,
   isWalkable,
@@ -981,6 +982,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Te quedas un pasivo o un poder (cogido del suelo o comprado). */
   private gainItem(item: DroppedItem) {
+    sfx('pickup');
     if (item.kind === 'passive') {
       const prevMax = this.stats.maxHp;
       this.passives.push(item.item.id);
@@ -1020,6 +1022,7 @@ export class GameScene extends Phaser.Scene {
         for (let k = 0; k < n; k++) this.spawnEnemy();
       }
       this.setDoorsLocked(room, true);
+      sfx('door');
     }
 
     drawMinimap(this.minimap, this.floor, room.id, this.visited, 940, 12);
@@ -1229,6 +1232,7 @@ export class GameScene extends Phaser.Scene {
     // El jefe también se comporta según su tipo
     b.setData('ai', this.newAI(behaviorFor([this.bossType]), this.bossType, true));
     this.showBanner(`¡${this.bossName}, jefe legendario!`, 1400);
+    void cry(this.bossId);
   }
 
   /** Estado inicial de la IA; deja un respiro al entrar antes de embestir, disparar o saltar. */
@@ -1580,6 +1584,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Disparo básico. Los pasivos cambian cuántos salen, cuánto daño hacen y hasta dónde llegan. */
   private fireTear(dir: Phaser.Math.Vector2) {
+    sfx('shot');
     const s = this.stats;
     const n = 1 + s.extraShots;
     for (let k = 0; k < n; k++) {
@@ -1600,6 +1605,7 @@ export class GameScene extends Phaser.Scene {
     const m = this.slots[i];
     if (!m || time < this.slotReady[i]) return;
     this.slotReady[i] = time + m.cooldown;
+    sfx('shot');
 
     const dir = this.aim.clone();
     // At. Esp. del Pokémon y, encima, lo que suban el daño los objetos
@@ -1649,6 +1655,7 @@ export class GameScene extends Phaser.Scene {
     // Dragón: los poderes hacen más daño
     const dmg = (shot.getData('dmg') as number) * (status ? hitDamageMul(status) : 1);
     const hp = (enemy.getData('hp') as number) - dmg;
+    sfx('hit');
     enemy.setData('hp', hp);
     enemy.setTint(0xff6666);
     enemy.setData('flashUntil', this.time.now + 90);
@@ -1761,9 +1768,11 @@ export class GameScene extends Phaser.Scene {
       if (!canHeal(this.hp, this.stats.maxHp)) return;
       const b = BERRIES[drop.id];
       this.hp = healed(this.hp, this.stats.maxHp, b.heal);
+      sfx('heal');
       this.popup(this.player.x, this.player.y - 50, `${b.name} +${b.heal} PS`, b.color);
     } else {
       this.coins += drop.value;
+      sfx('coin');
       this.popup(sprite.x, sprite.y - 16, `+${drop.value}`, 0xffd34d);
     }
     this.floorItems = this.floorItems.filter((f) => f !== sprite.getData('entry'));
@@ -1808,6 +1817,7 @@ export class GameScene extends Phaser.Scene {
     const amount = centerHeal(this.stats.maxHp);
     this.hp = healed(this.hp, this.stats.maxHp, amount);
     this.centerUsed = true;
+    sfx('heal');
     this.paintCounter();
     this.popup(this.player.x, this.player.y - 50, `+${amount} PS`, CENTER_PINK);
     this.showBanner(`¡Centro Pokémon!\n+${amount} PS`, 1600);
@@ -1869,6 +1879,7 @@ export class GameScene extends Phaser.Scene {
     if (res === 'poor') return this.showBanner(`Te faltan monedas\n(cuesta ${slot.price}, tienes ${this.coins})`, 1400);
     if (res === 'full') return this.showBanner('Ya tienes todos los PS', 1200);
     this.coins -= slot.price;
+    sfx('buy');
     slot.sold = true;
     this.shopViews[k]?.forEach((o) => o.destroy());
     this.shopViews[k] = [];
@@ -2021,6 +2032,7 @@ export class GameScene extends Phaser.Scene {
   private onWaveCleared() {
     if (!this.waveActive) return;
     this.waveActive = false;
+    sfx('clear');
     const round = this.floorNum;
     this.foeShots.clear(true, true);
     this.hp = Math.min(this.stats.maxHp, this.hp + this.stats.healOnClear);
@@ -2055,6 +2067,7 @@ export class GameScene extends Phaser.Scene {
     }
     if (this.cleared.has(room.id) || this.enemies.countActive(true) > 0) return;
     this.cleared.add(room.id);
+    sfx('clear');
     this.setDoorsLocked(room, false);
     this.foeShots.clear(true, true);
     this.hp = Math.min(this.stats.maxHp, this.hp + this.stats.healOnClear);
@@ -2146,6 +2159,7 @@ export class GameScene extends Phaser.Scene {
     const ai = enemy.getData('ai') as EnemyAI | undefined;
     if (ai && ai.behavior === 'hop' && ai.state !== 'walk') return;
     this.invulnUntil = now + 900;
+    sfx('hurt');
     // Defensa y Def. Esp. reducen el daño recibido
     // Los proyectiles ya llevan el debilitamiento; el contacto lo mira ahora (Hada: −30 %)
     const weak = enemy.getData('ai') ? enemyDamageMul((enemy.getData('statuses') as ActiveStatus[] | undefined) ?? [], now) : 1;

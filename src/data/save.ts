@@ -1,6 +1,7 @@
 // Progreso guardado en el navegador. La lógica usa una interfaz mínima de almacenamiento
 // para poder testearla sin navegador; si localStorage no está disponible, no guarda y sigue.
 
+import { parseAudio, type AudioSettings } from './sounds.ts';
 import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } from './modes.ts';
 
 export interface StorageLike {
@@ -160,4 +161,24 @@ export function submitRecord(mode: GameMode, value: number, storage: StorageLike
     }
   }
   return improved;
+}
+
+// --- Volumen de música y efectos (ver sounds.ts) ---
+
+export const AUDIO_KEY = 'pokeisaac.audio';
+
+export function loadAudio(storage: StorageLike | null = browserStorage()): AudioSettings {
+  try {
+    return parseAudio(storage?.getItem(AUDIO_KEY) ?? null);
+  } catch {
+    return parseAudio(null);
+  }
+}
+
+export function saveAudio(settings: AudioSettings, storage: StorageLike | null = browserStorage()) {
+  try {
+    storage?.setItem(AUDIO_KEY, JSON.stringify(parseAudio(JSON.stringify(settings))));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
 }

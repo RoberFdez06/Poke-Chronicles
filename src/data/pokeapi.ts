@@ -89,6 +89,12 @@ export function fetchSpeciesName(id: number): Promise<string> {
   });
 }
 
+/** URL del grito del Pokémon (`cries.latest`, ogg) o null si no tiene. */
+export async function fetchCryUrl(id: number): Promise<string | null> {
+  const p = await getPokemonRaw(id);
+  return (p.cries?.latest as string | undefined) ?? (p.cries?.legacy as string | undefined) ?? null;
+}
+
 export function fetchPokemon(id: number): Promise<PokemonData> {
   if (!cache.has(id)) cache.set(id, load(id));
   return cache.get(id)!;

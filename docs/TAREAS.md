@@ -102,7 +102,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
   que compruebe que todas las puertas quedan conectadas (BFS sobre la cuadrícula de la sala).
 - Los enemigos rodean los obstáculos o al menos no se quedan atascados para siempre.
 
-## [ ] T10 — Sonido
+## [x] T10 — Sonido
 - Grito del Pokémon (PokeAPI `cries.latest`) al elegir inicial, al salir el jefe y en el gacha.
 - Efectos sencillos generados con Web Audio (disparo, golpe, recoger objeto, puerta, sala limpia), sin archivos con derechos.
 - Volumen de música/efectos guardado en `save.ts`.

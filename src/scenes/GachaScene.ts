@@ -4,6 +4,7 @@ import { buildPools, GACHA_RATES, pull, PULL_COST, RARITIES, RARITY_LABEL, Rarit
 import { loadSpeciesIndex } from '../data/speciesIndex';
 import { addTickets, loadTickets, loadUnlocked, spendTickets, unlockPokemon } from '../data/save';
 import { typeColor, typeNameEs } from '../data/types';
+import { cry } from '../ui/audio';
 import { ARROW, addTypeChip, drawBox, fadeIn, FONT, goTo, hex, RARITY_COLORS } from '../ui/theme';
 /** Tickets que devuelve una tirada repetida. */
 const DUPLICATE_REFUND = 30;
@@ -169,6 +170,7 @@ export class GachaScene extends Phaser.Scene {
         note = '¡Nuevo Pokémon desbloqueado!';
       }
       this.showResult(card.id, card.name, card.types, result.rarity, note, key);
+      void cry(card.id);
     } catch (err) {
       // La tirada no se pierde si no se pudo mostrar: se desbloquea igual y se avisa
       if (!result.duplicate) unlockPokemon(result.speciesId);

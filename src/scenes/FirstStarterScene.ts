@@ -5,6 +5,7 @@ import { unlockPokemon } from '../data/save';
 import { MenuList, NavInput, UI } from '../ui/nav';
 import { addBackButton, buildPokemonCard, loadCardTextures } from '../ui/cards';
 import { fadeIn, goTo } from '../ui/theme';
+import { cry } from '../ui/audio';
 
 /** Margen tras cambiar de paso en el que se ignora confirmar (un Enter mantenido no elige solo). */
 const INPUT_DELAY_MS = 350;
@@ -136,6 +137,7 @@ export class FirstStarterScene extends Phaser.Scene {
     this.leaving = true;
     const id = this.cards[i].id;
     unlockPokemon(id);
+    void cry(id);
     goTo(this, 'Mode', { starterId: id, slot: this.slot });
   }
 

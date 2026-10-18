@@ -36,6 +36,14 @@ La fuente es **Pixelify Sans** (licencia libre OFL), en `public/fonts/PixelifySa
 Para descargarla: `https://github.com/google/fonts/raw/main/ofl/pixelifysans/PixelifySans%5Bwght%5D.ttf` →
 `public/fonts/PixelifySans.ttf` y `https://github.com/google/fonts/raw/main/ofl/pixelifysans/OFL.txt` → `public/fonts/OFL.txt`.
 
+## Sonido
+
+Todo el sonido se genera con Web Audio (`src/ui/audio.ts`, sonidos descritos en `src/data/sounds.ts`), sin archivos
+con derechos: disparo, golpe, recoger, moneda, puerta, sala limpia, daño, compra, curación, menús y una música de
+fondo compuesta para el juego. Los gritos de los Pokémon salen de PokeAPI (`cries.latest`) al elegir Pokémon, al
+salir el jefe y en el gacha. El navegador solo deja sonar tras el primer clic, tecla o botón. El volumen de música y
+efectos se guarda en el navegador (`pokeisaac.audio`, en `src/data/save.ts`).
+
 ## Menú principal
 
 El juego arranca en el menú: **Jugar** (hueco → Pokémon → modo), **Gacha** (gasta tickets para desbloquear Pokémon) y **Controles**. Esc o B vuelven atrás desde la
@@ -182,6 +190,8 @@ src/
   scenes/ModeScene.ts  elegir modo de juego
   ui/nav.ts            entrada de menús (NavInput, PadButtons) y botones (MenuList)
   ui/cards.ts          tarjeta de Pokémon, carga de sprites y botón "Volver"
+  ui/audio.ts          efectos, música y gritos con Web Audio
+  data/sounds.ts       efectos y música como datos, volumen (puro)
   ui/theme.ts          tema: fuente, colores, cuadros, barra de PS, fichas de tipo y transiciones
   data/speciesIndex.ts carga (una vez) la lista de especies de public/data
   level/floorGen.ts    generador de pisos (puro, determinista por semilla)
@@ -204,6 +214,7 @@ tests/
   theme.test.ts        tests del color de la barra de PS
   pokeStats.test.ts    tests de las estadísticas
   roomLayouts.test.ts  tests de las salas con obstáculos (puertas conectadas)
+  sounds.test.ts       tests de sonidos y volumen
   loot.test.ts         tests de botín, curación y tienda
 scripts/
   buildSpeciesIndex.mjs  genera public/data/species-index.json desde PokeAPI

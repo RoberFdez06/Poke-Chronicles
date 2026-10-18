@@ -8,6 +8,11 @@ import { FirstStarterScene } from './scenes/FirstStarterScene';
 import { ModeScene } from './scenes/ModeScene';
 import { PauseScene } from './scenes/PauseScene';
 import { COLORS, hex, loadThemeFont } from './ui/theme';
+import { initAudio, playMusic } from './ui/audio';
+
+// El audio se desbloquea con el primer clic, tecla o botón; la música empieza entonces
+initAudio();
+playMusic();
 
 // La fuente pixel se carga antes de crear el juego (Phaser no espera a las fuentes al dibujar texto)
 void loadThemeFont().then(() => startGame());

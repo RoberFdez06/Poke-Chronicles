@@ -7,6 +7,7 @@ import { countByRegion, filterCollection, CollectionEntry, REGIONS, SEARCH_LETTE
 import { addPanel, NavInput, PadButtons, UI } from '../ui/nav';
 import { addBackButton, buildPokemonCard, loadCardTextures, STATS_EXTRA_H } from '../ui/cards';
 import { drawBox, fadeIn, goTo, hex, RARITY_COLORS } from '../ui/theme';
+import { cry } from '../ui/audio';
 
 /** Pokémon por página: una fila de 4 tarjetas con sus estadísticas. */
 const PAGE_SIZE = 4;
@@ -337,6 +338,7 @@ export class StarterScene extends Phaser.Scene {
     const e = this.view[i];
     if (!e || !this.tiles.length) return;
     this.starting = true;
+    void cry(e.id);
     goTo(this, 'Mode', { starterId: e.id, slot: this.slot });
   }
 
