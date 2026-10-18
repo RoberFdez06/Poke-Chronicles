@@ -15,8 +15,10 @@ export const RUN_SLOTS = 3;
  *     generaron sin Centro ni tienda (`layout` 1) y se siguen generando así para que cuadren.
  * v5: PS máximos (dependen de las estadísticas del Pokémon) para mostrarlos sin cargarlo.
  * v6: forma actual del Pokémon (evoluciona durante la partida); los v5 aún no habían evolucionado.
+ * v7: llaves, bombas, cofres abiertos y paredes secretas abiertas. Los pisos de v6 siguen con su diseño (2),
+ *     sin sala secreta, de desafío ni cofres.
  */
-export const RUN_VERSION = 6;
+export const RUN_VERSION = 7;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -24,10 +26,15 @@ export type SavedDrop =
   | { kind: 'passive'; id: string }
   | { kind: 'move'; move: MovePower }
   | { kind: 'coin'; value: number }
-  | { kind: 'berry'; id: keyof typeof BERRIES };
+  | { kind: 'berry'; id: keyof typeof BERRIES }
+  | { kind: 'key' }
+  | { kind: 'bomb' };
 
-/** Diseño del piso: 1 = sin Centro ni tienda (partidas de antes de v4), 2 = con ellos. */
-export const FLOOR_LAYOUT = 2;
+/**
+ * Diseño del piso: 1 = sin Centro ni tienda (partidas de antes de v4), 2 = con ellos, 3 = además sala secreta,
+ * sala de desafío y cofres.
+ */
+export const FLOOR_LAYOUT = 3;
 
 export interface FloorItemSave {
   roomId: number;
@@ -74,6 +81,11 @@ export interface RunSave {
   /** Artículos de la tienda de este piso (vacío si aún no se ha generado o no hay tienda). */
   shop: ShopSlot[];
   layout: number;
+  keys: number;
+  bombs: number;
+  /** Salas cuyo cofre ya se ha abierto y puertas ocultas ya abiertas con bomba ("sala:dirección"). */
+  openedChests: number[];
+  revealedDoors: string[];
 }
 
 const isInt = (n: unknown): n is number => Number.isInteger(n);
@@ -91,6 +103,7 @@ function isDrop(d: unknown): d is SavedDrop {
   if (o.kind === 'passive') return typeof o.id === 'string';
   if (o.kind === 'coin') return isInt(o.value) && o.value > 0;
   if (o.kind === 'berry') return o.id in BERRIES;
+  if (o.kind === 'key' || o.kind === 'bomb') return true;
   return o.kind === 'move' && isMove(o.move);
 }
 
@@ -129,6 +142,11 @@ function migrateV5(d: RunSave): RunSave {
   return { ...d, version: 6, formId: d.starterId };
 }
 
+/** v6 no tenía llaves ni bombas: empiezas con una bomba, como en una partida nueva. */
+function migrateV6(d: RunSave): RunSave {
+  return { ...d, version: 7, keys: 0, bombs: 1, openedChests: [], revealedDoors: [] };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -144,6 +162,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 3) d = migrateV3(d);
   if (d.version === 4) d = migrateV4(d);
   if (d.version === 5) d = migrateV5(d);
+  if (d.version === 6) d = migrateV6(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
@@ -156,7 +175,9 @@ export function parseRun(raw: string | null): RunSave | null {
     Array.isArray(d.floorItems) &&
     d.floorItems.every((f) => !!f && isInt(f.roomId) && typeof f.x === 'number' && typeof f.y === 'number' && isDrop(f.drop)) &&
     isInt(d.earned) && isInt(d.coins) && d.coins >= 0 && typeof d.centerUsed === 'boolean' &&
-    Array.isArray(d.shop) && d.shop.every(isShopSlot) && (d.layout === 1 || d.layout === 2);
+    Array.isArray(d.shop) && d.shop.every(isShopSlot) && [1, 2, 3].includes(d.layout) &&
+    isInt(d.keys) && d.keys >= 0 && isInt(d.bombs) && d.bombs >= 0 && isIntArray(d.openedChests) &&
+    Array.isArray(d.revealedDoors) && d.revealedDoors.every((k) => typeof k === 'string');
   return ok ? d : null;
 }
 

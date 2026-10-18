@@ -17,12 +17,14 @@ export function drawMinimap(
   visited: ReadonlySet<number>,
   right: number,
   top: number,
+  /** Salas que no se enseñan aunque estén al lado de una visitada (la secreta, hasta que se abre). */
+  hidden: ReadonlySet<number> = new Set(),
 ) {
   g.clear();
 
   const known = new Set(visited);
   for (const id of visited) {
-    for (const n of Object.values(floor.rooms[id].doors)) if (n !== undefined) known.add(n);
+    for (const n of Object.values(floor.rooms[id].doors)) if (n !== undefined && !hidden.has(n)) known.add(n);
   }
 
   const rooms = [...known].map((id) => floor.rooms[id]);
@@ -45,7 +47,8 @@ export function drawMinimap(
     if (isCurrent) g.lineStyle(2, 0xffd34d, 1).strokeRect(x - 1, y - 1, CELL_W + 2, CELL_H + 2);
 
     const icon =
-      r.kind === 'boss' ? 0xe53935 : r.kind === 'item' ? 0xffc107 : r.kind === 'center' ? 0xff6fae : r.kind === 'shop' ? 0x2ecc71 : null;
+      r.kind === 'boss' ? 0xe53935 : r.kind === 'item' ? 0xffc107 : r.kind === 'center' ? 0xff6fae : r.kind === 'shop' ? 0x2ecc71
+      : r.kind === 'challenge' ? 0xbdc3c7 : r.kind === 'secret' ? 0x8e44ad : null;
     if (icon !== null) g.fillStyle(icon, 1).fillCircle(x + CELL_W / 2, y + CELL_H / 2, 4);
   }
 }

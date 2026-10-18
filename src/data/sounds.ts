@@ -14,7 +14,7 @@ export interface Tone {
   slideTo?: number;
 }
 
-export const SFX_NAMES = ['shot', 'hit', 'pickup', 'coin', 'door', 'clear', 'hurt', 'buy', 'select', 'heal'] as const;
+export const SFX_NAMES = ['shot', 'hit', 'pickup', 'coin', 'door', 'clear', 'hurt', 'buy', 'select', 'heal', 'boom'] as const;
 export type SfxName = (typeof SFX_NAMES)[number];
 
 export const SFX: Readonly<Record<SfxName, readonly Tone[]>> = {
@@ -42,6 +42,10 @@ export const SFX: Readonly<Record<SfxName, readonly Tone[]>> = {
     { freq: 1175, dur: 0.16, wave: 'square', gain: 0.15, delay: 0.06 },
   ],
   select: [{ freq: 660, dur: 0.04, wave: 'square', gain: 0.1 }],
+  boom: [
+    { freq: 160, slideTo: 40, dur: 0.5, wave: 'noise', gain: 0.4 },
+    { freq: 90, slideTo: 40, dur: 0.4, wave: 'triangle', gain: 0.35 },
+  ],
   heal: [
     { freq: 659, dur: 0.12, wave: 'sine', gain: 0.25 },
     { freq: 880, dur: 0.12, wave: 'sine', gain: 0.25, delay: 0.12 },

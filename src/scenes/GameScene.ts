@@ -50,6 +50,14 @@ import {
   rollEnemyLoot,
   rollShop,
   roomClearCoins,
+  rollChest,
+  inBlast,
+  challengeWaveSize,
+  BOMB,
+  CHALLENGE_REWARD,
+  CHALLENGE_WAVES,
+  START_BOMBS,
+  START_KEYS,
   LootDrop,
   ShopSlot,
 } from '../data/loot';
@@ -81,7 +89,7 @@ import {
   MovePower,
   PlayerStats,
 } from '../data/items';
-import { generateFloor, mulberry32, DIRS, OPPOSITE, Dir, Floor, Room } from '../level/floorGen';
+import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, Dir, Floor, Room } from '../level/floorGen';
 import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES } from '../level/biomes';
 import { behaviorFor, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES } from '../data/enemies';
 import { drawMinimap } from './minimap';
@@ -105,7 +113,12 @@ const FLOOR_COLORS: Record<Room['kind'], number> = {
   boss: 0xf6d6d6,
   center: 0xffe3ef,
   shop: 0xe2f4e4,
+  secret: 0xc9bca8,
+  challenge: 0xece0e0,
 };
+/** Marco de la puerta a la sala de desafío y a la sala secreta (cuando se ha abierto). */
+const CHALLENGE_SILVER = 0xbdc3c7;
+const SECRET_PURPLE = 0x8e44ad;
 /** Marco de las puertas que llevan a cada sala especial (y su icono en el minimapa). */
 const CENTER_PINK = 0xff6fae;
 const SHOP_GREEN = 0x2ecc71;
@@ -125,7 +138,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs'
 >;
 
 export interface GameData {
@@ -281,6 +294,24 @@ export class GameScene extends Phaser.Scene {
   private prompt!: Phaser.GameObjects.Text;
   private enterKey!: Key;
   private coinsHud!: Phaser.GameObjects.Text;
+  private keysHud!: Phaser.GameObjects.Text;
+  private bombsHud!: Phaser.GameObjects.Text;
+  /** Llaves (abren cofres) y bombas (rompen rocas y abren la sala secreta). */
+  private keys = START_KEYS;
+  private bombs = START_BOMBS;
+  private bombKey!: Key;
+  private rbPrev = false;
+  /** Cofres de este piso: sala → posición y dibujo. */
+  private chests = new Map<number, { x: number; y: number; img: Phaser.GameObjects.Image }>();
+  private openedChests = new Set<number>();
+  private chestTouch = false;
+  /** Puertas ocultas ya abiertas con una bomba, y los trozos de pared que las tapan aún. */
+  private revealedDoors = new Set<string>();
+  private secretWalls = new Map<string, Phaser.GameObjects.GameObject[]>();
+  /** Rocas que se pueden romper con bombas: "sala:x,y" → dibujo y cuerpo. */
+  private rocks = new Map<string, Phaser.GameObjects.GameObject[]>();
+  /** Sala de desafío: oleada en curso (0 = no ha empezado). */
+  private challengeWave = 0;
   /** Barra grande del jefe arriba de la pantalla (nombre, tipo y vida), como en Isaac. */
   private bossBar?: { boss: Sprite; bar: ReturnType<typeof addHpBar>; objects: Phaser.GameObjects.GameObject[] };
   private escKey!: Phaser.Input.Keyboard.Key;
@@ -339,6 +370,16 @@ export class GameScene extends Phaser.Scene {
     this.endedAt = 0;
     this.earned = 0;
     this.coins = 0;
+    this.keys = START_KEYS;
+    this.bombs = START_BOMBS;
+    this.rbPrev = false;
+    this.chests.clear();
+    this.openedChests.clear();
+    this.chestTouch = false;
+    this.revealedDoors.clear();
+    this.secretWalls.clear();
+    this.rocks.clear();
+    this.challengeWave = 0;
     this.centerUsed = false;
     this.shop = [];
     this.layout = FLOOR_LAYOUT;
@@ -375,6 +416,8 @@ export class GameScene extends Phaser.Scene {
       this.movePool = [...c.movePool];
       this.earned = c.earned;
       this.coins = c.coins;
+      this.keys = c.keys;
+      this.bombs = c.bombs;
     }
     this.cameras.main.setScroll(0, 0);
     this.cameras.main.resetFX();
@@ -409,7 +452,12 @@ export class GameScene extends Phaser.Scene {
         seed: this.floorSeed,
         roomCount: r?.roomCount ?? roomCountFor(this.floorNum, Math.random),
         special: this.layout >= 2,
+        extra: this.layout >= 3,
       });
+    }
+    if (r) {
+      r.openedChests.forEach((id) => this.openedChests.add(id));
+      r.revealedDoors.forEach((k) => this.revealedDoors.add(k));
     }
 
     // Los poderes que saldrán en el suelo son movimientos de los tipos de tu Pokémon; se piden ya, en paralelo
@@ -620,6 +668,7 @@ export class GameScene extends Phaser.Scene {
     this.pickups = this.physics.add.group();
     this.loot = this.physics.add.group();
     this.makeLootTextures();
+    this.makeExtraTextures();
     this.floor.rooms.forEach((r) => this.buildRoom(r));
 
     // Al continuar: objetos, estado del jugador y sala donde estabas
@@ -665,6 +714,7 @@ export class GameScene extends Phaser.Scene {
     this.abilityKeys = [K.ONE, K.TWO, K.THREE, K.FOUR].map((c) => kb.addKey(c));
     this.restartKey = kb.addKey(K.R);
     this.enterKey = kb.addKey(K.ENTER);
+    this.bombKey = kb.addKey(K.E);
     this.escKey = kb.addKey(K.ESC);
     this.pauseKey = kb.addKey(K.P);
     this.menuPadPrev = false;
@@ -680,7 +730,18 @@ export class GameScene extends Phaser.Scene {
     this.hpBar = addHpBar(this, 94, 46, 236, 10);
     this.hpBar.objects.forEach((o) => fixed(o as Phaser.GameObjects.Text));
     this.hpText = fixed(this.add.text(410, 51, '', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: HEX.text }).setOrigin(1, 0.5));
-    this.coinsHud = fixed(this.add.text(530, 51, '', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(1, 0.5));
+    const count = (iconKey: string, x: number) => {
+      fixed(this.add.image(x, 51, iconKey).setScale(0.8));
+      return fixed(this.add.text(x + 10, 51, '', { fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5));
+    };
+    this.coinsHud = count('coin', 422);
+    this.keysHud = count('key', 466);
+    this.bombsHud = count('bomb', 506);
+    // Con ratón: clic en la bomba del HUD para soltar una
+    const bombBtn = fixed(this.add.zone(518, 51, 40, 30).setInteractive({ useHandCursor: true }));
+    bombBtn.on('pointerover', () => (this.overHud = true));
+    bombBtn.on('pointerout', () => (this.overHud = false));
+    bombBtn.on('pointerdown', () => this.placeBomb());
     this.invText = this.add
       .text(560, 14, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff', wordWrap: { width: 240 } })
       .setDepth(10)
@@ -856,10 +917,12 @@ ${where} — ${this.biome.name}`, 1600);
     r.visited.forEach((id) => this.visited.add(id));
     r.cleared.forEach((id) => this.cleared.add(id));
     this.coins = r.coins;
+    this.keys = r.keys;
+    this.bombs = r.bombs;
     this.centerUsed = r.centerUsed;
     this.shop = r.shop.map((s) => ({ ...s }));
     for (const f of r.floorItems) {
-      if (f.drop.kind === 'coin' || f.drop.kind === 'berry') {
+      if (f.drop.kind === 'coin' || f.drop.kind === 'berry' || f.drop.kind === 'key' || f.drop.kind === 'bomb') {
         this.spawnLoot(f.roomId, f.x, f.y, f.drop);
         continue;
       }
@@ -897,6 +960,10 @@ ${where} — ${this.biome.name}`, 1600);
       centerUsed: this.centerUsed,
       shop: this.shop.map((sl) => ({ ...sl })),
       layout: this.layout,
+      keys: this.keys,
+      bombs: this.bombs,
+      openedChests: [...this.openedChests],
+      revealedDoors: [...this.revealedDoors],
     });
   }
 
@@ -921,6 +988,8 @@ ${where} — ${this.biome.name}`, 1600);
       moves: [...this.slots],
       roomsCleared: this.cleared.size,
       coins: this.coins,
+      keys: this.keys,
+      bombs: this.bombs,
       roomCount: this.floor.rooms.length,
       earned: this.earned,
       onResume: () => {
@@ -988,17 +1057,12 @@ ${where} — ${this.biome.name}`, 1600);
     for (const d of DIRS) {
       const to = room.doors[d];
       if (to === undefined) continue;
-      const r = this.doorRect(room, d);
-      // El suelo atraviesa la pared; el marco indica si lleva al jefe o al objeto
-      g.fillStyle(floorColor, 1).fillRect(r.x, r.y, r.w, r.h);
-      const kind = this.floor.rooms[to].kind;
-      const frame =
-        kind === 'boss' ? 0xe53935 : kind === 'item' ? 0xffc107 : kind === 'center' ? CENTER_PINK : kind === 'shop' ? SHOP_GREEN : 0x1d2848;
-      g.lineStyle(6, frame, 1).strokeRect(r.x, r.y, r.w, r.h);
-
-      const block = this.add.rectangle(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h, DOOR_COLOR).setDepth(1);
-      this.doorBlocks.add(block);
-      this.doorMap.set(`${room.id}:${d}`, block);
+      // Puerta oculta: parece pared (con una grieta de pista) hasta que una bomba la abre
+      if (this.isHiddenDoor(room.id, d)) {
+        this.buildSecretWall(room, d);
+        continue;
+      }
+      this.drawDoor(room, d, g, floorColor);
     }
 
     // Paredes físicas, partidas donde hay puerta
@@ -1025,10 +1089,241 @@ ${where} — ${this.biome.name}`, 1600);
     // Al continuar, los objetos salen del guardado (restoreRun)
     if (room.kind === 'item' && !this.resume) this.dropItem(room.id, i.cx, i.cy);
     if (room.kind === 'center') this.buildCenter(room);
+    // Sala secreta: un objeto y monedas, como premio por encontrarla
+    if (room.kind === 'secret' && !this.resume) {
+      this.dropItem(room.id, i.cx, i.cy);
+      for (const dx of [-60, 60]) this.spawnLoot(room.id, i.cx + dx, i.cy + 70, { kind: 'coin', value: 5 });
+    }
+    if (this.floor.chestRooms?.includes(room.id)) this.buildChest(room);
+  }
+
+  /** Suelo de la sala (el del bioma en las normales, el suyo en las especiales). */
+  private floorColorOf(room: Room): number {
+    const plain = room.kind === 'start' || room.kind === 'combat' || room.kind === 'boss';
+    return plain ? this.biome.colors.floor : FLOOR_COLORS[room.kind];
+  }
+
+  /** Hueco de puerta con su marco (el color dice adónde lleva) y su bloque para cerrarla en combate. */
+  private drawDoor(room: Room, d: Dir, g: Phaser.GameObjects.Graphics, floorColor: number) {
+    const r = this.doorRect(room, d);
+    g.fillStyle(floorColor, 1).fillRect(r.x, r.y, r.w, r.h);
+    const kind = this.floor.rooms[room.doors[d]!].kind;
+    const frame =
+      kind === 'boss' ? 0xe53935
+      : kind === 'item' ? 0xffc107
+      : kind === 'center' ? CENTER_PINK
+      : kind === 'shop' ? SHOP_GREEN
+      : kind === 'challenge' ? CHALLENGE_SILVER
+      : kind === 'secret' || room.kind === 'secret' ? SECRET_PURPLE
+      : 0x1d2848;
+    g.lineStyle(6, frame, 1).strokeRect(r.x, r.y, r.w, r.h);
+    if (kind === 'challenge') g.lineStyle(2, 0xffffff, 1).strokeRect(r.x + 5, r.y + 5, r.w - 10, r.h - 10);
+    const block = this.add.rectangle(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h, DOOR_COLOR).setDepth(1);
+    this.doorBlocks.add(block);
+    this.doorMap.set(doorKey(room.id, d), block);
   }
 
   private addWall(x: number, y: number, w: number, h: number) {
-    this.walls.add(this.add.rectangle(x + w / 2, y + h / 2, w, h).setVisible(false));
+    const wall = this.add.rectangle(x + w / 2, y + h / 2, w, h).setVisible(false);
+    this.walls.add(wall);
+    return wall;
+  }
+
+  // --- Sala secreta, bombas y cofres (T21) ---
+
+  private isHiddenDoor(roomId: number, d: Dir): boolean {
+    const k = doorKey(roomId, d);
+    return !!this.floor.hiddenDoors?.includes(k) && !this.revealedDoors.has(k);
+  }
+
+  /** Trozo de pared que tapa una puerta oculta, con una grieta en la sala desde la que se puede encontrar. */
+  private buildSecretWall(room: Room, d: Dir) {
+    const r = this.doorRect(room, d);
+    const wall = this.addWall(r.x, r.y, r.w, r.h);
+    const g = this.add.graphics().setDepth(1);
+    g.fillStyle(this.biome.colors.wall, 1).fillRect(r.x, r.y, r.w, r.h);
+    if (room.kind !== 'secret') {
+      // Grieta: la pista para usar una bomba aquí
+      const cx = r.x + r.w / 2;
+      const cy = r.y + r.h / 2;
+      g.lineStyle(3, 0x0d0905, 0.9);
+      g.lineBetween(cx - 18, cy - 12, cx - 4, cy + 2).lineBetween(cx - 4, cy + 2, cx + 6, cy - 6).lineBetween(cx + 6, cy - 6, cx + 18, cy + 10);
+      g.lineBetween(cx - 4, cy + 2, cx - 8, cy + 14);
+    }
+    this.secretWalls.set(doorKey(room.id, d), [wall, g]);
+  }
+
+  /** Abre una puerta oculta por los dos lados (la bomba ha estallado cerca). */
+  private revealDoor(room: Room, d: Dir) {
+    const other = this.floor.rooms[room.doors[d]!];
+    const pairs: [Room, Dir][] = [[room, d], [other, OPPOSITE[d]]];
+    for (const [rm, dir] of pairs) {
+      const k = doorKey(rm.id, dir);
+      if (this.revealedDoors.has(k)) continue;
+      this.revealedDoors.add(k);
+      this.secretWalls.get(k)?.forEach((o) => o.destroy());
+      this.secretWalls.delete(k);
+      this.drawDoor(rm, dir, this.add.graphics().setDepth(0), this.floorColorOf(rm));
+      const block = this.doorMap.get(k);
+      if (block) {
+        block.setVisible(false);
+        (block.body as Phaser.Physics.Arcade.StaticBody).enable = false;
+      }
+    }
+    this.showBanner('¡Has encontrado una sala secreta!', 1600);
+    sfx('pickup');
+    this.drawMap();
+  }
+
+  private makeExtraTextures() {
+    const make = (key: string, w: number, h: number, draw: (g: Phaser.GameObjects.Graphics) => void) => {
+      if (this.textures.exists(key)) return;
+      const g = this.add.graphics();
+      draw(g);
+      g.generateTexture(key, w, h);
+      g.destroy();
+    };
+    make('key', 22, 22, (g) => {
+      g.fillStyle(0x8a6d1a, 1).fillCircle(7, 8, 7);
+      g.fillStyle(0xffd34d, 1).fillCircle(7, 8, 5).fillRect(11, 6, 10, 4).fillRect(17, 10, 3, 5).fillRect(13, 10, 3, 4);
+      g.fillStyle(0x8a6d1a, 1).fillCircle(7, 8, 2);
+    });
+    make('bomb', 24, 24, (g) => {
+      g.fillStyle(0x1d2848, 1).fillCircle(11, 14, 10);
+      g.fillStyle(0x3d4466, 1).fillCircle(9, 12, 4);
+      g.fillStyle(0xc9a26b, 1).fillRect(14, 2, 3, 6);
+      g.fillStyle(0xff9f43, 1).fillCircle(16, 2, 2);
+    });
+    make('chest', 44, 36, (g) => {
+      g.fillStyle(0x5a3a1e, 1).fillRoundedRect(0, 4, 44, 32, 6);
+      g.fillStyle(0x9a6534, 1).fillRoundedRect(3, 7, 38, 26, 5);
+      g.fillStyle(0x5a3a1e, 1).fillRect(0, 16, 44, 4);
+      g.fillStyle(0xffd34d, 1).fillRect(18, 13, 8, 10);
+    });
+    make('chest-open', 44, 36, (g) => {
+      g.fillStyle(0x5a3a1e, 1).fillRoundedRect(0, 12, 44, 24, 6);
+      g.fillStyle(0x2b1a0c, 1).fillRect(4, 12, 36, 8);
+      g.fillStyle(0x9a6534, 1).fillRoundedRect(3, 0, 38, 12, 5);
+    });
+  }
+
+  /** Cofre en una casilla libre de la parte de arriba de la sala. Se abre con una llave. */
+  private buildChest(room: Room) {
+    const grid = this.grids.get(room.id);
+    const i = this.interior(room);
+    const [tx, ty] = grid ? nearestWalkable(grid, 15, 2) : [15, 2];
+    const x = i.x0 + tx * TILE + TILE / 2;
+    const y = i.y0 + ty * TILE + TILE / 2;
+    const img = this.add.image(x, y, this.openedChests.has(room.id) ? 'chest-open' : 'chest').setDepth(2);
+    img.setInteractive({ useHandCursor: true });
+    img.on('pointerover', () => (this.overHud = true));
+    img.on('pointerout', () => (this.overHud = false));
+    img.on('pointerdown', () => this.current?.id === room.id && this.openChest(room.id));
+    this.chests.set(room.id, { x, y, img });
+  }
+
+  private openChest(roomId: number) {
+    if (this.ended || this.transitioning || this.openedChests.has(roomId)) return;
+    const chest = this.chests.get(roomId);
+    if (!chest) return;
+    if (this.keys <= 0) return this.showBanner('Necesitas una llave para abrir el cofre', 1300);
+    this.keys--;
+    this.openedChests.add(roomId);
+    chest.img.setTexture('chest-open');
+    sfx('buy');
+    const prize = rollChest(Math.random);
+    if (prize.kind === 'item') {
+      const p = this.freeSpot(chest.x, chest.y + 60);
+      this.dropItem(roomId, p.x, p.y);
+    } else {
+      prize.drops.forEach((d, k) => this.dropLoot(chest.x + (k - (prize.drops.length - 1) / 2) * 26, chest.y + 56, d));
+    }
+    this.showBanner('¡Cofre abierto!', 1000);
+    this.saveNow();
+  }
+
+  /** Bomba a tus pies: E, RB o clic en la bomba del HUD. */
+  private placeBomb() {
+    if (this.ended || this.transitioning || this.bombs <= 0 || !this.player?.active) return;
+    this.bombs--;
+    const x = this.player.x;
+    const y = this.player.y + 10;
+    const roomId = this.current.id;
+    const b = this.add.image(x, y, 'bomb').setDepth(3).setScale(1.4);
+    this.tweens.add({ targets: b, scale: 1.7, duration: 160, yoyo: true, repeat: -1 });
+    this.time.delayedCall(BOMB.fuse, () => {
+      this.tweens.killTweensOf(b);
+      b.destroy();
+      if (!this.ended && this.current.id === roomId) this.explode(x, y);
+    });
+  }
+
+  /** Estalla: daña a enemigos (y a ti si te pilla), rompe rocas y hierba y abre puertas ocultas cercanas. */
+  private explode(x: number, y: number) {
+    const R = BOMB.radius;
+    sfx('boom');
+    this.cameras.main.shake(180, 0.006);
+    const fx = this.add.circle(x, y, R, 0xffb347, 0.55).setDepth(12);
+    this.tweens.add({ targets: fx, alpha: 0, scale: 1.2, duration: 300, onComplete: () => fx.destroy() });
+
+    for (const c of [...this.enemies.getChildren()]) {
+      const e = c as Sprite;
+      if (!e.active || !inBlast(x, y, e.x, e.y, R + (e.getData('size') as number) / 3)) continue;
+      const hp = (e.getData('hp') as number) - BOMB.damage;
+      e.setData('hp', hp).setTint(0xff6666).setData('flashUntil', this.time.now + 120);
+      if (hp <= 0) this.killEnemy(e);
+    }
+    if (inBlast(x, y, this.player.x, this.player.y, R * 0.8) && this.time.now >= this.invulnUntil) {
+      this.invulnUntil = this.time.now + 900;
+      this.hp -= BOMB.selfDamage;
+      sfx('hurt');
+      if (this.hp <= 0) this.finish(`Has caído · +${this.earned} tickets\nPulsa R, Start o haz clic para volver a empezar`);
+    }
+
+    // Rocas y hierba alta de la sala
+    const room = this.current;
+    const grid = this.grids.get(room.id);
+    const i = this.interior(room);
+    if (grid) {
+      grid.forEach((row, ty) =>
+        row.forEach((c, tx) => {
+          const cx = i.x0 + tx * TILE + TILE / 2;
+          const cy = i.y0 + ty * TILE + TILE / 2;
+          if ((c !== 'R' && c !== 'B') || !inBlast(x, y, cx, cy, R + TILE / 2)) return;
+          const k = `${room.id}:${tx},${ty}`;
+          if (c === 'R') {
+            this.rocks.get(k)?.forEach((o) => o.destroy());
+            this.rocks.delete(k);
+          } else {
+            for (const b of [...this.bushes.getChildren()]) {
+              const [bx, by] = (b.getData('tile') as [number, number] | undefined) ?? [-1, -1];
+              if (b.getData('room') === room.id && bx === tx && by === ty) b.destroy();
+            }
+          }
+          row[tx] = '.';
+        }),
+      );
+      this.flow = undefined;
+    }
+    // Paredes con grieta: la puerta oculta se abre si la bomba estalla cerca
+    for (const d of DIRS) {
+      if (room.doors[d] === undefined || !this.isHiddenDoor(room.id, d)) continue;
+      const r = this.doorRect(room, d);
+      if (inBlast(x, y, r.x + r.w / 2, r.y + r.h / 2, R + 40)) this.revealDoor(room, d);
+    }
+    this.saveNow();
+  }
+
+  private drawMap() {
+    if (!this.current) return;
+    // La sala secreta no sale en el mapa hasta que se abre una de sus puertas
+    const hidden = new Set<number>();
+    const sid = this.floor.secretId;
+    if (sid !== undefined && !this.visited.has(sid)) {
+      const open = Object.entries(this.floor.rooms[sid].doors).some(([d]) => this.revealedDoors.has(doorKey(sid, d as Dir)));
+      if (!open) hidden.add(sid);
+    }
+    drawMinimap(this.minimap, this.floor, this.current.id, this.visited, 940, 12, hidden);
   }
 
   private setDoorsLocked(room: Room, locked: boolean) {
@@ -1111,7 +1406,14 @@ ${where} — ${this.biome.name}`, 1600);
     this.visited.add(room.id);
 
     if (this.mode === 'waves') this.startWave(1200);
-    else if ((room.kind === 'combat' || room.kind === 'boss') && !this.cleared.has(room.id)) {
+    else if (room.kind === 'challenge' && !this.cleared.has(room.id)) {
+      // Sala de desafío: se cierra y salen oleadas; al ganarlas, premio
+      this.challengeWave = 1;
+      this.setDoorsLocked(room, true);
+      sfx('door');
+      this.showBanner(`¡Sala de desafío!\nOleada 1/${CHALLENGE_WAVES}`, 1400);
+      this.time.delayedCall(900, () => this.spawnChallengeWave(room.id));
+    } else if ((room.kind === 'combat' || room.kind === 'boss') && !this.cleared.has(room.id)) {
       if (room.kind === 'boss') this.spawnBoss();
       else {
         const n = Phaser.Math.Between(...this.difficulty.enemies);
@@ -1121,8 +1423,14 @@ ${where} — ${this.biome.name}`, 1600);
       sfx('door');
     }
 
-    drawMinimap(this.minimap, this.floor, room.id, this.visited, 940, 12);
+    this.drawMap();
     this.saveNow();
+  }
+
+  private spawnChallengeWave(roomId: number) {
+    if (this.ended || this.current.id !== roomId) return;
+    const n = challengeWaveSize(this.floorNum, this.challengeWave);
+    for (let k = 0; k < n; k++) this.spawnEnemy();
   }
 
   private transition(dir: Dir) {
@@ -1187,11 +1495,14 @@ ${where} — ${this.biome.name}`, 1600);
         const cx = x + TILE / 2;
         const cy = y + TILE / 2;
         switch (c) {
-          case 'R':
-            g.fillStyle(this.biome.colors.rock, 1).fillRoundedRect(x + 2, y + 4, TILE - 4, TILE - 6, 8);
-            g.fillStyle(this.biome.colors.rockTop, 1).fillRoundedRect(x + 4, y + 3, TILE - 8, TILE - 12, 7);
-            this.addWall(x, y, TILE, TILE);
+          case 'R': {
+            // Cada roca va aparte para que una bomba pueda romperla
+            const rg = this.add.graphics().setDepth(1);
+            rg.fillStyle(this.biome.colors.rock, 1).fillRoundedRect(x + 2, y + 4, TILE - 4, TILE - 6, 8);
+            rg.fillStyle(this.biome.colors.rockTop, 1).fillRoundedRect(x + 4, y + 3, TILE - 8, TILE - 12, 7);
+            this.rocks.set(`${room.id}:${tx},${ty}`, [rg, this.addWall(x, y, TILE, TILE)]);
             break;
+          }
           case 'P':
             g.fillStyle(0x3d4466, 1).fillRect(x + 4, y + 2, TILE - 8, TILE - 4);
             g.fillStyle(0x6c75a3, 1).fillRect(x + 8, y + 2, TILE - 20, TILE - 4);
@@ -1525,6 +1836,8 @@ ${where} — ${this.biome.name}`, 1600);
       earned: this.earned,
       coins: this.coins,
       formId: this.formId,
+      keys: this.keys,
+      bombs: this.bombs,
     };
     this.cameras.main.fadeOut(350, 0, 0, 0);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
@@ -1602,6 +1915,10 @@ ${where} — ${this.biome.name}`, 1600);
     }
 
     // Centro Pokémon y tienda: Enter o A cerca del mostrador o de un artículo (A no lanza entonces el poder 1)
+    // Bomba: E o RB (el clic va en el icono del HUD)
+    const rbNow = hasPad && !!pad!.buttons[5]?.pressed;
+    if (Phaser.Input.Keyboard.JustDown(this.bombKey) || (rbNow && !this.rbPrev)) this.placeBomb();
+    this.rbPrev = rbNow;
     const padA = hasPad && pad!.A && !this.padPrev[0];
     const usedA = this.updateInteract(Phaser.Input.Keyboard.JustDown(this.enterKey), padA);
 
@@ -1634,7 +1951,9 @@ ${where} — ${this.biome.name}`, 1600);
     this.hpBar.set(this.hp / this.stats.maxHp);
     const bb = this.bossBar;
     if (bb) bb.bar.set((bb.boss.getData('hp') as number) / (bb.boss.getData('maxHp') as number));
-    this.coinsHud.setText(`● ${this.coins}`);
+    this.coinsHud.setText(String(this.coins));
+    this.keysHud.setText(String(this.keys));
+    this.bombsHud.setText(String(this.bombs));
     this.slots.forEach((m, i) => this.paintSlot(i, m, !m || time >= this.slotReady[i]));
 
     this.checkTrapdoor();
@@ -1850,9 +2169,9 @@ ${where} — ${this.biome.name}`, 1600);
   private spawnLoot(roomId: number, x: number, y: number, drop: LootDrop) {
     const entry: FloorItemSave = { roomId, x, y, drop };
     this.floorItems.push(entry);
-    const s = this.loot.create(x, y, drop.kind === 'coin' ? 'coin' : 'berry') as Sprite;
+    const s = this.loot.create(x, y, drop.kind) as Sprite;
     if (drop.kind === 'coin') s.setScale(drop.value > 1 ? 1.3 : 1);
-    else s.setTint(BERRIES[drop.id].color);
+    else if (drop.kind === 'berry') s.setTint(BERRIES[drop.id].color);
     s.setDepth(2).setData('drop', drop).setData('entry', entry);
     this.tweens.add({ targets: s, y: y - 5, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
   }
@@ -1867,10 +2186,18 @@ ${where} — ${this.biome.name}`, 1600);
       this.hp = healed(this.hp, this.stats.maxHp, b.heal);
       sfx('heal');
       this.popup(this.player.x, this.player.y - 50, `${b.name} +${b.heal} PS`, b.color);
-    } else {
+    } else if (drop.kind === 'coin') {
       this.coins += drop.value;
       sfx('coin');
       this.popup(sprite.x, sprite.y - 16, `+${drop.value}`, 0xffd34d);
+    } else if (drop.kind === 'key') {
+      this.keys++;
+      sfx('coin');
+      this.popup(sprite.x, sprite.y - 16, '+1 llave', 0xffd34d);
+    } else {
+      this.bombs++;
+      sfx('coin');
+      this.popup(sprite.x, sprite.y - 16, '+1 bomba', 0xc8c8d8);
     }
     this.floorItems = this.floorItems.filter((f) => f !== sprite.getData('entry'));
     this.tweens.killTweensOf(sprite);
@@ -2004,6 +2331,22 @@ ${where} — ${this.biome.name}`, 1600);
     const px = this.player.x;
     const py = this.player.y;
     const act = enter || padA;
+    // Cofre: pisarlo o Enter / A cerca lo abre si tienes llave
+    const chest = this.chests.get(this.current.id);
+    if (chest && !this.openedChests.has(this.current.id)) {
+      const d = Phaser.Math.Distance.Between(px, py, chest.x, chest.y);
+      const touching = d < TOUCH;
+      if (touching && !this.chestTouch) this.openChest(this.current.id);
+      this.chestTouch = touching;
+      if (d < NEAR && !this.openedChests.has(this.current.id)) {
+        this.prompt.setText(`Enter / A / clic: abrir (llaves: ${this.keys})`).setPosition(chest.x, chest.y - 30);
+        if (act) {
+          this.openChest(this.current.id);
+          return padA;
+        }
+        return false;
+      }
+    }
     if (this.current.kind === 'center' && this.counter) {
       const d = Phaser.Math.Distance.Between(px, py, this.counter.x, this.counter.y);
       const touching = d < TOUCH + 30;
@@ -2164,6 +2507,12 @@ ${where} — ${this.biome.name}`, 1600);
       return;
     }
     if (this.cleared.has(room.id) || this.enemies.countActive(true) > 0) return;
+    if (room.kind === 'challenge' && this.challengeWave > 0 && this.challengeWave < CHALLENGE_WAVES) {
+      this.challengeWave++;
+      this.showBanner(`Oleada ${this.challengeWave}/${CHALLENGE_WAVES}`, 1000);
+      this.time.delayedCall(1000, () => this.spawnChallengeWave(room.id));
+      return;
+    }
     this.cleared.add(room.id);
     sfx('clear');
     this.setDoorsLocked(room, false);
@@ -2192,6 +2541,16 @@ ${where} — ${this.biome.name}`, 1600);
       const next = this.mode === 'bossrush' ? `ir al jefe ${this.floorNum + 1}` : `bajar al piso ${this.floorNum + 1}`;
       const best = record ? '\n¡Nuevo récord!' : '';
       this.showBanner(`¡Jefe derrotado! +${reward} tickets${best}\nPisa la trampilla para ${next}`, 2600);
+      this.saveNow();
+      return;
+    }
+
+    if (room.kind === 'challenge') {
+      this.challengeWave = 0;
+      const i = this.interior(room);
+      this.dropItem(room.id, i.cx, i.cy);
+      CHALLENGE_REWARD.forEach((d, k) => this.dropLoot(i.cx + (k - 1.5) * 40, i.cy + 70, d));
+      this.showBanner(`¡Desafío superado! +${reward} tickets\nHa caído un premio`, 1800);
       this.saveNow();
       return;
     }

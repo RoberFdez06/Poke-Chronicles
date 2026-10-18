@@ -19,7 +19,8 @@ Abre la URL que muestra Vite (normalmente http://localhost:5173).
 | Disparar | Flechas (dos a la vez, en diagonal) | Mantener clic izquierdo hacia el cursor | Stick derecho |
 | Poderes 1-4 | Teclas 1, 2, 3, 4 | Clic en la ranura | A, B, X, Y |
 | Pausa | Esc o P | Botón ❚❚ (arriba a la izquierda) | Start o Select |
-| Usar (Centro Pokémon, tienda) | Enter cerca, o pisarlo | Clic en el mostrador o el artículo | A cerca, o pisarlo |
+| Usar (Centro Pokémon, tienda, cofre) | Enter cerca, o pisarlo | Clic en el mostrador, el artículo o el cofre | A cerca, o pisarlo |
+| Soltar bomba | E | Clic en la bomba del HUD | RB |
 | Nueva partida (al morir o ganar) | R | Clic | Start |
 | Menús | Flechas o W A S D, Enter / espacio, Esc para volver | Pasar el cursor, clic y botón "Volver" | Stick o cruceta, A para elegir, B para volver |
 
@@ -133,6 +134,20 @@ en espejo; una de cada cinco va vacía): **rocas** y **columnas** que bloquean e
 que bloquea el paso y se rompe con dos disparos, **agujeros** que no se cruzan a pie (los disparos pasan por encima)
 y **charcos** que te frenan. Nunca tapan el paso entre puertas ni el centro de la sala (lo comprueba un test con BFS).
 Los enemigos rodean los obstáculos siguiendo un campo de flujo hacia ti.
+
+## Llaves, cofres, bombas y salas especiales
+
+- **Llaves y bombas**: los enemigos a veces las sueltan (5 % cada una); empiezas con una bomba. Se ven en el HUD (junto a
+  las monedas) y en la pausa.
+- **Cofres**: dos salas de combate por piso tienen uno. Se abren con una llave (pisándolo, Enter / A cerca o clic):
+  un objeto, monedas, o una baya y una bomba.
+- **Bombas** (E, RB o clic en la bomba del HUD): estallan al poco; dañan a los enemigos (y a ti si estás cerca),
+  rompen rocas y hierba alta y abren las paredes con **grieta**.
+- **Sala secreta**: una por piso, pegada a otras salas y sin puerta visible: la pista es una grieta en la pared.
+  Al abrirla con una bomba sale en el minimapa (punto morado); dentro hay un objeto y monedas.
+- **Sala de desafío** (marco plateado): al entrar se cierra y salen tres oleadas; al ganarlas, un objeto, monedas,
+  una llave y una Baya Zidra.
+- `floorGen` las coloca con su propio generador (diseño de piso 3); las partidas guardadas de antes conservan su piso.
 
 ## Recuperar vida, Centro Pokémon y tienda
 
@@ -286,7 +301,7 @@ récord en el navegador (`pokeisaac.records`, en `src/data/save.ts`), que se ve 
 | **Infinito** | Como Normal, pero los pisos no se acaban y cada uno es más difícil. | Pisos completados |
 | **Rush de jefes** | Solo jefes legendarios en una arena; tras cada uno, un objeto y una trampilla al siguiente. | Jefes vencidos |
 
-Las partidas de cualquier modo se guardan en los huecos (`RUN_VERSION` 6; los guardados de versiones
+Las partidas de cualquier modo se guardan en los huecos (`RUN_VERSION` 7; los guardados de versiones
 anteriores se migran solos).
 En Oleadas, al continuar se repite la ronda en la que estabas.
 

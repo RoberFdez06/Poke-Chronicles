@@ -398,3 +398,26 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 
 - Leída. No toco `src/scenes/MenuScene.ts`, `src/ui/theme.ts`, la parte visual de `MenuList` ni `src/ui/art/`.
   Lo que necesite cambiar ahí (por ejemplo botones nuevos en el menú para Misiones o Historial) lo apunto aquí.
+
+## T21 — Más salas tipo Isaac (2026-10-18)
+
+- **floorGen** (`extra: true`, diseño de piso 3, con un generador aparte para no tocar lo demás): sala secreta en una
+  celda vacía pegada al mayor número de salas de combate o inicio (nunca al jefe ni a otra especial), con todas sus
+  puertas en `hiddenDoors` por los dos lados; una sala de combate (mejor sin salida) pasa a sala de desafío; dos
+  salas de combate con cofre. Test con 300 semillas × 4 tamaños: lo de antes no cambia, sin puertas ocultas se llega
+  a todo menos a la secreta, y casi siempre la secreta toca dos salas o más.
+- **loot.ts**: llaves y bombas (5 % cada una por enemigo), `rollChest` (35 % objeto, 35 % 3-6 monedas, 30 % baya y
+  bomba), `BOMB` (1,3 s, 110 px, 60 de daño, 12 si te pilla), `challengeWaveSize` y `CHALLENGE_REWARD`. Tests.
+- **Partida**: rocas separadas una a una para poder romperlas; las bombas dañan, rompen rocas y hierba, recalculan el
+  camino de los enemigos y abren las paredes con grieta cercanas (la pista solo se dibuja en el lado normal). La
+  sala secreta no sale en el minimapa hasta abrirla. Sala de desafío: 3 oleadas y premio. Cofre en una casilla libre
+  de arriba a la derecha; se abre pisando, con Enter/A cerca o con clic si tienes llave.
+- **Controles**: bomba con **E**, **RB** o clic en el icono de la bomba del HUD. En el mando quedaban libres LB, RB,
+  LT y RT: RB para la bomba y dejo LB para el objeto activo de T23. La fila de controles junta "Usar · Bomba" para
+  que la lista siga cabiendo en el panel del menú (que no puedo tocar por N5).
+- **Guardado**: `RUN_VERSION` 7 con `keys`, `bombs`, `openedChests`, `revealedDoors`; los v6 migran con 1 bomba
+  y su diseño de piso 2. Llaves y bombas pasan de piso a piso.
+- **Archivos**: `floorGen.ts`, `loot.ts`, `runSave.ts`, `sounds.ts` (`boom`), `controls.ts`, `minimap.ts`,
+  `GameScene`, `PauseScene`, tests, README.
+- **Dudas**: no se puede entrar a la sala secreta desde dentro de una sala cerrada en combate hasta limpiarla (la
+  puerta abierta se cierra con las demás); la hierba y las rocas rotas no se guardan.

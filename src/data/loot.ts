@@ -35,7 +35,7 @@ export const centerHeal = (maxHp: number): number => Math.round(maxHp / 2);
 // --- Botín de los enemigos ---
 
 /** Lo que cae al suelo y se recoge al pisarlo. */
-export type LootDrop = { kind: 'coin'; value: number } | { kind: 'berry'; id: BerryId };
+export type LootDrop = { kind: 'coin'; value: number } | { kind: 'berry'; id: BerryId } | { kind: 'key' } | { kind: 'bomb' };
 
 export const LOOT_CHANCE = {
   coin: 0.35,
@@ -43,6 +43,8 @@ export const LOOT_CHANCE = {
   bigCoin: 0.12,
   aranja: 0.1,
   zidra: 0.03,
+  key: 0.05,
+  bomb: 0.05,
 } as const;
 
 /** Botín de un enemigo al caer. El jefe siempre suelta una Baya Zidra y un puñado de monedas. */
@@ -53,8 +55,49 @@ export function rollEnemyLoot(rng: () => number, boss = false): LootDrop[] {
   const b = rng();
   if (b < LOOT_CHANCE.zidra) out.push({ kind: 'berry', id: 'zidra' });
   else if (b < LOOT_CHANCE.zidra + LOOT_CHANCE.aranja) out.push({ kind: 'berry', id: 'aranja' });
+  if (rng() < LOOT_CHANCE.key) out.push({ kind: 'key' });
+  if (rng() < LOOT_CHANCE.bomb) out.push({ kind: 'bomb' });
   return out;
 }
+
+// --- Cofres, bombas y sala de desafío (T21) ---
+
+/** Lo que hay en un cofre: un objeto (pasivo o poder), un puñado de monedas, o bayas y una bomba. */
+export type ChestPrize = { kind: 'item' } | { kind: 'loot'; drops: LootDrop[] };
+
+export function rollChest(rng: () => number): ChestPrize {
+  const x = rng();
+  if (x < 0.35) return { kind: 'item' };
+  if (x < 0.7) {
+    const n = 3 + Math.floor(rng() * 4);
+    return { kind: 'loot', drops: Array.from({ length: n }, () => ({ kind: 'coin' as const, value: rng() < 0.2 ? 5 : 1 })) };
+  }
+  return { kind: 'loot', drops: [{ kind: 'berry', id: rng() < 0.5 ? 'aranja' : 'zidra' }, { kind: 'bomb' }] };
+}
+
+/** Con cuántas bombas y llaves empiezas (como en Isaac: una bomba, ninguna llave). */
+export const START_BOMBS = 1;
+export const START_KEYS = 0;
+
+/** Bomba: tarda en estallar, alcance (px), daño a enemigos y a ti si te pilla. */
+export const BOMB = { fuse: 1300, radius: 110, damage: 60, selfDamage: 12 } as const;
+
+/** ¿Alcanza la explosión en (bx, by) a algo en (x, y)? */
+export const inBlast = (bx: number, by: number, x: number, y: number, radius: number = BOMB.radius): boolean =>
+  (x - bx) ** 2 + (y - by) ** 2 <= radius ** 2;
+
+/** Sala de desafío: tres oleadas cada vez más grandes. */
+export const CHALLENGE_WAVES = 3;
+export const challengeWaveSize = (floor: number, wave: number): number =>
+  Math.min(9, 2 + Math.max(1, Math.floor(floor)) + Math.max(1, Math.floor(wave)));
+
+/** Premio de la sala de desafío: un objeto, monedas, una llave y una baya Zidra. */
+export const CHALLENGE_REWARD: readonly LootDrop[] = [
+  { kind: 'coin', value: 5 },
+  { kind: 'coin', value: 5 },
+  { kind: 'key' },
+  { kind: 'berry', id: 'zidra' },
+];
 
 /** Monedas que caen al limpiar una sala: de 1 a 3, una más cada dos pisos. */
 export function roomClearCoins(rng: () => number, floor: number): number {

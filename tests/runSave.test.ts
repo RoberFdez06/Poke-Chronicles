@@ -38,7 +38,11 @@ function sample(): RunSave {
     coins: 7,
     centerUsed: true,
     shop: [{ goods: { kind: 'potion', id: 'pocion' }, price: 5, sold: false }],
-    layout: 2,
+    layout: 3,
+    keys: 1,
+    bombs: 2,
+    openedChests: [4],
+    revealedDoors: ['3:up'],
   };
 }
 
@@ -129,6 +133,16 @@ test('un guardado v5 (sin evolución) sigue con el Pokémon elegido', () => {
   assert.ok(run);
   assert.equal(run.version, RUN_VERSION);
   assert.equal(run.formId, 4);
+});
+
+test('un guardado v6 (sin llaves ni bombas) empieza con una bomba y conserva su diseño de piso', () => {
+  const { keys: _k, bombs: _b, openedChests: _o, revealedDoors: _r, ...v6 } = sample();
+  const run = parseRun(JSON.stringify({ ...v6, version: 6, layout: 2 }));
+  assert.ok(run);
+  assert.equal(run.version, RUN_VERSION);
+  assert.deepEqual([run.keys, run.bombs, run.layout], [0, 1, 2]);
+  assert.deepEqual(run.openedChests, []);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), bombs: -1 })), null);
 });
 
 test('un piso no válido invalida el guardado', () => {

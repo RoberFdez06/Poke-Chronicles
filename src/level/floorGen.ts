@@ -1,7 +1,10 @@
 // Generador de pisos: lógica pura, sin Phaser, determinista por semilla.
 
-/** center = Centro Pokémon (te cura una vez por piso); shop = tienda (se paga con monedas de la partida). */
-export type RoomKind = 'start' | 'combat' | 'item' | 'boss' | 'center' | 'shop';
+/**
+ * center = Centro Pokémon (te cura una vez por piso); shop = tienda (se paga con monedas de la partida);
+ * secret = sala secreta (sus puertas están ocultas y se abren con una bomba); challenge = sala de desafío (oleadas).
+ */
+export type RoomKind = 'start' | 'combat' | 'item' | 'boss' | 'center' | 'shop' | 'secret' | 'challenge';
 export type Dir = 'up' | 'down' | 'left' | 'right';
 
 export const DIRS: readonly Dir[] = ['up', 'down', 'left', 'right'];
@@ -35,6 +38,12 @@ export interface Floor {
   /** Centro Pokémon y tienda (solo con `special: true`). */
   centerId?: number;
   shopId?: number;
+  /** Sala secreta, sala de desafío y salas con cofre (solo con `extra: true`). */
+  secretId?: number;
+  challengeId?: number;
+  chestRooms?: number[];
+  /** Puertas ocultas ("sala:dirección", en los dos lados): parecen pared hasta que una bomba las abre. */
+  hiddenDoors?: string[];
 }
 
 export interface FloorOptions {
@@ -47,6 +56,8 @@ export interface FloorOptions {
    * del piso sale igual que sin ellas (las partidas guardadas antes de tenerlas se siguen cargando bien).
    */
   special?: boolean;
+  /** Además: sala secreta, sala de desafío y cofres (diseño 3; también con un generador aparte). */
+  extra?: boolean;
 }
 
 /** PRNG mulberry32: rápido y reproducible a partir de una semilla de 32 bits. */
@@ -78,7 +89,9 @@ export function generateFloor(opts: FloorOptions): Floor {
   const rng = mulberry32(opts.seed);
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const floor = tryGenerate(rng, opts.seed, cols, rows, target);
-    if (floor) return opts.special ? addSpecialRooms(floor) : floor;
+    if (!floor) continue;
+    const withSpecial = opts.special || opts.extra ? addSpecialRooms(floor) : floor;
+    return opts.extra ? addExtraRooms(withSpecial) : withSpecial;
   }
   throw new Error(`No se pudo generar un piso con ${target} salas`);
 }
@@ -168,6 +181,75 @@ export function addSpecialRooms(floor: Floor): Floor {
   const shop = pick();
   if (shop) shop.kind = 'shop';
   return { ...floor, rooms, centerId: center?.id, shopId: shop?.id };
+}
+
+/** Cuántas salas de combate tienen cofre en cada piso. */
+export const CHESTS_PER_FLOOR = 2;
+
+/** Clave de una puerta oculta. */
+export const doorKey = (roomId: number, d: Dir) => `${roomId}:${d}`;
+
+/**
+ * Sala secreta (como en Isaac): una celda vacía pegada a cuantas más salas mejor (solo de combate o la de inicio,
+ * nunca la del jefe ni otra especial), con puertas ocultas. Además convierte una sala de combate en sala de
+ * desafío y elige salas con cofre. Usa su propio generador, así lo demás sale igual.
+ */
+export function addExtraRooms(floor: Floor): Floor {
+  const rng = mulberry32(floor.seed ^ 0x51ed270b);
+  const rooms = floor.rooms.map((r) => ({ ...r, doors: { ...r.doors } }));
+  const cell = (gx: number, gy: number) => `${gx},${gy}`;
+  const at = new Map(rooms.map((r) => [cell(r.gx, r.gy), r]));
+  const hiddenDoors: string[] = [];
+
+  // Sala secreta: celda libre con el mayor número de vecinas válidas
+  let best: { gx: number; gy: number }[] = [];
+  let bestN = 0;
+  for (let gy = 0; gy < floor.rows; gy++) {
+    for (let gx = 0; gx < floor.cols; gx++) {
+      if (at.has(cell(gx, gy))) continue;
+      const n = DIRS.map((d) => at.get(cell(gx + DIR_DELTA[d].dx, gy + DIR_DELTA[d].dy))).filter((x): x is Room => !!x);
+      if (n.length === 0 || n.some((x) => x.kind !== 'combat' && x.kind !== 'start')) continue;
+      if (n.length > bestN) {
+        bestN = n.length;
+        best = [];
+      }
+      if (n.length === bestN) best.push({ gx, gy });
+    }
+  }
+  let secretId: number | undefined;
+  if (best.length > 0) {
+    const c = best[Math.floor(rng() * best.length)];
+    const secret: Room = { id: rooms.length, gx: c.gx, gy: c.gy, kind: 'secret', depth: 0, doors: {} };
+    let depth = Infinity;
+    for (const d of DIRS) {
+      const n = at.get(cell(c.gx + DIR_DELTA[d].dx, c.gy + DIR_DELTA[d].dy));
+      if (!n) continue;
+      secret.doors[d] = n.id;
+      n.doors[OPPOSITE[d]] = secret.id;
+      hiddenDoors.push(doorKey(secret.id, d), doorKey(n.id, OPPOSITE[d]));
+      depth = Math.min(depth, n.depth + 1);
+    }
+    secret.depth = depth;
+    rooms.push(secret);
+    secretId = secret.id;
+  }
+
+  // Sala de desafío: una de combate, mejor sin salida (sin contar puertas ocultas)
+  const visibleDoors = (x: Room) => DIRS.filter((d) => x.doors[d] !== undefined && !hiddenDoors.includes(doorKey(x.id, d))).length;
+  const combat = rooms.filter((x) => x.kind === 'combat');
+  const ends = combat.filter((x) => visibleDoors(x) === 1);
+  const pool = ends.length > 0 ? ends : combat;
+  const challenge = pool.length > 0 ? pool[Math.floor(rng() * pool.length)] : undefined;
+  if (challenge) challenge.kind = 'challenge';
+
+  // Cofres en algunas salas de combate
+  const left = rooms.filter((x) => x.kind === 'combat');
+  const chestRooms: number[] = [];
+  while (chestRooms.length < CHESTS_PER_FLOOR && left.length > 0) {
+    chestRooms.push(left.splice(Math.floor(rng() * left.length), 1)[0].id);
+  }
+
+  return { ...floor, rooms, secretId, challengeId: challenge?.id, chestRooms: chestRooms.sort((a, b) => a - b), hiddenDoors };
 }
 
 function shuffled<T>(items: readonly T[], rng: () => number): T[] {

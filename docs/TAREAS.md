@@ -136,7 +136,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
   para elegir especies. El jefe legendario intenta ser de un tipo del bioma.
 - Cartel al entrar al piso: "Piso 2 — Cueva". Datos de biomas puros en `src/level/biomes.ts` con tests.
 
-## [ ] T21 — Más salas tipo Isaac
+## [x] T21 — Más salas tipo Isaac
 - **Llaves y cofres**: los enemigos sueltan llaves a veces; cofres en algunas salas que se abren con llave
   (objeto, monedas o bayas). Contador de llaves en el HUD y la pausa.
 - **Bombas**: se recogen y se usan con una tecla (E / clic derecho+botón en HUD / botón del mando libre: mira

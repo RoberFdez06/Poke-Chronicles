@@ -102,3 +102,45 @@ test('Centro y tienda van en salas sin salida cuando hay bastantes', () => {
   }
   assert.ok(deadEnd / total > 0.6, `${deadEnd}/${total}`);
 });
+
+test('diseño 3: sala secreta con puertas ocultas, sala de desafío y cofres', () => {
+  let multi = 0;
+  for (const seed of SEEDS) {
+    for (const roomCount of [8, 12, 18, 24]) {
+      const f = generateFloor({ seed, roomCount, special: true, extra: true });
+      const base = generateFloor({ seed, roomCount, special: true });
+      // Lo de antes no cambia: mismas salas en el mismo sitio
+      assert.deepEqual(f.rooms.slice(0, base.rooms.length).map((r) => [r.gx, r.gy]), base.rooms.map((r) => [r.gx, r.gy]));
+      assert.ok(f.secretId !== undefined, `semilla ${seed}`);
+      const secret = f.rooms[f.secretId!];
+      assert.equal(secret.kind, 'secret');
+      const neighbours = Object.values(secret.doors).map((id) => f.rooms[id!]);
+      assert.ok(neighbours.length >= 1);
+      if (neighbours.length >= 2) multi++;
+      for (const n of neighbours) assert.ok(n.kind === 'combat' || n.kind === 'start' || n.kind === 'challenge', n.kind);
+      // Todas sus puertas están ocultas, por los dos lados
+      for (const [d, id] of Object.entries(secret.doors)) {
+        assert.ok(f.hiddenDoors!.includes(`${secret.id}:${d}`));
+        assert.ok(f.hiddenDoors!.includes(`${id}:${OPPOSITE[d as Dir]}`));
+      }
+      assert.ok(f.challengeId !== undefined);
+      assert.equal(f.rooms[f.challengeId!].kind, 'challenge');
+      assert.equal(f.chestRooms!.length, 2);
+      for (const id of f.chestRooms!) assert.equal(f.rooms[id].kind, 'combat');
+      // Sin pasar por puertas ocultas se llega a todo menos a la secreta
+      const seen = new Set([f.startId]);
+      const stack = [f.startId];
+      while (stack.length) {
+        const r = f.rooms[stack.pop()!];
+        for (const [d, n] of Object.entries(r.doors)) {
+          if (n === undefined || seen.has(n) || f.hiddenDoors!.includes(`${r.id}:${d}`)) continue;
+          seen.add(n);
+          stack.push(n);
+        }
+      }
+      assert.equal(seen.size, f.rooms.length - 1);
+      assert.ok(!seen.has(f.secretId!));
+    }
+  }
+  assert.ok(multi > SEEDS.length, 'casi siempre toca a dos salas o más');
+});
