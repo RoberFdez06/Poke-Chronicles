@@ -48,3 +48,18 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 ## [ ] T7 — Español en todo lo que viene de PokeAPI
 - Nombres de Pokémon (`pokemon-species/{id}` → `names` es), movimientos (`move/{id}` → `names` es) y tipos
   en español en todas las pantallas (gacha, iniciales, pausa, objetos, HUD). Con caché.
+
+## [ ] T8 — Interfaz estilo Pokémon
+- Aspecto de los juegos de Pokémon: cuadros de texto con borde doble y esquinas redondeadas, flecha ▶ de
+  selección, barras de PS verde/amarillo/rojo con la etiqueta "PS", fichas de tipo, transiciones de pantalla.
+- Tipografía pixel con licencia libre (OFL), descargada a `public/fonts/` (por ejemplo "Press Start 2P" o
+  "Pixelify Sans" de Google Fonts) y cargada antes de crear el juego (`document.fonts.load`). No uses fuentes
+  oficiales ni logos de Pokémon. Centraliza fuente y colores en un archivo de tema (`src/ui/theme.ts`).
+- Aplícalo a todas las escenas (menú, huecos, inicial, gacha, pausa, HUD) y mantén teclado, ratón y mando.
+
+## [ ] T9 — Salas con obstáculos
+- Diseños de sala variados (como en Isaac): rocas que bloquean, arbustos/hierba alta que se pueden destruir
+  disparando, agujeros que no se pueden cruzar a pie, columnas y charcos. Que nunca bloqueen el paso entre puertas.
+- Plantillas de sala en datos puros (`src/level/roomLayouts.ts`) elegidas con la semilla del piso, con un test
+  que compruebe que todas las puertas quedan conectadas (BFS sobre la cuadrícula de la sala).
+- Los enemigos rodean los obstáculos o al menos no se quedan atascados para siempre.
