@@ -79,7 +79,7 @@ Cada tarea termina con tsc + tests + build verdes, entrada en `docs/BITACORA.md`
 - Barrita de vida pequeña encima de cada enemigo (solo cuando ha recibido daño, verde→amarillo→rojo).
 - Jefe: barra grande arriba de la pantalla con su nombre en español y su tipo, como en Isaac.
 
-## [ ] T18 — Estadísticas reales de cada Pokémon (va antes de T9)
+## [x] T18 — Estadísticas reales de cada Pokémon (va antes de T9)
 - Usa `stats` de PokeAPI (`pokemon/{id}`: hp, attack, defense, special-attack, special-defense, speed) para tus
   estadísticas base: PS → vida máxima, Ataque → daño del disparo, At. Esp. → daño de los poderes,
   Defensa y Def. Esp. → reducen el daño recibido, Velocidad → velocidad de movimiento y cadencia.

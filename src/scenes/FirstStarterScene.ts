@@ -112,7 +112,7 @@ export class FirstStarterScene extends Phaser.Scene {
         .setAlpha(0.8),
     ];
     this.cards.forEach((c, k) => {
-      const t = buildPokemonCard(this, c, 480 + (k - 1) * 240, 330);
+      const t = buildPokemonCard(this, c, 480 + (k - 1) * 240, 330, { stats: c.stats });
       t.box.on('pointerover', () => this.select(k));
       t.box.on('pointerdown', () => this.choose(k));
       this.tiles.push(t);

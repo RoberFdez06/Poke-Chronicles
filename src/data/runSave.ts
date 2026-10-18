@@ -3,7 +3,7 @@
 // Tickets y desbloqueos NO van aquí: son comunes a todos los huecos (ver save.ts).
 // Lógica pura, sin Phaser, para poder testearla.
 import type { StorageLike } from './save';
-import type { MovePower } from './items';
+import { computeStats, type MovePower } from './items.ts';
 import { isMode, type GameMode } from './modes.ts';
 import { BERRIES, POTIONS, type ShopSlot } from './loot.ts';
 
@@ -13,8 +13,9 @@ export const RUN_SLOTS = 3;
  * v3: modo de juego (los v2 eran todos del modo Normal).
  * v4: monedas de la partida, Centro Pokémon, tienda y monedas/bayas en el suelo. Los pisos v3 se
  *     generaron sin Centro ni tienda (`layout` 1) y se siguen generando así para que cuadren.
+ * v5: PS máximos (dependen de las estadísticas del Pokémon) para mostrarlos sin cargarlo.
  */
-export const RUN_VERSION = 4;
+export const RUN_VERSION = 5;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -54,6 +55,8 @@ export interface RunSave {
   visited: number[];
   cleared: number[];
   hp: number;
+  /** PS máximos al guardar (estadísticas del Pokémon + objetos). */
+  maxHp: number;
   passives: string[];
   slots: (MovePower | null)[];
   nextSlotReplace: number;
@@ -112,6 +115,12 @@ function isShopSlot(s: unknown): s is ShopSlot {
   return g.kind === 'move' && isMove(g.move);
 }
 
+/** v4 no guardaba los PS máximos: eran siempre los de por defecto con los objetos. */
+function migrateV4(d: RunSave): RunSave {
+  const passives = Array.isArray(d.passives) ? d.passives.filter((p) => typeof p === 'string') : [];
+  return { ...d, version: 5, maxHp: computeStats(passives).maxHp };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -125,12 +134,13 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 1) d = migrateV1(d);
   if (d.version === 2) d = migrateV2(d);
   if (d.version === 3) d = migrateV3(d);
+  if (d.version === 4) d = migrateV4(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && typeof d.starterName === 'string' && isMode(d.mode) &&
     isInt(d.floor) && d.floor >= 1 && isIntArray(d.bossHistory) &&
     isInt(d.floorSeed) && isInt(d.roomCount) && isInt(d.bossId) && isInt(d.roomId) &&
-    isIntArray(d.visited) && isIntArray(d.cleared) && typeof d.hp === 'number' && d.hp > 0 &&
+    isIntArray(d.visited) && isIntArray(d.cleared) && typeof d.hp === 'number' && d.hp > 0 && isInt(d.maxHp) && d.maxHp > 0 &&
     Array.isArray(d.passives) && d.passives.every((p) => typeof p === 'string') &&
     Array.isArray(d.slots) && d.slots.every((m) => m === null || isMove(m)) &&
     isInt(d.nextSlotReplace) && Array.isArray(d.movePool) && d.movePool.every(isMove) &&

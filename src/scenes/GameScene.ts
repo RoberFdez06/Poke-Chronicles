@@ -27,6 +27,7 @@ import {
   MODE_LABEL,
 } from '../data/modes';
 import { submitRecord } from '../data/save';
+import { bossStats, playerBaseStats, shapeEnemyStats, AVERAGE_STATS, BaseStats } from '../data/pokeStats';
 import {
   BERRIES,
   POTIONS,
@@ -124,6 +125,8 @@ interface FoeKind {
   behavior: EnemyBehavior;
   bst: number;
   type: string;
+  /** Estadísticas base: reparten su fuerza (más vida, más daño o más velocidad). */
+  stats: BaseStats;
 }
 
 /** Estado de la IA de cada enemigo (guardado en el sprite con setData('ai')). */
@@ -214,6 +217,10 @@ export class GameScene extends Phaser.Scene {
 
   // Combate: disparo continuo, objetos pasivos y poderes (movimientos) en ranuras
   private stats: PlayerStats = { ...BASE_STATS };
+  /** Estadísticas del Pokémon (de PokeAPI) antes de los objetos pasivos. */
+  private base: PlayerStats = { ...BASE_STATS };
+  private baseStats: BaseStats = { ...AVERAGE_STATS };
+  private bossBase: BaseStats = { ...AVERAGE_STATS };
   private passives: string[] = [];
   private slots: (MovePower | null)[] = [];
   private slotReady: number[] = [];
@@ -281,7 +288,8 @@ export class GameScene extends Phaser.Scene {
   create() {
     // scene.restart reutiliza la instancia: reiniciamos el estado
     this.passives = [];
-    this.stats = computeStats(this.passives);
+    this.base = { ...BASE_STATS };
+    this.stats = this.calcStats();
     this.hp = this.stats.maxHp;
     this.slots = Array<MovePower | null>(SLOT_COUNT).fill(null);
     this.slotReady = Array<number>(SLOT_COUNT).fill(0);
@@ -322,8 +330,9 @@ export class GameScene extends Phaser.Scene {
       this.floorNum = c.floor;
       this.bossHistory = [...c.bossHistory];
       this.passives = [...c.passives];
-      this.stats = computeStats(this.passives);
-      this.hp = Math.min(this.stats.maxHp, c.hp);
+      this.stats = this.calcStats();
+      // Se recorta a los PS máximos en boot(), cuando ya se conocen las estadísticas del Pokémon
+      this.hp = c.hp;
       this.slots = Array.from({ length: SLOT_COUNT }, (_, i) => c.slots[i] ?? null);
       this.nextSlotReplace = c.nextSlotReplace;
       this.movePool = [...c.movePool];
@@ -398,6 +407,12 @@ export class GameScene extends Phaser.Scene {
     this.foeKinds = this.toFoeKinds(foes, index);
     this.bossType = boss.types[0] ?? 'normal';
     this.bossName = boss.name;
+    this.bossBase = boss.stats;
+    // Tus estadísticas salen de las de tu Pokémon; los objetos van encima
+    this.baseStats = starter.stats;
+    this.base = playerBaseStats(starter.stats);
+    this.stats = this.calcStats();
+    this.hp = !r && !this.carry ? this.stats.maxHp : Math.min(this.stats.maxHp, this.hp);
     this.tearType = starter.types[0] ?? 'normal';
     this.starterName = starter.name;
     // Misma clave que usa StarterScene, así las texturas ya están cargadas
@@ -449,6 +464,11 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  /** Tus estadísticas: las de tu Pokémon con los objetos pasivos encima. */
+  private calcStats(): PlayerStats {
+    return computeStats(this.passives, this.base);
+  }
+
   /** Nivel de dificultad: el piso, el jefe por el que vas o, en Oleadas, el que toca a la ronda. */
   private level(): number {
     return this.mode === 'waves' ? waveSpec(this.floorNum).level : this.floorNum;
@@ -466,6 +486,7 @@ export class GameScene extends Phaser.Scene {
       behavior: behaviorFor(c.types),
       bst: index.find((s) => s.id === c.id)?.bst ?? 300,
       type: c.types[0] ?? 'normal',
+      stats: c.stats,
     }));
   }
 
@@ -698,7 +719,7 @@ export class GameScene extends Phaser.Scene {
 
   private restoreRun(r: RunSave) {
     this.passives = r.passives.filter((id) => passiveById(id));
-    this.stats = computeStats(this.passives);
+    this.stats = this.calcStats();
     this.hp = Math.min(this.stats.maxHp, r.hp);
     this.slots = Array.from({ length: SLOT_COUNT }, (_, i) => r.slots[i] ?? null);
     this.nextSlotReplace = r.nextSlotReplace;
@@ -735,6 +756,7 @@ export class GameScene extends Phaser.Scene {
       visited: [...this.visited],
       cleared: [...this.cleared],
       hp: Math.max(1, this.hp),
+      maxHp: this.stats.maxHp,
       passives: [...this.passives],
       slots: [...this.slots],
       nextSlotReplace: this.nextSlotReplace,
@@ -764,6 +786,7 @@ export class GameScene extends Phaser.Scene {
       showRooms: this.mode === 'normal' || this.mode === 'endless',
       hp: this.hp,
       stats: this.stats,
+      baseStats: this.baseStats,
       items: [...counts].map(([id, n]) => (passiveById(id)?.name ?? id) + (n > 1 ? ` x${n}` : '')),
       moves: [...this.slots],
       roomsCleared: this.cleared.size,
@@ -919,7 +942,7 @@ export class GameScene extends Phaser.Scene {
     if (item.kind === 'passive') {
       const prevMax = this.stats.maxHp;
       this.passives.push(item.item.id);
-      this.stats = computeStats(this.passives);
+      this.stats = this.calcStats();
       // Más PS máximos también te curan esa misma cantidad
       this.hp = Math.min(this.stats.maxHp, this.hp + Math.max(0, this.stats.maxHp - prevMax));
       this.showBanner(`${item.item.name}\n${item.item.description}`, 2400);
@@ -1017,7 +1040,7 @@ export class GameScene extends Phaser.Scene {
     const { x, y } = this.randomSpotInRoom(60);
     const e = this.enemies.create(x, y, `${kind.key}-front`) as Sprite;
     e.setDisplaySize(60, 60).setData('sheet', kind.key).setData('size', 60);
-    const st = enemyStats(kind.bst, kind.behavior, this.difficulty);
+    const st = shapeEnemyStats(enemyStats(kind.bst, kind.behavior, this.difficulty), kind.stats);
     e.setData('hp', st.hp).setData('maxHp', st.hp).setData('speed', st.speed).setData('dmg', st.damage);
     e.setData('ai', this.newAI(kind.behavior, kind.type, false));
   }
@@ -1027,7 +1050,8 @@ export class GameScene extends Phaser.Scene {
     const b = this.enemies.create(x, y, `${this.bossKey}-front`) as Sprite;
     b.setDisplaySize(150, 150).setData('sheet', this.bossKey).setData('size', 150);
     const d = this.difficulty;
-    b.setData('hp', Math.round(500 * d.hp)).setData('speed', 70 * d.speed).setData('dmg', Math.round(20 * d.damage));
+    const st = bossStats(this.bossBase, d);
+    b.setData('hp', st.hp).setData('speed', st.speed).setData('dmg', st.damage);
     b.setData('maxHp', b.getData('hp'));
     this.buildBossBar(b);
     // El jefe también se comporta según su tipo
@@ -1388,7 +1412,8 @@ export class GameScene extends Phaser.Scene {
     this.slotReady[i] = time + m.cooldown;
 
     const dir = this.aim.clone();
-    const dmg = Math.max(6, Math.round(m.power * 0.5 * (this.stats.damage / BASE_STATS.damage)));
+    // At. Esp. del Pokémon y, encima, lo que suban el daño los objetos
+    const dmg = Math.max(6, Math.round(m.power * 0.5 * this.stats.powerMul * (this.stats.damage / this.base.damage)));
     const base = {
       color: typeColor(m.type),
       pierce: this.stats.pierce,
@@ -1924,7 +1949,8 @@ export class GameScene extends Phaser.Scene {
     const ai = enemy.getData('ai') as EnemyAI | undefined;
     if (ai && ai.behavior === 'hop' && ai.state !== 'walk') return;
     this.invulnUntil = now + 900;
-    this.hp -= (enemy.getData('dmg') as number | undefined) ?? 10;
+    // Defensa y Def. Esp. reducen el daño recibido
+    this.hp -= Math.max(1, Math.round(((enemy.getData('dmg') as number | undefined) ?? 10) * this.stats.damageTaken));
     this.player.setTint(0xff6666);
     this.time.delayedCall(150, () => this.player.active && this.player.clearTint());
 

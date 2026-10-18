@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { loadAllRuns, RunSave } from '../data/runSave';
 import { MODE_LABEL, progressText } from '../data/modes';
 import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
-import { computeStats } from '../data/items';
 import { addHpBar, ARROW, drawBox, fadeIn, goTo } from '../ui/theme';
 
 const CARD = { w: 600, h: 120, gap: 22 };
@@ -75,7 +74,7 @@ export class SlotsScene extends Phaser.Scene {
     if (run) {
       // Barra de PS de la partida guardada
       const hp = addHpBar(this, w / 2 - 230, -30, 200, 10);
-      hp.set(run.hp / computeStats(run.passives).maxHp);
+      hp.set(run.hp / run.maxHp);
       parts.push(...hp.objects);
     }
     const box = this.add.container(x, y, parts).setSize(w, h);

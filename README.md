@@ -76,7 +76,7 @@ Alola, Galar o Paldea) y luego uno de **sus 3 iniciales**; ese es tu primer Pok�
 Bulbasaur, Charmander y Squirtle (migración automática).
 
 Después, al empezar partida eliges entre tu colección, **dividida por regiones** (pestañas con cuántos tienes de
-cada una) y con **filtros por nombre y por rareza**. Cada tarjeta muestra tipos y rareza; 8 por página.
+cada una) y con **filtros por nombre y por rareza**. Cada tarjeta muestra tipos, rareza y las 6 estadísticas en barras; 4 por página.
 
 | Acción | Teclado | Ratón | Mando |
 |---|---|---|---|
@@ -100,6 +100,22 @@ Los desbloqueados se guardan en el navegador (`localStorage`, clave `pokeisaac.u
   las pociones) no se compra.
 - Cada piso de Normal e Infinito tiene un Centro y una tienda (`floorGen` los pone en salas sin salida, nunca en la
   del jefe). Oleadas y Rush de jefes no tienen, así que allí solo caen bayas.
+
+## Estadísticas de cada Pokémon
+
+Tus estadísticas salen de las de tu Pokémon en PokeAPI (`src/data/pokeStats.ts`); los objetos pasivos van encima:
+
+| Estadística | En el juego |
+|---|---|
+| PS | Vida máxima |
+| Ataque | Daño del disparo |
+| At. Esp. | Daño de los poderes |
+| Defensa y Def. Esp. | Menos daño recibido |
+| Velocidad | Velocidad de movimiento y cadencia |
+
+Un Pokémon medio (unos 70 en cada estadística) juega igual que antes y los extremos tienen límites (la vida, por
+ejemplo, va de ×0,7 a ×1,6). Los enemigos y jefes reparten su fuerza (la del piso) según sus estadísticas: mucha
+vida, mucho daño o mucha velocidad. Las 6 estadísticas se ven en barras en las tarjetas al elegir Pokémon y en la pausa.
 
 ## Combate
 
@@ -151,6 +167,7 @@ src/
   data/regions.ts      regiones, iniciales y filtros de la colección (puro)
   data/modes.ts        modos de juego, oleadas, arena y récords (puro)
   data/status.ts       estados por tipo: quemar, congelar, paralizar… (puro)
+  data/pokeStats.ts    estadísticas reales de cada Pokémon → estadísticas de juego (puro)
   data/loot.ts         monedas de la partida, bayas, pociones, Centro Pokémon y tienda (puro)
   scenes/ModeScene.ts  elegir modo de juego
   ui/nav.ts            entrada de menús (NavInput, PadButtons) y botones (MenuList)
@@ -174,6 +191,7 @@ tests/
   modes.test.ts        tests de modos y récords
   status.test.ts       tests de estados
   theme.test.ts        tests del color de la barra de PS
+  pokeStats.test.ts    tests de las estadísticas
   loot.test.ts         tests de botín, curación y tienda
 scripts/
   buildSpeciesIndex.mjs  genera public/data/species-index.json desde PokeAPI

@@ -199,3 +199,24 @@ Una entrada por tarea o nota: fecha y hora, qué se hizo, archivos tocados, deci
   lleva barrita: tiene una barra grande arriba (cuadro con borde doble, nombre en español, ficha de su tipo y barra
   "PS") que desaparece al vencerlo.
 - **Archivos**: `GameScene` (`drawEnemyBar`, `buildBossBar`, collider), README.
+
+## T18 — Estadísticas reales de cada Pokémon (2026-10-18)
+
+- **Qué**: `src/data/pokeStats.ts` lee `stats` de `pokemon/{id}` (`parseApiStats`) y las convierte con
+  `statScale(valor, 70, k, mín, máx) = clamp(1 + k·(valor/70 − 1))`: PS → vida máxima (k 0,5, ×0,7–×1,6), Ataque →
+  daño del disparo (k 0,5, ×0,7–×1,6), At. Esp. → `powerMul` de los poderes (k 0,5, ×0,7–×1,6), media de Defensa
+  y Def. Esp. → `damageTaken` (k −0,4, ×0,65–×1,3), Velocidad → velocidad (k 0,35, ×0,8–×1,3) y cadencia (k 0,3).
+  Con 70 en todo sale exactamente `BASE_STATS` (test). `computeStats(pasivos, base)` aplica los objetos encima.
+- **Enemigos y jefes**: la fuerza total sigue saliendo del piso y de la suma de estadísticas (como en T2); ahora
+  `shapeEnemyStats` la reparte según cuánto destaca cada estadística frente a la media de las suyas (×0,6–×1,6):
+  un Pokémon con muchos PS tiene más vida, uno con mucho ataque pega más, uno rápido corre más. El jefe igual,
+  sobre la base de antes (500 PS, 20 de daño, 70 de velocidad por la dificultad del piso).
+- **Pantallas**: tarjetas de la colección y del primer inicial con las 6 estadísticas en barras (rojo < 60 ≤
+  amarillo < 90 ≤ verde); la colección pasa a 4 tarjetas más grandes por página. La pausa muestra las estadísticas
+  base y dos filas nuevas ("Poderes ×1,20", "Daño recibido 85 %").
+- **Guardado**: `RUN_VERSION` 5 con `maxHp` (los huecos ya no pueden calcularlo sin cargar el Pokémon); los v4
+  migran con los PS máximos de antes. Al continuar, los PS se recortan a los nuevos máximos.
+- **Archivos**: `src/data/pokeStats.ts`, `tests/pokeStats.test.ts` (nuevos), `items.ts` (`powerMul`, `damageTaken`),
+  `pokeapi.ts`, `runSave.ts` (+tests), `GameScene`, `PauseScene`, `SlotsScene`, `StarterScene`, `FirstStarterScene`,
+  `ui/cards.ts` (`statBars`), README.
+- **Dudas**: los factores k y los límites son a ojo; están juntos en `PLAYER_LIMITS` y `playerBaseStats`.

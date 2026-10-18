@@ -27,6 +27,7 @@ function sample(): RunSave {
     visited: [0, 3],
     cleared: [0],
     hp: 80,
+    maxHp: 120,
     passives: ['lupa', 'lupa'],
     slots: [move, null, null, null],
     nextSlotReplace: 0,
@@ -108,6 +109,17 @@ test('monedas y bayas en el suelo se guardan; las raras invalidan', () => {
   assert.equal(parseRun(JSON.stringify({ ...sample(), floorItems: [{ roomId: 1, x: 0, y: 0, drop: { kind: 'berry', id: 'nada' } }] })), null);
   assert.equal(parseRun(JSON.stringify({ ...sample(), coins: -1 })), null);
   assert.equal(parseRun(JSON.stringify({ ...sample(), shop: [{ goods: { kind: 'potion', id: 'x' }, price: 5, sold: false }] })), null);
+});
+
+test('un guardado v4 (sin PS máximos) los calcula con los objetos', () => {
+  const { maxHp: _m, ...v4 } = sample();
+  const run = parseRun(JSON.stringify({ ...v4, version: 4 }));
+  assert.ok(run);
+  assert.equal(run.version, RUN_VERSION);
+  // Sin Baya Aranja: los 100 de siempre
+  assert.equal(run.maxHp, 100);
+  const withBerry = parseRun(JSON.stringify({ ...v4, version: 4, passives: ['baya-aranja'] }));
+  assert.equal(withBerry?.maxHp, 120);
 });
 
 test('un piso no válido invalida el guardado', () => {

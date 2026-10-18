@@ -5,15 +5,15 @@ import { loadSpeciesIndex } from '../data/speciesIndex';
 import { classifyRarity, RARITIES, RARITY_LABEL, Rarity } from '../data/gacha';
 import { countByRegion, filterCollection, CollectionEntry, REGIONS, SEARCH_LETTERS } from '../data/regions';
 import { addPanel, NavInput, PadButtons, UI } from '../ui/nav';
-import { addBackButton, buildPokemonCard, loadCardTextures } from '../ui/cards';
+import { addBackButton, buildPokemonCard, loadCardTextures, STATS_EXTRA_H } from '../ui/cards';
 import { drawBox, fadeIn, goTo, hex, RARITY_COLORS } from '../ui/theme';
 
-/** Pokémon por página (2 filas de 4). */
-const PAGE_SIZE = 8;
+/** Pokémon por página: una fila de 4 tarjetas con sus estadísticas. */
+const PAGE_SIZE = 4;
 const COLS = 4;
-const CARD_SCALE = 0.68;
-const CELL = { w: 200 * CARD_SCALE + 18, h: 270 * CARD_SCALE + 14 };
-const GRID_Y = 384;
+const CARD_SCALE = 0.88;
+const CELL = { w: 200 * CARD_SCALE + 20, h: (270 + STATS_EXTRA_H) * CARD_SCALE + 14 };
+const GRID_Y = 390;
 /** Margen tras abrir la pantalla en el que se ignora confirmar: evita que un Enter mantenido desde el menú elija solo. */
 const INPUT_DELAY_MS = 350;
 
@@ -294,6 +294,7 @@ export class StarterScene extends Phaser.Scene {
       const e = slice[k];
       const t = buildPokemonCard(this, c, left + (k % COLS) * CELL.w, top + Math.floor(k / COLS) * CELL.h, {
         scale: CARD_SCALE,
+        stats: c.stats,
         tag: { text: RARITY_LABEL[e.rarity], color: hex(RARITY_COLORS[e.rarity]) },
       });
       const index = page * PAGE_SIZE + k;

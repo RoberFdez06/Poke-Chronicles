@@ -1,6 +1,7 @@
 import type { MoveInfo } from './items';
 import { isUsableMove, localName, pickMoveIds, typeMoveIds } from './moves';
 import { loadSpeciesIndex } from './speciesIndex';
+import { parseApiStats, type BaseStats } from './pokeStats';
 
 export interface MoveData {
   name: string;
@@ -17,6 +18,8 @@ export interface PokemonData {
   /** Sprites pixel de PokeAPI: de frente y de espalda (si no hay, se repite el de frente). */
   sprites: { front: string; back: string };
   moves: MoveData[];
+  /** Estadísticas base (PS, Ataque, Defensa, At. Esp., Def. Esp., Velocidad). */
+  stats: BaseStats;
 }
 
 const BASE = 'https://pokeapi.co/api/v2';
@@ -58,11 +61,12 @@ export interface PokemonCard {
   name: string;
   types: string[];
   sprites: { front: string; back: string };
+  stats: BaseStats;
 }
 
 export async function fetchPokemonCard(id: number): Promise<PokemonCard> {
   const [p, name] = await Promise.all([getPokemonRaw(id), fetchSpeciesName(id)]);
-  return { id, name, types: typesOf(p), sprites: spritesOf(p) };
+  return { id, name, types: typesOf(p), sprites: spritesOf(p), stats: parseApiStats(p.stats) };
 }
 
 const speciesNameCache = new Map<number, Promise<string>>();
@@ -110,6 +114,7 @@ async function load(id: number): Promise<PokemonData> {
     artwork: p.sprites.other['official-artwork'].front_default ?? p.sprites.front_default,
     sprites: spritesOf(p),
     moves,
+    stats: parseApiStats(p.stats),
   };
 }
 

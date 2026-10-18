@@ -20,6 +20,10 @@ export interface PlayerStats {
   bounces: number;
   /** PS que recuperas al limpiar una sala. */
   healOnClear: number;
+  /** Multiplicador del daño de los poderes (sale del Ataque Especial del Pokémon). */
+  powerMul: number;
+  /** Multiplicador del daño que recibes (sale de la Defensa y la Defensa Especial). */
+  damageTaken: number;
 }
 
 export const BASE_STATS: Readonly<PlayerStats> = {
@@ -33,6 +37,8 @@ export const BASE_STATS: Readonly<PlayerStats> = {
   pierce: 0,
   bounces: 0,
   healOnClear: 0,
+  powerMul: 1,
+  damageTaken: 1,
 };
 
 export const MIN_FIRE_DELAY = 90;
@@ -116,9 +122,12 @@ export function passiveById(id: string): PassiveItem | undefined {
   return PASSIVE_ITEMS.find((i) => i.id === id);
 }
 
-/** Estadísticas resultantes de tener estos objetos (se repiten si hay duplicados). */
-export function computeStats(passiveIds: readonly string[]): PlayerStats {
-  const s: PlayerStats = { ...BASE_STATS };
+/**
+ * Estadísticas resultantes de tener estos objetos (se repiten si hay duplicados), encima de las del
+ * Pokémon (`base`, ver pokeStats.ts) o de las de por defecto.
+ */
+export function computeStats(passiveIds: readonly string[], base: Readonly<PlayerStats> = BASE_STATS): PlayerStats {
+  const s: PlayerStats = { ...base };
   for (const id of passiveIds) passiveById(id)?.apply(s);
   s.fireDelay = Math.max(MIN_FIRE_DELAY, s.fireDelay);
   return s;

@@ -3,6 +3,7 @@ import { CONTROLS } from '../data/controls';
 import type { MovePower, PlayerStats } from '../data/items';
 import { typeColor, typeHex, typeNameEs } from '../data/types';
 import { addHpBar, addTypeChip, drawBox } from '../ui/theme';
+import { STAT_KEYS, STAT_LABEL, type BaseStats } from '../data/pokeStats';
 import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
 
 export interface PauseData {
@@ -15,6 +16,8 @@ export interface PauseData {
   showRooms: boolean;
   hp: number;
   stats: PlayerStats;
+  /** Estadísticas base del Pokémon (PokeAPI). */
+  baseStats: BaseStats;
   /** Nombres de los objetos pasivos, ya agrupados ("Lupa x2"). */
   items: string[];
   moves: (MovePower | null)[];
@@ -77,6 +80,8 @@ export class PauseScene extends Phaser.Scene {
       ['Disparos extra', `${st.extraShots}`],
       ['Atraviesa', `${st.pierce}`],
       ['Rebotes', `${st.bounces}`],
+      ['Poderes', `×${st.powerMul.toFixed(2)}`],
+      ['Daño recibido', `${Math.round(st.damageTaken * 100)} %`],
     ];
     rows.forEach(([k, v], i) => {
       const x = 66 + (i % 2) * 245;
@@ -84,12 +89,14 @@ export class PauseScene extends Phaser.Scene {
       t(x, y, k, 17, '#4a5578');
       t(x + 140, y, v, 17, '#2b3a67', true);
     });
-    t(66, 312, 'Objetos', 20, '#2b3a67', true);
-    t(66, 340, d.items.length ? d.items.join(' · ') : 'Ninguno todavía', 16, '#4a5578');
-    t(66, 430, 'Poderes', 20, '#2b3a67', true);
+    // Estadísticas base del Pokémon, como en los juegos
+    t(66, 328, STAT_KEYS.map((k) => `${STAT_LABEL[k]} ${d.baseStats[k]}`).join(' · '), 13, '#4a5578');
+    t(66, 352, 'Objetos', 20, '#2b3a67', true);
+    t(66, 378, d.items.length ? d.items.join(' · ') : 'Ninguno todavía', 16, '#4a5578');
+    t(66, 440, 'Poderes', 20, '#2b3a67', true);
     d.moves.forEach((m, i) => {
       const x = 66 + (i % 2) * 245;
-      const y = 460 + Math.floor(i / 2) * 34;
+      const y = 470 + Math.floor(i / 2) * 34;
       t(x, y, `${i + 1}  ${m ? pretty(m.name) : '—'}`, 17, m ? typeHex(m.type) : '#9aa5b1', true)
         .setStroke(m ? '#2b3a67' : '#00000000', m ? 2 : 0);
       // Ficha del tipo del poder
