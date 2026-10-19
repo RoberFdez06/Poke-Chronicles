@@ -10,6 +10,7 @@ import { weatherChip, weatherFor, weatherHurts, weatherPowerMul, WEATHER_DESC, W
 import { WeatherFx } from '../ui/weatherFx';
 import { TouchControls, type TouchButton } from '../ui/touchControls';
 import { touchOnlyDevice } from '../data/controls';
+import { FxBudget } from '../data/fxSettings';
 import {
   altarCost,
   canUseAltar,
@@ -47,7 +48,7 @@ import {
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
-import { addRunHistory, loadKeys, loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMission, saveTutorial, submitDaily, submitRecord } from '../data/save';
+import { addRunHistory, loadKeys, loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMission, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
 import { disableTips, markTipSeen, shouldShowTip, TIPS, type TipId } from '../data/tutorial';
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
 import { emptyCounters, type RunCounters, type RunRecord } from '../data/runHistory';
@@ -409,6 +410,14 @@ export class GameScene extends Phaser.Scene {
   private playerTypes: string[] = ['normal'];
   /** Joysticks y botones táctiles (T35): solo en móvil o tableta. */
   private touch?: TouchControls;
+  /**
+   * Rendimiento (T41): lo que se dibujó al construir cada sala. La cámara solo pinta la sala en la que estás (y la
+   * siguiente mientras pasas la puerta); antes pintaba todas las del piso cada fotograma.
+   */
+  private roomObjs = new Map<number, Phaser.GameObjects.GameObject[]>();
+  /** Tope de partículas por momento (con efectos bajos, ninguna) y contador de FPS (Ajustes). */
+  private fxBudget = new FxBudget();
+  private fpsText?: Phaser.GameObjects.Text;
   /** Sala sorpresa del piso (T39), las ya resueltas y los PS máximos dados en altares (toda la partida). */
   private roomEvent: RoomEvent | null = null;
   private eventsDone = new Set<number>();
@@ -665,6 +674,13 @@ export class GameScene extends Phaser.Scene {
     for (const c of [...this.cameras.cameras]) if (c !== this.cameras.main) this.cameras.remove(c);
     this.hudCam = undefined;
     this.cameras.main.setViewport(GAME_VIEW.x, GAME_VIEW.y, GAME_VIEW.w, GAME_VIEW.h).setZoom(GAME_ZOOM).centerOn(DCX, DCY);
+    // Efectos bajos (T41): sin partículas decorativas ni temblores de cámara
+    const fx = loadFx();
+    this.fxBudget = new FxBudget(fx.low);
+    const mainCam = this.cameras.main as Phaser.Cameras.Scene2D.Camera & { shake: Phaser.Cameras.Scene2D.Camera['shake'] };
+    if (fx.low) mainCam.shake = (() => mainCam) as typeof mainCam.shake;
+    else delete (mainCam as Partial<typeof mainCam>).shake;
+    this.fpsText = undefined;
     fadeIn(this);
 
     const loading = this.add
@@ -875,6 +891,44 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Dónde acaba el dibujo por abajo (fila, ancho y centro de los píxeles de los pies), cacheado por fotograma. */
+  private feetCache = new Map<string, { bottom: number; span: number; cx: number } | null>();
+  private feetOf(s: Sprite): { bottom: number; span: number; cx: number } | null {
+    const f = s.frame;
+    if (!f || !f.source?.image) return null;
+    const key = `${f.texture.key}|${f.name}`;
+    const hit = this.feetCache.get(key);
+    if (hit !== undefined) return hit;
+    let res: { bottom: number; span: number; cx: number } | null = null;
+    try {
+      const w = Math.max(1, f.cutWidth), h = Math.max(1, f.cutHeight);
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      const cx = c.getContext('2d', { willReadFrequently: true });
+      if (cx) {
+        cx.drawImage(f.source.image as CanvasImageSource, f.cutX, f.cutY, w, h, 0, 0, w, h);
+        const d = cx.getImageData(0, 0, w, h).data;
+        const rowHas = (y: number) => { let n = 0; for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 40) n++; return n; };
+        let bottom = -1;
+        for (let y = h - 1; y >= 0; y--) if (rowHas(y) >= 2) { bottom = y; break; }
+        if (bottom >= 0) {
+          // Ancho de los pies: las filas más bajas del dibujo (un cuarto de su altura)
+          let top = 0;
+          for (let y = 0; y < h; y++) if (rowHas(y) >= 1) { top = y; break; }
+          const from = Math.max(top, bottom - Math.max(2, Math.round((bottom - top) * 0.25)));
+          let lo = w, hi = -1;
+          for (let y = from; y <= bottom; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 40) { lo = Math.min(lo, x); hi = Math.max(hi, x); }
+          if (hi >= lo) res = { bottom: bottom + 1, span: hi - lo + 1, cx: (lo + hi + 1) / 2 };
+        }
+      }
+    } catch {
+      res = null; // imagen de otro origen sin permiso de lectura: se usa el cálculo de siempre
+    }
+    this.feetCache.set(key, res);
+    return res;
+  }
+
   private dressSprites(time: number) {
     const all = [this.player, ...(this.enemies.getChildren() as Sprite[])];
     for (const s of all) {
@@ -897,9 +951,13 @@ export class GameScene extends Phaser.Scene {
       const hop = moving ? Math.abs(Math.sin(phase)) : 0;
       // Pegada a los pies (Roberto: con la sombra más abajo parecía que volaba). En las hojas de SpriteCollab los
       // pies quedan un poco por encima del final del cuerpo físico; en los de PokeAPI, hacia el 86 % del dibujo.
-      const feetY = pmd ? body.bottom - body.height * 0.26 : s.y + s.displayHeight * 0.34;
-      sh.setPosition(body.center.x, feetY);
-      sh.setSize(w, w * 0.3);
+      // Mejor aún: se mira dónde acaban de verdad los píxeles del dibujo (los jefes grandes, como Groudon, tienen
+      // márgenes distintos y con una cifra fija la sombra les quedaba lejos y parecían volar).
+      const feet = this.feetOf(s);
+      const feetY = feet ? s.y + (feet.bottom - s.originY * s.frame.height) * s.scaleY - 1 : pmd ? body.bottom - body.height * 0.26 : s.y + s.displayHeight * 0.34;
+      const sw = feet ? Math.max(14, feet.span * Math.abs(s.scaleX) * 0.95) : w;
+      sh.setPosition(feet ? s.x + ((s.flipX ? s.frame.width - feet.cx : feet.cx) - s.originX * s.frame.width) * s.scaleX : body.center.x, feetY);
+      sh.setSize(sw, sw * 0.3);
       // Parpadeo mientras el jugador es invulnerable tras un golpe
       if (s === this.player && !this.ended && !this.evolving) s.setAlpha(time < this.invulnUntil && Math.floor(time / 70) % 2 ? 0.35 : 1);
       sh.setVisible(s.visible).setAlpha(Math.max(0.4, s.alpha));
@@ -1235,6 +1293,22 @@ export class GameScene extends Phaser.Scene {
     this.runaway = undefined;
   }
 
+  /**
+   * Solo estas salas se pintan en la cámara de la sala (T41). Usa el filtro de cámara, no `visible`, para no pisar
+   * lo que el juego enseña u oculta (rejas de las puertas, paredes con grieta…).
+   */
+  private showRooms(ids: number[]) {
+    const cam = this.cameras.main.id;
+    for (const [id, objs] of this.roomObjs) {
+      const show = ids.includes(id);
+      for (const o of objs) {
+        if (!o.active) continue;
+        if (show) o.cameraFilter &= ~cam;
+        else o.cameraFilter |= cam;
+      }
+    }
+  }
+
   /** Tickets ganados con la dificultad (T40): se suman al total y a los de la partida; devuelve cuántos. */
   private giveTickets(base: number): number {
     const n = scaleTickets(base, this.diff);
@@ -1378,7 +1452,12 @@ export class GameScene extends Phaser.Scene {
     this.loot = this.physics.add.group();
     this.makeLootTextures();
     this.makeExtraTextures();
-    this.floor.rooms.forEach((r) => this.buildRoom(r));
+    this.roomObjs.clear();
+    this.floor.rooms.forEach((r) => {
+      const before = this.children.list.length;
+      this.buildRoom(r);
+      this.roomObjs.set(r.id, this.children.list.slice(before));
+    });
     // Minijefe del piso (Normal e Infinito): la sala de combate más lejos de la entrada
     this.minibossRoom = undefined;
     if ((this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)) {
@@ -1533,6 +1612,8 @@ export class GameScene extends Phaser.Scene {
     }
     // Minimapa arriba a la derecha
     this.minimap = hud(this.add.graphics());
+    // Contador de FPS (Ajustes > Mostrar FPS), abajo a la derecha
+    if (loadFx().showFps) this.fpsText = hud(this.add.text(W - 8, H - 6, '', { fontFamily: FONT, fontSize: '16px', color: '#9fe39a' }).setOrigin(1, 1));
     // Controles táctiles (T35), solo en móvil o tableta (en PC nunca)
     this.touch = touchOnlyDevice() ? new TouchControls(this, (o) => void hud(o)) : undefined;
     this.hurtFlash = hud(this.add.rectangle(GAME_VIEW.x + GAME_VIEW.w / 2, GAME_VIEW.y + GAME_VIEW.h / 2, GAME_VIEW.w, GAME_VIEW.h, 0xff2a2a, 0));
@@ -1595,7 +1676,7 @@ export class GameScene extends Phaser.Scene {
 ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     if (this.weather) {
-      this.weatherFx = new WeatherFx(this, this.weather, 20);
+      this.weatherFx = new WeatherFx(this, this.weather, 20, this.fxBudget.low);
       const w = this.weather;
       this.time.delayedCall(900, () => !this.ended && this.notify(`${WEATHER_LABEL[w]}\n${WEATHER_DESC[w]}`, { kind: 'info', icon: 'star' }));
     }
@@ -2608,6 +2689,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   private enterRoom(room: Room) {
     this.current = room;
+    this.showRooms([room.id]);
     this.shieldLeft = this.stats.shieldPerRoom;
     this.visited.add(room.id);
     // Tutorial: la primera vez que pasa cada cosa
@@ -2670,6 +2752,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const [x, y] = pos[OPPOSITE[dir]];
     (this.player.body as Body).reset(x, y);
 
+    this.showRooms([this.current.id, next.id]);
     this.cameras.main.pan(n.cx, n.cy, 300, 'Sine.easeInOut', true, (_cam: unknown, progress: number) => {
       if (progress < 1) return;
       this.transitioning = false;
@@ -3469,7 +3552,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           if (dist > 12) e.setPosition(e.x + toPlayer.x * step, e.y + toPlayer.y * step);
           const mound = e.getData('mound') as Phaser.GameObjects.Ellipse | undefined;
           mound?.setPosition(e.x, e.y + 18).setScale(1 + 0.15 * Math.sin(time / 60), 1);
-          if (Math.random() < 0.15) dustBurst(this, e.x, e.y + 18, 0.4, 2);
+          if (Math.random() < 0.15 && this.fxBudget.take(this.time.now)) dustBurst(this, e.x, e.y + 18, 0.4, 2);
           if (time >= ai.until) {
             ai.state = 'appear';
             ai.until = time + 380;
@@ -3805,6 +3888,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.updateRunaway(time);
 
     // HUD
+    if (this.fpsText && time - ((this.fpsText.getData('at') as number | undefined) ?? 0) > 500) {
+      this.fpsText.setData('at', time).setText(`${Math.round(this.game.loop.actualFps)} FPS`);
+    }
     const foes = this.enemies.countActive(true);
     this.nameText.setText(this.starterName.charAt(0).toUpperCase() + this.starterName.slice(1));
     this.progressHud.setText(`${progressText(this.mode, this.floorNum)}${this.weather ? ` · ${WEATHER_LABEL[this.weather]}` : ''}${foes ? ` · ${foes} enem.` : ''}`);
@@ -3914,7 +4000,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const ev = this.time.addEvent({
         delay: 70,
         loop: true,
-        callback: () => (s.active ? typeTrail(this, s.x, s.y, type, Math.min(1.4, o.size)) : ev.remove()),
+        callback: () => (s.active ? this.fxBudget.take(this.time.now) && typeTrail(this, s.x, s.y, type, Math.min(1.4, o.size)) : ev.remove()),
       });
     }
     if (o.bounces > 0) s.setBounce(1, 1);
@@ -4014,7 +4100,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Cómo vuela según tu tipo: el eléctrico en zigzag, el agua ondulando, el psíquico persiguiendo un poco…
     const basic = basicShotFor(this.tearType);
     Object.assign(opts, { speed: opts.speed * basic.speed, size: opts.size * basic.size, motion: basic.motion, anim: basic.anim });
-    muzzle(this, this.player.x, this.player.y, dir.x, dir.y, opts.color);
+    if (this.fxBudget.take(this.time.now)) muzzle(this, this.player.x, this.player.y, dir.x, dir.y, opts.color);
     for (let k = 0; k < n; k++) this.spawnShot(dir, (k - (n - 1) / 2) * SPREAD, opts);
     // Cola Gemela: también hacia atrás
     for (let k = 0; k < s.backShots; k++) this.spawnShot(dir.clone().negate(), (k - (s.backShots - 1) / 2) * SPREAD, opts);
@@ -4030,7 +4116,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     sfx(shotSfx(m.type));
 
     const dir = this.aim.clone().normalize();
-    muzzle(this, this.player.x, this.player.y, dir.x, dir.y, typeColor(m.type));
+    if (this.fxBudget.take(this.time.now)) muzzle(this, this.player.x, this.player.y, dir.x, dir.y, typeColor(m.type));
     // At. Esp. del Pokémon y, encima, lo que suban el daño los objetos
     // Potenciadores de tipo (Carbón, Imán…) y Ataque X van encima
     const boost = 1 + (this.stats.typeBoost[m.type] ?? 0);
@@ -4043,7 +4129,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const bounces = shot.getData('bounces') as number;
     if (bounces > 0) shot.setData('bounces', bounces - 1);
     else {
-      wallPop(this, shot.x, shot.y, (shot.getData('pcolor') as number | undefined) ?? 0xffffff);
+      if (this.fxBudget.take(this.time.now)) wallPop(this, shot.x, shot.y, (shot.getData('pcolor') as number | undefined) ?? 0xffffff);
       shot.destroy();
     }
   }
@@ -4095,12 +4181,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.countDamage(enemy, dmg);
     const hp = (enemy.getData('hp') as number) - dmg;
     sfx('hit');
-    if (status) typeImpact(this, enemy.x, enemy.y, status, 0.8, 7);
+    if (status && this.fxBudget.take(this.time.now)) typeImpact(this, enemy.x, enemy.y, status, 0.8, 7);
     // Golpe: destello blanco, chispas, número de daño y un empujoncito (no a los jefes)
     enemy.setData('hp', hp);
     enemy.setTintFill(0xffffff);
     enemy.setData('flashUntil', this.time.now + 70);
-    hitSpark(this, sx, sy, color, crit ? 9 : 5, crit ? 1.3 : 0.9);
+    if (crit || this.fxBudget.take(this.time.now)) hitSpark(this, sx, sy, color, crit ? 9 : 5, crit ? 1.3 : 0.9);
     damageNumber(this, enemy.x, enemy.y - (enemy.getData('size') as number) * 0.45, dmg, { crit });
     if (crit) this.cameras.main.shake(90, 0.004);
     const hitAi = enemy.getData('ai') as EnemyAI | undefined;
@@ -4580,7 +4666,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const live = sts.find((st) => time < st.until);
       if (live) {
         e.setData('puffAt', time + 320);
-        statusPuff(this, e.x, e.y - (e.getData('size') as number) / 3, live.kind);
+        if (this.fxBudget.take(this.time.now)) statusPuff(this, e.x, e.y - (e.getData('size') as number) / 3, live.kind);
       }
     }
     if (!e.active || time < ((e.getData('flashUntil') as number | undefined) ?? 0)) return;
