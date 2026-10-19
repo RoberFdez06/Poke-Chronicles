@@ -337,3 +337,18 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
 - Escribe en el README los pasos para crear el proyecto de Firebase (Roberto lo hará): consola de Firebase →
   crear proyecto → añadir app web → copiar la configuración a `.env.local` → activar Authentication (correo y Google)
   → crear Firestore → pegar las reglas.
+
+# Tanda 6 (pedida por Roberto el 20/10)
+
+## [ ] T46 — Salas con formas distintas (como en Isaac)
+- Hoy todas las salas son 20 × 12. Añadir salas grandes que ocupan varias casillas del piso: horizontal (2×1),
+  vertical (1×2), grande (2×2) y en L / en L invertida (3 casillas). Se generan en `floorGen.ts` juntando 2-4
+  salas contiguas de combate; la sala unida tiene un solo conjunto de enemigos (más y más fuertes) y las puertas
+  solo en el borde exterior.
+- Cámara: la sala grande es más ancha/alta que la pantalla; la cámara sigue al jugador dentro de los límites de la
+  sala (o se reduce el zoom si queda bien). Los obstáculos de `roomLayouts.ts` se componen por trozos de 20 × 12
+  (en la L, el trozo que falta es pared).
+- Minimapa: dibuja la forma real. Respetar teclado, ratón y mando, guardado y continuar partida.
+- Con tests de la lógica pura: todas las puertas conectadas, sin salas solapadas, jefe/tienda/objeto/inicio siguen
+  siendo salas simples.
+- GameScene, floorGen y minimapa son del implementador; los diseños y el arte de obstáculos son del supervisor.
