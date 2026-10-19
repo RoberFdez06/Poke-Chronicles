@@ -4,3 +4,7 @@ dist
 # Pruebas de navegador (Playwright)
 test-results/
 playwright-report/
+
+# Configuración local (Firebase)
+.env.local
+*.local

@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { COVER_H, COVER_W, DCX, DCY } from './layout';
 import { ARROW, COLORS, FONT, drawBox, textStyle } from './theme';
 import { sfx } from './audio';
+import { keyCode } from './keys';
+import { loadKeys } from '../data/save';
 
 const NAVY = COLORS.navy;
 const PANEL = COLORS.panel;
@@ -30,7 +32,15 @@ export class NavInput {
   private prev: Record<string, boolean>;
 
   constructor(private scene: Phaser.Scene) {
-    this.keys = scene.input.keyboard!.addKeys('UP,DOWN,LEFT,RIGHT,W,A,S,D,ENTER,SPACE,ESC,BACKSPACE,P', false) as Record<KeyName, Key>;
+    // Las flechas, espacio y Retroceso valen siempre; moverse, aceptar, volver y pausa siguen las teclas de Ajustes (T44)
+    const b = loadKeys();
+    const kb = scene.input.keyboard!;
+    const add = (name: string) => kb.addKey(keyCode(name), false);
+    this.keys = {
+      UP: add('UP'), DOWN: add('DOWN'), LEFT: add('LEFT'), RIGHT: add('RIGHT'),
+      W: add(b.up), A: add(b.left), S: add(b.down), D: add(b.right),
+      ENTER: add(b.accept), SPACE: add('SPACE'), ESC: add(b.back), BACKSPACE: add('BACKSPACE'), P: add(b.pause),
+    };
     // Las teclas que ya estaban pulsadas al abrir no cuentan
     // Las teclas pulsadas al abrir no cuentan, y se olvida un "pulsada" viejo: si su soltar llegó mientras esta
     // escena estaba parada, Phaser la creería aún pulsada y la siguiente pulsación no contaría (había que darle 2 veces)

@@ -114,7 +114,7 @@ export class SettingsScene extends Phaser.Scene {
       case 'credits':
         return 'Créditos';
       case 'controls':
-        return 'Mostrar controles';
+        return this.args.overlay ? 'Mostrar controles' : 'Controles y teclas';
       case 'reset':
         return 'Borrar progreso';
       case 'back':
@@ -160,7 +160,14 @@ export class SettingsScene extends Phaser.Scene {
         // no disponible
       }
       this.time.delayedCall(150, () => this.refresh());
-    } else if (row === 'controls') this.showControls();
+    } else if (row === 'controls') {
+      // Desde el menú se pueden cambiar las teclas (T44); encima de la pausa solo se enseñan
+      if (this.args.overlay) this.showControls();
+      else {
+        this.closing = true;
+        goTo(this, 'Keys');
+      }
+    }
     else if (row === 'credits') this.showCredits();
     else if (row === 'reset') this.confirmReset();
     else this.close();

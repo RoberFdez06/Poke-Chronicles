@@ -26,12 +26,14 @@ import {
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
-import { addRunHistory, loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMission, saveTutorial, submitRecord } from '../data/save';
+import { addRunHistory, loadKeys, loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMission, saveTutorial, submitRecord } from '../data/save';
 import { disableTips, markTipSeen, shouldShowTip, TIPS, type TipId } from '../data/tutorial';
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
 import { emptyCounters, type RunCounters, type RunRecord } from '../data/runHistory';
 import { ToastStack, type ToastOptions } from '../ui/toast';
 import { reportError } from '../ui/errorScreen';
+import { keyCode } from '../ui/keys';
+import type { Action } from '../data/keybinds';
 import { ACHIEVEMENTS, lockedItems, rewardText, type MissionEvent } from '../data/missions';
 import {
   attackInterval,
@@ -907,16 +909,19 @@ export class GameScene extends Phaser.Scene {
 
     // Entrada
     const kb = this.input.keyboard!;
-    this.wasd = kb.addKeys('W,A,S,D') as GameScene['wasd'];
-    this.arrows = kb.createCursorKeys();
+    // Teclas configurables (T44, Ajustes > Teclas): moverse, disparar, poderes, activo, bomba, pausa, usar y volver
+    const b = loadKeys();
+    const key = (a: Action) => kb.addKey(keyCode(b[a]));
+    this.wasd = { W: key('up'), A: key('left'), S: key('down'), D: key('right') };
+    this.arrows = { up: key('shootUp'), down: key('shootDown'), left: key('shootLeft'), right: key('shootRight') } as Phaser.Types.Input.Keyboard.CursorKeys;
     const K = Phaser.Input.Keyboard.KeyCodes;
-    this.abilityKeys = [K.ONE, K.TWO, K.THREE, K.FOUR].map((c) => kb.addKey(c));
+    this.abilityKeys = (['power1', 'power2', 'power3', 'power4'] as const).map(key);
     this.restartKey = kb.addKey(K.R);
-    this.enterKey = kb.addKey(K.ENTER);
-    this.bombKey = kb.addKey(K.E);
-    this.activeKey = kb.addKey(K.SPACE);
-    this.escKey = kb.addKey(K.ESC);
-    this.pauseKey = kb.addKey(K.P);
+    this.enterKey = key('accept');
+    this.bombKey = key('bomb');
+    this.activeKey = key('active');
+    this.escKey = key('back');
+    this.pauseKey = key('pause');
     this.tipKey = kb.addKey(K.T);
     this.noTipsKey = kb.addKey(K.N);
     this.menuPadPrev = false;

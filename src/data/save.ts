@@ -9,6 +9,7 @@ import { applyMissionEvent, parseMissions, type Completed, type MissionEvent, ty
 import { dayNumber } from './gacha.ts';
 import { parseTutorial, type TutorialState } from './tutorial.ts';
 import { parseHistory, withRun, type RunRecord } from './runHistory.ts';
+import { parseKeys, type KeyMap } from './keybinds.ts';
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -322,6 +323,26 @@ export function addRunHistory(r: RunRecord, storage: StorageLike | null = browse
     // sin almacenamiento: no se guarda
   }
   return list;
+}
+
+// --- Teclas (ver keybinds.ts). Como el volumen, no se borran con el progreso ---
+
+export const KEYS_KEY = 'pokeisaac.keys';
+
+export function loadKeys(storage: StorageLike | null = browserStorage()): KeyMap {
+  try {
+    return parseKeys(storage?.getItem(KEYS_KEY) ?? null);
+  } catch {
+    return parseKeys(null);
+  }
+}
+
+export function saveKeys(keys: KeyMap, storage: StorageLike | null = browserStorage()) {
+  try {
+    storage?.setItem(KEYS_KEY, JSON.stringify(keys));
+  } catch {
+    // sin almacenamiento: se usan las de por defecto
+  }
 }
 
 // --- Borrar progreso (Ajustes) ---

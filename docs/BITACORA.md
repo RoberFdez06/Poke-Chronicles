@@ -750,3 +750,26 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   pantalla (`reportError`).
 - e2e `errors.spec.ts`: rompe el update de Partidas (`sys.sceneUpdate`, que es lo que llama Phaser), comprueba el
   cuadro, vuelve con Enter, comprueba que el menú responde, y lo repite con el ratón (captura `19-error`).
+
+## T44 — Teclas configurables (2026-10-19)
+
+- `src/data/keybinds.ts` (tests en `tests/keybinds.test.ts`): 17 acciones (moverse ×4, disparar ×4, poderes 1-4,
+  objeto activo, bomba, pausa, aceptar/usar, volver), teclas por defecto (las de siempre), `bindKey` (si la tecla ya
+  la usa otra acción no cambia nada y dice cuál), `parseKeys` (lo que no valga vuelve a por defecto; nunca quedan
+  repetidas), `keyLabel` (↑, Espacio, Num 1…) y `controlsFor` (texto de controles con las teclas actuales).
+  Las teclas se guardan por su nombre de Phaser en `pokeisaac.keys` (save.ts). **No** se borran con "Borrar
+  progreso": son un ajuste, como el volumen.
+- **Quién las lee**: GameScene (moverse, disparar, poderes, activo, bomba, pausa = Pausa o Volver, usar = Aceptar) y
+  `NavInput` de todos los menús (moverse, aceptar, volver y pausa; las flechas, Espacio y Retroceso valen siempre
+  para no quedarse atrapado). Solo he tocado la parte lógica de nav.ts (N5 protege la visual de MenuList).
+- `CONTROLS` (data/controls.ts) ahora se rellena con las teclas configuradas y `refreshControls` la reescribe en
+  sitio al cambiarlas: así el cuadro de controles del menú principal (MenuScene, que no puedo tocar) también enseña
+  las teclas nuevas sin cambiar su código.
+- **Pantalla** `KeysScene` (Ajustes > "Controles y teclas"): dos columnas con las 17 acciones, "Restablecer" y
+  "Volver". Elegir con flechas/ratón/mando, Enter/clic/A y pulsar la tecla nueva; Esc, B o un clic fuera cancelan
+  (Esc sí se puede poner en "Volver"). Encima de la pausa, Ajustes solo enseña los controles (cambiar teclas a mitad de
+  partida no se aplicaría hasta el piso siguiente).
+- **Fijas**: R (nueva partida al acabar), T y N (consejos del tutorial). Los botones del mando no se cambian (la tarea
+  lo dejaba opcional).
+- e2e `keys.spec.ts`: pone la bomba en W (avisa de que es "Moverse arriba" y no cambia), luego en Q, y en la partida
+  E ya no suelta bomba y Q sí (captura `20-teclas`).

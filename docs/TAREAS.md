@@ -315,7 +315,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
   "Algo ha fallado" con el mensaje corto, botón "Volver al menú" (teclado, ratón y mando) y "Copiar detalles".
   El guardado no se toca. Registrar el error en consola con detalle.
 
-## [ ] T44 — Teclas configurables
+## [x] T44 — Teclas configurables
 - En Ajustes > Controles: cambiar la tecla de cada acción (moverse, disparar ×4, poderes 1-4, objeto activo, bomba,
   pausa, aceptar, volver) pulsando la nueva; avisa si ya está usada; "Restablecer". Se guarda con el resto del
   progreso. Toda la partida y los menús leen las teclas de ese mapa (no de constantes). Botones del mando: opcional.

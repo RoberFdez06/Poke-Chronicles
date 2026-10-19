@@ -26,6 +26,11 @@ Abre la URL que muestra Vite (normalmente http://localhost:5173).
 | Consejo del tutorial: cerrar / no más consejos | T / N | "Vale" / "No más consejos" | RT / LT |
 | Menús | Flechas o W A S D, Enter / espacio, Esc para volver | Pasar el cursor, clic y botón "Volver" | Stick o cruceta, A para elegir, B para volver |
 
+Las teclas de la tabla son las de **por defecto**: se cambian en **Ajustes > Controles y teclas** (elige la acción,
+pulsa la tecla nueva; avisa si ya la usa otra acción; "Restablecer" vuelve a las de siempre). Se guardan aparte del
+progreso (`pokeisaac.keys`, como el volumen) y las usan la partida y los menús (en los menús las flechas, Espacio y
+Retroceso valen siempre). Los botones del mando no se cambian.
+
 **Regla del proyecto:** todo se puede manejar con teclado, con ratón y con mando, cada uno por sí solo. Cualquier
 pantalla o acción nueva debe cumplirlo.
 
@@ -381,6 +386,7 @@ src/
     abilities.ts          habilidades de PokeAPI: cuál toca, nombre en español y efecto
     offline.ts            sin conexión: ruta de cada respuesta en el paquete, sustituto y tiempo límite
     errorReport.ts        mensaje corto e informe de un error; errores del navegador que no cuentan
+    keybinds.ts           teclas configurables: acciones, teclas por defecto, conflictos y nombres en pantalla
     runHistory.ts         registro de cada partida terminada, historial de las últimas 20 y contadores
     missions.ts           misiones diarias (semilla del día) y logros: progreso, premios y objetos bloqueados
     runSave.ts            partidas guardadas en 3 huecos (con migraciones)
@@ -393,6 +399,7 @@ src/
   ui/
     toast.ts              avisos en tarjetas apiladas en la franja del HUD
     errorScreen.ts        pantalla "Algo ha fallado" (HTML encima del juego) y vuelta al menú
+    keys.ts               de nombre de tecla a código de Phaser y al revés
     layout.ts             tamaños de pantalla (1920×1080), espacio de diseño de los menús y franjas del HUD
     theme.ts              tema: fuente, colores, cuadros, barra de PS, fichas de tipo y transiciones
     nav.ts                entrada de menús (NavInput, PadButtons) y botones (MenuList, addPanel)
@@ -407,6 +414,7 @@ src/
     MissionsScene.ts      misiones de hoy y logros
     SummaryScene.ts       resumen al morir o ganar
     HistoryScene.ts       historial de las últimas partidas
+    KeysScene.ts          cambiar las teclas (Ajustes > Controles y teclas)
     StarterScene.ts       elegir Pokémon de tu colección
     FirstStarterScene.ts  primera partida: elegir región e inicial
     ModeScene.ts          elegir modo de juego
