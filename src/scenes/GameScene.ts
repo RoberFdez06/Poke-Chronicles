@@ -66,6 +66,7 @@ import { cry, playMenuMusic, playTrack, sfx } from '../ui/audio';
 import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeTypeFx, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
+import { bakeCombatFx, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeBiomeTiles, TILE as ART_TILE } from '../ui/art/tiles';
 import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
@@ -286,6 +287,10 @@ export class GameScene extends Phaser.Scene {
   /** Al bajar a este piso toca evolucionar (se hace cuando ya se ve la sala). */
   private evolvePending = false;
   private evolving = false;
+  /** Empujón al recibir un golpe: hasta entonces el movimiento no pisa la velocidad. */
+  private playerKnockUntil = 0;
+  /** Destello rojo sobre la sala al recibir daño (capa del HUD). */
+  private hurtFlash?: Phaser.GameObjects.Rectangle;
   /** Tienes shiny al Pokémon elegido: juegas con su sprite shiny (también al evolucionar). */
   private shiny = false;
   /** Te has curado en esta partida (misiones "sin curarte"); hpMark = PS del fotograma anterior (-1 = sin medir). */
@@ -733,7 +738,9 @@ export class GameScene extends Phaser.Scene {
       const hop = moving ? Math.abs(Math.sin(phase)) : 0;
       sh.setPosition(body.center.x, body.bottom - body.height * 0.08);
       sh.setSize(w * (1 - hop * 0.18), w * 0.34 * (1 - hop * 0.18));
-      sh.setVisible(s.visible).setAlpha(s.alpha);
+      // Parpadeo mientras el jugador es invulnerable tras un golpe
+      if (s === this.player && !this.ended && !this.evolving) s.setAlpha(time < this.invulnUntil && Math.floor(time / 70) % 2 ? 0.35 : 1);
+      sh.setVisible(s.visible).setAlpha(Math.max(0.4, s.alpha));
       // Subir el dibujo sin mover el cuerpo: el origen y el desfase del cuerpo cambian lo mismo (en px del frame)
       const lift = (hop * (pmd ? 4 : 7)) / Math.max(0.01, s.scaleY);
       const delta = lift - ((s.getData('lift') as number | undefined) ?? 0);
@@ -743,8 +750,8 @@ export class GameScene extends Phaser.Scene {
         s.setData('lift', lift);
       }
       const tilt = moving ? Math.sin(phase) * (pmd ? 3 : 8) : 0;
-      // Suaviza la vuelta a 0 al pararse
-      s.setAngle(Phaser.Math.Linear(s.angle, tilt, 0.35));
+      // Suaviza la vuelta a 0 al pararse (al acabar, el jugador lo anima combatFx: no se toca)
+      if (!(this.ended && s === this.player)) s.setAngle(Phaser.Math.Linear(s.angle, tilt, 0.35));
     }
   }
 
@@ -909,6 +916,7 @@ export class GameScene extends Phaser.Scene {
     // Arte pixel del supervisor (T33): iconos y baldosas del bioma, antes de montar las salas
     bakeIcons(this);
     bakeTypeFx(this);
+    bakeCombatFx(this);
     this.tiles = bakeBiomeTiles(this, this.biome);
     this.walls = this.physics.add.staticGroup();
     this.bushes = this.physics.add.staticGroup();
@@ -1061,6 +1069,7 @@ export class GameScene extends Phaser.Scene {
     }
     // Minimapa arriba a la derecha
     this.minimap = hud(this.add.graphics());
+    this.hurtFlash = hud(this.add.rectangle(GAME_VIEW.x + GAME_VIEW.w / 2, GAME_VIEW.y + GAME_VIEW.h / 2, GAME_VIEW.w, GAME_VIEW.h, 0xff2a2a, 0));
     // Avisos (T37): tarjetas en la franja derecha, bajo el minimapa
     this.toasts?.clear();
     this.offlineOff?.();
@@ -2579,7 +2588,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (dir.length() > 1) dir.normalize();
     // En los charcos vas más despacio
     const wade = this.cellAt(this.player.x, this.player.y) === 'W' ? 0.6 : 1;
-    this.player.setVelocity(dir.x * this.stats.speed * wade, dir.y * this.stats.speed * wade);
+    if (this.time.now >= this.playerKnockUntil) this.player.setVelocity(dir.x * this.stats.speed * wade, dir.y * this.stats.speed * wade);
     if (this.player.getData('pmd')) {
       const moving = dir.length() > 0.2;
       if (this.player.getData('moving') !== moving) {
@@ -2760,6 +2769,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       pierce: s.pierce,
       bounces: s.bounces,
     };
+    muzzle(this, this.player.x, this.player.y, dir.x, dir.y, opts.color);
     for (let k = 0; k < n; k++) this.spawnShot(dir, (k - (n - 1) / 2) * SPREAD, opts);
     // Cola Gemela: también hacia atrás
     for (let k = 0; k < s.backShots; k++) this.spawnShot(dir.clone().negate(), (k - (s.backShots - 1) / 2) * SPREAD, opts);
@@ -2773,6 +2783,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     sfx('shot');
 
     const dir = this.aim.clone();
+    muzzle(this, this.player.x, this.player.y, dir.x, dir.y, typeColor(m.type));
     // At. Esp. del Pokémon y, encima, lo que suban el daño los objetos
     // Potenciadores de tipo (Carbón, Imán…) y Ataque X van encima
     const boost = 1 + (this.stats.typeBoost[m.type] ?? 0);
@@ -2809,7 +2820,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!shot.active) return;
     const bounces = shot.getData('bounces') as number;
     if (bounces > 0) shot.setData('bounces', bounces - 1);
-    else shot.destroy();
+    else {
+      wallPop(this, shot.x, shot.y, shot.tintTopLeft);
+      shot.destroy();
+    }
   }
 
   private onHit(shot: Sprite, enemy: Sprite) {
@@ -2821,9 +2835,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const status = shot.getData('status') as string | undefined;
     // Dragón: los poderes hacen más daño
     let dmg = (shot.getData('dmg') as number) * (status ? hitDamageMul(status) : 1);
+    let crit = false;
     if (this.stats.critChance > 0 && Math.random() < this.stats.critChance) {
       dmg *= this.stats.critMul;
-      this.popup(enemy.x, enemy.y - 30, '¡Crítico!', 0xffd34d);
+      crit = true;
     }
     // Concha Campana: parte del daño vuelve como PS
     if (this.stats.lifesteal > 0) {
@@ -2838,9 +2853,20 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const hp = (enemy.getData('hp') as number) - dmg;
     sfx('hit');
     if (status) typeImpact(this, enemy.x, enemy.y, status, 0.8, 7);
+    // Golpe: destello blanco, chispas donde da el disparo, número de daño y un empujoncito (no a los jefes)
     enemy.setData('hp', hp);
-    enemy.setTint(0xff6666);
-    enemy.setData('flashUntil', this.time.now + 90);
+    enemy.setTintFill(0xffffff);
+    enemy.setData('flashUntil', this.time.now + 70);
+    hitSpark(this, shot.x, shot.y, shot.tintTopLeft, crit ? 9 : 5, crit ? 1.3 : 0.9);
+    damageNumber(this, enemy.x, enemy.y - (enemy.getData('size') as number) * 0.45, dmg, { crit });
+    if (crit) this.cameras.main.shake(90, 0.004);
+    const hitAi = enemy.getData('ai') as EnemyAI | undefined;
+    const sv = (shot.body as Body | null)?.velocity;
+    if (hp > 0 && hitAi && !hitAi.boss && sv && this.time.now >= hitAi.knockUntil) {
+      const push = sv.clone().normalize().scale(crit ? 220 : 130);
+      enemy.setVelocity(push.x, push.y);
+      hitAi.knockUntil = this.time.now + 90;
+    }
     // Drenar cura aunque el golpe lo derrote; el resto solo afecta a quien sigue en pie
     if (status && (hp > 0 || statusForType(status)?.kind === 'drain')) this.applyStatusTo(enemy, status, dmg);
 
@@ -2877,6 +2903,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.bossBar.objects.forEach((o) => o.destroy());
       this.bossBar = undefined;
     }
+    // Se debilita con animación (una copia dibujada; el sprite real se va ya)
+    const eb = enemy.body as Body | null;
+    const feetY = eb ? eb.bottom : enemy.y + enemy.displayHeight * 0.35;
+    const etypes = boss ? this.bossTypes : ((enemy.getData('types') as string[] | undefined) ?? ['normal']);
+    const ecolor = typeColor(etypes[0] ?? 'normal');
+    if (boss) faintBoss(this, enemy, feetY, ecolor, (x, y) => typeImpact(this, x, y, this.bossType, 1.4, 12));
+    else faintEnemy(this, enemy, feetY, ecolor);
     enemy.destroy();
     if (boss) {
       playTrack(trackForBiome(this.biome.id));
@@ -3457,6 +3490,33 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     drawBox(this.bannerBox, CX - w / 2, CY - h / 2, w, h, { radius: 20 });
   }
 
+  /** Golpe al jugador: chispas, número, empujón, destello rojo en la sala, temblor y un instante de parón. */
+  private hurtFeedback(from: Sprite, taken: number) {
+    const p = this.player;
+    const now = this.time.now;
+    const away = new Phaser.Math.Vector2(p.x - from.x, p.y - from.y);
+    if (away.lengthSq() < 1) away.set(0, 1);
+    away.normalize();
+    hitSpark(this, (p.x + from.x) / 2, (p.y + from.y) / 2, 0xff5a4a, 7, 1.2);
+    damageNumber(this, p.x, p.y - 50, taken, { color: '#ff6a5a' });
+    p.setTintFill(0xffffff);
+    this.time.delayedCall(70, () => p.active && !this.ended && p.setTint(0xff6666));
+    this.time.delayedCall(200, () => p.active && !this.ended && p.clearTint());
+    this.cameras.main.shake(150, 0.006);
+    if (this.hurtFlash) {
+      this.tweens.killTweensOf(this.hurtFlash);
+      this.hurtFlash.setFillStyle(0xff2a2a, 0.22);
+      this.tweens.add({ targets: this.hurtFlash, fillAlpha: 0, duration: 320, ease: 'Quad.easeOut' });
+    }
+    if (this.hp > 0) {
+      p.setVelocity(away.x * 360, away.y * 360);
+      this.playerKnockUntil = now + 130;
+      // Parón de golpe (hit stop): la física se congela un instante para que el golpe pese
+      this.physics.pause();
+      this.time.delayedCall(60, () => !this.ended && !this.transitioning && this.physics.resume());
+    }
+  }
+
   private hurtPlayer(enemy: Sprite) {
     const now = this.time.now;
     if (this.ended || this.transitioning || now < this.invulnUntil) return;
@@ -3499,8 +3559,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.hp = Math.min(this.stats.maxHp, this.hp + this.stats.lowHpHeal);
       this.popup(this.player.x, this.player.y - 50, `Hierba Blanca +${this.stats.lowHpHeal} PS`, 0xf0f0e0);
     }
-    this.player.setTint(0xff6666);
-    this.time.delayedCall(150, () => this.player.active && this.player.clearTint());
+    this.hurtFeedback(enemy, taken);
 
     if (this.hp <= 0) {
       const where = this.mode === 'normal' ? '' : ` en ${progressText(this.mode, this.floorNum).toLowerCase()}`;
@@ -3515,6 +3574,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.ended = true;
     this.endedAt = this.time.now;
     this.physics.pause();
+    // El jugador celebra o se debilita (la cámara se acerca al caer)
+    const pb = this.player?.body as Body | null;
+    if (this.player?.active) {
+      if (won) cheerPlayer(this, this.player);
+      else faintPlayer(this, this.player, pb ? pb.bottom : this.player.y + 30, GAME_ZOOM);
+    }
     this.setBanner(message);
     // Se apunta en el historial (T28) y luego se ve el resumen
     const counts = new Map<string, number>();
