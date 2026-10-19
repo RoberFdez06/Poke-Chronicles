@@ -144,6 +144,8 @@ export function decorateRoom(
   wall: number,
   seed: number,
   scale: number,
+  /** Lados abiertos a otra sala de la misma sala grande (sin sombra de pared). */
+  open: { left?: boolean; right?: boolean } = {},
 ) {
   bakeRoomDecor(scene, b);
   const r = rng(seed * 7919 + 13);
@@ -184,8 +186,8 @@ export function decorateRoom(
   const sh = scene.add.graphics().setDepth(0.3);
   for (let s = 0; s < 4; s++) {
     sh.fillStyle(0x000000, 0.16 - s * 0.035).fillRect(room.x0, room.y0 + s * scale * 2, w, scale * 2);
-    sh.fillStyle(0x000000, 0.1 - s * 0.022).fillRect(room.x0 + s * scale * 2, room.y0, scale * 2, h);
-    sh.fillStyle(0x000000, 0.1 - s * 0.022).fillRect(room.x1 - (s + 1) * scale * 2, room.y0, scale * 2, h);
+    if (!open.left) sh.fillStyle(0x000000, 0.1 - s * 0.022).fillRect(room.x0 + s * scale * 2, room.y0, scale * 2, h);
+    if (!open.right) sh.fillStyle(0x000000, 0.1 - s * 0.022).fillRect(room.x1 - (s + 1) * scale * 2, room.y0, scale * 2, h);
   }
   // Borde de la pared con luz arriba (canto)
   sh.fillStyle(shade(b.colors.wall, 0.35), 1).fillRect(room.x0 - wall, room.y0 - wall, w + wall * 2, scale);

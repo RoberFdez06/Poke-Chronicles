@@ -55,6 +55,13 @@ export function drawMinimap(
     const isCurrent = r.id === currentId;
     const color = isCurrent ? 0xffffff : visited.has(r.id) ? 0xb8c4e6 : 0x4a5578;
     g.fillStyle(color, 1).fillRect(x, y, CW, CH);
+    // Sala grande: las casillas unidas se dibujan pegadas, sin hueco entre ellas
+    for (const [d, bw, bh] of [['right', G, CH], ['down', CW, G]] as const) {
+      const n = r.doors[d];
+      if (n !== undefined && r.group !== undefined && floor.rooms[n].group === r.group && known.has(n)) {
+        g.fillStyle(color, 1).fillRect(d === 'right' ? x + CW : x, d === 'down' ? y + CH : y, bw, bh);
+      }
+    }
     if (isCurrent) g.lineStyle(2, 0xffd34d, 1).strokeRect(x - 1, y - 1, CW + 2, CH + 2);
 
     const icon =

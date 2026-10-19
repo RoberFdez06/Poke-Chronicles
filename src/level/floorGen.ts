@@ -25,6 +25,8 @@ export interface Room {
   depth: number;
   /** Sala vecina a la que lleva cada puerta. */
   doors: Partial<Record<Dir, number>>;
+  /** Sala grande: número del grupo de salas unidas (sin pared entre ellas). */
+  group?: number;
 }
 
 export interface Floor {
@@ -44,6 +46,8 @@ export interface Floor {
   chestRooms?: number[];
   /** Puertas ocultas ("sala:dirección", en los dos lados): parecen pared hasta que una bomba las abre. */
   hiddenDoors?: string[];
+  /** Salas grandes (solo con `big: true`): cada grupo son 2 o 3 salas de combate contiguas unidas en una. */
+  groups?: number[][];
 }
 
 export interface FloorOptions {
@@ -58,6 +62,8 @@ export interface FloorOptions {
   special?: boolean;
   /** Además: sala secreta, sala de desafío y cofres (diseño 3; también con un generador aparte). */
   extra?: boolean;
+  /** Además: salas grandes (diseño 4; también con un generador aparte). */
+  big?: boolean;
 }
 
 /** PRNG mulberry32: rápido y reproducible a partir de una semilla de 32 bits. */
@@ -91,7 +97,8 @@ export function generateFloor(opts: FloorOptions): Floor {
     const floor = tryGenerate(rng, opts.seed, cols, rows, target);
     if (!floor) continue;
     const withSpecial = opts.special || opts.extra ? addSpecialRooms(floor) : floor;
-    return opts.extra ? addExtraRooms(withSpecial) : withSpecial;
+    const withExtra = opts.extra ? addExtraRooms(withSpecial) : withSpecial;
+    return opts.big ? addBigRooms(withExtra) : withExtra;
   }
   throw new Error(`No se pudo generar un piso con ${target} salas`);
 }
@@ -250,6 +257,53 @@ export function addExtraRooms(floor: Floor): Floor {
   }
 
   return { ...floor, rooms, secretId, challengeId: challenge?.id, chestRooms: chestRooms.sort((a, b) => a - b), hiddenDoors };
+}
+
+/** ¿Estas dos salas están unidas en una sala grande? */
+export function sameGroup(a: Room, b: Room): boolean {
+  return a.group !== undefined && a.group === b.group;
+}
+
+/** Máximo de salas grandes por piso. */
+export const MAX_BIG_ROOMS = 3;
+
+/**
+ * Salas grandes (como en Isaac): junta 2 o 3 salas de combate contiguas (por una puerta visible) en una sola. Vale
+ * una pareja (2×1 o 1×2), una línea de 3 o una L. Nunca incluye inicio, objeto, jefe, tiendas, secreta ni desafío.
+ * Usa su propio generador, así lo demás del piso sale igual.
+ */
+export function addBigRooms(floor: Floor): Floor {
+  const rng = mulberry32(floor.seed ^ 0x2b7e1516);
+  const rooms = floor.rooms.map((r) => ({ ...r, doors: { ...r.doors } }));
+  const hidden = new Set(floor.hiddenDoors ?? []);
+  const free = (r: Room) => r.kind === 'combat' && r.group === undefined;
+  const link = (a: Room, d: Dir): Room | undefined => {
+    const n = a.doors[d] !== undefined ? rooms[a.doors[d]!] : undefined;
+    return n && free(n) && !hidden.has(doorKey(a.id, d)) ? n : undefined;
+  };
+  const combat = rooms.filter((r) => r.kind === 'combat');
+  const maxGroups = Math.min(MAX_BIG_ROOMS, Math.max(1, Math.floor(combat.length / 4)));
+  const groups: number[][] = [];
+  for (const start of shuffled(combat, rng)) {
+    if (groups.length >= maxGroups) break;
+    if (!free(start)) continue;
+    const size = rng() < 0.6 ? 2 : 3;
+    const members = [start];
+    while (members.length < size) {
+      const options: Room[] = [];
+      for (const m of members) for (const d of DIRS) {
+        const n = link(m, d);
+        if (n && !members.includes(n)) options.push(n);
+      }
+      if (options.length === 0) break;
+      members.push(options[Math.floor(rng() * options.length)]);
+      // Evita 2×2: con 3 salas ya vale la L
+    }
+    if (members.length < 2) continue;
+    members.forEach((m) => (m.group = groups.length));
+    groups.push(members.map((m) => m.id).sort((a, b) => a - b));
+  }
+  return { ...floor, rooms, groups };
 }
 
 function shuffled<T>(items: readonly T[], rng: () => number): T[] {

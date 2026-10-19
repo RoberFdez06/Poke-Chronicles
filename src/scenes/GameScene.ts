@@ -165,7 +165,7 @@ import {
   MovePower,
   PlayerStats,
 } from '../data/items';
-import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, Dir, Floor, Room } from '../level/floorGen';
+import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
 import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES } from '../level/biomes';
 import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES } from '../data/enemies';
 import { drawMinimap } from './minimap';
@@ -725,6 +725,7 @@ export class GameScene extends Phaser.Scene {
         roomCount: r?.roomCount ?? roomCountFor(this.floorNum, this.rng(RNG.rooms)),
         special: this.layout >= 2,
         extra: this.layout >= 3,
+        big: this.layout >= 4,
       });
     }
     this.weather =
@@ -1309,8 +1310,9 @@ export class GameScene extends Phaser.Scene {
    */
   private showRooms(ids: number[]) {
     const cam = this.cameras.main.id;
+    const all = new Set(ids.flatMap((id) => this.groupIds(this.floor.rooms[id])));
     for (const [id, objs] of this.roomObjs) {
-      const show = ids.includes(id);
+      const show = all.has(id);
       for (const o of objs) {
         if (!o.active) continue;
         if (show) o.cameraFilter &= ~cam;
@@ -1474,14 +1476,14 @@ export class GameScene extends Phaser.Scene {
     if ((this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)) {
       const st = this.floor.rooms[this.floor.startId];
       const far = this.floor.rooms
-        .filter((rm) => rm.kind === 'combat')
+        .filter((rm) => rm.kind === 'combat' && rm.group === undefined)
         .sort((a, b) => Math.abs(b.gx - st.gx) + Math.abs(b.gy - st.gy) - (Math.abs(a.gx - st.gx) + Math.abs(a.gy - st.gy)) || a.id - b.id)[0];
       this.minibossRoom = far?.id;
     }
     // Sala sorpresa (T39): con la semilla del piso (la misma al continuar), nunca la del minijefe ni las de cofre
     this.roomEvent =
       (this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)
-        ? pickRoomEvent(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x2545f491), new Set(this.minibossRoom !== undefined ? [this.minibossRoom] : []))
+        ? pickRoomEvent(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x2545f491), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]))
         : null;
 
     // Al continuar: objetos, estado del jugador y sala donde estabas
@@ -1934,6 +1936,74 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
   }
 
+  // --- Salas grandes (varias salas del piso unidas en una, sin pared entre ellas) ---
+
+  /** Salas que forman la misma sala grande que `room` (solo ella misma si no es grande). */
+  private groupIds(room: Room): number[] {
+    return room.group === undefined ? [room.id] : this.floor.groups?.[room.group] ?? [room.id];
+  }
+
+  /** ¿La puerta `d` de `room` da a otra parte de su misma sala grande? */
+  private mergedSide(room: Room, d: Dir): boolean {
+    const to = room.doors[d];
+    return to !== undefined && sameGroup(room, this.floor.rooms[to]);
+  }
+
+  /** Zona de juego de la sala actual: el rectángulo que contiene toda su sala grande (o ella sola). */
+  private arena() {
+    const cells = this.groupIds(this.current).map((id) => this.interior(this.floor.rooms[id]));
+    const x0 = Math.min(...cells.map((c) => c.x0));
+    const y0 = Math.min(...cells.map((c) => c.y0));
+    const x1 = Math.max(...cells.map((c) => c.x1));
+    const y1 = Math.max(...cells.map((c) => c.y1));
+    return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+  }
+
+  /** La sala (casilla del piso) que hay en (x, y): dentro de una sala grande, la que toque; si no, la actual. */
+  private cellRoom(x: number, y: number): Room {
+    if (this.current.group === undefined) return this.current;
+    const gx = Math.floor(x / VIEW.w);
+    const gy = Math.floor(y / VIEW.h);
+    for (const id of this.groupIds(this.current)) {
+      const r = this.floor.rooms[id];
+      if (r.gx === gx && r.gy === gy) return r;
+    }
+    return this.current;
+  }
+
+  /** Dentro de una sala grande, la sala actual pasa a ser la casilla donde está el jugador (sin volver a empezar). */
+  private followCell() {
+    if (this.current.group === undefined) return;
+    const here = this.cellRoom(this.player.x, this.player.y);
+    if (here.id === this.current.id) return;
+    this.current = here;
+    this.visited.add(here.id);
+    this.flow = undefined;
+    this.drawMap();
+  }
+
+  /** Cámara: fija en la sala, o siguiendo al jugador dentro de los límites de la sala grande. */
+  private setRoomCamera(room: Room) {
+    const cam = this.cameras.main;
+    if (room.group === undefined) {
+      cam.stopFollow();
+      cam.removeBounds();
+      return;
+    }
+    const cells = this.groupIds(room).map((id) => this.floor.rooms[id]);
+    const x0 = Math.min(...cells.map((r) => r.gx)) * VIEW.w;
+    const y0 = Math.min(...cells.map((r) => r.gy)) * VIEW.h;
+    const x1 = (Math.max(...cells.map((r) => r.gx)) + 1) * VIEW.w;
+    const y1 = (Math.max(...cells.map((r) => r.gy)) + 1) * VIEW.h;
+    cam.setBounds(x0, y0, x1 - x0, y1 - y0);
+    cam.startFollow(this.player, true, 0.12, 0.12);
+  }
+
+  /** Cierra o abre las puertas de toda la sala grande. */
+  private setGroupDoorsLocked(room: Room, locked: boolean, animate = false) {
+    for (const id of this.groupIds(room)) this.setDoorsLocked(this.floor.rooms[id], locked, animate);
+  }
+
   /** Hueco de la puerta a través de la pared. */
   private doorRect(room: Room, d: Dir): Rect {
     const i = this.interior(room);
@@ -1961,7 +2031,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.add.tileSprite(i.x0 - WALL, i.y0 - WALL, ROOM.w + WALL * 2, ROOM.h + WALL * 2, this.tiles.wall).setOrigin(0).setTileScale(ts).setDepth(0);
     this.add.tileSprite(i.x0, i.y0, ROOM.w, ROOM.h, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0);
     // Paisaje alrededor, manchas, detalles y sombras del bioma (supervisor)
-    decorateRoom(this, this.biome, { x: room.gx * VIEW.w, y: room.gy * VIEW.h, w: VIEW.w, h: VIEW.h }, i, WALL, this.floorSeed * 31 + room.id, ts * 2.4);
+    decorateRoom(this, this.biome, { x: room.gx * VIEW.w, y: room.gy * VIEW.h, w: VIEW.w, h: VIEW.h }, i, WALL, this.floorSeed * 31 + room.id, ts * 2.4, { left: this.mergedSide(room, 'left'), right: this.mergedSide(room, 'right') });
     if (!plain) {
       // Salas especiales: alfombra de su color (Centro rosa, tienda verde, objeto dorado…) sobre el suelo del bioma
       const rug = this.add.graphics().setDepth(0.2);
@@ -1983,6 +2053,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     for (const d of DIRS) {
       const to = room.doors[d];
       if (to === undefined) continue;
+      // Hacia otra parte de su sala grande no hay puerta ni pared
+      if (this.mergedSide(room, d)) continue;
       // Puerta oculta: parece pared (con una grieta de pista) hasta que una bomba la abre
       if (this.isHiddenDoor(room.id, d)) {
         this.buildSecretWall(room, d);
@@ -2005,10 +2077,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.addWall(x, i.y0, WALL, i.cy - DOOR / 2 - i.y0);
       this.addWall(x, i.cy + DOOR / 2, WALL, i.y1 - i.cy - DOOR / 2);
     };
-    hSide(i.y0 - WALL, has('up'));
-    hSide(i.y1, has('down'));
-    vSide(i.x0 - WALL, has('left'));
-    vSide(i.x1, has('right'));
+    if (!this.mergedSide(room, 'up')) hSide(i.y0 - WALL, has('up'));
+    if (!this.mergedSide(room, 'down')) hSide(i.y1, has('down'));
+    if (!this.mergedSide(room, 'left')) vSide(i.x0 - WALL, has('left'));
+    if (!this.mergedSide(room, 'right')) vSide(i.x1, has('right'));
+    this.buildJoin(room);
     this.buildObstacles(room);
 
     this.setDoorsLocked(room, false);
@@ -2021,6 +2094,31 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       for (const dx of [-60, 60]) this.spawnLoot(room.id, i.cx + dx, i.cy + 70, { kind: 'coin', value: 5 });
     }
     if (this.floor.chestRooms?.includes(room.id)) this.buildChest(room);
+  }
+
+  /**
+   * Une esta sala con su vecina de la misma sala grande por la derecha y por abajo: suelo continuo entre las dos y
+   * pared (con su cuerpo físico) en los bordes que quedan al descubierto.
+   */
+  private buildJoin(room: Room) {
+    const a = this.interior(room);
+    const ts = TILE / ART_TILE;
+    const wallTile = (x: number, y: number, w: number, h: number) => {
+      this.add.tileSprite(x, y, w, h, this.tiles.wall).setOrigin(0).setTileScale(ts).setDepth(0.4);
+      this.addWall(x, y, w, h);
+    };
+    if (this.mergedSide(room, 'right')) {
+      const b = this.interior(this.floor.rooms[room.doors.right!]);
+      this.add.tileSprite(a.x1, a.y0, b.x0 - a.x1, a.y1 - a.y0, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0.45);
+      wallTile(a.x1 + WALL, a.y0 - WALL, b.x0 - a.x1 - WALL * 2, WALL);
+      wallTile(a.x1 + WALL, a.y1, b.x0 - a.x1 - WALL * 2, WALL);
+    }
+    if (this.mergedSide(room, 'down')) {
+      const b = this.interior(this.floor.rooms[room.doors.down!]);
+      this.add.tileSprite(a.x0, a.y1, a.x1 - a.x0, b.y0 - a.y1, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0.45);
+      wallTile(a.x0 - WALL, a.y1, WALL, b.y0 - a.y1);
+      wallTile(a.x1, a.y1, WALL, b.y0 - a.y1);
+    }
   }
 
   /** Suelo de la sala (el del bioma en las normales, el suyo en las especiales). */
@@ -2739,6 +2837,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private enterRoom(room: Room) {
     this.current = room;
     this.showRooms([room.id]);
+    this.setRoomCamera(room);
     this.shieldLeft = this.stats.shieldPerRoom;
     this.visited.add(room.id);
     // Tutorial: la primera vez que pasa cada cosa
@@ -2764,10 +2863,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.spawnMiniboss();
         this.spawnEnemies(1);
       } else {
-        const n = Phaser.Math.Between(...this.difficulty.enemies);
+        // Una sala grande lleva más enemigos (algo menos por casilla)
+        const cells = this.groupIds(room).length;
+        const n = Math.round(Phaser.Math.Between(...this.difficulty.enemies) * (cells > 1 ? cells * 0.75 : 1));
         this.spawnEnemies(n);
       }
-      this.setDoorsLocked(room, true, true);
+      this.setGroupDoorsLocked(room, true, true);
       sfx('door');
     }
 
@@ -2802,6 +2903,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     (this.player.body as Body).reset(x, y);
 
     this.showRooms([this.current.id, next.id]);
+    this.cameras.main.stopFollow();
+    this.cameras.main.removeBounds();
     this.cameras.main.pan(n.cx, n.cy, 300, 'Sine.easeInOut', true, (_cam: unknown, progress: number) => {
       if (progress < 1) return;
       this.transitioning = false;
@@ -2810,6 +2913,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   private checkExit() {
+    this.followCell();
     const i = this.interior(this.current);
     const { x, y } = this.player;
     let exit: Dir | null = null;
@@ -2817,7 +2921,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else if (y > i.y1 + WALL / 2) exit = 'down';
     else if (x < i.x0 - WALL / 2) exit = 'left';
     else if (x > i.x1 + WALL / 2) exit = 'right';
-    if (exit && this.current.doors[exit] !== undefined) this.transition(exit);
+    if (exit && this.current.doors[exit] !== undefined && !this.mergedSide(this.current, exit)) this.transition(exit);
   }
 
   // --- Obstáculos (roomLayouts.ts) ---
@@ -2903,15 +3007,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Casilla de la sala actual en (x, y) del mundo. */
-  private tileOf(x: number, y: number): [number, number] {
-    const i = this.interior(this.current);
+  private tileOf(x: number, y: number, room: Room = this.cellRoom(x, y)): [number, number] {
+    const i = this.interior(room);
     return [Math.floor((x - i.x0) / TILE), Math.floor((y - i.y0) / TILE)];
   }
 
   private cellAt(x: number, y: number): Cell | undefined {
-    const grid = this.current && this.grids.get(this.current.id);
+    const room = this.current && this.cellRoom(x, y);
+    const grid = room && this.grids.get(room.id);
     if (!grid) return undefined;
-    const [tx, ty] = this.tileOf(x, y);
+    const [tx, ty] = this.tileOf(x, y, room);
     return grid[ty]?.[tx];
   }
 
@@ -2924,9 +3029,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** El punto libre más cercano a (x, y) en la sala actual (centro de su casilla si estaba ocupado). */
   private freeSpot(x: number, y: number) {
     if (this.freeAt(x, y)) return { x, y };
-    const grid = this.grids.get(this.current.id)!;
-    const [tx, ty] = nearestWalkable(grid, ...this.tileOf(x, y));
-    const i = this.interior(this.current);
+    const room = this.cellRoom(x, y);
+    const grid = this.grids.get(room.id)!;
+    const [tx, ty] = nearestWalkable(grid, ...this.tileOf(x, y, room));
+    const i = this.interior(room);
     return { x: i.x0 + tx * TILE + TILE / 2, y: i.y0 + ty * TILE + TILE / 2 };
   }
 
@@ -2946,7 +3052,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Dirección para acercarse al jugador rodeando obstáculos; sin campo de flujo, en línea recta. */
   private flowDir(e: Sprite, toPlayer: Phaser.Math.Vector2): Phaser.Math.Vector2 {
     const f = this.flow;
-    if (!f || f.roomId !== this.current.id) return toPlayer.clone();
+    if (!f || f.roomId !== this.current.id || this.cellRoom(e.x, e.y).id !== this.current.id) return toPlayer.clone();
     const [tx, ty] = this.tileOf(e.x, e.y);
     const here = f.dist[ty]?.[tx];
     // Cerca del jugador, o fuera del mapa de casillas, va directo
@@ -2963,10 +3069,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   // --- Enemigos ---
 
   private randomSpotInRoom(margin: number) {
-    const i = this.interior(this.current);
+    let i = this.interior(this.current);
     let x = i.cx;
     let y = i.cy;
+    const cells = this.groupIds(this.current);
     for (let tries = 0; tries < 50; tries++) {
+      // En una sala grande, cada intento cae en una de sus casillas al azar
+      i = this.interior(this.floor.rooms[cells[Math.floor(Math.random() * cells.length)]]);
       x = Phaser.Math.Between(i.x0 + margin, i.x1 - margin);
       y = Phaser.Math.Between(i.y0 + margin, i.y1 - margin);
       if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) >= 220 && this.freeAt(x, y)) break;
@@ -3281,7 +3390,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const own = this.summonKinds.filter((k) => k.types.includes(ai.type));
     const kinds = own.length ? own : this.summonKinds.length ? this.summonKinds : this.foeKinds;
     if (n === 0 || kinds.length === 0) return this.bossRing(b, ai);
-    const i = this.interior(this.current);
+    const i = this.arena();
     const color = typeColor(ai.type);
     const spots = Array.from({ length: n }, (_, k) => {
       const a = (k / n) * Math.PI * 2 + Math.random();
@@ -3348,7 +3457,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Lluvia: círculos de aviso en el suelo (uno donde estás); al caer, quien esté dentro recibe daño. */
   private bossRain(b: Sprite, ai: EnemyAI) {
-    const i = this.interior(this.current);
+    const i = this.arena();
     const R = 56;
     const spots = Array.from({ length: rainCount(ai.phase ?? 1) }, (_, k) =>
       k === 0
@@ -3663,7 +3772,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Sitio de la sala cerca del jugador (pero no encima) donde aparece quien salta. */
   private hopSpot(minDist: number) {
-    const i = this.interior(this.current);
+    const i = this.arena();
     const m = 50;
     for (let tries = 0; tries < 30; tries++) {
       const a = Math.random() * Math.PI * 2;
@@ -4129,7 +4238,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       enemies: () => this.enemies.getChildren() as Sprite[],
       player: () => this.player,
       aim: () => this.aim.clone().normalize(),
-      room: () => this.interior(this.current),
+      room: () => this.arena(),
       dash: (dir, speed, ms) => {
         this.player.setVelocity(dir.x * speed, dir.y * speed);
         this.playerKnockUntil = this.time.now + ms;
@@ -4419,7 +4528,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Suelta botín dentro de la sala actual. */
   private dropLoot(x: number, y: number, drop: LootDrop) {
-    const i = this.interior(this.current);
+    const i = this.arena();
     const p = this.freeSpot(Phaser.Math.Clamp(x, i.x0 + 30, i.x1 - 30), Phaser.Math.Clamp(y, i.y0 + 30, i.y1 - 30));
     this.spawnLoot(this.current.id, p.x, p.y, drop);
   }
@@ -4826,13 +4935,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.time.delayedCall(1000, () => this.spawnChallengeWave(room.id));
       return;
     }
-    this.cleared.add(room.id);
+    for (const id of this.groupIds(room)) this.cleared.add(id);
     this.chargeActive();
     this.mission({ kind: 'room' });
     this.tip('pause');
     if (room.kind === 'boss') this.mission({ kind: 'boss' });
     sfx('clear');
-    this.setDoorsLocked(room, false, true);
+    this.setGroupDoorsLocked(room, false, true);
     // Onda de "sala limpia" que sale del jugador y recorre la sala
     for (const [delay, color] of [[0, 0xffffff], [120, 0xffd34d]] as const) {
       const wave = this.add.circle(this.player.x, this.player.y, 20).setStrokeStyle(10, color, 0.85).setDepth(7);
