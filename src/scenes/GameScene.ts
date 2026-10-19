@@ -135,6 +135,8 @@ import {
   LootDrop,
   ShopSlot,
 } from '../data/loot';
+import { comboAlive, comboBreak, comboHit, milestoneReward, newCombo, type ComboState } from '../data/combo';
+import { ComboHud } from '../ui/art/comboHud';
 import { addHpBar, addTypeChip, drawBox, fadeIn, FONT, goTo, HEX, hpColor, shorten } from '../ui/theme';
 import {
   applyStatus,
@@ -405,6 +407,8 @@ export class GameScene extends Phaser.Scene {
   private diff: Difficulty = 'normal';
   /** Clima del piso (T38) y su efecto visual; la arena y el granizo hacen daño cada WEATHER_TICK_MS. */
   private weather: Weather | null = null;
+  private combo: ComboState = newCombo();
+  private comboHud?: ComboHud;
   private weatherFx?: WeatherFx;
   private weatherTickAt = 0;
   /** Tipos del Pokémon del jugador (cambian al evolucionar). */
@@ -1592,6 +1596,11 @@ export class GameScene extends Phaser.Scene {
       hud(this.add.image(x, 288, iconKey).setScale(2));
       return txt(x + 16, 288, 20, '#f8f8f8', true).setOrigin(0, 0.5);
     };
+    {
+      // Esquina superior izquierda de la sala, en coordenadas reales de pantalla
+      const k = GAME_VIEW.w / VIEW.w;
+      this.comboHud = new ComboHud(this, GAME_VIEW.x + (ROOM.x + 22) * k, GAME_VIEW.y + (ROOM.y + 36) * k, FONT, hud);
+    }
     this.coinsHud = count(iconKey('coin'), LX + 26);
     this.keysHud = count(iconKey('key'), LX + 94);
     this.bombsHud = count(iconKey('bomb'), LX + 160);
@@ -3969,6 +3978,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.bombsHud.setText(String(this.bombs));
     this.slots.forEach((m, i) => this.paintSlot(i, m, !m || time >= this.slotReady[i]));
 
+    if (this.combo.count > 0 && !comboAlive(this.combo, time)) this.comboLose();
+    this.comboHud?.update(this.combo, time);
     this.checkTrapdoor();
     if (!this.transitioning) this.checkExit();
   }
@@ -4285,9 +4296,30 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.counters.damage += Math.max(0, Math.min(dmg, e.getData('hp') as number));
   }
 
+  /** Combo de bajas: suma, avisa en los hitos y da un pequeño premio. */
+  private comboKill(enemy: Sprite) {
+    if (enemy.getData('helper')) return;
+    const milestone = comboHit(this.combo, this.time.now);
+    if (this.combo.count >= 3) sfx('crit');
+    if (milestone === null) return;
+    const r = milestoneReward(milestone);
+    this.hp = Math.min(this.stats.maxHp, this.hp + r.heal);
+    this.popup(this.player.x, this.player.y - 70, `¡Combo x${milestone}! +${r.heal} PS`, 0xffd34d);
+    this.cameras.main.shake(120, 0.004);
+    sfx('levelup');
+    if (this.floor.shopId !== undefined) for (let k = 0; k < r.coins; k++) this.dropLoot(enemy.x + (k - r.coins / 2) * 16, enemy.y, { kind: 'coin', value: 1 });
+  }
+
+  /** Se rompe el combo (te han hecho daño). */
+  private comboLose() {
+    const was = comboBreak(this.combo);
+    this.comboHud?.broke(was);
+  }
+
   private killEnemy(enemy: Sprite) {
     const boss = !!(enemy.getData('ai') as EnemyAI | undefined)?.boss;
     this.counters.kills++;
+    this.comboKill(enemy);
     this.mission({ kind: 'defeat', types: boss ? this.bossTypes : ((enemy.getData('types') as string[] | undefined) ?? []) });
     // Monedas solo donde hay tienda en la que gastarlas; bayas siempre
     const hasShop = this.floor.shopId !== undefined;
@@ -5015,6 +5047,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     this.invulnUntil = now + 900;
     sfx('hurt');
+    this.comboLose();
     // Casco Dentado: quien te toca se hace daño
     if (ai && this.stats.thorns > 0 && enemy.active) {
       this.countDamage(enemy, this.stats.thorns);
