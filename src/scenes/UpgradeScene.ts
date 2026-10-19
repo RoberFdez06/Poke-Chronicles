@@ -31,8 +31,17 @@ export class UpgradeScene extends Phaser.Scene {
   private token = 0;
   private leaving = false;
 
+  /** Pokémon elegido en el buscador (Pokédex en modo elegir). */
+  private wantId?: number;
+  private findKey!: Phaser.Input.Keyboard.Key;
+
   constructor() {
     super('Upgrades');
+  }
+
+  init(data?: { id?: number }) {
+    this.wantId = data?.id;
+    this.sys.settings.data = {};
   }
 
   create() {
@@ -45,8 +54,10 @@ export class UpgradeScene extends Phaser.Scene {
     this.selected = 0;
     this.leaving = false;
     this.ids = [...loadUnlocked()].sort((a, b) => a - b);
+    if (this.wantId !== undefined && this.ids.includes(this.wantId)) this.index = this.ids.indexOf(this.wantId);
     this.nav = new NavInput(this);
     this.pad = new PadButtons(this);
+    this.findKey = this.input.keyboard!.addKey('F', false);
     addBackButton(this, () => this.back());
 
     this.add.text(480, 44, 'Mejoras', { fontFamily: FONT, fontSize: '44px', fontStyle: 'bold', color: HEX.gold }).setOrigin(0.5).setStroke('#2b3a67', 10);
@@ -55,7 +66,7 @@ export class UpgradeScene extends Phaser.Scene {
     this.ticketsText = this.add.text(924, 44, '', { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(1, 0.5);
     this.message = this.add.text(ROW.x, 560, '', { fontFamily: FONT, fontSize: '18px', color: '#ffffff', align: 'center' }).setOrigin(0.5);
     this.add
-      .text(480, 612, 'Izquierda/derecha o ◀ ▶: Pokémon · Arriba/abajo: mejora · Enter, A o clic: comprar · Esc, B o "Volver"', {
+      .text(480, 612, '◀ ▶: Pokémon · F, Y o "Buscar": elegir con filtros · Arriba/abajo: mejora · Enter, A o clic: comprar · Esc o B: volver', {
         fontFamily: FONT,
         fontSize: '14px',
         color: '#ffffff',
@@ -79,6 +90,12 @@ export class UpgradeScene extends Phaser.Scene {
       t.on('pointerdown', () => this.cycle(d));
     }
 
+    // Buscar: abre la Pokédex con filtros (región, rareza, tipo, nombre) para elegir sin ir de uno en uno
+    drawBox(this.add.graphics(), CARD_X - 110, 540, 220, 44, { radius: 12 });
+    this.add.text(CARD_X, 562, 'Buscar (F / Y)', { fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5);
+    this.add.zone(CARD_X, 562, 220, 44).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.search());
+    this.add.text(CARD_X, 104, `${this.index + 1} de ${this.ids.length}`, { fontFamily: FONT, fontSize: '16px', color: '#ffffff' }).setOrigin(0.5).setName('count');
+
     UPGRADE_KINDS.forEach((kind, i) => {
       const y = ROW.top + i * (ROW.h + ROW.gap);
       const bg = this.add.graphics();
@@ -98,6 +115,14 @@ export class UpgradeScene extends Phaser.Scene {
     this.showPokemon();
   }
 
+  /** Abre el buscador (Pokédex en modo elegir). */
+  private search() {
+    if (this.leaving || this.ids.length === 0) return;
+    this.leaving = true;
+    sfx('select');
+    goTo(this, 'Pokedex', { pick: { returnTo: 'Upgrades', current: this.id } });
+  }
+
   private get id() {
     return this.ids[this.index];
   }
@@ -106,6 +131,7 @@ export class UpgradeScene extends Phaser.Scene {
     if (this.ids.length === 0) return;
     this.index = (this.index + d + this.ids.length) % this.ids.length;
     sfx('select');
+    (this.children.getByName('count') as Phaser.GameObjects.Text | null)?.setText(`${this.index + 1} de ${this.ids.length}`);
     this.showPokemon();
   }
 
@@ -175,6 +201,7 @@ export class UpgradeScene extends Phaser.Scene {
     if (s.back) return this.back();
     if (this.ids.length === 0) return;
     if (s.dx) this.cycle(Math.sign(s.dx));
+    if (Phaser.Input.Keyboard.JustDown(this.findKey) || pad.has('Y')) return this.search();
     if (pad.has('LB')) this.cycle(-1);
     if (pad.has('RB')) this.cycle(1);
     if (s.dy) this.select(this.selected + Math.sign(s.dy));

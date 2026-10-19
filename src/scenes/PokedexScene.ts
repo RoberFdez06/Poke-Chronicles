@@ -58,8 +58,18 @@ export class PokedexScene extends Phaser.Scene {
   /** Cuántos tienes de cada región (para las pestañas). */
   private ownedCounts?: Record<string, number>;
 
+  /** Modo elegir (desde Mejoras): solo los que tienes; Enter/A/clic vuelve a Mejoras con ese Pokémon. */
+  private pickFor?: { returnTo: string; current?: number };
+
   constructor() {
     super('Pokedex');
+  }
+
+  init(data?: { pick?: { returnTo: string; current?: number } }) {
+    this.pickFor = data?.pick;
+    // Phaser reutiliza los datos del último arranque si el siguiente no trae: sin esto, la Pokédex normal
+    // abierta después de elegir desde Mejoras seguiría en modo elegir
+    this.sys.settings.data = {};
   }
 
   create() {
@@ -85,7 +95,7 @@ export class PokedexScene extends Phaser.Scene {
     const index = await loadSpeciesIndex();
     const owned = new Set(loadUnlocked());
     const shinies = new Set(loadShinies());
-    this.entries = index.map((s) => ({
+    const all = index.map((s) => ({
       id: s.id,
       name: s.nameEs ?? s.name,
       rarity: classifyRarity(s),
@@ -93,11 +103,12 @@ export class PokedexScene extends Phaser.Scene {
       owned: owned.has(s.id),
       shiny: shinies.has(s.id),
     }));
+    this.entries = this.pickFor ? all.filter((e) => e.owned) : all;
     loading.destroy();
 
     const have = this.entries.filter((e) => e.owned);
     this.add
-      .text(480, 40, `Pokédex · Tienes ${have.length} de ${this.entries.length} · ★ ${shinies.size} shiny`, { fontFamily: FONT, fontSize: '30px', color: '#ffffff' })
+      .text(480, 40, this.pickFor ? `Elige un Pokémon para mejorar · Tienes ${have.length}` : `Pokédex · Tienes ${have.length} de ${all.length} · ★ ${shinies.size} shiny`, { fontFamily: FONT, fontSize: '30px', color: '#ffffff' })
       .setOrigin(0.5);
     this.filters = new FilterBar(this, {
       tabsY: 92,
@@ -123,7 +134,7 @@ export class PokedexScene extends Phaser.Scene {
       t.on('pointerdown', () => !this.filters?.searching && this.turnPage(d));
     }
     this.add
-      .text(480, 620, 'Flechas: mover · Enter/A/clic: ficha · Q E / LB RB: región · R / X: rareza · T / LT RT: tipo · F / Y: buscar · Esc/B: volver', {
+      .text(480, 620, (this.pickFor ? 'Flechas: mover · Enter/A/clic: elegir · ' : 'Flechas: mover · Enter/A/clic: ficha · ') + 'Q E / LB RB: región · R / X: rareza · T / LT RT: tipo · F / Y: buscar · Esc/B: volver', {
         fontFamily: FONT,
         fontSize: '13px',
         color: '#ffffff',
@@ -137,7 +148,8 @@ export class PokedexScene extends Phaser.Scene {
     if (this.leaving) return;
     if (this.filters?.closeSearch()) return;
     this.leaving = true;
-    goTo(this, 'Menu');
+    if (this.pickFor) goTo(this, this.pickFor.returnTo, { id: this.pickFor.current });
+    else goTo(this, 'Menu');
   }
 
   private applyFilters() {
@@ -266,6 +278,14 @@ export class PokedexScene extends Phaser.Scene {
 
   /** Enter, A o clic: abre la ficha grande (y suena el grito de los que tienes). */
   private use() {
+    if (this.pickFor) {
+      const e = this.view[this.selected];
+      if (!e || this.leaving) return;
+      sfx('select');
+      this.leaving = true;
+      goTo(this, this.pickFor.returnTo, { id: e.id });
+      return;
+    }
     this.openCard(0);
   }
 
