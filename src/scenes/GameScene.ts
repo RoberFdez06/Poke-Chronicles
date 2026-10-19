@@ -815,6 +815,14 @@ export class GameScene extends Phaser.Scene {
     this.playerKey = `starter-${starter.id}${this.shiny ? '-s' : ''}`;
     this.bossKey = `boss-${boss.id}`;
     await poolReady;
+    // Partida nueva: empiezas con un ataque especial al azar del tipo de tu Pokémon (de los más comunes)
+    if (!r && !this.carry && this.slots.every((m: MovePower | null) => !m) && this.movePool.length > 0) {
+      const easy = this.movePool.filter((m) => moveRarity(m.power) !== 'epic' && moveRarity(m.power) !== 'legendary');
+      const list = easy.length > 0 ? easy : this.movePool;
+      const first = list[Math.floor(Math.random() * list.length)];
+      this.movePool.splice(this.movePool.indexOf(first), 1);
+      (this.slots as (MovePower | null)[])[0] = first;
+    }
 
     this.load.crossOrigin = 'anonymous';
     // Cada hoja: clave y sprites (los enemigos también en shiny, por si sale uno)
