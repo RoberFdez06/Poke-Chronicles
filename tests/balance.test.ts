@@ -6,7 +6,7 @@ import { FLOOR_COUNT, difficultyFor } from '../src/level/progression.ts';
 import { PULL_COST } from '../src/data/gacha.ts';
 import { bossStats, AVERAGE_STATS } from '../src/data/pokeStats.ts';
 import { BASE_STATS } from '../src/data/items.ts';
-import { BOSS_PHASE2_AT, attackInterval, bossAttacks, bossPhase, mixBehaviors, pickAttack, ringCount } from '../src/data/bossPatterns.ts';
+import { BOSS_PHASE2_AT, MAX_HELPERS, attackInterval, bossAttacks, bossPhase, helpersToSummon, mixBehaviors, pickAttack, ringCount } from '../src/data/bossPatterns.ts';
 import { mulberry32 } from '../src/level/floorGen.ts';
 
 test('tickets: una tirada del gacha cada 2-3 partidas buenas', () => {
@@ -46,6 +46,15 @@ test('cada jefe tiene al menos dos ataques y una segunda fase', () => {
     assert.ok(a.length >= 2 && a.includes('ring'), t);
   }
   assert.deepEqual(bossAttacks(['dragon', 'flying']), ['ring', 'charge', 'rain']);
+  // T26: los invocadores tienen 3 ataques; nadie pasa de 3
+  assert.deepEqual(bossAttacks(['psychic']), ['ring', 'rain', 'summon']);
+  assert.deepEqual(bossAttacks(['ghost', 'dark']), ['ring', 'charge', 'summon']);
+  assert.deepEqual(bossAttacks(['fire']), ['ring', 'rain']);
+  for (const t of ['fire', 'water', 'rock', 'psychic', 'dragon', 'steel', 'ghost', 'grass', 'ice']) assert.ok(bossAttacks([t]).length <= 3, t);
+  assert.equal(helpersToSummon(1, 0), 2);
+  assert.ok(helpersToSummon(2, 0) > helpersToSummon(1, 0));
+  assert.equal(helpersToSummon(2, MAX_HELPERS - 1), 1);
+  assert.equal(helpersToSummon(1, MAX_HELPERS), 0);
   assert.equal(bossPhase(1), 1);
   assert.equal(bossPhase(BOSS_PHASE2_AT - 0.01), 2);
   assert.ok(attackInterval(2) < attackInterval(1));

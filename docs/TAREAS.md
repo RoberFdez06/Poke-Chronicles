@@ -224,7 +224,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
 - Equilibrio: script `scripts/simulate.mjs` (o tests) que simule partidas con la lógica pura y saque tiempos
   por sala, daño recibido, monedas y tickets por partida; ajusta números y explica los cambios en la bitácora.
 
-## [ ] T26 — Jefes con patrones (sugerida por el supervisor)
+## [x] T26 — Jefes con patrones (sugerida por el supervisor)
 - Cada jefe legendario tiene 2-3 ataques según su tipo (ráfaga en círculo, embestida, lluvia de proyectiles,
   invocar ayudantes) y una segunda fase al bajar del 50 % de vida (más rápido, cambio de color). Aviso
   visual antes de cada ataque para poder esquivarlo.
@@ -265,4 +265,4 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
 ## [ ] T36 — Integrar el arte nuevo del supervisor (cuando avise en NOTAS_SUPERVISOR)
 - Intro de jefe tipo VS (`src/scenes/BossIntroScene.ts`), efectos por tipo (`src/ui/art/typeFx.ts`),
   marcos del HUD (`src/ui/art/hud.ts`) y música por bioma (`src/data/music.ts`). El supervisor dirá en una nota
-  cómo llamar a cada cosa; hasta entonces, esta tarea espera (sáltala y sigue).
+  cómo llamar a cada cosa: **ya está, ver N14**.

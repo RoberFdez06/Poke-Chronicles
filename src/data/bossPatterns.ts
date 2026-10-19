@@ -2,23 +2,40 @@
 // Lógica pura, sin Phaser ni red, para poder testearla.
 import type { EnemyBehavior } from './enemies.ts';
 
-/** Ráfaga en círculo, embestida en línea recta y lluvia de proyectiles sobre el suelo. */
-export type BossAttack = 'ring' | 'charge' | 'rain';
+/** Ráfaga en círculo, embestida en línea recta, lluvia de proyectiles sobre el suelo e invocar ayudantes. */
+export type BossAttack = 'ring' | 'charge' | 'rain' | 'summon';
 
 export const BOSS_ATTACK_LABEL: Record<BossAttack, string> = {
   ring: 'Ráfaga',
   charge: 'Embestida',
   rain: 'Lluvia',
+  summon: 'Invocación',
 };
 
 /** Tipos "de cuerpo a cuerpo": su jefe embiste; los demás hacen llover proyectiles. Dragón hace las tres. */
 const PHYSICAL = new Set(['fighting', 'rock', 'ground', 'steel', 'normal', 'dark', 'bug']);
 
-/** Al menos dos ataques por jefe: siempre la ráfaga, y embestida o lluvia según su tipo. */
+/** Tipos que llaman a ayudantes (T26): los "místicos" y los que van en grupo. */
+const SUMMONERS = new Set(['psychic', 'ghost', 'poison', 'grass', 'fairy', 'ice']);
+
+/**
+ * 2-3 ataques por jefe: siempre la ráfaga, embestida o lluvia según su tipo y, si es de un tipo invocador, también
+ * invocar ayudantes. Dragón hace ráfaga, embestida y lluvia.
+ */
 export function bossAttacks(types: readonly string[]): BossAttack[] {
   if (types.includes('dragon')) return ['ring', 'charge', 'rain'];
-  return ['ring', types.some((t) => PHYSICAL.has(t)) ? 'charge' : 'rain'];
+  const out: BossAttack[] = ['ring', types.some((t) => PHYSICAL.has(t)) ? 'charge' : 'rain'];
+  if (types.some((t) => SUMMONERS.has(t))) out.push('summon');
+  return out;
 }
+
+/** Ayudantes por invocación (más en la fase 2), cuántos puede haber a la vez y su vida respecto a un enemigo normal. */
+export const summonCount = (phase: 1 | 2): number => (phase === 2 ? 3 : 2);
+export const MAX_HELPERS = 4;
+export const HELPER_HP_MUL = 0.6;
+
+/** Cuántos ayudantes invocar ahora sin pasar del máximo (0 = mejor otro ataque). */
+export const helpersToSummon = (phase: 1 | 2, alive: number): number => Math.max(0, Math.min(summonCount(phase), MAX_HELPERS - alive));
 
 /** Por debajo de este porcentaje de vida, el jefe pasa a la fase 2 (más rápido y agresivo). */
 export const BOSS_PHASE2_AT = 0.5;

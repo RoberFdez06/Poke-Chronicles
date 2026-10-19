@@ -40,6 +40,8 @@ import {
   BossAttack,
   PHASE2_SPEED,
   TELEGRAPH_MS,
+  HELPER_HP_MUL,
+  helpersToSummon,
 } from '../data/bossPatterns';
 import {
   ACTIVE_DROP_CHANCE,
@@ -2029,8 +2031,13 @@ ${where} — ${this.biome.name}`, 1600);
     kinds.forEach((k, i) => this.spawnEnemy(k, behaviors[i]));
   }
 
-  private spawnEnemy(kind: FoeKind = Phaser.Utils.Array.GetRandom(this.foeKinds) as FoeKind, behavior: EnemyBehavior = kind.behavior) {
-    const { x, y } = this.randomSpotInRoom(60);
+  private spawnEnemy(
+    kind: FoeKind = Phaser.Utils.Array.GetRandom(this.foeKinds) as FoeKind,
+    behavior: EnemyBehavior = kind.behavior,
+    /** Ayudante invocado por el jefe: sale donde se le dice, con menos vida y sin botín. */
+    helper?: { x: number; y: number },
+  ) {
+    const { x, y } = helper ?? this.randomSpotInRoom(60);
     // Shiny (1/200): otro color, más vida y más premio
     const shiny = rollShiny(Math.random, SHINY_ODDS.enemy) && this.textures.exists(`${kind.key}-s-front`);
     const sheet = shiny ? `${kind.key}-s` : kind.key;
@@ -2038,7 +2045,8 @@ ${where} — ${this.biome.name}`, 1600);
     e.setDisplaySize(60, 60).setData('sheet', sheet).setData('size', 60).setData('shiny', shiny);
     if (!shiny) this.applyPmd(e, Number(kind.key.replace('foe-', '')), 60);
     const st = shapeEnemyStats(enemyStats(kind.bst, behavior, this.difficulty), kind.stats);
-    const hp = Math.round(st.hp * (shiny ? SHINY_ENEMY.hpMul : 1));
+    const hp = Math.round(st.hp * (shiny ? SHINY_ENEMY.hpMul : 1) * (helper ? HELPER_HP_MUL : 1));
+    e.setData('helper', !!helper);
     e.setData('hp', hp).setData('maxHp', hp).setData('speed', st.speed).setData('dmg', st.damage);
     if (shiny) {
       sparkle(this, x, y);
@@ -2088,7 +2096,43 @@ ${where} — ${this.biome.name}`, 1600);
     ai.nextAttack = time + attackInterval(ai.phase ?? 1) + TELEGRAPH_MS;
     if (attack === 'ring') this.bossRing(b, ai);
     else if (attack === 'charge') this.bossCharge(b, ai, time);
+    else if (attack === 'summon') this.bossSummon(b, ai);
     else this.bossRain(b, ai);
+  }
+
+  /** Invocación: círculos del color del jefe donde van a salir sus ayudantes (si ya hay muchos, hace una ráfaga). */
+  private bossSummon(b: Sprite, ai: EnemyAI) {
+    const alive = this.enemies.getChildren().filter((c) => c.active && (c as Sprite).getData('helper')).length;
+    const n = helpersToSummon(ai.phase ?? 1, alive);
+    if (n === 0 || this.foeKinds.length === 0) return this.bossRing(b, ai);
+    const i = this.interior(this.current);
+    const color = typeColor(ai.type);
+    const spots = Array.from({ length: n }, (_, k) => {
+      const a = (k / n) * Math.PI * 2 + Math.random();
+      return {
+        x: Phaser.Math.Clamp(b.x + Math.cos(a) * 140, i.x0 + 50, i.x1 - 50),
+        y: Phaser.Math.Clamp(b.y + Math.sin(a) * 140, i.y0 + 50, i.y1 - 50),
+      };
+    });
+    b.setData('flashUntil', this.time.now + TELEGRAPH_MS).setTintFill(color);
+    const marks = spots.map((p) => {
+      const c = this.add.circle(p.x, p.y, 10, color, 0.25).setStrokeStyle(3, color, 0.9).setDepth(3);
+      this.tweens.add({ targets: c, radius: 34, duration: TELEGRAPH_MS });
+      return c;
+    });
+    this.time.delayedCall(TELEGRAPH_MS, () => {
+      // Primero su tween: si sigue vivo, en el siguiente fotograma tocaría un objeto ya destruido
+      marks.forEach((m) => {
+        this.tweens.killTweensOf(m);
+        m.destroy();
+      });
+      if (!b.active || this.ended) return;
+      for (const p of spots) {
+        sparkle(this, p.x, p.y);
+        const kind = Phaser.Utils.Array.GetRandom(this.foeKinds) as FoeKind;
+        this.spawnEnemy(kind, kind.behavior, p);
+      }
+    });
   }
 
   /** Ráfaga en círculo: el jefe brilla y crece un anillo de aviso; luego salen proyectiles en todas direcciones. */
@@ -2144,7 +2188,11 @@ ${where} — ${this.biome.name}`, 1600);
       return c;
     });
     this.time.delayedCall(TELEGRAPH_MS + 150, () => {
-      marks.forEach((m) => m.destroy());
+      // Primero su tween: si sigue vivo, en el siguiente fotograma tocaría un objeto ya destruido
+      marks.forEach((m) => {
+        this.tweens.killTweensOf(m);
+        m.destroy();
+      });
       if (this.ended) return;
       for (const p of spots) {
         const fx = this.add.circle(p.x, p.y, R, typeColor(ai.type), 0.7).setDepth(12);
@@ -2677,7 +2725,7 @@ ${where} — ${this.biome.name}`, 1600);
     this.mission({ kind: 'defeat', types: boss ? this.bossTypes : ((enemy.getData('types') as string[] | undefined) ?? []) });
     // Monedas solo donde hay tienda en la que gastarlas; bayas siempre
     const hasShop = this.floor.shopId !== undefined;
-    const loot = rollEnemyLoot(Math.random, boss);
+    const loot = enemy.getData('helper') ? [] : rollEnemyLoot(Math.random, boss);
     if (enemy.getData('shiny')) {
       // Un shiny suelta más: monedas de 5 y una llave
       for (let k = 0; k < SHINY_ENEMY.extraCoins; k++) loot.push({ kind: 'coin', value: 5 });
@@ -2693,6 +2741,16 @@ ${where} — ${this.biome.name}`, 1600);
       this.bossBar = undefined;
     }
     enemy.destroy();
+    if (boss) {
+      // Al caer el jefe se van sus ayudantes
+      for (const c of [...this.enemies.getChildren()]) {
+        const h = c as Sprite;
+        if (!h.active || !h.getData('helper')) continue;
+        sparkle(this, h.x, h.y);
+        (h.getData('bar') as Phaser.GameObjects.Graphics | undefined)?.destroy();
+        h.destroy();
+      }
+    }
     this.checkClear();
   }
 

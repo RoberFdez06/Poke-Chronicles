@@ -642,3 +642,17 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   sería bajar `difficultyFor().hp` o subir `itemDpsGain` real (objetos).
 - **Tickets**: una partida media da ~15 tickets (0,15 tiradas) sin contar misiones (unos 10-12 al día con las 3
   diarias). No lo he tocado: la T32 lo dejó así a propósito.
+
+## T26 — Jefes con patrones (2026-10-19)
+
+- Casi todo venía de la T32 (`bossPatterns.ts`: ráfaga, embestida, lluvia, aviso de 0,75 s y fase 2 al 50 %). Faltaba
+  **invocar ayudantes**: nuevo ataque `summon` para jefes de tipo Psíquico, Fantasma, Veneno, Planta, Hada o Hielo
+  (así tienen 3 ataques; los demás 2, Dragón 3). Aviso: el jefe se tiñe de su color y salen círculos que crecen
+  donde aparecerán; luego salen 2 enemigos del piso (3 en fase 2), con un 60 % de vida, sin botín y como mucho 4 a la
+  vez (si ya hay 4, hace una ráfaga). Al caer el jefe se van sus ayudantes. Lógica y tests en bossPatterns.ts /
+  balance.test.ts.
+- **Error arreglado**: los círculos de aviso se destruían mientras su tween seguía vivo y en el siguiente fotograma
+  el tween escribía en un objeto destruido → excepción que **paraba el juego**. Pasaba con la invocación y podía
+  pasar con la lluvia de la T32 (mismo patrón). Ahora se mata el tween antes de destruir.
+- **e2e nuevo** `tests/e2e/boss.spec.ts`: saca al jefe en la sala inicial, le hace invocar 3 veces (2, luego 4, y
+  no pasa de 4) y comprueba que los ayudantes se van al vencerlo, sin errores (captura `15-invocacion`).

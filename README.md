@@ -190,7 +190,8 @@ Los desbloqueados se guardan en el navegador (`localStorage`, clave `pokeisaac.u
 
 Además de moverse según su tipo, cada jefe tiene al menos dos ataques con aviso previo (`src/data/bossPatterns.ts`):
 **ráfaga en círculo** (brilla en blanco y crece un anillo), **embestida** (marca una línea roja y se lanza por ella) o
-**lluvia** (círculos rojos en el suelo, uno donde estás). Por debajo del 50 % de vida pasa a la **fase 2**: se tiñe de
+**lluvia** (círculos rojos en el suelo, uno donde estás); los de tipo Psíquico, Fantasma, Veneno, Planta, Hada o Hielo
+además **invocan ayudantes** (círculos de su color donde saldrán; como mucho 4 a la vez, se van al caer el jefe). Por debajo del 50 % de vida pasa a la **fase 2**: se tiñe de
 rojo, va más rápido y ataca más a menudo y con más proyectiles. En cada sala, al menos uno de cada tres enemigos
 dispara. `node scripts/simulate.ts` saca los números del equilibrio.
 
