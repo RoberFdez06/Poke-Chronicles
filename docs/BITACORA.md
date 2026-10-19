@@ -795,3 +795,13 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - Pantalla de victoria/derrota, sombra y saltito al andar, animaciones de combate (`src/ui/art/combatFx.ts`),
   Pokédex nueva (`src/ui/art/dexCard.ts`) y transición entre pisos: caída girando por la trampilla y cartel del piso
   con el emblema del bioma (`FloorIntroScene`, registrada en main.ts), y el jugador cae botando en la sala nueva.
+
+## Supervisor — Catálogo de ataques (19/10, tarde)
+- `src/data/movePatterns.ts` (lógica pura, tests en `tests/movePatterns.test.ts`): 6-8 estilos por tipo inspirados en
+  los juegos (chorro, rayo, onda, temblor, lluvia, bomba en parábola, órbita, ola, cadena, erupción, trampas,
+  embestida, remolino) y los movimientos famosos con el suyo; el resto elige uno de su tipo por potencia e id.
+  Disparo normal según el tipo del Pokémon; disparo de los enemigos según su tipo; jefes con 2-4 movimientos de su
+  tipo (con su nombre y aviso) además de sus ataques; élites desde el piso 2 (10 % más por piso, hasta 50 %).
+- `src/scenes/attacks.ts`: el motor (castPattern, updateShots). GameScene le da un `AttackHost` (makeHost) y el daño
+  de todo pasa por `hitEnemy` (antes estaba dentro de onHit). El campo `shape` de los poderes ya no se usa para
+  disparar (se deja por compatibilidad con los guardados).

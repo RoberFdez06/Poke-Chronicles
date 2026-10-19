@@ -70,6 +70,8 @@ import { bakeCombatFx, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEne
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
 import { decorateRoom } from '../ui/art/roomDecor';
+import { castPattern, setMotion, updateShots, type AttackHost, type ShootOpts, type Side } from './attacks';
+import { basicShotFor, bossStyles, foeStyleFor, styleForMove, TYPE_STYLES, type Anim, type Motion, type MoveStyle } from '../data/movePatterns';
 import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, W } from '../ui/layout';
@@ -162,6 +164,9 @@ const SMASH_ROCK = [
   'kRRrRRRrRk', 'krRRRRrRRk', 'kRrRRRRrrk', '.krrrrrrk.', '..kkkkkk..',
 ];
 const SMASH_ROCK_PAL: Record<string, number> = { k: 0x2a2a30, R: 0x9a8a7a, r: 0x6e6052, W: 0xd8ccb8 };
+/** Probabilidad de que un enemigo salga élite: nada en el piso 1 y cada piso más (hasta la mitad). */
+const eliteChance = (level: number) => Math.min(0.5, Math.max(0, (level - 1) * 0.1));
+
 const FLOOR_COLORS: Record<Room['kind'], number> = {
   start: 0xdff3ff,
   combat: 0xcdeee0,
@@ -233,6 +238,11 @@ interface EnemyAI {
   knockUntil: number;
   /** Jefe: ataques que sabe, cuándo toca el siguiente, el último y su fase (2 por debajo del 50 %). */
   attacks?: BossAttack[];
+  /** Movimientos de su tipo (jefes, catálogo de ataques). */
+  moves?: MoveStyle[];
+  /** Élite (pisos altos): ataque extra de su tipo cada poco. */
+  eliteMove?: MoveStyle;
+  eliteAt?: number;
   nextAttack?: number;
   lastAttack?: BossAttack;
   phase?: 1 | 2;
@@ -257,6 +267,15 @@ interface ShotOpts {
   status?: string;
   /** Tipo para el dibujo del proyectil (si no, el de `status`; si tampoco, normal). */
   type?: string;
+  /** Movimiento y animación (catálogo de ataques). */
+  motion?: Motion;
+  anim?: Anim;
+  /** Estalla con este radio al chocar o al acabar. */
+  explode?: number;
+  /** Desde dónde sale (si no, el jugador). */
+  from?: { x: number; y: number };
+  /** Sin estela (chorros: ya son muchas partículas). */
+  noTrail?: boolean;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -303,6 +322,8 @@ export class GameScene extends Phaser.Scene {
   private evolving = false;
   /** Empujón al recibir un golpe: hasta entonces el movimiento no pisa la velocidad. */
   private playerKnockUntil = 0;
+  /** Lo que el motor de ataques (attacks.ts) necesita de la partida. */
+  private host!: AttackHost;
   /** Cayendo por la trampilla (la animación mueve al jugador; dressSprites no lo toca). */
   private falling = false;
   /** Destello rojo sobre la sala al recibir daño (capa del HUD). */
@@ -981,6 +1002,7 @@ export class GameScene extends Phaser.Scene {
     this.enemies = this.physics.add.group();
     this.shots = this.physics.add.group();
     this.foeShots = this.physics.add.group();
+    this.host = this.makeHost();
 
     this.physics.add.collider(this.player, [this.walls, this.doorBlocks, this.bushes]);
     // Con Levitación cruzas los agujeros
@@ -2319,7 +2341,35 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.popup(x, y - 40, '¡Shiny!', 0xffd34d);
       this.mission({ kind: 'shiny' });
     }
-    e.setData('ai', this.newAI(behavior, kind.type, false)).setData('types', kind.types);
+    const ai = this.newAI(behavior, kind.type, false);
+    e.setData('ai', ai).setData('types', kind.types);
+    // Élites: cada piso salen más. Más vida, algo más rápidos, brillo de su tipo y un ataque extra de su tipo
+    if (!helper && Math.random() < eliteChance(this.level())) {
+      const light = (TYPE_STYLES[kind.type] ?? TYPE_STYLES.normal).filter((st) => !['dash', 'chain', 'orbit', 'mine'].includes(st.pattern.k));
+      ai.eliteMove = light[Math.floor(Math.random() * Math.min(light.length, 4))];
+      ai.eliteAt = this.time.now + Phaser.Math.Between(2200, 3400);
+      e.setData('hp', Math.round(hp * 1.5)).setData('maxHp', Math.round(hp * 1.5)).setData('speed', st.speed * 1.12).setData('elite', true);
+      (e as Sprite & { preFX?: { addGlow: (c: number, o?: number, i?: number, k?: boolean, q?: number, d?: number) => unknown } }).preFX?.addGlow(typeColor(kind.type), 4, 0, false, 0.1, 10);
+    }
+  }
+
+  /** Un ataque de su tipo (élites y jefes): aviso con su nombre y destello, y luego sale (más lento que los tuyos). */
+  private foeMove(e: Sprite, style: MoveStyle, type: string, dmg: number, warnMs: number, label: boolean) {
+    const color = typeColor(type);
+    if (label) {
+      const t = this.add.text(e.x, e.y - (e.getData('size') as number) * 0.7, `¡${style.id}!`, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#ffffff' })
+        .setOrigin(0.5).setStroke('#' + color.toString(16).padStart(6, '0'), 6).setDepth(16).setScale(0.4);
+      this.tweens.add({ targets: t, scale: 1, duration: 160, ease: 'Back.easeOut' });
+      this.tweens.add({ targets: t, alpha: 0, y: t.y - 20, delay: warnMs + 300, duration: 300, onComplete: () => t.destroy() });
+    }
+    const ring = this.add.circle(e.x, e.y, (e.getData('size') as number) * 0.6).setStrokeStyle(4, color, 0.9).setDepth(5);
+    this.tweens.add({ targets: ring, scale: 0.4, alpha: 0.2, duration: warnMs, onComplete: () => ring.destroy() });
+    e.setTintFill(color).setData('flashUntil', this.time.now + warnMs * 0.6);
+    this.time.delayedCall(warnMs, () => {
+      if (!e.active || this.ended || this.transitioning) return;
+      const dir = new Phaser.Math.Vector2(this.player.x - e.x, this.player.y - e.y).normalize();
+      castPattern(this.host, 'foe', e, dir, style.pattern, dmg, type, 0.55);
+    });
   }
 
   private spawnBoss() {
@@ -2335,6 +2385,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // El jefe también se comporta según su tipo
     const ai = this.newAI(behaviorFor([this.bossType]), this.bossType, true);
     ai.attacks = bossAttacks(this.bossTypes);
+    // Movimientos de su tipo (Lanzallamas, Hidrobomba, Terremoto…) además de sus ataques de jefe
+    ai.moves = bossStyles(this.bossTypes, this.bossId);
     ai.nextAttack = this.time.now + 2200;
     ai.phase = 1;
     b.setData('ai', ai);
@@ -2428,6 +2480,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       ai.nextAttack = time + 900;
     }
     if (time < (ai.nextAttack ?? 0) || this.ended) return;
+    // La mitad de las veces, uno de sus movimientos de tipo (sin repetir el último)
+    if (ai.moves?.length && Math.random() < 0.5) {
+      const options = ai.moves.length > 1 ? ai.moves.filter((m) => m.id !== b.getData('lastMove')) : ai.moves;
+      const mv = options[Math.floor(Math.random() * options.length)];
+      b.setData('lastMove', mv.id);
+      const mtype = this.bossTypes.find((t) => (TYPE_STYLES[t] ?? []).includes(mv)) ?? this.bossType;
+      ai.nextAttack = time + attackInterval(ai.phase ?? 1) + TELEGRAPH_MS + 400;
+      this.foeMove(b, mv, mtype, Math.round((b.getData('dmg') as number) * 0.7), TELEGRAPH_MS, true);
+      return;
+    }
     const attack = pickAttack(ai.attacks, Math.random, ai.lastAttack);
     ai.lastAttack = attack;
     ai.nextAttack = time + attackInterval(ai.phase ?? 1) + TELEGRAPH_MS;
@@ -2626,8 +2688,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.face(e, toPlayer);
         if (time >= ai.until) {
           if (Math.random() < 0.3) ai.side = -ai.side;
-          const angles = ai.boss ? [-0.3, 0, 0.3] : [0];
-          for (const a of angles) this.fireFoeShot(e, toPlayer.clone().rotate(a), ai.type);
+          // Su disparo según su tipo (bombas en parábola, ráfagas, ondas, persecución…)
+          const weak = enemyDamageMul((e.getData('statuses') as ActiveStatus[] | undefined) ?? [], time);
+          castPattern(this.host, 'foe', e, toPlayer.clone().normalize(), foeStyleFor(ai.type), Math.max(1, Math.round((e.getData('dmg') as number) * 0.8 * weak)), ai.type);
           ai.until = time + (ai.boss ? 1100 : Phaser.Math.Between(1500, 2200));
         }
         break;
@@ -2792,6 +2855,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!this.player || !this.player.active) return;
     this.dressSprites(time);
     this.orientShots();
+    updateShots(this.host, this.shots, time, delta);
+    updateShots(this.host, this.foeShots, time, delta);
     if (!this.ended) this.counters.seconds += delta / 1000;
     // Cualquier subida de PS (bayas, pociones, Centro, robo de vida…) cuenta como curarse
     if (this.hpMark >= 0 && this.hp > this.hpMark + 0.001) this.healedRun = true;
@@ -2892,7 +2957,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const e = c as Sprite;
       if (!e.active || this.tickEnemyStatus(e, time)) return;
       this.updateEnemy(e, time);
-      if ((e.getData('ai') as EnemyAI | undefined)?.boss) this.updateBossAttacks(e, time);
+      const eai = e.getData('ai') as EnemyAI | undefined;
+      if (eai?.boss) this.updateBossAttacks(e, time);
+      else if (eai?.eliteMove && time >= (eai.eliteAt ?? 0)) {
+        eai.eliteAt = time + Math.max(2200, 4400 - this.level() * 220);
+        this.foeMove(e, eai.eliteMove, eai.type, Math.round((e.getData('dmg') as number) * 0.6), 450, false);
+      }
       this.paintEnemy(e, time);
       this.drawEnemyBar(e);
     });
@@ -2975,11 +3045,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
   }
 
-  private spawnShot(dir: Phaser.Math.Vector2, angle: number, o: ShotOpts) {
+  private spawnShot(dir: Phaser.Math.Vector2, angle: number, o: ShotOpts): Sprite {
     const v = dir.clone().rotate(angle).scale(o.speed);
     // Proyectil con la forma de su tipo (llama, gota, rayo, hoja…), orientado según vuela
     const ptype = o.type ?? o.status ?? 'normal';
-    const s = this.shots.create(this.player.x, this.player.y, projKey(ptype)) as Sprite;
+    const from = o.from ?? this.player;
+    const s = this.shots.create(from.x, from.y, projKey(ptype)) as Sprite;
     s.setScale(o.size * 2.2).setDepth(4).setVelocity(v.x, v.y);
     s.setData('ptype', ptype).setData('pcolor', o.color);
     if (projMode(ptype) === 'spin') s.setAngularVelocity(Phaser.Math.Between(420, 620) * (Math.random() < 0.5 ? -1 : 1));
@@ -2990,7 +3061,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     s.setData('hit', new Set<Sprite>());
     s.setData('status', o.status);
     // Poderes: estela de partículas de su tipo (el disparo normal no, para no saturar)
-    if (o.status) {
+    if (o.status && !o.noTrail) {
       const type = o.status;
       const ev = this.time.addEvent({
         delay: 70,
@@ -2999,7 +3070,81 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       });
     }
     if (o.bounces > 0) s.setBounce(1, 1);
-    this.time.delayedCall(o.life, () => s.destroy());
+    setMotion(s, 'player', Math.atan2(v.y, v.x), o.speed, o.motion, o.anim, this.player, this.time.now);
+    if (o.explode) s.setData('explode', o.explode);
+    this.time.delayedCall(o.life, () => {
+      if (!s.active) return;
+      this.popShot(s);
+      s.destroy();
+    });
+    return s;
+  }
+
+  /** Si el proyectil estalla (Llamarada, Bola Sombra…), explosión y daño alrededor. */
+  private popShot(s: Sprite) {
+    const r = s.getData('explode') as number | undefined;
+    if (!r || s.getData('popped')) return;
+    s.setData('popped', true);
+    const type = (s.getData('ptype') as string | undefined) ?? 'normal';
+    typeImpact(this, s.x, s.y, type, 1.5, 14);
+    const ring = this.add.circle(s.x, s.y, 10, typeColor(type), 0.45).setDepth(7);
+    this.tweens.add({ targets: ring, radius: r, alpha: 0, duration: 240, onComplete: () => ring.destroy() });
+    this.cameras.main.shake(80, 0.003);
+    this.host.area('player', s.x, s.y, r, (s.getData('dmg') as number) * 0.6, type, this.player);
+  }
+
+  /** Crea el anfitrión del motor de ataques: cómo disparan, hacen daño y se mueven los de cada lado. */
+  private makeHost(): AttackHost {
+    return {
+      scene: this,
+      shoot: (side: Side, x: number, y: number, angle: number, o: ShootOpts) => {
+        const dir = new Phaser.Math.Vector2(Math.cos(angle), Math.sin(angle));
+        if (side === 'player') {
+          return this.spawnShot(dir, 0, {
+            damage: o.dmg, speed: o.speed, life: o.life, size: o.size, color: typeColor(o.type), pierce: (o.pierce ?? 0) + this.stats.pierce,
+            bounces: 0, status: o.type, type: o.type, motion: o.motion, anim: o.anim, explode: o.explode, from: { x, y }, noTrail: o.life < 700,
+          });
+        }
+        const s = this.foeShots.create(x, y, projKey(o.type)) as Sprite;
+        s.setScale(o.size * 2.4).setDepth(4).setVelocity(dir.x * o.speed, dir.y * o.speed);
+        s.setData('dmg', Math.max(1, Math.round(o.dmg))).setData('ptype', o.type).setData('foe', true);
+        if (projMode(o.type) !== 'spin') s.setRotation(projRotation(o.type, angle));
+        if (o.explode) s.setData('explode', o.explode);
+        // Borde oscuro: que no se confunda con los tuyos
+        s.setTint(0xffffff);
+        this.time.delayedCall(o.life, () => s.active && s.destroy());
+        return s;
+      },
+      area: (side, x, y, r, dmg, type, src, once) => {
+        if (side === 'foe') {
+          const p = this.player;
+          if (!p?.active || once?.has(p)) return;
+          if (Phaser.Math.Distance.Between(x, y, p.x, p.y) > r + 22) return;
+          once?.add(p);
+          if (src.active) this.hurtPlayer(src);
+          return;
+        }
+        for (const c of [...this.enemies.getChildren()]) {
+          const e = c as Sprite;
+          if (!e.active || once?.has(e)) continue;
+          const er = ((e.getData('size') as number | undefined) ?? 60) * 0.35;
+          if (Phaser.Math.Distance.Between(x, y, e.x, e.y) > r + er) continue;
+          once?.add(e);
+          this.hitEnemy(e, dmg, type, e.x, e.y, typeColor(type), new Phaser.Math.Vector2(e.x - x, e.y - y));
+        }
+      },
+      hitOne: (e, dmg, type) => e.active && this.hitEnemy(e, dmg, type, e.x, e.y, typeColor(type)),
+      enemies: () => this.enemies.getChildren() as Sprite[],
+      player: () => this.player,
+      aim: () => this.aim.clone().normalize(),
+      room: () => this.interior(this.current),
+      dash: (dir, speed, ms) => {
+        this.player.setVelocity(dir.x * speed, dir.y * speed);
+        this.playerKnockUntil = this.time.now + ms;
+        this.invulnUntil = Math.max(this.invulnUntil, this.time.now + ms + 120);
+      },
+      alive: () => !this.ended && !this.transitioning && !!this.player?.active,
+    };
   }
 
   /** Disparo básico. Los pasivos cambian cuántos salen, cuánto daño hacen y hasta dónde llegan. */
@@ -3018,6 +3163,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       pierce: s.pierce,
       bounces: s.bounces,
     };
+    // Cómo vuela según tu tipo: el eléctrico en zigzag, el agua ondulando, el psíquico persiguiendo un poco…
+    const basic = basicShotFor(this.tearType);
+    Object.assign(opts, { speed: opts.speed * basic.speed, size: opts.size * basic.size, motion: basic.motion, anim: basic.anim });
     muzzle(this, this.player.x, this.player.y, dir.x, dir.y, opts.color);
     for (let k = 0; k < n; k++) this.spawnShot(dir, (k - (n - 1) / 2) * SPREAD, opts);
     // Cola Gemela: también hacia atrás
@@ -3028,41 +3176,18 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private castSlot(i: number, time: number) {
     const m = this.slots[i];
     if (!m || time < this.slotReady[i]) return;
-    this.slotReady[i] = time + m.cooldown;
+    // Cada movimiento sale con su estilo (catálogo de ataques): chorro, rayo, onda, lluvia, bumerán…
+    const style = styleForMove(m);
+    this.slotReady[i] = time + m.cooldown * style.cd;
     sfx('shot');
 
-    const dir = this.aim.clone();
+    const dir = this.aim.clone().normalize();
     muzzle(this, this.player.x, this.player.y, dir.x, dir.y, typeColor(m.type));
     // At. Esp. del Pokémon y, encima, lo que suban el daño los objetos
     // Potenciadores de tipo (Carbón, Imán…) y Ataque X van encima
     const boost = 1 + (this.stats.typeBoost[m.type] ?? 0);
     const dmg = Math.max(6, Math.round(m.power * 0.5 * this.stats.powerMul * (this.stats.damage / this.base.damage) * boost * this.dmgMul() * pinchMul(this.ability, m.type, this.hp, this.stats.maxHp)));
-    const base = {
-      color: typeColor(m.type),
-      pierce: this.stats.pierce,
-      bounces: this.stats.bounces,
-      life: this.stats.range + 250,
-      status: m.type,
-    };
-
-    switch (m.shape) {
-      case 'bolt': // disparo rápido
-        this.spawnShot(dir, 0, { ...base, damage: Math.round(dmg * 1.2), speed: 640, size: 1 });
-        break;
-      case 'fan': // abanico de 3
-        for (const a of [-0.35, 0, 0.35]) {
-          this.spawnShot(dir, a, { ...base, damage: Math.round(dmg * 0.8), speed: 520, size: 0.9 });
-        }
-        break;
-      case 'ring': // anillo de 8
-        for (let k = 0; k < 8; k++) {
-          this.spawnShot(dir, (k * Math.PI) / 4, { ...base, damage: Math.round(dmg * 0.7), speed: 420, size: 0.9, life: 650 });
-        }
-        break;
-      case 'big': // proyectil grande que atraviesa
-        this.spawnShot(dir, 0, { ...base, damage: Math.round(dmg * 1.6), speed: 320, size: 2, pierce: 99, life: 1400 });
-        break;
-    }
+    castPattern(this.host, 'player', this.player, dir, style.pattern, Math.max(3, Math.round(dmg * style.mul)), m.type);
   }
 
   private onShotWall(shot: Sprite) {
@@ -3082,8 +3207,26 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     hit.add(enemy);
 
     const status = shot.getData('status') as string | undefined;
+    const sv = (shot.body as Body | null)?.velocity;
+    const hp = this.hitEnemy(enemy, shot.getData('dmg') as number, status, shot.x, shot.y, (shot.getData('pcolor') as number | undefined) ?? 0xffffff, sv?.clone());
+    if (hp === undefined) return;
+
+    const pierce = shot.getData('pierce') as number;
+    if (pierce > 0) shot.setData('pierce', pierce - 1);
+    else {
+      this.popShot(shot);
+      shot.destroy();
+    }
+  }
+
+  /**
+   * Golpe a un enemigo (disparos, poderes de área, rayos, cadenas…): críticos, robo de vida, número de daño,
+   * destello, empujón (no a jefes), estado del tipo y, si cae, se debilita. Devuelve los PS que le quedan.
+   */
+  private hitEnemy(enemy: Sprite, base: number, status: string | undefined, sx: number, sy: number, color: number, push?: Phaser.Math.Vector2): number | undefined {
+    if (!enemy.active) return undefined;
     // Dragón: los poderes hacen más daño
-    let dmg = (shot.getData('dmg') as number) * (status ? hitDamageMul(status) : 1);
+    let dmg = base * (status ? hitDamageMul(status) : 1);
     let crit = false;
     if (this.stats.critChance > 0 && Math.random() < this.stats.critChance) {
       dmg *= this.stats.critMul;
@@ -3102,28 +3245,23 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const hp = (enemy.getData('hp') as number) - dmg;
     sfx('hit');
     if (status) typeImpact(this, enemy.x, enemy.y, status, 0.8, 7);
-    // Golpe: destello blanco, chispas donde da el disparo, número de daño y un empujoncito (no a los jefes)
+    // Golpe: destello blanco, chispas, número de daño y un empujoncito (no a los jefes)
     enemy.setData('hp', hp);
     enemy.setTintFill(0xffffff);
     enemy.setData('flashUntil', this.time.now + 70);
-    hitSpark(this, shot.x, shot.y, (shot.getData('pcolor') as number | undefined) ?? 0xffffff, crit ? 9 : 5, crit ? 1.3 : 0.9);
+    hitSpark(this, sx, sy, color, crit ? 9 : 5, crit ? 1.3 : 0.9);
     damageNumber(this, enemy.x, enemy.y - (enemy.getData('size') as number) * 0.45, dmg, { crit });
     if (crit) this.cameras.main.shake(90, 0.004);
     const hitAi = enemy.getData('ai') as EnemyAI | undefined;
-    const sv = (shot.body as Body | null)?.velocity;
-    if (hp > 0 && hitAi && !hitAi.boss && sv && this.time.now >= hitAi.knockUntil) {
-      const push = sv.clone().normalize().scale(crit ? 220 : 130);
-      enemy.setVelocity(push.x, push.y);
+    if (hp > 0 && hitAi && !hitAi.boss && push && push.lengthSq() > 0 && this.time.now >= hitAi.knockUntil) {
+      const pv = push.normalize().scale(crit ? 220 : 130);
+      enemy.setVelocity(pv.x, pv.y);
       hitAi.knockUntil = this.time.now + 90;
     }
     // Drenar cura aunque el golpe lo derrote; el resto solo afecta a quien sigue en pie
     if (status && (hp > 0 || statusForType(status)?.kind === 'drain')) this.applyStatusTo(enemy, status, dmg);
-
-    const pierce = shot.getData('pierce') as number;
-    if (pierce > 0) shot.setData('pierce', pierce - 1);
-    else shot.destroy();
-
     if (hp <= 0) this.killEnemy(enemy);
+    return hp;
   }
 
   /** Suma al daño hecho de la partida (sin contar lo que sobra al rematar). */
