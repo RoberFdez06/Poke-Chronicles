@@ -6,6 +6,7 @@ import { typeColor, typeNameEs } from '../data/types';
 import { addCandies, addTickets, CANDY_PER_TICKET } from '../data/save';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
 import { dailyFloorSeed, dailyRng } from '../data/daily';
+import { damageMul, effectOf, EFFECT_COLOR, EFFECT_LABEL } from '../data/typeChart';
 import { weatherChip, weatherFor, weatherHurts, weatherPowerMul, WEATHER_DESC, WEATHER_LABEL, WEATHER_TICK_MS, type Weather } from '../data/weather';
 import { WeatherFx } from '../ui/weatherFx';
 import { TouchControls, type TouchButton } from '../ui/touchControls';
@@ -4211,6 +4212,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!enemy.active) return undefined;
     // Dragón: los poderes hacen más daño; Lluvia y Sol cambian Agua y Fuego (T38)
     let dmg = base * (status ? hitDamageMul(status) : 1) * weatherPowerMul(this.weather, status);
+    // Eficacia de tipos (como en Pokémon): súper eficaz, no muy eficaz o casi sin efecto
+    const defTypes = this.foeTypesOf(enemy);
+    dmg *= damageMul(status, defTypes);
+    this.effectivenessPopup(effectOf(status, defTypes), enemy.x, enemy.y - (enemy.getData('size') as number) * 0.75);
     let crit = false;
     if (this.stats.critChance > 0 && Math.random() < this.stats.critChance) {
       dmg *= this.stats.critMul;
@@ -4249,6 +4254,21 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (status && (hp > 0 || statusForType(status)?.kind === 'drain')) this.applyStatusTo(enemy, status, dmg);
     if (hp <= 0) this.killEnemy(enemy);
     return hp;
+  }
+
+  /** Tipos de un enemigo (los jefes llevan los suyos en `btypes`). */
+  private foeTypesOf(e: Sprite): string[] {
+    const ai = e.getData('ai') as EnemyAI | undefined;
+    const own = (ai?.boss ? (e.getData('btypes') as string[] | undefined) ?? this.bossTypes : (e.getData('types') as string[] | undefined)) ?? [];
+    return own.length > 0 ? own : [ai?.type ?? 'normal'];
+  }
+
+  private effectAt = 0;
+  /** Aviso de eficacia, como mucho uno cada medio segundo para no llenar la pantalla. */
+  private effectivenessPopup(effect: ReturnType<typeof effectOf>, x: number, y: number) {
+    if (effect === 'normal' || this.time.now < this.effectAt) return;
+    this.effectAt = this.time.now + 500;
+    this.popup(x, y, EFFECT_LABEL[effect], EFFECT_COLOR[effect]);
   }
 
   /** Suma al daño hecho de la partida (sin contar lo que sobra al rematar). */
@@ -4998,7 +5018,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const weak = enemy.getData('ai') ? enemyDamageMul((enemy.getData('statuses') as ActiveStatus[] | undefined) ?? [], now) : 1;
     // Lluvia y Sol también cambian los ataques de Agua y Fuego de los enemigos
     const foeType = ai?.type ?? (enemy.getData('ptype') as string | undefined);
-    const taken = Math.max(1, Math.round(((enemy.getData('dmg') as number | undefined) ?? 10) * weak * this.stats.damageTaken * weatherPowerMul(this.weather, foeType)));
+    const taken = Math.max(1, Math.round(((enemy.getData('dmg') as number | undefined) ?? 10) * weak * this.stats.damageTaken * weatherPowerMul(this.weather, foeType) * damageMul(foeType, this.playerTypes)));
+    this.effectivenessPopup(effectOf(foeType, this.playerTypes), this.player.x, this.player.y - 70);
     if (this.hp - taken <= 0 && this.focusLeft > 0) {
       // Banda Focus: aguanta con 1 PS
       this.focusLeft--;
