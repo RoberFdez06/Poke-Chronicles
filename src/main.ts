@@ -17,6 +17,7 @@ import { PauseScene } from './scenes/PauseScene';
 import { COLORS, hex, loadThemeFont } from './ui/theme';
 import { initAudio, playMusic } from './ui/audio';
 import { H, U, W } from './ui/layout';
+import { PLACEHOLDER_SPRITE } from './data/offline';
 
 // T30: los menús se escalan ×1,6875 desde su diseño de 960×640; para que el texto no se vea borroso, todos los
 // textos se generan a doble resolución (Phaser los rasteriza en un canvas aparte).
@@ -25,6 +26,26 @@ const makeText = Phaser.GameObjects.GameObjectFactory.prototype.text;
 Phaser.GameObjects.GameObjectFactory.prototype.text = function (this: Phaser.GameObjects.GameObjectFactory, ...args: Parameters<typeof makeText>) {
   return makeText.apply(this, args).setResolution(TEXT_RESOLUTION);
 };
+
+// T42: si una imagen no carga (sin conexión o servidor caído), se pone la Poké Ball genérica con la misma clave,
+// así ninguna pantalla se queda sin sprite. Vale para todas las escenas.
+const loadImage = Phaser.Loader.LoaderPlugin.prototype.image;
+Phaser.Loader.LoaderPlugin.prototype.image = function (this: Phaser.Loader.LoaderPlugin & { offlineHook?: boolean }, ...args: Parameters<typeof loadImage>) {
+  if (!this.offlineHook) {
+    this.offlineHook = true;
+    this.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
+      if (file.type !== 'image' || typeof file.key !== 'string' || String(file.url).endsWith(PLACEHOLDER_SPRITE)) return;
+      console.warn(`[PokeIsaac] imagen sin cargar, uso la genérica: ${file.key}`);
+      loadImage.call(this, file.key, PLACEHOLDER_SPRITE);
+    });
+  }
+  return loadImage.apply(this, args);
+};
+
+// T42: caché persistente de PokeAPI, sprites y gritos (sirve lo ya visto al instante y sin conexión)
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => void navigator.serviceWorker.register('sw.js').catch(() => undefined));
+}
 
 // El audio se desbloquea con el primer clic, tecla o botón; la música empieza entonces
 initAudio();
@@ -42,6 +63,8 @@ function startGame() {
     backgroundColor: hex(COLORS.bg),
     physics: { default: 'arcade', arcade: { debug: false } },
     input: { gamepad: true },
+    // Una imagen que tarda más de 8 s cuenta como fallida (y se usa la genérica)
+    loader: { timeout: 8000 },
     // 16:9: en pantallas 16:9 llena la ventana; en otras deja bandas
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     // La primera escena es la que arranca; añade las nuevas (p. ej. GachaScene) al final

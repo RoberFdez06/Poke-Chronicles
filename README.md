@@ -118,6 +118,19 @@ compran con dinero real. Todos los nombres (Pokémon, movimientos y tipos) salen
 o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 tickets. La lista de especies
 se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `node scripts/buildSpeciesIndex.mjs`.
 
+## Sin conexión
+
+El juego no depende de que PokeAPI o GitHub respondan:
+- **Caché persistente** (`public/sw.js`, un service worker, solo en la versión construida): todo lo descargado de
+  PokeAPI, los sprites (PokeAPI y SpriteCollab) y los gritos se guarda y se sirve al instante, también sin red.
+- **Paquete sin conexión** (`public/data/offline/`, ~2 MB): datos con nombres en español, tipos, estadísticas,
+  habilidades y sprites de los iniciales de las 9 regiones y sus evoluciones, de enemigos de cada bioma y piso y de
+  jefes de cada bioma (186 Pokémon), y movimientos con potencia de los 18 tipos. Se regenera con
+  `node scripts/buildOffline.ts` (necesita internet).
+- Si una petición falla o tarda más de 6 s se usa el paquete; si tampoco está, un **sustituto** con el índice de
+  especies y una Poké Ball como sprite. Una imagen que no carga en 8 s también se cambia por la Poké Ball. Sin red,
+  los enemigos y el jefe se eligen entre los del paquete. En la partida sale el aviso "Sin conexión".
+
 ## Avisos
 
 Ningún aviso tapa la sala (`src/ui/toast.ts`): sala limpia, objetos, sinergias, misiones y logros, jefe, Centro,
@@ -358,6 +371,7 @@ src/
     save.ts               tickets, desbloqueos, récords, mejoras, misiones, tutorial, volumen y borrar progreso (localStorage)
     tutorial.ts           consejos del tutorial (textos y cuáles se han visto)
     abilities.ts          habilidades de PokeAPI: cuál toca, nombre en español y efecto
+    offline.ts            sin conexión: ruta de cada respuesta en el paquete, sustituto y tiempo límite
     runHistory.ts         registro de cada partida terminada, historial de las últimas 20 y contadores
     missions.ts           misiones diarias (semilla del día) y logros: progreso, premios y objetos bloqueados
     runSave.ts            partidas guardadas en 3 huecos (con migraciones)
@@ -399,6 +413,8 @@ scripts/
   buildSpeciesIndex.mjs   genera public/data/species-index.json desde PokeAPI (nombres en español, tipos, rareza)
   ensureIndex.mjs         lo genera antes de dev/build si no existe
   simulate.ts             números del equilibrio (node scripts/simulate.ts)
+  buildOffline.ts         genera public/data/offline/ para jugar sin conexión (node scripts/buildOffline.ts)
+  makePlaceholder.ts      dibuja la Poké Ball genérica de los sustitutos
 public/
   data/species-index.json lista de las 1025 especies
   fonts/PixelifySans.ttf  fuente pixel (OFL)

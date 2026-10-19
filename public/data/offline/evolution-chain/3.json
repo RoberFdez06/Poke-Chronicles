@@ -1,0 +1,1 @@
+{"id":3,"chain":{"species":{"name":"squirtle","url":"https://pokeapi.co/api/v2/pokemon-species/7/"},"evolves_to":[{"species":{"name":"wartortle","url":"https://pokeapi.co/api/v2/pokemon-species/8/"},"evolves_to":[{"species":{"name":"blastoise","url":"https://pokeapi.co/api/v2/pokemon-species/9/"},"evolves_to":[]}]}]}}

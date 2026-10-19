@@ -301,7 +301,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
 
 # Tanda 5 (esenciales, pedida por Roberto el 19/10) — van justo después de T37, antes que el resto
 
-## [ ] T42 — Funcionar aunque PokeAPI/SpriteCollab fallen
+## [x] T42 — Funcionar aunque PokeAPI/SpriteCollab fallen
 - Caché persistente de todo lo descargado (JSON de PokeAPI, sprites PokeAPI y SpriteCollab, gritos) con la Cache API
   o IndexedDB, para que lo ya visto cargue al instante y funcione sin conexión.
 - Empaqueta en `public/` lo imprescindible para jugar sin red: datos (nombres en español, tipos, estadísticas,

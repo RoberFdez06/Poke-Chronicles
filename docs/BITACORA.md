@@ -708,3 +708,28 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   abajo y el aviso de `MenuScene` (abajo también) es del supervisor (N5); el gacha no se toca (N11). La intro de jefe
   VS es de la T36.
 - e2e: `boss.spec.ts` lanza 5 avisos y comprueba que quedan 4 (captura `14b-avisos`).
+
+## T42 — Funcionar aunque PokeAPI/SpriteCollab fallen (2026-10-19, orden de N16)
+
+- **Caché persistente**: service worker `public/sw.js` ("primero la caché") para `pokeapi.co` y
+  `raw.githubusercontent.com` (sprites de PokeAPI, SpriteCollab y gritos); guarda también los 404 (Pokémon sin
+  SpriteCollab) para no repetirlos. Se registra en `main.ts` solo en producción. Elegí service worker en vez de
+  IndexedDB porque cubre de una vez JSON, imágenes del cargador de Phaser y audio sin tocar cada carga. En los e2e
+  va bloqueado (`serviceWorkers: 'block'`) para que `page.route` siga simulando PokeAPI.
+- **Paquete** `public/data/offline/` generado con `node scripts/buildOffline.ts` (usa la lógica del juego:
+  `REGIONS`, `biomeEnemyPool` de los 5 pisos de cada bioma, `biomeBossPool`, `FALLBACK_ENEMIES`): 186 Pokémon
+  con sprites normales y shiny, especies (nombre en español), cadenas de evolución de los iniciales, habilidades
+  sin efecto propio, y 14 movimientos con potencia de cada uno de los 18 tipos. Mismo formato que PokeAPI
+  (recortado), así el juego lo usa tal cual. ~2 MB reales (744 PNG pequeños).
+- **Si falla**: `getJson` espera como mucho 6 s y si no, tira de `data/offline/<recurso>/<id>.json`
+  (`offlinePath`). Si un Pokémon no está ni en la red ni en el paquete, `substitutePokemon` lo inventa con
+  species-index (tipos reales, estadísticas repartidas, Poké Ball genérica de `scripts/makePlaceholder.ts`).
+  Imágenes: parche global de `LoaderPlugin.image` en main.ts que, si una imagen falla, carga la Poké Ball con la
+  misma clave (vale para todas las escenas, también el gacha sin tocar su archivo); `loader.timeout` de 8 s.
+- **Partida**: sin red, enemigos y jefe se eligen entre los del paquete (con sus sprites de verdad). Aviso
+  "Sin conexión · Usando datos guardados" con las tarjetas de la T37 (una vez por sesión).
+- **Pruebas**: `tests/offline.test.ts` (rutas, sustituto, tiempo límite y que el paquete trae iniciales, reservas,
+  sprites y los 18 tipos) y `tests/e2e/offline.spec.ts` (PokeAPI y GitHub cortados: se llega a jugar con
+  Charmander de verdad y sale el aviso; captura `18-sin-conexion`).
+- **Dudas**: la caché del service worker no tiene límite de tamaño (sprites pequeños; si crece mucho, se puede
+  añadir un tope). Los gritos no van en el paquete (pesan; sin red simplemente no suenan).

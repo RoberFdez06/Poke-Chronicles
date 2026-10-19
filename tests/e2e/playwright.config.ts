@@ -11,6 +11,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:4173',
     viewport: { width: 960, height: 640 },
+    // Sin service worker: si no, page.route no ve sus peticiones y la PokeAPI simulada no serviría
+    serviceWorkers: 'block',
   },
   webServer: {
     command: 'npx vite preview --port 4173 --strictPort',

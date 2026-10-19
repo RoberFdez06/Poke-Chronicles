@@ -4,13 +4,61 @@ import { loadSpeciesIndex } from './speciesIndex';
 import { parseApiStats, type BaseStats } from './pokeStats';
 import { nextEvolutionIds, type ChainLink } from './evolution';
 import { ABILITY_EFFECTS, pickAbility } from './abilities';
+import { NETWORK_TIMEOUT_MS, offlinePath, substitutePokemon, withTimeout } from './offline';
 
 const BASE = 'https://pokeapi.co/api/v2';
 
+// --- Sin conexión (T42) ---
+let offlineUsed = false;
+const offlineListeners = new Set<() => void>();
+
+/** Se ha tenido que tirar de datos guardados (PokeAPI no respondía). */
+export const usingOfflineData = (): boolean => offlineUsed;
+
+/** Aviso la primera vez que se usan datos guardados (devuelve cómo quitar el aviso). */
+export function onOfflineData(cb: () => void): () => void {
+  offlineListeners.add(cb);
+  return () => offlineListeners.delete(cb);
+}
+
+function markOffline() {
+  if (offlineUsed) return;
+  offlineUsed = true;
+  console.warn('[PokeIsaac] PokeAPI no responde: usando datos guardados');
+  offlineListeners.forEach((cb) => cb());
+}
+
+let manifest: Promise<Set<number>> | null = null;
+
+/** Pokémon que hay en el paquete sin conexión (public/data/offline/manifest.json). */
+export function offlinePokemonIds(): Promise<Set<number>> {
+  manifest ??= fetch('data/offline/manifest.json')
+    .then((r) => (r.ok ? r.json() : { pokemon: [] }))
+    .then((m: { pokemon?: number[] }) => new Set(m.pokemon ?? []))
+    .catch(() => new Set<number>());
+  return manifest;
+}
+
+/**
+ * JSON de PokeAPI. Si tarda más de 6 s o falla, usa la copia de public/data/offline/ (mismo formato) si la hay.
+ * Lo ya descargado lo sirve al instante el service worker (public/sw.js), también sin conexión.
+ */
 async function getJson(url: string) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`PokeAPI ${res.status}: ${url}`);
-  return res.json();
+  try {
+    const res = await withTimeout(fetch(url), NETWORK_TIMEOUT_MS, 'PokeAPI');
+    if (!res.ok) throw new Error(`PokeAPI ${res.status}: ${url}`);
+    return await res.json();
+  } catch (err) {
+    const path = offlinePath(url);
+    if (path) {
+      const local = await fetch(path).catch(() => null);
+      if (local?.ok) {
+        markOffline();
+        return local.json();
+      }
+    }
+    throw err;
+  }
 }
 
 /** Respuesta de /pokemon/{id} en bruto, compartida entre fetchPokemon y fetchPokemonCard. */
@@ -20,9 +68,13 @@ function getPokemonRaw(id: number): Promise<any> {
   if (!rawCache.has(id)) {
     rawCache.set(
       id,
-      getJson(`${BASE}/pokemon/${id}`).catch((err) => {
-        rawCache.delete(id); // no guardamos fallos: se podrá reintentar
-        throw err;
+      getJson(`${BASE}/pokemon/${id}`).catch(async (err) => {
+        rawCache.delete(id); // no guardamos fallos (ni sustitutos): se podrá reintentar
+        // Ni PokeAPI ni el paquete: un sustituto con el índice de especies para no colgarse nunca
+        const index = await loadSpeciesIndex().catch(() => []);
+        if (!index.some((sp) => sp.id === id)) throw err;
+        markOffline();
+        return substitutePokemon(id, index);
       }),
     );
   }

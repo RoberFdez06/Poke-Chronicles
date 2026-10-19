@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { fetchAbility, fetchAttackMovesForTypes, fetchMoveInfo, fetchNextEvolutions, fetchPokemon, fetchPokemonCard, pickSprites } from '../data/pokeapi';
+import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetchAttackMovesForTypes, fetchMoveInfo, fetchNextEvolutions, fetchPokemon, fetchPokemonCard, pickSprites } from '../data/pokeapi';
 import { pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
@@ -417,6 +417,9 @@ export class GameScene extends Phaser.Scene {
   private slotTypes: Phaser.GameObjects.Text[] = [];
   private banner!: Phaser.GameObjects.Text;
   private toasts?: ToastStack;
+  /** Quita el aviso de "sin conexión" al salir de la escena. */
+  private offlineOff?: () => void;
+  private static offlineNotified = false;
   private bannerBox!: Phaser.GameObjects.Graphics;
   private minimap!: Phaser.GameObjects.Graphics;
   /** HUD (T30/N8): capa en coordenadas reales, con su propia cámara sin zoom, en las franjas de alrededor de la sala. */
@@ -586,15 +589,21 @@ export class GameScene extends Phaser.Scene {
 
     // El jefe siempre es un legendario o singular, sin repetir en la partida mientras se pueda
     const index = await loadSpeciesIndex().catch(() => []);
+    // Sin conexión (T42): enemigos y jefe de entre los que hay guardados, para que tengan sus sprites
+    const bundled = usingOfflineData() || navigator.onLine === false ? await offlinePokemonIds() : null;
+    const onlyBundled = (ids: number[]) => {
+      const kept = bundled ? ids.filter((id) => bundled.has(id)) : ids;
+      return kept.length > 0 ? kept : ids;
+    };
     let bossId = r?.bossId;
     if (bossId === undefined) {
       // El jefe intenta ser de un tipo del bioma
-      bossId = pickBoss(biomeBossPool(index, this.biome), Math.random, this.bossHistory);
+      bossId = pickBoss(onlyBundled(biomeBossPool(index, this.biome)), Math.random, this.bossHistory);
       this.bossHistory.push(bossId);
     }
     this.bossId = bossId;
     // Enemigos del piso: más fuertes cuanto más hondo; la semilla del piso los fija (no hace falta guardarlos)
-    const foeIds = pickFloorEnemies(biomeEnemyPool(index, this.level(), this.biome), this.foeRng(this.level()));
+    const foeIds = pickFloorEnemies(onlyBundled(biomeEnemyPool(index, this.level(), this.biome)), this.foeRng(this.level()));
     const [starter, boss, foeCards] = await Promise.all([
       fetchPokemon(this.formId),
       fetchPokemon(bossId),
@@ -993,6 +1002,9 @@ export class GameScene extends Phaser.Scene {
     this.minimap = hud(this.add.graphics());
     // Avisos (T37): tarjetas en la franja derecha, bajo el minimapa
     this.toasts?.clear();
+    this.offlineOff?.();
+    this.offlineOff = onOfflineData(() => this.notifyOffline());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.offlineOff?.());
     this.toasts = new ToastStack(this, HUD.right.x + HUD.pad, 200, HUD.right.w - HUD.pad * 2, (box, parts) => {
       this.hudLayer.add(box);
       if (this.hudCam) for (const o of [box, ...parts]) o.cameraFilter &= ~this.hudCam.id;
@@ -1029,6 +1041,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.centerOn(si.cx, si.cy);
     this.enterRoom(start);
     void this.loadAbility(this.formId);
+    if (usingOfflineData()) this.notifyOffline();
     // En Oleadas el cartel de la ronda lo pone startWave
     if (this.mode !== 'waves') {
       const where = progressText(this.mode, this.floorNum);
@@ -3312,6 +3325,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!m) text.setText(`${i + 1}  —`).setAlpha(0.6);
     else text.setText(`${i + 1}  ${shorten(pretty(m.name), 13)}`).setAlpha(ready ? 1 : 0.4);
     g.setAlpha(ready ? 1 : 0.7);
+  }
+
+  /** "Sin conexión": una vez por sesión (también si se pierde la red a mitad de partida). */
+  private notifyOffline() {
+    if (GameScene.offlineNotified) return;
+    GameScene.offlineNotified = true;
+    this.notify('Sin conexión\nUsando datos guardados', { kind: 'warning', icon: 'pokeball' });
   }
 
   /** Aviso en la columna derecha del HUD (T37): no tapa la sala. */
