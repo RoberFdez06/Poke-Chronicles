@@ -262,7 +262,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
 - Un solo sitio con los datos de controles (`src/data/controls.ts`) con test de que cada acción tiene entrada en
   todos los modos.
 
-## [ ] T36 — Integrar el arte nuevo del supervisor (cuando avise en NOTAS_SUPERVISOR)
+## [x] T36 — Integrar el arte nuevo del supervisor (cuando avise en NOTAS_SUPERVISOR)
 - Intro de jefe tipo VS (`src/scenes/BossIntroScene.ts`), efectos por tipo (`src/ui/art/typeFx.ts`),
   marcos del HUD (`src/ui/art/hud.ts`) y música por bioma (`src/data/music.ts`). El supervisor dirá en una nota
   cómo llamar a cada cosa: **ya está, ver N14**.

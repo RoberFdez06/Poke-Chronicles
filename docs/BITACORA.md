@@ -780,3 +780,13 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   (encima de la pausa no se abre: entrar o salir recarga la página), aviso de invitado/cuenta arriba a la derecha del
   menú (clic → Cuenta), botón de Google solo con `VITE_FIREBASE_GOOGLE=1`, tests `tests/account.test.ts` (200 en
   total) y sección del README. Firestore ya tiene las reglas de `firestore.rules` publicadas.
+
+## T36 — Arte del supervisor en la partida (hecha por el supervisor)
+- Intro VS del jefe (`BossIntroScene`, registrada en main.ts) al aparecer cada jefe: la partida se pausa debajo, se
+  salta con Enter/Esc/clic/A y el jefe espera 1,2 s antes del primer ataque.
+- Música: pista del bioma al empezar cada piso, la del jefe al aparecer, vuelve la del bioma al vencerlo y la del menú
+  al salir de la partida.
+- Efectos por tipo: estela en los poderes (no en el disparo normal), estallido al golpear con un poder y bocanadas
+  del estado mientras dura (quemado, congelado…).
+- HUD: paneles oscuros con borde dorado (`drawHudFrame`) y ranuras de poder con la franja del tipo
+  (`drawSlotFrame`, gris al recargar); textos del HUD en blanco. Barra del jefe con el mismo marco.

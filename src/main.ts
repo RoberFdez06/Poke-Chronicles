@@ -16,6 +16,7 @@ import { HistoryScene } from './scenes/HistoryScene';
 import { KeysScene } from './scenes/KeysScene';
 import { PauseScene } from './scenes/PauseScene';
 import { AccountScene } from './scenes/AccountScene';
+import { BossIntroScene } from './scenes/BossIntroScene';
 import { COLORS, hex, loadThemeFont } from './ui/theme';
 import { initAudio, playMusic, reloadAudioSettings } from './ui/audio';
 import { initAccount } from './net/cloud';
@@ -80,7 +81,7 @@ function startGame() {
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     // La primera escena es la que arranca; añade las nuevas (p. ej. GachaScene) al final
     // PauseScene va la última para dibujarse encima de la partida
-    scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, SummaryScene, HistoryScene, KeysScene, PauseScene, AccountScene],
+    scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, SummaryScene, HistoryScene, KeysScene, BossIntroScene, PauseScene, AccountScene],
   });
   lockEscapeInFullscreen(game);
   // T43: un error no deja el juego colgado: pantalla "Algo ha fallado" con vuelta al menú

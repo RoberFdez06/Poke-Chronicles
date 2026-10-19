@@ -62,7 +62,10 @@ import {
 import { rollShiny, SHINY_ENEMY, SHINY_ODDS } from '../data/shiny';
 import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
-import { cry, sfx } from '../ui/audio';
+import { cry, playMenuMusic, playTrack, sfx } from '../ui/audio';
+import { trackForBiome, TRACKS } from '../data/music';
+import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
+import { bakeTypeFx, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeBiomeTiles, TILE as ART_TILE } from '../ui/art/tiles';
 import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
@@ -855,6 +858,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, this.floor.cols * VIEW.w, this.floor.rows * VIEW.h);
     // Arte pixel del supervisor (T33): iconos y baldosas del bioma, antes de montar las salas
     bakeIcons(this);
+    bakeTypeFx(this);
     this.tiles = bakeBiomeTiles(this, this.biome);
     this.walls = this.physics.add.staticGroup();
     this.bushes = this.physics.add.staticGroup();
@@ -943,7 +947,7 @@ export class GameScene extends Phaser.Scene {
       o.cameraFilter &= ~hudCam.id;
       return o;
     };
-    const txt = (x: number, y: number, size: number, color: string = HEX.text, bold = false) =>
+    const txt = (x: number, y: number, size: number, color: string = '#f8f8f8', bold = false) =>
       hud(this.add.text(x, y, '', { fontFamily: FONT, fontSize: `${size}px`, fontStyle: bold ? 'bold' : 'normal', color }));
     const over = (o: Phaser.GameObjects.Zone | Phaser.GameObjects.Text) => {
       o.on('pointerover', () => (this.overHud = true));
@@ -956,25 +960,25 @@ export class GameScene extends Phaser.Scene {
     const RW = HUD.right.w - HUD.pad * 2;
 
     // Pausa (arriba a la izquierda), para jugar solo con ratón
-    hud(drawBox(this.add.graphics(), LX, 16, 64, 64, { radius: 12 }));
+    hud(drawHudFrame(this.add.graphics(), LX, 16, 64, 64));
     const pb = over(
-      hud(this.add.text(LX + 32, 48, '❚❚', { fontFamily: FONT, fontSize: '28px', color: HEX.text }))
+      hud(this.add.text(LX + 32, 48, '❚❚', { fontFamily: FONT, fontSize: '28px', color: '#f8f8f8' }))
         .setOrigin(0.5)
         .setPadding(14, 12)
         .setInteractive({ useHandCursor: true }),
     );
     // Ficha del Pokémon: nombre, progreso y PS
-    hud(drawBox(this.add.graphics(), LX, 96, LW, 150, { radius: 14 }));
-    this.nameText = txt(LX + 16, 124, 24, HEX.text, true).setOrigin(0, 0.5);
-    this.progressHud = txt(LX + 16, 154, 16, HEX.textSoft).setOrigin(0, 0.5);
+    hud(drawHudFrame(this.add.graphics(), LX, 96, LW, 150));
+    this.nameText = txt(LX + 22, 124, 24, '#f8f8f8', true).setOrigin(0, 0.5);
+    this.progressHud = txt(LX + 22, 154, 16, '#b8c4e0').setOrigin(0, 0.5);
     this.hpBar = addHpBar(this, LX + 16, 180, LW - 32, 14);
     this.hpBar.objects.forEach((o) => hud(o));
-    this.hpText = txt(LX + LW - 16, 222, 20, HEX.text, true).setOrigin(1, 0.5);
+    this.hpText = txt(LX + LW - 22, 222, 20, '#f8f8f8', true).setOrigin(1, 0.5);
     // Monedas, llaves y bombas (clic en la bomba para soltar una)
-    hud(drawBox(this.add.graphics(), LX, 258, LW, 60, { radius: 12 }));
+    hud(drawHudFrame(this.add.graphics(), LX, 258, LW, 60));
     const count = (iconKey: string, x: number) => {
       hud(this.add.image(x, 288, iconKey).setScale(2));
-      return txt(x + 16, 288, 20, HEX.text, true).setOrigin(0, 0.5);
+      return txt(x + 16, 288, 20, '#f8f8f8', true).setOrigin(0, 0.5);
     };
     this.coinsHud = count(iconKey('coin'), LX + 26);
     this.keysHud = count(iconKey('key'), LX + 94);
@@ -988,7 +992,7 @@ export class GameScene extends Phaser.Scene {
     // Objeto activo: abajo a la izquierda (clic para usarlo)
     this.activeHud = {
       g: hud(this.add.graphics()),
-      text: txt(LX + 70, H - 82, 15, HEX.text, true).setOrigin(0, 0.5),
+      text: txt(LX + 70, H - 82, 15, '#f8f8f8', true).setOrigin(0, 0.5),
       shown: '',
     };
     const activeBtn = over(hud(this.add.zone(LX + LW / 2, H - 71, LW, 110).setInteractive({ useHandCursor: true })));
@@ -1001,7 +1005,7 @@ export class GameScene extends Phaser.Scene {
         txt(RX + RW - 52, y + 2, 12, '#ffffff', true).setOrigin(0.5).setShadow(1, 1, '#00000088', 0),
       );
       this.slotShown.push('');
-      this.hud.push(txt(RX + 30, y + 34, 18, HEX.text, true).setOrigin(0, 0.5));
+      this.hud.push(txt(RX + 32, y + 34, 18, '#f8f8f8', true).setOrigin(0, 0.5));
       const zone = over(hud(this.add.zone(RX + RW / 2, y + 32, RW, 64).setInteractive({ useHandCursor: true })));
       zone.on('pointerdown', () => !this.ended && !this.transitioning && this.castSlot(i, this.time.now));
     }
@@ -1046,6 +1050,9 @@ export class GameScene extends Phaser.Scene {
 
     this.refreshInventory();
     this.cameras.main.centerOn(si.cx, si.cy);
+    // Música del bioma (la del jefe la pone spawnBoss); al salir de la partida, la del menú
+    playTrack(trackForBiome(this.biome.id));
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => playMenuMusic());
     this.enterRoom(start);
     void this.loadAbility(this.formId);
     if (usingOfflineData()) this.notifyOffline();
@@ -1821,7 +1828,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const x = HUD.left.x + HUD.pad;
     const bw = HUD.left.w - HUD.pad * 2;
     const y = H - HUD.pad - 110;
-    drawBox(g, x, y, bw, 110, { radius: 14, fillAlpha: a ? 1 : 0.5 });
+    drawHudFrame(g, x, y, bw, 110).setAlpha(a ? 1 : 0.6);
     if (!a) return void h.text.setText('Sin objeto activo');
     const ready = isCharged(this.active!.charge, a.charge);
     g.fillStyle(a.color, ready ? 1 : 0.45).fillCircle(x + 36, y + 40, 20);
@@ -2112,6 +2119,28 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     b.setData('ai', ai);
     this.notify(`¡${this.bossName}, jefe legendario!`, { kind: 'danger', icon: 'pokeball' });
     void cry(this.bossId);
+    playTrack(TRACKS.jefe);
+    this.showBossIntro(ai);
+  }
+
+  /** Intro "VS" (supervisor) antes de que el jefe ataque: la partida se pausa debajo y se salta con Enter/Esc/clic/A. */
+  private showBossIntro(ai: EnemyAI) {
+    if (!this.scene.manager.keys['BossIntro'] || this.scene.isActive('BossIntro')) return;
+    ai.nextAttack = Number.POSITIVE_INFINITY;
+    const cap = (n: string) => n.charAt(0).toUpperCase() + n.slice(1);
+    this.scene.launch('BossIntro', {
+      player: { texture: `${this.playerKey}-front`, name: cap(this.starterName), types: [this.tearType] },
+      boss: { texture: `${this.bossKey}-front`, name: cap(this.bossName), types: this.bossTypes },
+      subtitle: `Legendario · ${progressText(this.mode, this.floorNum)}`,
+      onDone: () => {
+        this.scene.stop('BossIntro');
+        this.scene.resume();
+        this.input.keyboard?.resetKeys();
+        // Un respiro antes del primer ataque (el reloj de la escena estuvo parado)
+        this.time.delayedCall(1200, () => (ai.nextAttack = this.time.now));
+      },
+    });
+    this.scene.pause();
   }
 
   // --- Ataques de los jefes (bossPatterns.ts): aviso, ataque y fase 2 ---
@@ -2652,6 +2681,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     s.setData('dmg', o.damage).setData('pierce', pierce).setData('bounces', o.bounces);
     s.setData('hit', new Set<Sprite>());
     s.setData('status', o.status);
+    // Poderes: estela de partículas de su tipo (el disparo normal no, para no saturar)
+    if (o.status) {
+      const type = o.status;
+      const ev = this.time.addEvent({
+        delay: 70,
+        loop: true,
+        callback: () => (s.active ? typeTrail(this, s.x, s.y, type, Math.min(1.4, o.size)) : ev.remove()),
+      });
+    }
     if (o.bounces > 0) s.setBounce(1, 1);
     this.time.delayedCall(o.life, () => s.destroy());
   }
@@ -2748,6 +2786,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.countDamage(enemy, dmg);
     const hp = (enemy.getData('hp') as number) - dmg;
     sfx('hit');
+    if (status) typeImpact(this, enemy.x, enemy.y, status, 0.8, 7);
     enemy.setData('hp', hp);
     enemy.setTint(0xff6666);
     enemy.setData('flashUntil', this.time.now + 90);
@@ -2789,6 +2828,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     enemy.destroy();
     if (boss) {
+      playTrack(trackForBiome(this.biome.id));
       // Al caer el jefe se van sus ayudantes
       for (const c of [...this.enemies.getChildren()]) {
         const h = c as Sprite;
@@ -2831,8 +2871,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.bossBar?.objects.forEach((o) => o.destroy());
     // En la franja de arriba, encima de la sala (no la tapa)
     const bx = CX - 440;
-    const box = drawBox(this.add.graphics(), bx, 4, 880, 52, { radius: 12 });
-    const name = this.add.text(bx + 20, 30, this.bossName, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5);
+    const box = drawHudFrame(this.add.graphics(), bx, 4, 880, 52);
+    const name = this.add.text(bx + 22, 30, this.bossName, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#f8f8f8' }).setOrigin(0, 0.5);
     const chip = addTypeChip(this, bx + 20 + name.width + 56, 30, typeNameEs(this.bossType), typeColor(this.bossType), 92, 24);
     const barX = bx + 20 + name.width + 116;
     const bar = addHpBar(this, barX, 23, bx + 860 - barX, 14);
@@ -3161,6 +3201,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Tinte del enemigo: destello al recibir un golpe, aviso de embestida o el color de su estado. */
   private paintEnemy(e: Sprite, time: number) {
+    // Bocanadas del estado (quemado, congelado…) cada poco mientras dure
+    const sts = e.getData('statuses') as ActiveStatus[] | undefined;
+    if (e.active && sts?.length && time >= ((e.getData('puffAt') as number | undefined) ?? 0)) {
+      const live = sts.find((st) => time < st.until);
+      if (live) {
+        e.setData('puffAt', time + 320);
+        statusPuff(this, e.x, e.y - (e.getData('size') as number) / 3, live.kind);
+      }
+    }
     if (!e.active || time < ((e.getData('flashUntil') as number | undefined) ?? 0)) return;
     const ai = e.getData('ai') as EnemyAI | undefined;
     if (ai?.state === 'windup') return;
@@ -3320,9 +3369,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const x = HUD.right.x + HUD.pad;
     const w = HUD.right.w - HUD.pad * 2;
     const y = this.slotY(i);
-    drawBox(g, x, y, w, 64, { radius: 12, fillAlpha: m ? 1 : 0.5 });
+    if (m) drawSlotFrame(g, x, y, w, 64, typeColor(m.type), ready);
+    else drawHudFrame(g, x, y, w, 64);
     if (m) {
-      g.fillStyle(typeColor(m.type), 1).fillRoundedRect(x + 12, y + 14, 10, 36, 5);
       // Ficha con el nombre del tipo sobre el borde de arriba
       g.fillStyle(0x1d2848, 1).fillRoundedRect(x + w - 98, y - 9, 92, 22, 11);
       g.fillStyle(typeColor(m.type), 1).fillRoundedRect(x + w - 96, y - 7, 88, 18, 9);
@@ -3331,7 +3380,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const text = this.hud[i];
     if (!m) text.setText(`${i + 1}  —`).setAlpha(0.6);
     else text.setText(`${i + 1}  ${shorten(pretty(m.name), 13)}`).setAlpha(ready ? 1 : 0.4);
-    g.setAlpha(ready ? 1 : 0.7);
+    g.setAlpha(m ? 1 : 0.6);
   }
 
   /** "Sin conexión": una vez por sesión (también si se pierde la red a mitad de partida). */
