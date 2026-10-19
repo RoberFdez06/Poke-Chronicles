@@ -150,6 +150,17 @@ const SLOT_COUNT = 4;
 const SPREAD = 0.2;
 
 const DOOR_COLOR = 0x8a5a3c;
+/** Árbol pequeño de Corte (10x10, 4 px por píxel) y roca de Golpe Roca: tapan las puertas de las salas cerradas. */
+const CUT_TREE = [
+  '...kkkk...', '..kGGGGk..', '.kGgGGgGk.', 'kGGGgGGGGk', 'kGgGGGgGGk',
+  '.kGGgGGGk.', '..kkbbkk..', '....bb....', '...kbbk...', '..kkkkkk..',
+];
+const CUT_TREE_PAL: Record<string, number> = { k: 0x1d3a1a, G: 0x58b848, g: 0x2f7a2a, b: 0x7a4a24 };
+const SMASH_ROCK = [
+  '...kkkk...', '..kRRRRk..', '.kRWRRrRk.', 'kRWRRRrRRk', 'kRRRrrRRrk',
+  'kRRrRRRrRk', 'krRRRRrRRk', 'kRrRRRRrrk', '.krrrrrrk.', '..kkkkkk..',
+];
+const SMASH_ROCK_PAL: Record<string, number> = { k: 0x2a2a30, R: 0x9a8a7a, r: 0x6e6052, W: 0xd8ccb8 };
 const FLOOR_COLORS: Record<Room['kind'], number> = {
   start: 0xdff3ff,
   combat: 0xcdeee0,
@@ -1455,27 +1466,24 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       : 0x1d2848;
     g.lineStyle(6, frame, 1).strokeRect(r.x, r.y, r.w, r.h);
     if (kind === 'challenge') g.lineStyle(2, 0xffffff, 1).strokeRect(r.x + 5, r.y + 5, r.w - 10, r.h - 10);
-    const block = this.add.rectangle(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h, 0x1d1a24).setDepth(1);
-    // Barrotes de hierro (supervisor): cruzan el paso; se ven solo con la puerta cerrada
+    const block = this.add.rectangle(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h, 0x000000, 0.18).setDepth(1);
+    // Obstáculo Pokémon (supervisor): árbol de Corte en biomas verdes, roca de Golpe Roca en el resto. Solo se ve
+    // con la puerta cerrada; al limpiar la sala se rompe.
     const bars = this.add.graphics().setDepth(1.6).setPosition(r.x + r.w / 2, r.y + r.h / 2);
-    const across = r.w >= r.h; // puerta arriba/abajo: barrotes verticales
-    const len = across ? r.w : r.h;
-    const thick = across ? r.h : r.w;
-    const n = 6;
-    for (let k = 0; k < n; k++) {
-      const o = -len / 2 + (len / n) * (k + 0.5);
-      const [bx, by, bw, bh] = across ? [o - 5, -thick / 2, 10, thick] : [-thick / 2, o - 5, thick, 10];
-      bars.fillStyle(0x101828, 1).fillRect(bx - 2, by, bw + 4, bh);
-      bars.fillStyle(0x7d8aa8, 1).fillRect(bx, by, bw, bh);
-      bars.fillStyle(0xc8d2e8, 1).fillRect(bx + (across ? 2 : 0), by + (across ? 0 : 2), across ? 3 : bw, across ? bh : 3);
-    }
-    // Travesaño con remaches
-    const [cx0, cy0, cw, ch] = across ? [-len / 2, -6, len, 12] : [-6, -len / 2, 12, len];
-    bars.fillStyle(0x101828, 1).fillRect(cx0, cy0 - 2, cw, ch + 4);
-    bars.fillStyle(DOOR_COLOR, 1).fillRect(cx0, cy0, cw, ch);
-    for (let k = 0; k < n; k++) {
-      const o = -len / 2 + (len / n) * (k + 0.5);
-      bars.fillStyle(0xffd34d, 1).fillRect(across ? o - 2 : -2, across ? -2 : o - 2, 4, 4);
+    const across = r.w >= r.h;
+    const tree = ['bosque', 'pantano'].includes(this.biome.id);
+    const grid = tree ? CUT_TREE : SMASH_ROCK;
+    const pal = tree ? CUT_TREE_PAL : SMASH_ROCK_PAL;
+    const u = 4;
+    for (const off of [-28, 28]) {
+      const ox = (across ? off : 0) - 20;
+      const oy = (across ? 0 : off) - 20;
+      grid.forEach((row, j) => {
+        for (let k = 0; k < row.length; k++) {
+          const c = row[k];
+          if (c !== '.') bars.fillStyle(pal[c], 1).fillRect(ox + k * u, oy + j * u, u, u);
+        }
+      });
     }
     block.setData('bars', bars).setData('across', across);
     this.doorBlocks.add(block);
@@ -1689,6 +1697,18 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.toasts?.setTop(bottom + 16);
   }
 
+  /** Trozos que salen despedidos y caen (roca rota, hojas cortadas). */
+  private shatter(x: number, y: number, colors: number[]) {
+    for (let i = 0; i < 12; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = 20 + Math.random() * 40;
+      const size = 4 + Math.floor(Math.random() * 3) * 2;
+      const p = this.add.rectangle(x, y, size, size, colors[i % colors.length]).setDepth(7).setStrokeStyle(1, 0x101828, 0.8);
+      this.tweens.add({ targets: p, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d - 20, angle: Phaser.Math.Between(-180, 180), duration: 260, ease: 'Quad.easeOut' });
+      this.tweens.add({ targets: p, y: `+=${30 + Math.random() * 20}`, alpha: 0, duration: 380, delay: 260, ease: 'Quad.easeIn', onComplete: () => p.destroy() });
+    }
+  }
+
   /** Cierra o abre las puertas de la sala. Con `animate`, los barrotes caen con un golpe o se retiran con polvo. */
   private setDoorsLocked(room: Room, locked: boolean, animate = false) {
     for (const d of DIRS) {
@@ -1708,19 +1728,23 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         continue;
       }
       if (locked) {
+        // Brota del suelo con polvo
         block.setVisible(true).setAlpha(0);
         this.tweens.add({ targets: block, alpha: 1, duration: 160 });
-        bars.setVisible(true).setAlpha(1).setScale(across ? 1 : 0.1, across ? 0.1 : 1);
-        this.tweens.add({ targets: bars, scaleX: 1, scaleY: 1, duration: 300, ease: 'Bounce.easeOut' });
+        bars.setVisible(true).setAlpha(1).setScale(0.1);
+        this.tweens.add({ targets: bars, scaleX: 1, scaleY: 1, duration: 320, ease: 'Back.easeOut' });
         dustBurst(this, block.x, block.y, 0.8, 6);
       } else {
+        // Se rompe como con Corte o Golpe Roca: tiembla, se parte en trozos y se va
+        const tree = ['bosque', 'pantano'].includes(this.biome.id);
+        const x0 = bars.x;
         this.tweens.add({
-          targets: bars, scaleX: across ? 1 : 0.05, scaleY: across ? 0.05 : 1, alpha: 0.3, duration: 240, ease: 'Back.easeIn',
+          targets: bars, x: x0 + 3, duration: 40, yoyo: true, repeat: 3,
           onComplete: () => {
-            bars.setVisible(false).setScale(1).setAlpha(1);
+            bars.setVisible(false).setScale(1).setAlpha(1).setX(x0);
             block.setVisible(false);
+            this.shatter(block.x, block.y, tree ? [0x58b848, 0x2f7a2a, 0x7a4a24] : [0x9a8a7a, 0x6e6052, 0xc8bca8]);
             dustBurst(this, block.x, block.y, 0.9, 7);
-            hitSpark(this, block.x, block.y, 0xffd34d, 6, 1);
           },
         });
       }
