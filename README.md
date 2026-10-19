@@ -478,7 +478,9 @@ src/
     UpgradeScene.ts       mejoras permanentes por Pokémon
     SettingsScene.ts      ajustes: volumen, pantalla completa, controles y borrar progreso
     PauseScene.ts         pausa (la última escena, se dibuja encima)
-tests/e2e/                pruebas en navegador con Playwright (npm run e2e): recorrido con teclado y capturas
+tests/e2e/                pruebas en navegador con Playwright (npm run e2e): recorridos completos con teclado (flow),
+                          ratón (mouse) y mando simulado (pad), Controles/táctil, jefe, errores, sin conexión,
+                          teclas, rendimiento (perf) y capturas
 tests/                    un archivo por módulo de data/, level/ y ui/theme.ts (`npm test`, Node 22.6+)
 scripts/
   buildSpeciesIndex.mjs   genera public/data/species-index.json desde PokeAPI (nombres en español, tipos, rareza)
@@ -533,3 +535,7 @@ En Oleadas, al continuar se repite la ronda en la que estabas.
 3. ~~Jefes y modos: Normal, Oleadas, Infinito y Rush de jefes.~~ Hecho.
 4. ~~Gacha con tickets ganados jugando~~ Hecho (común, raro, épico, ultraente y legendario).
 5. Empaquetado como app con Tauri o Electron.
+
+## Licencia
+
+Todos los derechos reservados (ver [LICENSE](LICENSE)). El código se puede ver, pero no copiar, modificar ni redistribuir sin permiso del autor. Pokémon pertenece a Nintendo, Game Freak y The Pokémon Company; esto es un fan game gratuito.
