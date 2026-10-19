@@ -1941,27 +1941,81 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       : kind === 'challenge' ? CHALLENGE_SILVER
       : kind === 'secret' || room.kind === 'secret' ? SECRET_PURPLE
       : 0x1d2848;
-    g.lineStyle(6, frame, 1).strokeRect(r.x, r.y, r.w, r.h);
-    if (kind === 'challenge') g.lineStyle(2, 0xffffff, 1).strokeRect(r.x + 5, r.y + 5, r.w - 10, r.h - 10);
-    const block = this.add.rectangle(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h, 0x000000, 0.18).setDepth(1);
-    // Obstáculo Pokémon (supervisor): árbol de Corte en biomas verdes, roca de Golpe Roca en el resto. Solo se ve
-    // con la puerta cerrada; al limpiar la sala se rompe.
-    const bars = this.add.graphics().setDepth(1.6).setPosition(r.x + r.w / 2, r.y + r.h / 2);
+    // Puerta de Gimnasio (supervisor): marco de acero con una luz del color de la sala a la que lleva y dos hojas
+    // metálicas con media Poké Ball cada una que se cierran en combate y se abren deslizándose a los lados.
     const across = r.w >= r.h;
-    const tree = ['bosque', 'pantano'].includes(this.biome.id);
-    const grid = tree ? CUT_TREE : SMASH_ROCK;
-    const pal = tree ? CUT_TREE_PAL : SMASH_ROCK_PAL;
-    const u = 4;
-    for (const off of [-28, 28]) {
-      const ox = (across ? off : 0) - 20;
-      const oy = (across ? 0 : off) - 20;
-      grid.forEach((row, j) => {
-        for (let k = 0; k < row.length; k++) {
-          const c = row[k];
-          if (c !== '.') bars.fillStyle(pal[c], 1).fillRect(ox + k * u, oy + j * u, u, u);
-        }
-      });
+    const boss = kind === 'boss';
+    const steel = boss ? 0xb84a4a : 0x8a94a8;
+    const steelDark = boss ? 0x6a1e1e : 0x4a5468;
+    const steelLight = boss ? 0xf08a7a : 0xd0d8e8;
+    // Marco: postes a los lados del hueco y la luz encima (en la pared)
+    const post = 10;
+    if (across) {
+      for (const px of [r.x - post, r.x + r.w]) {
+        g.fillStyle(0x101828, 1).fillRect(px - 2, r.y - 2, post + 4, r.h + 4);
+        g.fillStyle(steelDark, 1).fillRect(px, r.y, post, r.h);
+        g.fillStyle(steelLight, 1).fillRect(px + 2, r.y, 2, r.h);
+      }
+    } else {
+      for (const py of [r.y - post, r.y + r.h]) {
+        g.fillStyle(0x101828, 1).fillRect(r.x - 2, py - 2, r.w + 4, post + 4);
+        g.fillStyle(steelDark, 1).fillRect(r.x, py, r.w, post);
+        g.fillStyle(steelLight, 1).fillRect(r.x, py + 2, r.w, 2);
+      }
     }
+    // Luz indicadora (en el lado de la pared que da a la sala)
+    const lx = across ? r.x + r.w / 2 : d === 'left' ? r.x + r.w - 6 : r.x + 6;
+    const ly = across ? (d === 'up' ? r.y + r.h - 6 : r.y + 6) : r.y + r.h / 2;
+    g.fillStyle(0x101828, 1).fillCircle(lx, ly, 8);
+    g.fillStyle(frame === 0x1d2848 ? 0x8fa6d8 : frame, 1).fillCircle(lx, ly, 6);
+    g.fillStyle(0xffffff, 0.8).fillCircle(lx - 2, ly - 2, 2);
+    const glow = this.add.circle(lx, ly, 14, frame === 0x1d2848 ? 0x8fa6d8 : frame, 0.25).setDepth(0.45);
+    this.tweens.add({ targets: glow, alpha: 0.05, duration: 900, yoyo: true, repeat: -1 });
+    if (kind === 'challenge') g.lineStyle(2, 0xffffff, 1).strokeRect(r.x + 3, r.y + 3, r.w - 6, r.h - 6);
+    const block = this.add.rectangle(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h, 0x000000, 0.25).setDepth(1);
+    // Dos hojas (cada una con media Poké Ball en su borde de cierre)
+    const bars = this.add.container(r.x + r.w / 2, r.y + r.h / 2).setDepth(1.6);
+    const half = (sgn: -1 | 1) => {
+      const h = this.add.graphics();
+      const w = across ? r.w / 2 : r.w;
+      const hh = across ? r.h : r.h / 2;
+      const x0 = across ? (sgn < 0 ? -w : 0) : -w / 2;
+      const y0 = across ? -hh / 2 : sgn < 0 ? -hh : 0;
+      h.fillStyle(0x101828, 1).fillRect(x0, y0, w, hh);
+      h.fillStyle(steel, 1).fillRect(x0 + 2, y0 + 2, w - 4, hh - 4);
+      h.fillStyle(steelLight, 0.7).fillRect(x0 + 2, y0 + 2, w - 4, 3);
+      h.fillStyle(steelDark, 1).fillRect(x0 + 2, y0 + hh - 5, w - 4, 3);
+      // Remaches
+      for (const [rx, ry] of [[x0 + 6, y0 + 6], [x0 + w - 8, y0 + 6], [x0 + 6, y0 + hh - 8], [x0 + w - 8, y0 + hh - 8]]) h.fillStyle(steelLight, 1).fillRect(rx, ry, 2, 2);
+      // Media Poké Ball en el borde de cierre (centro de la puerta = 0,0)
+      const R = 13;
+      const start = across ? (sgn < 0 ? Math.PI / 2 : -Math.PI / 2) : sgn < 0 ? Math.PI : 0;
+      const end = start + Math.PI;
+      h.fillStyle(0x101828, 1).slice(0, 0, R + 2, start, end, false).fillPath();
+      if (across) {
+        // Arriba roja y abajo blanca, cada hoja con su mitad
+        h.fillStyle(0xe53935, 1).slice(0, 0, R, sgn < 0 ? Math.PI : -Math.PI / 2, sgn < 0 ? Math.PI * 1.5 : 0, false).fillPath();
+        h.fillStyle(0xf8f8f8, 1).slice(0, 0, R, sgn < 0 ? Math.PI / 2 : 0, sgn < 0 ? Math.PI : Math.PI / 2, false).fillPath();
+      } else {
+        h.fillStyle(sgn < 0 ? 0xe53935 : 0xf8f8f8, 1).slice(0, 0, R, start, end, false).fillPath();
+      }
+      h.fillStyle(0x101828, 1).fillRect(across ? (sgn < 0 ? -R : 0) : -R, -1.5, R, 3);
+      h.fillStyle(0x101828, 1).slice(0, 0, 6, start, end, false).fillPath();
+      h.fillStyle(0xffffff, 1).slice(0, 0, 4, start, end, false).fillPath();
+      if (boss) {
+        // Pinchos en la del jefe
+        for (let k = 1; k < 4; k++) {
+          const t = (k / 4) * (across ? w : hh);
+          if (across) h.fillStyle(0x101828, 1).fillTriangle(x0 + t - 4, y0, x0 + t + 4, y0, x0 + t, y0 - 6).fillTriangle(x0 + t - 4, y0 + hh, x0 + t + 4, y0 + hh, x0 + t, y0 + hh + 6);
+          else h.fillStyle(0x101828, 1).fillTriangle(x0, y0 + t - 4, x0, y0 + t + 4, x0 - 6, y0 + t).fillTriangle(x0 + w, y0 + t - 4, x0 + w, y0 + t + 4, x0 + w + 6, y0 + t);
+        }
+      }
+      return h;
+    };
+    const leafA = half(-1);
+    const leafB = half(1);
+    bars.add([leafA, leafB]);
+    block.setData('leaves', [leafA, leafB]).setData('slide', across ? r.w / 2 : r.h / 2);
     block.setData('bars', bars).setData('across', across);
     this.doorBlocks.add(block);
     this.doorMap.set(doorKey(room.id, d), block);
@@ -2172,6 +2226,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     const marks = new Map<number, number>();
     if (this.minibossRoom !== undefined && !this.cleared.has(this.minibossRoom)) marks.set(this.minibossRoom, 0xff8c1a);
+    // Sala sorpresa: se marca al descubrirla, hasta resolverla
+    const ev = this.roomEvent;
+    if (ev && this.visited.has(ev.roomId) && !this.eventsDone.has(ev.roomId)) marks.set(ev.roomId, ROOM_EVENT_COLOR[ev.kind]);
     const bottom = drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2, marks);
     this.toasts?.setTop(bottom + 16);
   }
@@ -2194,41 +2251,42 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const block = this.doorMap.get(`${room.id}:${d}`);
       if (!block) continue;
       (block.body as Phaser.Physics.Arcade.StaticBody).enable = locked;
-      const bars = block.getData('bars') as Phaser.GameObjects.Graphics | undefined;
+      const bars = block.getData('bars') as Phaser.GameObjects.Container | undefined;
       const across = !!block.getData('across');
-      if (!bars) {
+      const leaves = (block.getData('leaves') as Phaser.GameObjects.Graphics[] | undefined) ?? [];
+      const slide = (block.getData('slide') as number | undefined) ?? 60;
+      if (!bars || leaves.length < 2) {
         block.setVisible(locked);
         continue;
       }
-      this.tweens.killTweensOf(bars);
+      // Posición de cada hoja: cerrada en el centro, abierta metida en la pared (y oculta)
+      const place = (open: number) =>
+        leaves.forEach((l, k) => (across ? l.setX((k === 0 ? -1 : 1) * slide * open) : l.setY((k === 0 ? -1 : 1) * slide * open)));
+      this.tweens.killTweensOf(leaves);
       if (!animate) {
         block.setVisible(locked);
-        bars.setVisible(locked).setScale(1).setAlpha(1);
+        bars.setVisible(locked);
+        place(locked ? 0 : 1);
         continue;
       }
+      const prop = across ? 'x' : 'y';
       if (locked) {
-        // Brota del suelo con polvo
-        block.setVisible(true).setAlpha(0);
-        this.tweens.add({ targets: block, alpha: 1, duration: 160 });
-        bars.setVisible(true).setAlpha(1).setScale(0.1);
-        this.tweens.add({ targets: bars, scaleX: 1, scaleY: 1, duration: 320, ease: 'Back.easeOut' });
-        dustBurst(this, block.x, block.y, 0.8, 6);
+        // Se cierran deslizándose desde los lados con un golpe al encajar
+        block.setVisible(true);
+        bars.setVisible(true);
+        place(1);
+        leaves.forEach((l, k) => this.tweens.add({ targets: l, [prop]: 0, duration: 260, ease: 'Quad.easeIn', onComplete: () => k === 0 && (this.cameras.main.shake(70, 0.002), hitSpark(this, block.x, block.y, 0xffffff, 4, 0.7)) }));
       } else {
-        // Se rompe como con Corte o Golpe Roca: tiembla, se parte en trozos y se va
-        const tree = ['bosque', 'pantano'].includes(this.biome.id);
-        const x0 = bars.x;
-        this.tweens.add({
-          targets: bars, x: x0 + 3, duration: 40, yoyo: true, repeat: 3,
+        // Se abren: la luz destella y las hojas se meten en la pared
+        hitSpark(this, block.x, block.y, 0xffd34d, 6, 1);
+        leaves.forEach((l, k) => this.tweens.add({
+          targets: l, [prop]: (k === 0 ? -1 : 1) * slide, duration: 360, ease: 'Cubic.easeOut', delay: 80,
           onComplete: () => {
-            bars.setVisible(false).setScale(1).setAlpha(1).setX(x0);
+            if (k !== 0) return;
+            bars.setVisible(false);
             block.setVisible(false);
-            this.shatter(block.x, block.y, tree ? [0x58b848, 0x2f7a2a, 0x7a4a24] : [0x9a8a7a, 0x6e6052, 0xc8bca8]);
-            dustBurst(this, block.x, block.y, 0.9, 7);
           },
-        });
-    // Sala sorpresa: se marca al descubrirla, hasta resolverla
-    const ev = this.roomEvent;
-    if (ev && this.visited.has(ev.roomId) && !this.eventsDone.has(ev.roomId)) marks.set(ev.roomId, ROOM_EVENT_COLOR[ev.kind]);
+        }));
       }
     }
   }
@@ -2558,6 +2616,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       sfx('door');
       this.notify(`¡Sala de desafío!\nOleada 1/${CHALLENGE_WAVES}`, { kind: 'danger', icon: 'heart' });
       this.time.delayedCall(900, () => this.spawnChallengeWave(room.id));
+    } else if (this.roomEvent?.roomId === room.id && !this.eventsDone.has(room.id) && !this.cleared.has(room.id)) {
+      this.startEvent(room, this.roomEvent.kind);
     } else if ((room.kind === 'combat' || room.kind === 'boss') && !this.cleared.has(room.id)) {
       if (room.kind === 'boss') this.spawnBoss();
       else if (room.id === this.minibossRoom) {
@@ -2584,6 +2644,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private transition(dir: Dir) {
     const next = this.floor.rooms[this.current.doors[dir]!];
     this.transitioning = true;
+    this.clearEventObjs();
     this.player.setVelocity(0, 0);
     this.shots.clear(true, true);
     this.foeShots.clear(true, true);
@@ -2616,8 +2677,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else if (x < i.x0 - WALL / 2) exit = 'left';
     else if (x > i.x1 + WALL / 2) exit = 'right';
     if (exit && this.current.doors[exit] !== undefined) this.transition(exit);
-    } else if (this.roomEvent?.roomId === room.id && !this.eventsDone.has(room.id) && !this.cleared.has(room.id)) {
-      this.startEvent(room, this.roomEvent.kind);
   }
 
   // --- Obstáculos (roomLayouts.ts) ---
@@ -2644,7 +2703,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         const cx = x + TILE / 2;
         const cy = y + TILE / 2;
         const sc = TILE / ART_TILE;
-    this.clearEventObjs();
         switch (c) {
           case 'R': {
             // Cada roca va aparte para que una bomba pueda romperla
@@ -3542,6 +3600,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       active: this.active ? { ...this.active } : null,
       healed: this.healedRun,
       counters: { ...this.counters },
+      hpSacrificed: this.hpSacrificed,
     };
     // Caída por la trampilla: se coloca encima, gira encogiéndose hacia el agujero y la cámara se acerca
     const p = this.player;
@@ -3600,7 +3659,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.orientShots();
     updateShots(this.host, this.shots, time, delta);
     updateShots(this.host, this.foeShots, time, delta);
-      hpSacrificed: this.hpSacrificed,
     this.weatherFx?.update(delta, this.player);
     if (!this.ended) this.counters.seconds += delta / 1000;
     this.weatherTick(time);
@@ -3719,6 +3777,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.drawEnemyBar(e);
     });
 
+    this.updateRunaway(time);
+
     // HUD
     const foes = this.enemies.countActive(true);
     this.nameText.setText(this.starterName.charAt(0).toUpperCase() + this.starterName.slice(1));
@@ -3777,8 +3837,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Telescopio: tus disparos giran poco a poco hacia el enemigo más cercano. */
   private steerShots(delta: number) {
     const enemies = (this.enemies.getChildren() as Sprite[]).filter((e) => e.active && (e.body as Body).enable);
-    this.updateRunaway(time);
-
     if (enemies.length === 0) return;
     const maxTurn = this.stats.homing * (delta / 1000);
     for (const c of this.shots.getChildren()) {
@@ -4075,6 +4133,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const mini = !!enemy.getData('miniboss');
     if (boss || mini) faintBoss(this, enemy, feetY, ecolor, (x, y) => typeImpact(this, x, y, etypes[0] ?? this.bossType, 1.4, 12));
     else faintEnemy(this, enemy, feetY, ecolor);
+    if (enemy.getData('runaway') || enemy.getData('mimic')) this.eventFoeDefeated(enemy);
     if (mini) {
       // Premio del minijefe: un objeto y tickets
       const bonus = this.giveTickets(minibossTicketsFor(this.floorNum));
@@ -4133,7 +4192,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const name = this.add.text(bx + 22, 30, label, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#f8f8f8' }).setOrigin(0, 0.5);
     const chip = addTypeChip(this, bx + 20 + name.width + 56, 30, typeNameEs(type), typeColor(type), 92, 24);
     const barX = bx + 20 + name.width + 116;
-    if (enemy.getData('runaway') || enemy.getData('mimic')) this.eventFoeDefeated(enemy);
     const bar = addHpBar(this, barX, 23, bx + 860 - barX, 14);
     const objects = [box, name, ...chip, ...bar.objects];
     for (const o of objects) {
@@ -4353,6 +4411,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const px = this.player.x;
     const py = this.player.y;
     const act = enter || padA;
+    // Salas sorpresa (T39): mercader, altar y cofre misterioso
+    const spot = this.eventSpots.find((sp) => Phaser.Math.Distance.Between(px, py, sp.x, sp.y) < NEAR);
+    if (spot) {
+      this.prompt.setText(spot.prompt()).setPosition(spot.x, spot.y - 56);
+      if (act) {
+        spot.use();
+        return padA;
+      }
+      return false;
+    }
     // Cofre: pisarlo o Enter / A cerca lo abre si tienes llave
     const chest = this.chests.get(this.current.id);
     if (chest && !this.openedChests.has(this.current.id)) {
@@ -4411,16 +4479,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     return false;
   }
-    // Salas sorpresa (T39): mercader, altar y cofre misterioso
-    const spot = this.eventSpots.find((sp) => Phaser.Math.Distance.Between(px, py, sp.x, sp.y) < NEAR);
-    if (spot) {
-      this.prompt.setText(spot.prompt()).setPosition(spot.x, spot.y - 56);
-      if (act) {
-        spot.use();
-        return padA;
-      }
-      return false;
-    }
 
   // --- Estados (quemar, congelar, paralizar…) ---
 
@@ -4744,6 +4802,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Quien salta no hace daño mientras desaparece o recién aparecido
     const ai = enemy.getData('ai') as EnemyAI | undefined;
     if (ai && ai.behavior === 'hop' && ai.state !== 'walk') return;
+    // El Pokémon raro solo quiere huir
+    if (enemy.getData('runaway')) return;
     // Bajo tierra o escondido no hace daño al tocarte
     if (ai && (ai.behavior === 'burrow' || ai.behavior === 'ambush') && (ai.state === 'vanish' || ai.state === 'appear')) return;
     if (this.stats.dodge > 0 && Math.random() < this.stats.dodge) {
@@ -4802,8 +4862,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.endedAt = this.time.now;
     this.physics.pause();
     // El jugador celebra o se debilita (la cámara se acerca al caer)
-    // El Pokémon raro solo quiere huir
-    if (enemy.getData('runaway')) return;
     const pb = this.player?.body as Body | null;
     if (this.player?.active) {
       if (won) cheerPlayer(this, this.player);
