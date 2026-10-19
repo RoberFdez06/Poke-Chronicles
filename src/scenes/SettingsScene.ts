@@ -8,6 +8,7 @@ import { addPanel, MenuList, NavInput } from '../ui/nav';
 import { addBackButton } from '../ui/cards';
 import { ARROW, drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
+import { accountInfo } from '../net/cloud';
 
 export interface SettingsData {
   /**
@@ -19,8 +20,8 @@ export interface SettingsData {
   onReset?: () => void;
 }
 
-type Row = 'music' | 'sfx' | 'fullscreen' | 'controls' | 'credits' | 'reset' | 'back';
-const ROWS: Row[] = ['music', 'sfx', 'fullscreen', 'controls', 'credits', 'reset', 'back'];
+type Row = 'music' | 'sfx' | 'fullscreen' | 'controls' | 'account' | 'credits' | 'reset' | 'back';
+const ROWS: Row[] = ['music', 'sfx', 'fullscreen', 'controls', 'account', 'credits', 'reset', 'back'];
 const ROW = { w: 520, h: 50, gap: 10, top: 136 };
 
 /** Créditos (T31): de dónde salen los datos, los sprites y la fuente. */
@@ -111,6 +112,11 @@ export class SettingsScene extends Phaser.Scene {
         return `Efectos   ◀ ${pct(a.sfx)} ▶`;
       case 'fullscreen':
         return `Pantalla completa: ${this.scale.isFullscreen ? 'Sí' : 'No'}`;
+      case 'account': {
+        const a = accountInfo();
+        if (this.args.overlay) return 'Cuenta (desde el menú)';
+        return a.mode === 'cloud' ? `Cuenta: ${a.name || a.email || 'conectado'}` : a.mode === 'local' ? 'Cuenta: modo local' : 'Cuenta: invitado';
+      }
       case 'credits':
         return 'Créditos';
       case 'controls':
@@ -166,6 +172,13 @@ export class SettingsScene extends Phaser.Scene {
       else {
         this.closing = true;
         goTo(this, 'Keys');
+      }
+    }
+    else if (row === 'account') {
+      // Entrar o salir recarga la página: a mitad de partida se perdería, así que solo desde el menú
+      if (!this.args.overlay) {
+        this.closing = true;
+        goTo(this, 'Account');
       }
     }
     else if (row === 'credits') this.showCredits();

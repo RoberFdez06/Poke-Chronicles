@@ -2,7 +2,7 @@
 // al limpiarla, al coger un objeto y al salir desde la pausa) y se borra al morir o al ganar.
 // Tickets y desbloqueos NO van aquí: son comunes a todos los huecos (ver save.ts).
 // Lógica pura, sin Phaser, para poder testearla.
-import type { StorageLike } from './save';
+import { activeStorage, type StorageLike } from './storage.ts';
 import { computeStats, type MovePower } from './items.ts';
 import { isMode, type GameMode } from './modes.ts';
 import { emptyCounters, isCounters, type RunCounters } from './runHistory.ts';
@@ -211,13 +211,8 @@ export function parseRun(raw: string | null): RunSave | null {
   return ok ? d : null;
 }
 
-function browserStorage(): StorageLike | null {
-  try {
-    return globalThis.localStorage ?? null;
-  } catch {
-    return null;
-  }
-}
+/** El almacenamiento en uso: memoria (invitado), nube (cuenta) o el navegador (pruebas). Ver storage.ts (T45). */
+const browserStorage = (): StorageLike | null => activeStorage();
 
 const validSlot = (slot: number) => isInt(slot) && slot >= 0 && slot < RUN_SLOTS;
 

@@ -60,6 +60,12 @@ export function initAudio() {
 export const getAudioSettings = (): AudioSettings => ({ ...settings });
 
 /** Cambia y guarda el volumen (lo usa la pantalla de Ajustes). */
+/** Vuelve a leer el volumen guardado (al cambiar de almacenamiento al arrancar, T45). */
+export function reloadAudioSettings() {
+  settings = loadAudio();
+  applyVolume();
+}
+
 export function setAudioSettings(next: AudioSettings) {
   settings = { ...next };
   saveAudio(settings);

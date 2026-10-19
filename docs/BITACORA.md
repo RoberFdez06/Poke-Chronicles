@@ -773,3 +773,10 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   lo dejaba opcional).
 - e2e `keys.spec.ts`: pone la bomba en W (avisa de que es "Moverse arriba" y no cambia), luego en Q, y en la partida
   E ya no suelta bomba y Q sí (captura `20-teclas`).
+
+## T45 — Cuentas (terminada por el supervisor)
+- La sesión de VS Code se cortó a mitad de la T45 (cambios sin commit). El supervisor la ha terminado: arreglado el
+  error de tsc (`autocomplete` con setAttribute), registrada `AccountScene` en main.ts, fila "Cuenta" en Ajustes
+  (encima de la pausa no se abre: entrar o salir recarga la página), aviso de invitado/cuenta arriba a la derecha del
+  menú (clic → Cuenta), botón de Google solo con `VITE_FIREBASE_GOOGLE=1`, tests `tests/account.test.ts` (200 en
+  total) y sección del README. Firestore ya tiene las reglas de `firestore.rules` publicadas.

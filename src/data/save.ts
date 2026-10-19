@@ -1,9 +1,10 @@
-// Progreso guardado en el navegador. La lógica usa una interfaz mínima de almacenamiento
-// para poder testearla sin navegador; si localStorage no está disponible, no guarda y sigue.
+// Progreso guardado. La lógica usa una interfaz mínima de almacenamiento (storage.ts) para poder testearla sin
+// navegador; en el juego es memoria (invitado), la nube (cuenta, T45) o el navegador (pruebas).
 
 import { parseAudio, type AudioSettings } from './sounds.ts';
 import { parseShinies } from './shiny.ts';
 import { levelsFor, parseUpgrades, upgradeCost, type UpgradeBook, type UpgradeKind } from './upgrades.ts';
+import { activeStorage, type StorageLike } from './storage.ts';
 import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } from './modes.ts';
 import { applyMissionEvent, parseMissions, type Completed, type MissionEvent, type MissionState } from './missions.ts';
 import { dayNumber } from './gacha.ts';
@@ -11,12 +12,7 @@ import { parseTutorial, type TutorialState } from './tutorial.ts';
 import { parseHistory, withRun, type RunRecord } from './runHistory.ts';
 import { parseKeys, type KeyMap } from './keybinds.ts';
 
-export interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  /** Opcional (localStorage lo tiene): para "Borrar progreso". */
-  removeItem?(key: string): void;
-}
+export type { StorageLike } from './storage.ts';
 
 export const UNLOCKED_KEY = 'pokeisaac.unlocked';
 
@@ -29,13 +25,8 @@ export const DEFAULT_STARTERS: readonly number[] = [1, 4, 7];
 /** Formato actual de los desbloqueos: `{ v: 2, ids: [...] }`. El antiguo era un array y sumaba DEFAULT_STARTERS. */
 export const UNLOCKED_VERSION = 2;
 
-function browserStorage(): StorageLike | null {
-  try {
-    return globalThis.localStorage ?? null;
-  } catch {
-    return null; // modo privado o datos bloqueados
-  }
-}
+/** El almacenamiento en uso: memoria (invitado), nube (cuenta) o el navegador (pruebas). Ver storage.ts (T45). */
+const browserStorage = (): StorageLike | null => activeStorage();
 
 const validIds = (data: unknown[]): number[] => [
   ...new Set(data.filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n > 0)),

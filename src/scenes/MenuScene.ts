@@ -4,6 +4,7 @@ import { fetchPokemonCard } from '../data/pokeapi';
 import { loadRecords, loadUnlocked } from '../data/save';
 import { MODES, MODE_LABEL } from '../data/modes';
 import { CONTROLS } from '../data/controls';
+import { accountInfo } from '../net/cloud';
 import { FONT, drawBox, fadeIn, goTo } from '../ui/theme';
 import { addLandscape, nextLandscape, PIX, WALK_Y, type Landscape } from '../ui/art/landscape';
 import { addPixelText, drawPixelArrow } from '../ui/art/pixel';
@@ -86,6 +87,7 @@ export class MenuScene extends Phaser.Scene {
     this.add.text(480, 166, 'Un roguelike de Pokémon', this.rowStyle(18)).setOrigin(0.5).setShadow(2, 2, TEXT_SHADOW, 0);
 
     this.buildMenu();
+    this.addAccountBadge();
 
     // Franja de abajo: progreso y ayuda
     this.add.rectangle(DCX, 620, COVER_W + 4, 40, 0x101828, 0.85).setDepth(20);
@@ -112,6 +114,26 @@ export class MenuScene extends Phaser.Scene {
 
     // Pokémon de tu colección paseando por el camino. Se cargan en segundo plano.
     this.addWalkers().catch(() => undefined);
+  }
+
+  /** Arriba a la derecha (T45): invitado (no se guarda) o la cuenta conectada. Clic: pantalla de cuenta. */
+  private addAccountBadge() {
+    const a = accountInfo();
+    if (a.mode === 'local') return;
+    const guest = a.mode !== 'cloud';
+    const lines = guest
+      ? ['Juegas como invitado', 'Tu progreso no se guardará · Crea una cuenta']
+      : [`Cuenta: ${a.name || a.email || 'conectado'}`, 'Progreso guardado en la nube'];
+    const w = 300;
+    const h = 46;
+    const x = 960 - w - 12;
+    const y = 12;
+    const g = this.add.graphics().setDepth(15);
+    drawBox(g, x, y, w, h, { radius: 4, border: guest ? 0xc0392b : undefined });
+    this.add.text(x + w / 2, y + 15, lines[0], { ...this.rowStyle(15), fontStyle: 'bold', color: guest ? '#c0392b' : TEXT }).setOrigin(0.5).setDepth(16);
+    this.add.text(x + w / 2, y + 33, lines[1], this.rowStyle(12)).setOrigin(0.5).setDepth(16);
+    this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive({ useHandCursor: true }).setDepth(17)
+      .on('pointerdown', () => goTo(this, 'Account'));
   }
 
   private rowStyle(size: number) {

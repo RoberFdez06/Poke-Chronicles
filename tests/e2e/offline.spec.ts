@@ -1,12 +1,13 @@
 // Sin conexión (T42): PokeAPI, sprites y SpriteCollab cortados. El juego tiene que poder empezar una partida con
 // los datos de public/data/offline/ y avisar con una tarjeta, sin quedarse en "Cargando…".
 import { test, expect } from '@playwright/test';
-import { press, waitScene, waitSceneProp } from './helpers';
+import { press, useLocalSave, waitScene, waitSceneProp } from './helpers';
 
 test.use({ viewport: { width: 1920, height: 1080 } });
 
 test('sin conexión: se juega con los datos guardados y se avisa', async ({ page }) => {
   test.setTimeout(120_000);
+  await useLocalSave(page);
   await page.route(/pokeapi\.co|raw\.githubusercontent\.com/, (route) => route.abort('internetdisconnected'));
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(String(e)));

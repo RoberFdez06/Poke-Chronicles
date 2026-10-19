@@ -1,5 +1,5 @@
 // Historial de las últimas tiradas del gacha (para el escaparate). Lógica pura con almacenamiento inyectable.
-import type { StorageLike } from './save.ts';
+import { activeStorage, type StorageLike } from './storage.ts';
 import { RARITIES, type Rarity } from './gacha.ts';
 
 export const HISTORY_KEY = 'pokeisaac.gachaHistory';
@@ -13,13 +13,8 @@ export interface HistoryEntry {
   at: number;
 }
 
-function browserStorage(): StorageLike | null {
-  try {
-    return globalThis.localStorage ?? null;
-  } catch {
-    return null;
-  }
-}
+/** El almacenamiento en uso: memoria (invitado), nube (cuenta) o el navegador (pruebas). Ver storage.ts (T45). */
+const browserStorage = (): StorageLike | null => activeStorage();
 
 export function parseHistory(raw: string | null): HistoryEntry[] {
   try {

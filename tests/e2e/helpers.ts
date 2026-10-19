@@ -22,7 +22,14 @@ const pokemon = (id: number) => ({
 });
 
 /** Responde a PokeAPI y a los sprites con datos falsos (las pruebas no dependen de internet). */
+/**
+ * Modo local de pruebas (T45): el progreso va al localStorage del navegador como antes de las cuentas, así las
+ * pruebas pueden leerlo y no se conecta a Firebase.
+ */
+export const useLocalSave = (page: Page) => page.addInitScript(() => localStorage.setItem('pokeisaac.dev.local', '1'));
+
 export async function mockPokeApi(page: Page) {
+  await useLocalSave(page);
   await page.route('https://pokeapi.co/**', async (route) => {
     const url = route.request().url();
     let body: unknown = {};

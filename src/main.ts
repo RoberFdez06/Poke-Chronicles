@@ -15,8 +15,11 @@ import { SummaryScene } from './scenes/SummaryScene';
 import { HistoryScene } from './scenes/HistoryScene';
 import { KeysScene } from './scenes/KeysScene';
 import { PauseScene } from './scenes/PauseScene';
+import { AccountScene } from './scenes/AccountScene';
 import { COLORS, hex, loadThemeFont } from './ui/theme';
-import { initAudio, playMusic } from './ui/audio';
+import { initAudio, playMusic, reloadAudioSettings } from './ui/audio';
+import { initAccount } from './net/cloud';
+import { refreshControls } from './data/controls';
 import { H, U, W } from './ui/layout';
 import { PLACEHOLDER_SPRITE } from './data/offline';
 import { installErrorScreen } from './ui/errorScreen';
@@ -53,8 +56,14 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
 initAudio();
 playMusic();
 
-// La fuente pixel se carga antes de crear el juego (Phaser no espera a las fuentes al dibujar texto)
-void loadThemeFont().then(() => startGame());
+// La fuente pixel se carga antes de crear el juego (Phaser no espera a las fuentes al dibujar texto). A la vez se
+// decide dónde se guarda (T45): invitado (memoria), cuenta (nube) o pruebas (navegador); luego se releen el
+// volumen y las teclas de ese almacenamiento.
+void Promise.all([loadThemeFont(), initAccount()]).then(() => {
+  reloadAudioSettings();
+  refreshControls();
+  startGame();
+});
 
 function startGame() {
   const game = new Phaser.Game({
@@ -71,7 +80,7 @@ function startGame() {
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     // La primera escena es la que arranca; añade las nuevas (p. ej. GachaScene) al final
     // PauseScene va la última para dibujarse encima de la partida
-    scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, SummaryScene, HistoryScene, KeysScene, PauseScene],
+    scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, SummaryScene, HistoryScene, KeysScene, PauseScene, AccountScene],
   });
   lockEscapeInFullscreen(game);
   // T43: un error no deja el juego colgado: pantalla "Algo ha fallado" con vuelta al menú

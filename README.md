@@ -123,6 +123,22 @@ compran con dinero real. Todos los nombres (Pokémon, movimientos y tipos) salen
 o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 tickets. La lista de especies
 se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `node scripts/buildSpeciesIndex.mjs`.
 
+## Cuentas y guardado en la nube
+
+- **Invitado** (sin cuenta): se juega normal, pero **no se guarda nada** al cerrar. El menú lo avisa arriba a la derecha.
+- **Con cuenta** (Ajustes > Cuenta, o clic en el aviso): el progreso se guarda solo en Firestore (`users/{uid}`). Al
+  crearla se sube lo jugado como invitado o lo que hubiera en este navegador de antes. Entrar, salir, recuperar
+  contraseña y borrar cuenta (con doble confirmación), con teclado, ratón y mando.
+- Pruebas (`npm run e2e`): la bandera `pokeisaac.dev.local` guarda en el navegador como antes, sin Firebase.
+
+Pasos para montar Firebase (ya hechos para `pokeisaac-664d8`):
+1. console.firebase.google.com → crear proyecto → añadir app web.
+2. Copiar la configuración a `.env.local` (no se sube a git): `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`,
+   `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID`.
+3. Authentication → activar "Correo electrónico/contraseña". Google es opcional: al activarlo, añade
+   `VITE_FIREBASE_GOOGLE=1` a `.env.local` para que salga el botón.
+4. Firestore → crear base de datos → pestaña Reglas → pegar `firestore.rules` → Publicar.
+
 ## Sin conexión
 
 El juego no depende de que PokeAPI o GitHub respondan:
