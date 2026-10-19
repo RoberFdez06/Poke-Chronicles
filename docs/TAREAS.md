@@ -269,7 +269,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
 
 # Tanda 4 (pedida por Roberto el 19/10 por la mañana)
 
-## [ ] T37 — Notificaciones fuera del centro de la pantalla (PRIORITARIA: hazla justo después de la tarea en curso)
+## [x] T37 — Notificaciones fuera del centro de la pantalla (PRIORITARIA: hazla justo después de la tarea en curso)
 - **Todos** los avisos (sala limpia, objeto recogido, misión completada, logro, "¡X se enfurece!", sinergia,
   tutorial, evolución, monedas, tickets, piso nuevo…) dejan de salir en medio de la pantalla tapando el juego.
 - Sistema único de avisos (`src/ui/toast.ts`): tarjetas pequeñas en la franja del HUD (arriba a la derecha o
@@ -298,3 +298,42 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
   no redibujar gráficos que no cambian, limitar partículas, y en Ajustes una opción "Efectos: altos / bajos"
   (bajos quita partículas, temblores, fundidos y el fondo animado de los menús) y "Mostrar FPS".
 - Mide antes y después (FPS medio en una sala con muchos enemigos) y apúntalo en la bitácora.
+
+# Tanda 5 (esenciales, pedida por Roberto el 19/10) — van justo después de T37, antes que el resto
+
+## [ ] T42 — Funcionar aunque PokeAPI/SpriteCollab fallen
+- Caché persistente de todo lo descargado (JSON de PokeAPI, sprites PokeAPI y SpriteCollab, gritos) con la Cache API
+  o IndexedDB, para que lo ya visto cargue al instante y funcione sin conexión.
+- Empaqueta en `public/` lo imprescindible para jugar sin red: datos (nombres en español, tipos, estadísticas,
+  movimientos de cada tipo) de los iniciales de las 9 regiones y de un grupo de enemigos/jefes por bioma, y sus sprites.
+  Script en `scripts/` para regenerarlo.
+- Si una petición falla o tarda (>6 s), usar lo empaquetado o un sustituto y seguir; nunca quedarse en "Cargando…".
+  Aviso discreto (toast de T37) "Sin conexión: usando datos guardados".
+
+## [ ] T43 — Pantalla de error en lugar de cuelgue
+- Capturar errores globales (`window.onerror`, `unhandledrejection` y fallos dentro de escenas): mostrar un cuadro
+  "Algo ha fallado" con el mensaje corto, botón "Volver al menú" (teclado, ratón y mando) y "Copiar detalles".
+  El guardado no se toca. Registrar el error en consola con detalle.
+
+## [ ] T44 — Teclas configurables
+- En Ajustes > Controles: cambiar la tecla de cada acción (moverse, disparar ×4, poderes 1-4, objeto activo, bomba,
+  pausa, aceptar, volver) pulsando la nueva; avisa si ya está usada; "Restablecer". Se guarda con el resto del
+  progreso. Toda la partida y los menús leen las teclas de ese mapa (no de constantes). Botones del mando: opcional.
+- La pantalla de controles (T35) muestra las teclas actuales.
+
+## [ ] T45 — Cuentas para guardar el progreso (como PokéSurvivor)
+- **Con cuenta**: el progreso (tickets, desbloqueados, shinies, mejoras, logros, misiones, récords, huecos de partida,
+  ajustes y teclas) se guarda en la nube. **Sin cuenta (invitado)**: se puede jugar pero **no se guarda nada** al
+  cerrar; aviso claro en el menú ("Juegas como invitado: tu progreso no se guardará. Crea una cuenta").
+- Backend: **Firebase** (plan gratuito): Authentication (correo + contraseña y "Entrar con Google") y Firestore con
+  un documento por usuario. Reglas de seguridad: cada usuario solo lee/escribe su documento. Las contraseñas las
+  gestiona Firebase (nunca las guardes tú). Nombre de usuario público opcional.
+- Configuración por variables de entorno (`.env.local`, sin subir a git): `VITE_FIREBASE_API_KEY`, `..._AUTH_DOMAIN`,
+  `..._PROJECT_ID`, `..._APP_ID`. Si no están, el juego funciona solo como invitado y lo dice.
+- Pantallas: Registrarse / Entrar / Salir / Recuperar contraseña / Borrar cuenta (con doble confirmación), con
+  teclado, ratón y mando. Guardado automático en la nube (con reintento si no hay red) y carga al entrar.
+- Toda la capa de guardado (`save.ts`, `runSave.ts`, etc.) pasa por un almacenamiento intercambiable (ya existe
+  `StorageLike`): memoria para invitados, nube para cuentas. Tests con un almacenamiento falso.
+- Escribe en el README los pasos para crear el proyecto de Firebase (Roberto lo hará): consola de Firebase →
+  crear proyecto → añadir app web → copiar la configuración a `.env.local` → activar Authentication (correo y Google)
+  → crear Firestore → pegar las reglas.

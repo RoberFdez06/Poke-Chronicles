@@ -38,6 +38,12 @@ test('el jefe invoca ayudantes con aviso y se van con él', async ({ page }) => 
   await waitScene(page, 'Game', 3500);
   await page.waitForTimeout(1500);
 
+  // T37: los avisos van en tarjetas en la franja derecha (como mucho 4 a la vez)
+  await game(page, `for (let k = 1; k <= 5; k++) g.notify('Aviso ' + k + '\\nSegunda línea del aviso ' + k, { kind: k % 2 ? 'reward' : 'danger' });`);
+  await page.waitForTimeout(500);
+  expect(await game(page, 'return g.toasts.cards.filter((c) => !c.leaving).length;')).toBe(4);
+  await page.screenshot({ path: 'test-results/screens/14b-avisos.png' });
+
   const helpers = 'return g.enemies.getChildren().filter((e) => e.active && e.getData("helper")).length;';
   // Que no muera mientras se prueba (el jefe y sus ayudantes le pegan)
   await game(page, 'g.invulnUntil = 1e12; g.spawnBoss();');

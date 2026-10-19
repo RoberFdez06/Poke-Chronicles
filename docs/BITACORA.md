@@ -691,3 +691,20 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - **e2e** (`boss.spec.ts`): pierde una partida, ve el resumen con R, entra en el historial, Esc al menú, y abre el
   historial desde Partidas (capturas `16-resumen` y `17-historial`). Corregido `screens.spec`: a Misiones ahora se
   llega con dos flechas arriba.
+
+## T37 — Avisos fuera del centro (2026-10-19, prioritaria por N15)
+
+- `src/ui/toast.ts`: `ToastStack` (tarjetas con franja de color, icono de `icons.ts`, título en negrita y texto
+  pequeño; entran deslizando desde la derecha, como mucho 4, la más vieja se va, duración según lo largo que sea).
+  Tipos: info, reward, item, heal, warning, danger y mission, cada uno con color e icono por defecto.
+- GameScene: la pila está en la franja derecha del HUD, justo **debajo del minimapa** (`drawMinimap` ahora devuelve
+  dónde acaba y la pila se recoloca). Los 28 `showBanner` pasan a `notify(texto, { kind, icon })` con su tipo e
+  icono (el poder nuevo lleva el disco del color de su tipo). Los avisos de misión/logro ya no van abajo en el centro:
+  son tarjetas `mission`. El cartel del centro solo queda para el **fin de partida** (`setBanner`).
+- Consejos del tutorial: ahora en la franja de abajo, de lado a lado de la sala (una línea con título, texto y los
+  botones "No más consejos" / "Vale").
+- **Decisiones**: los números que saltan sobre los Pokémon (+PS, ¡Crítico!, ¡Shiny!, +1 moneda, ¡Esquivado!) se
+  quedan donde están: son reacción del combate pegada a quien la provoca, no avisos. Menús: `UpgradeScene` ya avisa
+  abajo y el aviso de `MenuScene` (abajo también) es del supervisor (N5); el gacha no se toca (N11). La intro de jefe
+  VS es de la T36.
+- e2e: `boss.spec.ts` lanza 5 avisos y comprueba que quedan 4 (captura `14b-avisos`).

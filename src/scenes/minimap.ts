@@ -8,7 +8,7 @@ const PAD = 6;
 
 /**
  * Dibuja el minimapa con su esquina superior derecha en (right, top).
- * Muestra las salas visitadas y sus adyacentes; la sala actual va resaltada.
+ * Muestra las salas visitadas y sus adyacentes; la sala actual va resaltada. Devuelve dónde acaba por abajo.
  */
 export function drawMinimap(
   g: Phaser.GameObjects.Graphics,
@@ -22,7 +22,7 @@ export function drawMinimap(
   /** Tamaño (1 = el de siempre) y ancho máximo: si no cabe, se encoge lo justo. */
   scale = 1,
   maxW = Infinity,
-) {
+): number {
   g.clear();
 
   const known = new Set(visited);
@@ -60,4 +60,5 @@ export function drawMinimap(
       : r.kind === 'challenge' ? 0xbdc3c7 : r.kind === 'secret' ? 0x8e44ad : null;
     if (icon !== null) g.fillStyle(icon, 1).fillCircle(x + CW / 2, y + CH / 2, 4 * k);
   }
+  return top + h;
 }

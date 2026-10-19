@@ -118,6 +118,14 @@ compran con dinero real. Todos los nombres (Pokémon, movimientos y tipos) salen
 o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 tickets. La lista de especies
 se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `node scripts/buildSpeciesIndex.mjs`.
 
+## Avisos
+
+Ningún aviso tapa la sala (`src/ui/toast.ts`): sala limpia, objetos, sinergias, misiones y logros, jefe, Centro,
+tienda, piso nuevo… salen como **tarjetas** en la franja derecha, debajo del minimapa. Entran deslizando, se apilan
+(como mucho 4; la más vieja se va) y se van solas; llevan un icono y un color según el tipo (premio, objeto,
+curación, aviso, peligro, misión). Los **consejos del tutorial** van en la franja de abajo. En el centro solo queda
+el cartel de fin de partida. Los números que saltan sobre los Pokémon (+PS, ¡Crítico!, monedas) siguen ahí.
+
 ## Resumen e historial
 
 Al morir o ganar sale el **resumen** de la partida (tiempo jugado sin contar la pausa, hasta dónde llegaste,
@@ -360,6 +368,7 @@ src/
     roomLayouts.ts        plantillas de sala con obstáculos, conectividad y campo de flujo
     progression.ts        pisos: tamaño, dificultad, tickets y jefes legendarios
   ui/
+    toast.ts              avisos en tarjetas apiladas en la franja del HUD
     layout.ts             tamaños de pantalla (1920×1080), espacio de diseño de los menús y franjas del HUD
     theme.ts              tema: fuente, colores, cuadros, barra de PS, fichas de tipo y transiciones
     nav.ts                entrada de menús (NavInput, PadButtons) y botones (MenuList, addPanel)

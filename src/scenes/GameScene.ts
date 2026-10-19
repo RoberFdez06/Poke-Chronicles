@@ -30,6 +30,7 @@ import { addRunHistory, loadMissions, loadShinies, loadTutorial, loadUpgrades, r
 import { disableTips, markTipSeen, shouldShowTip, TIPS, type TipId } from '../data/tutorial';
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
 import { emptyCounters, type RunCounters, type RunRecord } from '../data/runHistory';
+import { ToastStack, type ToastOptions } from '../ui/toast';
 import { ACHIEVEMENTS, lockedItems, rewardText, type MissionEvent } from '../data/missions';
 import {
   attackInterval,
@@ -291,9 +292,6 @@ export class GameScene extends Phaser.Scene {
   /** Habilidad de PokeAPI de tu Pokémon (T27); null mientras carga o si no tiene. */
   private ability: Ability | null = null;
   private hpMark = -1;
-  /** Avisos de misión o logro cumplido, uno detrás de otro (franja de abajo). */
-  private toastQueue: string[] = [];
-  private toastBusy = false;
   /** Sprites animados de SpriteCollab cargados (por id de Pokémon); los que no estén usan el de PokeAPI. */
   private pmd = new Map<number, PmdSheet>();
   private starterName = '';
@@ -418,8 +416,8 @@ export class GameScene extends Phaser.Scene {
   /** Nombre del tipo de cada poder (Volador y Veneno se confundían solo por el color). */
   private slotTypes: Phaser.GameObjects.Text[] = [];
   private banner!: Phaser.GameObjects.Text;
+  private toasts?: ToastStack;
   private bannerBox!: Phaser.GameObjects.Graphics;
-  private bannerTimer?: Phaser.Time.TimerEvent;
   private minimap!: Phaser.GameObjects.Graphics;
   /** HUD (T30/N8): capa en coordenadas reales, con su propia cámara sin zoom, en las franjas de alrededor de la sala. */
   private hudLayer!: Phaser.GameObjects.Container;
@@ -496,7 +494,6 @@ export class GameScene extends Phaser.Scene {
     this.doorMap.clear();
     this.visited.clear();
     this.cleared.clear();
-    this.bannerTimer = undefined;
     this.trapdoor = undefined;
     this.floorNum = 1;
     this.ability = null;
@@ -505,8 +502,6 @@ export class GameScene extends Phaser.Scene {
     this.lastRecord = undefined;
     this.leavingToSummary = false;
     this.hpMark = -1;
-    this.toastQueue = [];
-    this.toastBusy = false;
     this.tipQueue = [];
     this.tipObjects = [];
     this.tipTimer = undefined;
@@ -996,7 +991,13 @@ export class GameScene extends Phaser.Scene {
     }
     // Minimapa arriba a la derecha
     this.minimap = hud(this.add.graphics());
-    // Carteles en un cuadro de texto en el centro de la sala, como los diálogos de los juegos
+    // Avisos (T37): tarjetas en la franja derecha, bajo el minimapa
+    this.toasts?.clear();
+    this.toasts = new ToastStack(this, HUD.right.x + HUD.pad, 200, HUD.right.w - HUD.pad * 2, (box, parts) => {
+      this.hudLayer.add(box);
+      if (this.hudCam) for (const o of [box, ...parts]) o.cameraFilter &= ~this.hudCam.id;
+    });
+    // Cartel del centro, solo para el fin de partida (como los diálogos de los juegos)
     this.bannerBox = hud(this.add.graphics());
     this.banner = hud(
       this.add.text(CX, CY, '', {
@@ -1032,8 +1033,8 @@ export class GameScene extends Phaser.Scene {
     if (this.mode !== 'waves') {
       const where = progressText(this.mode, this.floorNum);
       const head = r ? 'Partida cargada' : MODE_LABEL[this.mode];
-      this.showBanner(`${head}
-${where} — ${this.biome.name}`, 1600);
+      this.notify(`${head}
+${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     if (this.evolvePending) {
       this.evolvePending = false;
@@ -1104,7 +1105,7 @@ ${where} — ${this.biome.name}`, 1600);
           this.hpMark = this.hp;
           this.starterName = data.name;
           this.tearType = data.types[0] ?? this.tearType;
-          this.showBanner(`¡${oldName} ha evolucionado!\nAhora es ${data.name}`, 2600);
+          this.notify(`¡${oldName} ha evolucionado!\nAhora es ${data.name}`, { kind: 'item', icon: 'pokeball' });
           void cry(next);
           // La forma nueva puede tener otra habilidad
           void this.loadAbility(next);
@@ -1415,7 +1416,7 @@ ${where} — ${this.biome.name}`, 1600);
         (block.body as Phaser.Physics.Arcade.StaticBody).enable = false;
       }
     }
-    this.showBanner('¡Has encontrado una sala secreta!', 1600);
+    this.notify('¡Has encontrado una sala secreta!', { kind: 'reward', icon: 'bomb' });
     sfx('pickup');
     this.drawMap();
   }
@@ -1471,7 +1472,7 @@ ${where} — ${this.biome.name}`, 1600);
     if (this.ended || this.transitioning || this.openedChests.has(roomId)) return;
     const chest = this.chests.get(roomId);
     if (!chest) return;
-    if (this.keys <= 0) return this.showBanner('Necesitas una llave para abrir el cofre', 1300);
+    if (this.keys <= 0) return this.notify('Necesitas una llave para abrir el cofre', { kind: 'warning', icon: 'key' });
     this.keys--;
     this.openedChests.add(roomId);
     this.mission({ kind: 'chest' });
@@ -1484,7 +1485,7 @@ ${where} — ${this.biome.name}`, 1600);
     } else {
       prize.drops.forEach((d, k) => this.dropLoot(chest.x + (k - (prize.drops.length - 1) / 2) * 26, chest.y + 56, d));
     }
-    this.showBanner('¡Cofre abierto!', 1000);
+    this.notify('¡Cofre abierto!', { kind: 'reward', icon: 'chestOpen' });
     this.saveNow();
   }
 
@@ -1570,7 +1571,8 @@ ${where} — ${this.biome.name}`, 1600);
       const open = Object.entries(this.floor.rooms[sid].doors).some(([d]) => this.revealedDoors.has(doorKey(sid, d as Dir)));
       if (!open) hidden.add(sid);
     }
-    drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2);
+    const bottom = drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2);
+    this.toasts?.setTop(bottom + 16);
   }
 
   private setDoorsLocked(room: Room, locked: boolean) {
@@ -1632,32 +1634,10 @@ ${where} — ${this.biome.name}`, 1600);
   private mission(e: MissionEvent) {
     for (const c of recordMission(e)) {
       const reward = rewardText(c.reward, { item: c.reward.item ? passiveById(c.reward.item)?.name : undefined });
-      if (c.kind === 'daily') this.toastQueue.push(`¡Misión diaria cumplida! ${c.text}\n${reward}`);
-      else this.toastQueue.push(`¡Logro: ${c.text}! ${ACHIEVEMENTS.find((a) => a.id === c.id)?.text ?? ''}\n${reward}`);
+      sfx('buy');
+      if (c.kind === 'daily') this.notify(`¡Misión cumplida!\n${c.text}\n${reward}`, { kind: 'mission', ms: 5000 });
+      else this.notify(`¡Logro: ${c.text}!\n${ACHIEVEMENTS.find((a) => a.id === c.id)?.text ?? ''}\n${reward}`, { kind: 'mission', ms: 5000 });
     }
-    this.nextToast();
-  }
-
-  private nextToast() {
-    if (this.toastBusy || !this.hudLayer?.active) return;
-    const text = this.toastQueue.shift();
-    if (!text) return;
-    this.toastBusy = true;
-    sfx('buy');
-    const t = this.add.text(CX, H - 31, text, { fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: HEX.text, align: 'center' }).setOrigin(0.5);
-    const w = t.width + 56;
-    const box = drawBox(this.add.graphics(), CX - w / 2, H - 58, w, 54, { radius: 12 });
-    for (const o of [box, t]) {
-      this.hudLayer.add(o);
-      if (this.hudCam) o.cameraFilter &= ~this.hudCam.id;
-    }
-    this.tweens.add({ targets: [box, t], alpha: { from: 0, to: 1 }, duration: 200 });
-    this.time.delayedCall(3400, () => {
-      box.destroy();
-      t.destroy();
-      this.toastBusy = false;
-      this.nextToast();
-    });
   }
 
   /** Pone en cola un consejo del tutorial si aún no se ha visto (y no están desactivados). */
@@ -1675,15 +1655,18 @@ ${where} — ${this.biome.name}`, 1600);
     const state = loadTutorial();
     if (!shouldShowTip(state, id)) return this.nextTip();
     saveTutorial(markTipSeen(state, id));
-    const w = 940;
-    const x = CX - w / 2;
-    const y = GAME_VIEW.y + 14;
-    const title = this.add.text(x + 24, y + 26, `Consejo · ${TIPS[id].title}`, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5);
-    const text = this.add.text(x + 24, y + 50, TIPS[id].text, { fontFamily: FONT, fontSize: '18px', color: HEX.textSoft, wordWrap: { width: w - 48 } });
-    const h = Math.max(120, text.height + 104);
-    const box = drawBox(this.add.graphics(), x, y, w, h, { radius: 14 }).setAlpha(0.96);
+    // En la franja de abajo, debajo de la sala: no la tapa (T37)
+    const w = GAME_VIEW.w;
+    const x = GAME_VIEW.x;
+    const h = 56;
+    const y = H - h - 2;
+    const box = drawBox(this.add.graphics(), x, y, w, h, { radius: 12 }).setAlpha(0.96);
+    const title = this.add.text(x + 20, y + h / 2, `Consejo · ${TIPS[id].title}`, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(0, 0.5);
+    const text = this.add.text(title.x + title.width + 14, y + h / 2, TIPS[id].text.replace(/\n/g, ' '), {
+      fontFamily: FONT, fontSize: '14px', color: HEX.text, wordWrap: { width: w - title.width - 440 },
+    }).setOrigin(0, 0.5);
     const button = (bx: number, label: string, onClick: () => void) => {
-      const b = this.add.text(bx, y + h - 26, label, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' })
+      const b = this.add.text(bx, y + h / 2, label, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' })
         .setOrigin(1, 0.5).setPadding(8, 6).setInteractive({ useHandCursor: true });
       b.on('pointerover', () => b.setColor(HEX.text));
       b.on('pointerout', () => b.setColor('#b8860b'));
@@ -1737,7 +1720,7 @@ ${where} — ${this.biome.name}`, 1600);
       if (this.active && this.player) this.spawnPickup(this.current.id, this.player.x + 70, this.player.y, { kind: 'active', id: this.active.id });
       const a = activeById(item.id);
       this.active = { id: item.id, charge: a?.charge ?? 1 };
-      this.showBanner(`${a?.name ?? item.id}\n${a?.description ?? ''}\nEspacio, LB o clic en su cuadro`, 2600);
+      this.notify(`${a?.name ?? item.id}\n${a?.description ?? ''}\nEspacio, LB o clic en su cuadro`, { kind: 'item', icon: 'pokeball' });
     } else if (item.kind === 'passive') {
       if (item.item.id === 'banda-focus') this.focusLeft++;
       const prevMax = this.stats.maxHp;
@@ -1746,20 +1729,20 @@ ${where} — ${this.biome.name}`, 1600);
       // Más PS máximos también te curan esa misma cantidad
       this.hp = Math.min(this.stats.maxHp, this.hp + Math.max(0, this.stats.maxHp - prevMax));
       this.hpMark = this.hp;
-      this.showBanner(`${item.item.name}\n${item.item.description}`, 2400);
+      this.notify(`${item.item.name}\n${item.item.description}`, { kind: 'item', icon: 'bag' });
     } else {
       const free = this.slots.indexOf(null);
       const slot = free !== -1 ? free : this.nextSlotReplace++ % SLOT_COUNT;
       this.slots[slot] = item.move;
       this.slotReady[slot] = 0;
       this.stats = this.calcStats();
-      this.showBanner(`${pretty(item.move.name)}\nTecla ${slot + 1}`, 2400);
+      this.notify(`${pretty(item.move.name)}\nTecla ${slot + 1}`, { kind: 'item', icon: 'disc', tint: typeColor(item.move.type) });
     }
     // ¡Sinergia! nueva (objeto + objeto o objeto + poder)
     const fresh = this.synergies.filter((id) => !before.has(id));
     for (const id of fresh) {
       const syn = SYNERGIES.find((x) => x.id === id);
-      if (syn) this.time.delayedCall(1400, () => !this.ended && this.showBanner(`¡Sinergia!\n${syn.name}: ${syn.description}`, 2800));
+      if (syn) this.time.delayedCall(1400, () => !this.ended && this.notify(`¡Sinergia!\n${syn.name}: ${syn.description}`, { kind: 'reward', icon: 'bag' }));
     }
     this.refreshInventory();
     this.saveNow();
@@ -1772,7 +1755,7 @@ ${where} — ${this.biome.name}`, 1600);
     const a = activeById(this.active.id);
     if (!a) return;
     if (!isCharged(this.active.charge, a.charge)) {
-      this.showBanner(`${a.name}: aún no está cargado (${this.active.charge}/${a.charge})\nSe carga limpiando salas`, 1300);
+      this.notify(`${a.name}: aún no está cargado (${this.active.charge}/${a.charge})\nSe carga limpiando salas`, { kind: 'warning', icon: 'pokeball' });
       return;
     }
     this.active.charge = 0;
@@ -1795,7 +1778,7 @@ ${where} — ${this.biome.name}`, 1600);
       this.buffUntil = now + ACTIVE_EFFECT.buffMs;
       this.popup(this.player.x, this.player.y - 50, '¡Ataque X!', a.color);
     }
-    this.showBanner(a.name, 900);
+    this.notify(a.name, { kind: 'info', icon: 'pokeball' });
     this.saveNow();
   }
 
@@ -1855,7 +1838,7 @@ ${where} — ${this.biome.name}`, 1600);
       this.challengeWave = 1;
       this.setDoorsLocked(room, true);
       sfx('door');
-      this.showBanner(`¡Sala de desafío!\nOleada 1/${CHALLENGE_WAVES}`, 1400);
+      this.notify(`¡Sala de desafío!\nOleada 1/${CHALLENGE_WAVES}`, { kind: 'danger', icon: 'heart' });
       this.time.delayedCall(900, () => this.spawnChallengeWave(room.id));
     } else if ((room.kind === 'combat' || room.kind === 'boss') && !this.cleared.has(room.id)) {
       if (room.kind === 'boss') this.spawnBoss();
@@ -2107,7 +2090,7 @@ ${where} — ${this.biome.name}`, 1600);
     ai.nextAttack = this.time.now + 2200;
     ai.phase = 1;
     b.setData('ai', ai);
-    this.showBanner(`¡${this.bossName}, jefe legendario!`, 1400);
+    this.notify(`¡${this.bossName}, jefe legendario!`, { kind: 'danger', icon: 'pokeball' });
     void cry(this.bossId);
   }
 
@@ -2122,7 +2105,7 @@ ${where} — ${this.biome.name}`, 1600);
       ai.phase = 2;
       b.setData('speed', (b.getData('speed') as number) * PHASE2_SPEED);
       this.cameras.main.shake(250, 0.006);
-      this.showBanner(`¡${this.bossName} se enfurece!`, 1400);
+      this.notify(`¡${this.bossName} se enfurece!`, { kind: 'danger', icon: 'pokeball' });
       ai.nextAttack = time + 900;
     }
     if (time < (ai.nextAttack ?? 0) || this.ended) return;
@@ -2942,15 +2925,15 @@ ${where} — ${this.biome.name}`, 1600);
   /** El mostrador cura la mitad de tus PS máximos, una vez por piso (si te falta vida). */
   private useCenter() {
     if (this.ended || this.transitioning) return;
-    if (this.centerUsed) return this.showBanner('Ya te has curado en este piso', 1200);
-    if (!canHeal(this.hp, this.stats.maxHp)) return this.showBanner('Ya tienes todos los PS', 1200);
+    if (this.centerUsed) return this.notify('Ya te has curado en este piso', { kind: 'warning', icon: 'center' });
+    if (!canHeal(this.hp, this.stats.maxHp)) return this.notify('Ya tienes todos los PS', { kind: 'warning', icon: 'center' });
     const amount = centerHeal(this.stats.maxHp);
     this.hp = healed(this.hp, this.stats.maxHp, amount);
     this.centerUsed = true;
     sfx('heal');
     this.paintCounter();
     this.popup(this.player.x, this.player.y - 50, `+${amount} PS`, CENTER_PINK);
-    this.showBanner(`¡Centro Pokémon!\n+${amount} PS`, 1600);
+    this.notify(`¡Centro Pokémon!\n+${amount} PS`, { kind: 'heal', icon: 'center' });
     this.saveNow();
   }
 
@@ -3009,8 +2992,8 @@ ${where} — ${this.biome.name}`, 1600);
     if (!slot) return;
     const res = canBuy(slot, this.coins, this.hp, this.stats.maxHp);
     if (res === 'sold') return;
-    if (res === 'poor') return this.showBanner(`Te faltan monedas\n(cuesta ${slot.price}, tienes ${this.coins})`, 1400);
-    if (res === 'full') return this.showBanner('Ya tienes todos los PS', 1200);
+    if (res === 'poor') return this.notify(`Te faltan monedas\n(cuesta ${slot.price}, tienes ${this.coins})`, { kind: 'warning', icon: 'coin' });
+    if (res === 'full') return this.notify('Ya tienes todos los PS', { kind: 'warning', icon: 'potion' });
     this.coins -= slot.price;
     sfx('buy');
     slot.sold = true;
@@ -3020,7 +3003,7 @@ ${where} — ${this.biome.name}`, 1600);
     if (g.kind === 'potion') {
       const p = POTIONS[g.id];
       this.hp = healed(this.hp, this.stats.maxHp, p.heal);
-      this.showBanner(`${p.name}\n+${p.heal} PS`, 1400);
+      this.notify(`${p.name}\n+${p.heal} PS`, { kind: 'heal', icon: 'potion' });
     } else if (g.kind === 'move') {
       this.gainItem({ kind: 'move', move: g.move });
     } else {
@@ -3182,7 +3165,7 @@ ${where} — ${this.biome.name}`, 1600);
   /** Empieza la ronda actual tras un momento de respiro. */
   private startWave(delay: number) {
     const round = this.floorNum;
-    this.showBanner(`Ronda ${round} — ${this.biome.name}`, delay);
+    this.notify(`Ronda ${round} — ${this.biome.name}`, { kind: 'info', icon: 'pokeball' });
     this.time.delayedCall(delay, () => {
       if (this.ended || this.floorNum !== round) return;
       const { count } = waveSpec(round);
@@ -3212,7 +3195,7 @@ ${where} — ${this.biome.name}`, 1600);
       this.dropItem(this.current.id, i.cx, i.cy);
       text += '\nHa caído un objeto';
     }
-    this.showBanner(text, 1600);
+    this.notify(text, { kind: 'reward', icon: 'ticket' });
 
     // Siguiente ronda: al subir de nivel, enemigos más fuertes y más dificultad
     const prevLevel = this.level();
@@ -3233,7 +3216,7 @@ ${where} — ${this.biome.name}`, 1600);
     if (this.cleared.has(room.id) || this.enemies.countActive(true) > 0) return;
     if (room.kind === 'challenge' && this.challengeWave > 0 && this.challengeWave < CHALLENGE_WAVES) {
       this.challengeWave++;
-      this.showBanner(`Oleada ${this.challengeWave}/${CHALLENGE_WAVES}`, 1000);
+      this.notify(`Oleada ${this.challengeWave}/${CHALLENGE_WAVES}`, { kind: 'danger', icon: 'heart' });
       this.time.delayedCall(1000, () => this.spawnChallengeWave(room.id));
       return;
     }
@@ -3271,7 +3254,7 @@ ${where} — ${this.biome.name}`, 1600);
       this.spawnTrapdoor();
       const next = this.mode === 'bossrush' ? `ir al jefe ${this.floorNum + 1}` : `bajar al piso ${this.floorNum + 1}`;
       const best = record ? '\n¡Nuevo récord!' : '';
-      this.showBanner(`¡Jefe derrotado! +${reward} tickets${best}\nPisa la trampilla para ${next}`, 2600);
+      this.notify(`¡Jefe derrotado! +${reward} tickets${best}\nPisa la trampilla para ${next}`, { kind: 'reward', icon: 'trapdoor' });
       this.saveNow();
       return;
     }
@@ -3281,7 +3264,7 @@ ${where} — ${this.biome.name}`, 1600);
       const i = this.interior(room);
       this.dropItem(room.id, i.cx, i.cy);
       CHALLENGE_REWARD.forEach((d, k) => this.dropLoot(i.cx + (k - 1.5) * 40, i.cy + 70, d));
-      this.showBanner(`¡Desafío superado! +${reward} tickets\nHa caído un premio`, 1800);
+      this.notify(`¡Desafío superado! +${reward} tickets\nHa caído un premio`, { kind: 'reward', icon: 'chest' });
       this.saveNow();
       return;
     }
@@ -3296,9 +3279,9 @@ ${where} — ${this.biome.name}`, 1600);
     if (Math.random() < CLEAR_DROP_CHANCE) {
       const i = this.interior(room);
       this.dropItem(room.id, i.cx, i.cy);
-      this.showBanner(`¡Sala limpia! +${reward} tickets\nHa caído un objeto`, 1400);
+      this.notify(`¡Sala limpia! +${reward} tickets\nHa caído un objeto`, { kind: 'reward', icon: 'ticket' });
     } else {
-      this.showBanner(`¡Sala limpia! +${reward} tickets`, 1000);
+      this.notify(`¡Sala limpia! +${reward} tickets`, { kind: 'reward', icon: 'ticket' });
     }
     this.saveNow();
   }
@@ -3331,13 +3314,13 @@ ${where} — ${this.biome.name}`, 1600);
     g.setAlpha(ready ? 1 : 0.7);
   }
 
-  private showBanner(text: string, ms?: number) {
-    this.bannerTimer?.remove();
-    this.setBanner(text);
-    this.bannerTimer = ms ? this.time.delayedCall(ms, () => this.setBanner('')) : undefined;
+  /** Aviso en la columna derecha del HUD (T37): no tapa la sala. */
+  private notify(text: string, o: ToastOptions = {}) {
+    if (!this.toasts) return;
+    this.toasts.show(text, o);
   }
 
-  /** Pone el texto del cartel y ajusta su cuadro al tamaño del texto (sin texto, sin cuadro). */
+  /** Cartel en el centro: solo para lo que para el juego (fin de partida). Ajusta su cuadro al texto. */
   private setBanner(text: string) {
     this.banner.setText(text);
     this.bannerBox.clear();
@@ -3381,7 +3364,7 @@ ${where} — ${this.biome.name}`, 1600);
       // Banda Focus: aguanta con 1 PS
       this.focusLeft--;
       this.hp = 1;
-      this.showBanner('¡Aguantó gracias a la Banda Focus!', 1400);
+      this.notify('¡Aguantó gracias a la Banda Focus!', { kind: 'heal', icon: 'heart' });
     } else this.hp -= taken;
     if (!this.lowHpUsed && this.stats.lowHpHeal > 0 && this.hp > 0 && this.hp < this.stats.maxHp * 0.25) {
       // Hierba Blanca: una vez por piso
@@ -3405,7 +3388,7 @@ ${where} — ${this.biome.name}`, 1600);
     this.ended = true;
     this.endedAt = this.time.now;
     this.physics.pause();
-    this.showBanner(message);
+    this.setBanner(message);
     // Se apunta en el historial (T28) y luego se ve el resumen
     const counts = new Map<string, number>();
     for (const id of this.passives) counts.set(id, (counts.get(id) ?? 0) + 1);
