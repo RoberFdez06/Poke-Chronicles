@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { fitDesign } from '../ui/layout';
 import { fetchPokemonCard } from '../data/pokeapi';
-import { buyUpgrade, loadTickets, loadUnlocked, loadUpgrades } from '../data/save';
+import { buyUpgrade, loadCandies, loadUnlocked, loadUpgrades } from '../data/save';
 import { levelsFor, MAX_UPGRADE_LEVEL, UPGRADE_DESC, UPGRADE_KINDS, UPGRADE_LABEL, upgradeCost } from '../data/upgrades';
 import { sfx } from '../ui/audio';
 import { addBackButton, buildPokemonCard, loadCardTextures } from '../ui/cards';
@@ -16,7 +16,7 @@ const CARD_Y = 340;
 
 /**
  * Mejoras permanentes: eliges uno de tus Pokémon (◀ ▶) y le compras niveles de daño, PS, velocidad y cadencia
- * con tickets. Solo se aplican jugando con él. Teclado, ratón y mando.
+ * con caramelos. Solo se aplican jugando con él. Teclado, ratón y mando.
  */
 export class UpgradeScene extends Phaser.Scene {
   private ids: number[] = [];
@@ -62,7 +62,7 @@ export class UpgradeScene extends Phaser.Scene {
 
     this.add.text(480, 44, 'Mejoras', { fontFamily: FONT, fontSize: '44px', fontStyle: 'bold', color: HEX.gold }).setOrigin(0.5).setStroke('#2b3a67', 10);
     drawBox(this.add.graphics(), 720, 18, 224, 52, { radius: 12 });
-    addIcon(this, 746, 44, 'ticket', 2);
+    addIcon(this, 746, 44, 'candy', 2);
     this.ticketsText = this.add.text(924, 44, '', { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(1, 0.5);
     this.message = this.add.text(ROW.x, 560, '', { fontFamily: FONT, fontSize: '18px', color: '#ffffff', align: 'center' }).setOrigin(0.5);
     this.add
@@ -157,7 +157,7 @@ export class UpgradeScene extends Phaser.Scene {
   }
 
   private refresh() {
-    this.ticketsText.setText(`Tickets: ${loadTickets()}`);
+    this.ticketsText.setText(`Caramelos: ${loadCandies()}`);
     const lv = levelsFor(loadUpgrades(), this.id);
     UPGRADE_KINDS.forEach((kind, i) => {
       const r = this.rows[i];
@@ -171,7 +171,7 @@ export class UpgradeScene extends Phaser.Scene {
         r.bg.fillStyle(k < lv[kind] ? COLORS.hpGreen : COLORS.hpTrack, 1).fillRoundedRect(left + 170 + k * 26, r.y - 30, 20, 16, 4);
       }
       const cost = upgradeCost(lv[kind]);
-      r.texts[1].setText(cost === null ? 'MÁX' : `${cost} tickets`);
+      r.texts[1].setText(cost === null ? 'MÁX' : `${cost} caramelos`);
       r.arrow.setVisible(sel);
     });
   }
@@ -184,7 +184,7 @@ export class UpgradeScene extends Phaser.Scene {
       sfx('buy');
       this.message.setText(`¡${UPGRADE_LABEL[kind]} mejorado!`);
     } else if (res === 'max') this.message.setText('Esta mejora ya está al máximo');
-    else this.message.setText(`Te faltan tickets (cuesta ${upgradeCost(levelsFor(loadUpgrades(), this.id)[kind])})`);
+    else this.message.setText(`Te faltan caramelos (cuesta ${upgradeCost(levelsFor(loadUpgrades(), this.id)[kind])})`);
     this.refresh();
   }
 

@@ -101,8 +101,48 @@ export const COINS_KEY = 'pokeisaac.coins';
  * T32: antes 15 y 60 (una partida completa daba ~2100 tickets). Con el gacha a 10 por tirada (19/10): llegar al
  * piso 3 da ~33 (3 tiradas), la partida completa ~70 (7) y con el reto final ~136 (ver tests/balance.test.ts).
  */
-export const ROOM_TICKETS = 1;
-export const BOSS_TICKETS = 1;
+export const ROOM_TICKETS = 2;
+export const BOSS_TICKETS = 2;
+
+// --- Caramelos: la moneda de las mejoras de estadísticas (los tickets quedan solo para el gacha) ---
+
+export const CANDIES_KEY = 'pokeisaac.candies';
+/** Caramelos que se ganan por cada ticket de la partida (misma regla: salas, minijefes y jefes, con la dificultad). */
+export const CANDY_PER_TICKET = 3;
+
+export function parseCandies(raw: string | null): number {
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : 0;
+}
+
+export function loadCandies(storage: StorageLike | null = browserStorage()): number {
+  try {
+    return parseCandies(storage?.getItem(CANDIES_KEY) ?? null);
+  } catch {
+    return 0;
+  }
+}
+
+function saveCandies(n: number, storage: StorageLike | null) {
+  try {
+    storage?.setItem(CANDIES_KEY, String(n));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+}
+
+export function addCandies(amount: number, storage: StorageLike | null = browserStorage()): number {
+  const total = loadCandies(storage) + (Number.isInteger(amount) && amount > 0 ? amount : 0);
+  saveCandies(total, storage);
+  return total;
+}
+
+export function spendCandies(amount: number, storage: StorageLike | null = browserStorage()): boolean {
+  const have = loadCandies(storage);
+  if (!Number.isInteger(amount) || amount < 0 || have < amount) return false;
+  saveCandies(have - amount, storage);
+  return true;
+}
 
 export function parseTickets(raw: string | null): number {
   const n = Number(raw);
@@ -259,13 +299,13 @@ export function loadUpgrades(storage: StorageLike | null = browserStorage()): Up
 
 export type BuyUpgradeResult = 'ok' | 'max' | 'poor';
 
-/** Compra un nivel de una mejora de un Pokémon con tickets. */
+/** Compra un nivel de una mejora de un Pokémon con caramelos. */
 export function buyUpgrade(id: number, kind: UpgradeKind, storage: StorageLike | null = browserStorage()): BuyUpgradeResult {
   const book = loadUpgrades(storage);
   const lv = levelsFor(book, id);
   const cost = upgradeCost(lv[kind]);
   if (cost === null) return 'max';
-  if (!spendTickets(cost, storage)) return 'poor';
+  if (!spendCandies(cost, storage)) return 'poor';
   book[id] = { ...lv, [kind]: lv[kind] + 1 };
   try {
     storage?.setItem(UPGRADES_KEY, JSON.stringify(book));
@@ -400,6 +440,7 @@ export function saveKeys(keys: KeyMap, storage: StorageLike | null = browserStor
 export const PROGRESS_KEYS: readonly string[] = [
   UNLOCKED_KEY,
   TICKETS_KEY,
+  CANDIES_KEY,
   COINS_KEY,
   RECORDS_KEY,
   recordsKeyFor(RECORDS_KEY, 'easy'),

@@ -14,12 +14,12 @@ test('tickets: una buena partida da para varias tiradas del gacha (x1 = 10), sin
   const full = expectedRunRewards(FLOOR_COUNT).tickets;
   const floor3 = expectedRunRewards(3).tickets;
   const floor1 = expectedRunRewards(1).tickets;
-  assert.ok(floor1 >= 5 && floor1 < PULL_COST * 1.5, `solo el piso 1: ${floor1}`);
-  assert.ok(floor3 / PULL_COST >= 2.5 && floor3 / PULL_COST <= 4.5, `hasta el piso 3: ${floor3}`);
-  assert.ok(full / PULL_COST >= 5 && full / PULL_COST <= 8, `partida completa: ${full}`);
-  // Ni con el reto final llega a dos tiradas x10
+  assert.ok(floor1 >= 5 && floor1 < PULL_COST * 2.5, `solo el piso 1: ${floor1}`);
+  assert.ok(floor3 / PULL_COST >= 5 && floor3 / PULL_COST <= 8, `hasta el piso 3: ${floor3}`);
+  assert.ok(full / PULL_COST >= 10 && full / PULL_COST <= 16, `partida completa: ${full}`);
+  // Ni con el reto final llega a tres tiradas x10 (ahora se ganan 2 por sala y 2 × piso por jefe)
   const finale = expectedFinaleRunTickets();
-  assert.ok(finale > full && finale < 2 * PULL10_COST, `con el reto final: ${finale}`);
+  assert.ok(finale > full && finale < 3 * PULL10_COST, `con el reto final: ${finale}`);
   // La simulación (que muere más que un jugador real) da al menos una tirada de media
   assert.ok(simulateRuns(400, 3).tickets >= PULL_COST, 'simulación');
 });

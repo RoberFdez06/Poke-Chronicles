@@ -1,5 +1,5 @@
 // Mejoras permanentes por Pokémon (como en PokéSurvivor): daño, PS, velocidad y cadencia. Se compran con
-// tickets y solo se aplican jugando con ese Pokémon. Lógica pura; el guardado está en save.ts.
+// caramelos y solo se aplican jugando con ese Pokémon. Lógica pura; el guardado está en save.ts.
 import type { PlayerStats } from './items.ts';
 
 export const UPGRADE_KINDS = ['damage', 'hp', 'speed', 'rate'] as const;
@@ -27,10 +27,9 @@ export type UpgradeLevels = Record<UpgradeKind, number>;
 
 export const noUpgrades = (): UpgradeLevels => ({ damage: 0, hp: 0, speed: 0, rate: 0 });
 
-/** Tickets que cuesta subir del nivel `level` al siguiente (null si ya está al máximo). */
+/** Caramelos que cuesta subir del nivel `level` al siguiente (null si ya está al máximo). */
 export function upgradeCost(level: number): number | null {
   if (level >= MAX_UPGRADE_LEVEL) return null;
-  // T32: más baratas porque los tickets ahora escasean (antes 40 × nivel)
   return 15 * (Math.max(0, Math.floor(level)) + 1);
 }
 

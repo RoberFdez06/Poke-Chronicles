@@ -12,7 +12,7 @@ import {
   upgradeCost,
 } from '../src/data/upgrades.ts';
 import { BASE_STATS } from '../src/data/items.ts';
-import { addTickets, buyUpgrade, loadTickets, loadUpgrades, resetProgress, type StorageLike } from '../src/data/save.ts';
+import { addCandies, addTickets, loadCandies, buyUpgrade, loadTickets, loadUpgrades, resetProgress, type StorageLike } from '../src/data/save.ts';
 
 function fakeStorage(): StorageLike & { data: Map<string, string> } {
   const data = new Map<string, string>();
@@ -44,17 +44,21 @@ test('se leen aunque estén corruptas y nunca pasan del máximo', () => {
   assert.deepEqual(levelsFor(book, 7), noUpgrades());
 });
 
-test('comprar gasta tickets, es por Pokémon y se borra con el progreso', () => {
+test('comprar gasta caramelos (no tickets), es por Pokémon y se borra con el progreso', () => {
   const st = fakeStorage();
   assert.equal(buyUpgrade(4, 'damage', st), 'poor');
-  addTickets(40, st);
+  addTickets(500, st); // los tickets no sirven para mejorar
+  assert.equal(buyUpgrade(4, 'damage', st), 'poor');
+  assert.equal(loadTickets(st), 500);
+  addCandies(40, st);
   assert.equal(buyUpgrade(4, 'damage', st), 'ok');
-  assert.equal(loadTickets(st), 25);
+  assert.equal(loadCandies(st), 25);
+  assert.equal(loadTickets(st), 500);
   assert.equal(buyUpgrade(4, 'damage', st), 'poor'); // el segundo nivel cuesta 30 y quedan 25
-  assert.equal(loadTickets(st), 25);
+  assert.equal(loadCandies(st), 25);
   assert.equal(levelsFor(loadUpgrades(st), 4).damage, 1);
   assert.equal(levelsFor(loadUpgrades(st), 7).damage, 0);
-  addTickets(10000, st);
+  addCandies(10000, st);
   for (let i = 0; i < 10; i++) buyUpgrade(4, 'hp', st);
   assert.equal(levelsFor(loadUpgrades(st), 4).hp, MAX_UPGRADE_LEVEL);
   assert.equal(buyUpgrade(4, 'hp', st), 'max');

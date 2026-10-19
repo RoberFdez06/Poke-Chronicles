@@ -1,3 +1,4 @@
+import { CANDY_PER_TICKET } from '../data/save';
 import Phaser from 'phaser';
 import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { fetchPokemonCard } from '../data/pokeapi';
@@ -75,6 +76,7 @@ export class SummaryScene extends Phaser.Scene {
       ['pokeball', 'Enemigos vencidos', r.kills, (n) => `${n}`],
       ['sword', 'Daño hecho', r.damage, (n) => `${n}`],
       ['ticket', 'Tickets ganados', r.tickets, (n) => `+${n}`],
+      ['candy', 'Caramelos ganados', r.tickets * CANDY_PER_TICKET, (n) => `+${n}`],
     ];
     rows.forEach(([icon, label, value, fmt], i) => {
       const y = 276 + i * 42;

@@ -3,7 +3,7 @@ import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetch
 import { pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
-import { addTickets } from '../data/save';
+import { addCandies, addTickets, CANDY_PER_TICKET } from '../data/save';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
 import { dailyFloorSeed, dailyRng } from '../data/daily';
 import { weatherChip, weatherFor, weatherHurts, weatherPowerMul, WEATHER_DESC, WEATHER_LABEL, WEATHER_TICK_MS, type Weather } from '../data/weather';
@@ -460,6 +460,10 @@ export class GameScene extends Phaser.Scene {
   private slots: (MovePower | null)[] = [];
   private slotReady: number[] = [];
   private nextSlotReplace = 0;
+  /** Ranura que has elegido en la pantalla de cambio (la usa gainItem una sola vez). */
+  private chosenSlot?: number;
+  private swapOpen = false;
+  private swapCooldownUntil = 0;
   private movePool: MovePower[] = [];
   private tearType = 'normal';
   private nextTear = 0;
@@ -1163,6 +1167,7 @@ export class GameScene extends Phaser.Scene {
   private buyFromMerchant(room: Room, slot: ShopSlot, name: string) {
     if (this.ended || this.transitioning || this.eventsDone.has(room.id)) return;
     if (this.coins < slot.price) return this.notify(`Te faltan monedas (${this.coins}/${slot.price})`, { kind: 'warning', icon: 'coin' });
+    if (slot.goods.kind === 'move' && this.chosenSlot === undefined && this.askSlot(slot.goods.move, (s) => { this.chosenSlot = s; this.buyFromMerchant(room, slot, name); }, () => undefined)) return;
     this.coins -= slot.price;
     sfx('buy');
     const g = slot.goods;
@@ -1315,6 +1320,7 @@ export class GameScene extends Phaser.Scene {
     if (n > 0) {
       this.earned += n;
       addTickets(n);
+      addCandies(n * CANDY_PER_TICKET);
     }
     return n;
   }
@@ -2447,9 +2453,39 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     });
   }
 
+  /**
+   * Con las 4 ranuras llenas, pregunta cuál sustituir (o dejarlo). Devuelve true si ha abierto la pantalla:
+   * entonces `then(ranura)` se llama al elegir y `cancel()` si lo dejas.
+   */
+  private askSlot(move: MovePower, then: (slot: number) => void, cancel: () => void): boolean {
+    if (this.slots.indexOf(null) !== -1 || this.swapOpen || !this.scene.manager.keys['SlotSwap']) return false;
+    this.swapOpen = true;
+    this.player?.setVelocity(0, 0);
+    this.scene.launch('SlotSwap', {
+      move,
+      slots: [...this.slots],
+      onChoice: (slot: number) => {
+        this.scene.stop('SlotSwap');
+        this.scene.resume();
+        this.input.keyboard?.resetKeys();
+        this.swapOpen = false;
+        this.swapCooldownUntil = this.time.now + 1200;
+        if (slot >= 0) then(slot);
+        else cancel();
+      },
+    });
+    this.scene.pause();
+    return true;
+  }
+
   private pickItem(sprite: Sprite) {
     if (!sprite.active) return;
     const item = sprite.getData('item') as DroppedItem;
+    if (item.kind === 'move' && this.slots.indexOf(null) === -1) {
+      // Ranuras llenas: elige cuál sustituir; si lo dejas, el poder se queda en el suelo
+      if (this.swapOpen || this.time.now < this.swapCooldownUntil) return;
+      if (this.askSlot(item.move, (slot) => { this.chosenSlot = slot; this.pickItem(sprite); }, () => undefined)) return;
+    }
     {
       const LX = HUD.left.x + HUD.pad;
       const LW = HUD.left.w - HUD.pad * 2;
@@ -2573,7 +2609,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.notify(`${item.item.name}\n${item.item.description}`, { kind: 'item', icon: 'bag' });
     } else {
       const free = this.slots.indexOf(null);
-      const slot = free !== -1 ? free : this.nextSlotReplace++ % SLOT_COUNT;
+      const slot = this.chosenSlot ?? (free !== -1 ? free : this.nextSlotReplace++ % SLOT_COUNT);
+      this.chosenSlot = undefined;
       this.slots[slot] = item.move;
       this.slotReady[slot] = 0;
       this.stats = this.calcStats();
@@ -4497,6 +4534,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (res === 'sold') return;
     if (res === 'poor') return this.notify(`Te faltan monedas\n(cuesta ${slot.price}, tienes ${this.coins})`, { kind: 'warning', icon: 'coin' });
     if (res === 'full') return this.notify('Ya tienes todos los PS', { kind: 'warning', icon: 'potion' });
+    if (slot.goods.kind === 'move' && this.chosenSlot === undefined && this.askSlot(slot.goods.move, (s) => { this.chosenSlot = s; this.buy(k); }, () => undefined)) return;
     this.coins -= slot.price;
     sfx('buy');
     slot.sold = true;
