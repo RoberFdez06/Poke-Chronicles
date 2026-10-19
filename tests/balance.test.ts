@@ -9,13 +9,13 @@ import { BASE_STATS } from '../src/data/items.ts';
 import { BOSS_PHASE2_AT, MAX_HELPERS, attackInterval, bossAttacks, bossPhase, helpersToSummon, mixBehaviors, pickAttack, ringCount } from '../src/data/bossPatterns.ts';
 import { mulberry32 } from '../src/level/floorGen.ts';
 
-test('tickets: una tirada del gacha cada 2-3 partidas buenas', () => {
+test('tickets: varias tiradas del gacha por partida buena (x1 = 10 tickets)', () => {
   const full = expectedRunRewards(FLOOR_COUNT).tickets;
   const floor3 = expectedRunRewards(3).tickets;
   assert.ok(full >= 40 && full <= 70, `partida completa: ${full}`);
   assert.ok(floor3 >= 15 && floor3 <= 40, `hasta el piso 3: ${floor3}`);
   const good = (full + floor3) / 2;
-  assert.ok(PULL_COST / good >= 2 && PULL_COST / good <= 3, `partidas por tirada: ${PULL_COST / good}`);
+  assert.ok(good / PULL_COST >= 2 && good / PULL_COST <= 7, `tiradas por partida: ${good / PULL_COST}`);
 });
 
 test('monedas: la tienda obliga a elegir', () => {

@@ -65,7 +65,7 @@ import { applyUpgrades, levelsFor } from '../data/upgrades';
 import { cry, playMenuMusic, playTrack, sfx } from '../ui/audio';
 import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
-import { bakeTypeFx, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
+import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
 import { bakeCombatFx, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
@@ -255,6 +255,8 @@ interface ShotOpts {
   bounces: number;
   /** Tipo del poder: aplica su estado al golpear (quemar, congelar…). Los disparos normales no llevan. */
   status?: string;
+  /** Tipo para el dibujo del proyectil (si no, el de `status`; si tampoco, normal). */
+  type?: string;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -731,6 +733,18 @@ export class GameScene extends Phaser.Scene {
    * los de PokeAPI (shiny o sin hoja animada) se balancean más para que se note que caminan. Solo toca lo visual
    * (ángulo y sombra), nunca el cuerpo físico.
    */
+  /** Los proyectiles que apuntan (rayo, hoja, llama…) siguen mirando hacia donde van al rebotar o perseguir. */
+  private orientShots() {
+    if (!this.shots) return;
+    for (const c of this.shots.getChildren()) {
+      const s = c as Sprite;
+      const body = s.body as Body | null;
+      const t = s.getData('ptype') as string | undefined;
+      if (!s.active || !body || !t || projMode(t) === 'spin' || body.velocity.lengthSq() < 1) continue;
+      s.setRotation(projRotation(t, Math.atan2(body.velocity.y, body.velocity.x)));
+    }
+  }
+
   private dressSprites(time: number) {
     const all = [this.player, ...(this.enemies.getChildren() as Sprite[])];
     for (const s of all) {
@@ -745,19 +759,23 @@ export class GameScene extends Phaser.Scene {
         const shadow = sh;
         s.once(Phaser.GameObjects.Events.DESTROY, () => shadow.destroy());
       }
-      const w = Math.max(18, body.width * 1.05);
+      const w = Math.max(16, body.width * 0.85);
       const moving = body.velocity.lengthSq() > 400;
       const pmd = !!s.getData('pmd');
       // Saltito al andar: el sprite sube y la sombra se encoge un poco; el balanceo va con cada paso
       const phase = time / (pmd ? 85 : 70) + ((s.getData('stepSeed') as number | undefined) ?? (s.setData('stepSeed', Math.random() * 6), 0));
       const hop = moving ? Math.abs(Math.sin(phase)) : 0;
-      sh.setPosition(body.center.x, body.bottom - body.height * 0.08);
-      sh.setSize(w * (1 - hop * 0.18), w * 0.34 * (1 - hop * 0.18));
+      // Pegada a los pies (Roberto: con la sombra más abajo parecía que volaba). En las hojas de SpriteCollab los
+      // pies quedan un poco por encima del final del cuerpo físico; en los de PokeAPI, hacia el 86 % del dibujo.
+      const feetY = pmd ? body.bottom - body.height * 0.26 : s.y + s.displayHeight * 0.34;
+      sh.setPosition(body.center.x, feetY);
+      sh.setSize(w, w * 0.3);
       // Parpadeo mientras el jugador es invulnerable tras un golpe
       if (s === this.player && !this.ended && !this.evolving) s.setAlpha(time < this.invulnUntil && Math.floor(time / 70) % 2 ? 0.35 : 1);
       sh.setVisible(s.visible).setAlpha(Math.max(0.4, s.alpha));
       // Subir el dibujo sin mover el cuerpo: el origen y el desfase del cuerpo cambian lo mismo (en px del frame)
-      const lift = (hop * (pmd ? 4 : 7)) / Math.max(0.01, s.scaleY);
+      // Los de SpriteCollab ya mueven las patas: sin saltito; los de PokeAPI, uno muy pequeño
+      const lift = (hop * (pmd ? 0 : 2.5)) / Math.max(0.01, s.scaleY);
       const delta = lift - ((s.getData('lift') as number | undefined) ?? 0);
       if (Math.abs(delta) > 0.01 && s.height > 0) {
         s.setOrigin(s.originX, s.originY + delta / s.height);
@@ -931,6 +949,7 @@ export class GameScene extends Phaser.Scene {
     // Arte pixel del supervisor (T33): iconos y baldosas del bioma, antes de montar las salas
     bakeIcons(this);
     bakeTypeFx(this);
+    bakeProjectiles(this);
     bakeCombatFx(this);
     this.tiles = bakeBiomeTiles(this, this.biome);
     this.walls = this.physics.add.staticGroup();
@@ -2772,6 +2791,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     if (!this.player || !this.player.active) return;
     this.dressSprites(time);
+    this.orientShots();
     if (!this.ended) this.counters.seconds += delta / 1000;
     // Cualquier subida de PS (bayas, pociones, Centro, robo de vida…) cuenta como curarse
     if (this.hpMark >= 0 && this.hp > this.hpMark + 0.001) this.healedRun = true;
@@ -2957,8 +2977,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   private spawnShot(dir: Phaser.Math.Vector2, angle: number, o: ShotOpts) {
     const v = dir.clone().rotate(angle).scale(o.speed);
-    const s = this.shots.create(this.player.x, this.player.y, 'shot') as Sprite;
-    s.setTint(o.color).setScale(o.size).setDepth(4).setVelocity(v.x, v.y);
+    // Proyectil con la forma de su tipo (llama, gota, rayo, hoja…), orientado según vuela
+    const ptype = o.type ?? o.status ?? 'normal';
+    const s = this.shots.create(this.player.x, this.player.y, projKey(ptype)) as Sprite;
+    s.setScale(o.size * 2.2).setDepth(4).setVelocity(v.x, v.y);
+    s.setData('ptype', ptype).setData('pcolor', o.color);
+    if (projMode(ptype) === 'spin') s.setAngularVelocity(Phaser.Math.Between(420, 620) * (Math.random() < 0.5 ? -1 : 1));
+    else s.setRotation(projRotation(ptype, Math.atan2(v.y, v.x)));
     // Acero: los poderes atraviesan un enemigo más
     const pierce = o.pierce + (o.status ? extraPierce(o.status) : 0);
     s.setData('dmg', o.damage).setData('pierce', pierce).setData('bounces', o.bounces);
@@ -2989,6 +3014,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       life: s.range * (1 + s.rangePerEnemy * this.enemies.countActive(true)),
       size: 0.7 * s.shotScale,
       color: typeColor(this.tearType),
+      type: this.tearType,
       pierce: s.pierce,
       bounces: s.bounces,
     };
@@ -3044,7 +3070,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const bounces = shot.getData('bounces') as number;
     if (bounces > 0) shot.setData('bounces', bounces - 1);
     else {
-      wallPop(this, shot.x, shot.y, shot.tintTopLeft);
+      wallPop(this, shot.x, shot.y, (shot.getData('pcolor') as number | undefined) ?? 0xffffff);
       shot.destroy();
     }
   }
@@ -3080,7 +3106,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     enemy.setData('hp', hp);
     enemy.setTintFill(0xffffff);
     enemy.setData('flashUntil', this.time.now + 70);
-    hitSpark(this, shot.x, shot.y, shot.tintTopLeft, crit ? 9 : 5, crit ? 1.3 : 0.9);
+    hitSpark(this, shot.x, shot.y, (shot.getData('pcolor') as number | undefined) ?? 0xffffff, crit ? 9 : 5, crit ? 1.3 : 0.9);
     damageNumber(this, enemy.x, enemy.y - (enemy.getData('size') as number) * 0.45, dmg, { crit });
     if (crit) this.cameras.main.shake(90, 0.004);
     const hitAi = enemy.getData('ai') as EnemyAI | undefined;

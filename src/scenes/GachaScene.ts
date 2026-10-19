@@ -17,7 +17,8 @@ import { addMenuBackdrop } from '../ui/art/landscape';
 import { addBurst, addRays, bakeGachaArt, ballKey, CRANK_KEY, MACHINE, MACHINE_KEY } from '../ui/art/gachaMachine';
 
 /** Tickets que devuelve una tirada repetida. */
-const DUPLICATE_REFUND = 30;
+/** Tickets que devuelve un repetido: menos que una tirada (si no, tirar daría tickets gratis). */
+const DUPLICATE_REFUND = Math.max(1, Math.round(PULL_COST * 0.3));
 const BTN = { w: 176, h: 50, y: 470, gap: 14 };
 /** Máquina: posición (diseño 960×640) y escala de sus píxeles. */
 const MAC = { x: 190, y: 330, s: 3 };
@@ -121,7 +122,7 @@ export class GachaScene extends Phaser.Scene {
     const rates = RARITIES.map((r) => `${RARITY_LABEL[r]} ${GACHA_RATES[r]}%`).join(' · ');
     this.add.text(662, 522, rates, { fontFamily: FONT, fontSize: '15px', color: '#ffffff' }).setOrigin(0.5).setShadow(1, 1, '#101828', 0);
     this.add
-      .text(662, 546, `x10: una gratis y al menos un Épico o mejor · Repetido: +${DUPLICATE_REFUND} tickets`, {
+      .text(662, 546, `x10: al menos un Épico o mejor · Repetido: +${DUPLICATE_REFUND} tickets`, {
         fontFamily: FONT, fontSize: '14px', color: '#ffd34d',
       })
       .setOrigin(0.5).setShadow(1, 1, '#101828', 0);

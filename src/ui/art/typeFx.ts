@@ -118,3 +118,81 @@ export function statusPuff(scene: Phaser.Scene, x: number, y: number, status: st
     });
   }
 }
+
+// --- Proyectiles con la forma de su tipo (supervisor, 19/10) ---
+// Cada disparo es la forma del tipo (llama, gota, rayo, hoja, copo…) en 10x10 con contorno oscuro y brillo,
+// en los colores del tipo (sin teñir). Cómo se orienta al volar:
+//   'tail'  la punta del dibujo queda detrás (llama, gota): bola de fuego, gota que cae hacia delante
+//   'head'  la parte redonda va delante (fantasma)
+//   'aim'   apunta hacia donde va (rayo, hoja, esquirla, ráfaga)
+//   'spin'  gira sobre sí mismo (estrella, roca, copo, burbuja, anillo, punto)
+export type ProjMode = 'tail' | 'head' | 'aim' | 'spin';
+const PROJ_MODE: Record<FxShape, ProjMode> = {
+  flame: 'tail', drop: 'tail', wisp: 'head', bolt: 'aim', leaf: 'aim', shard: 'aim', gust: 'aim',
+  star: 'spin', rock: 'spin', flake: 'spin', bubble: 'spin', ring: 'spin', dot: 'spin',
+};
+/** Giro extra para que las formas en diagonal (rayo, hoja, esquirla) apunten bien. */
+const PROJ_OFFSET: Partial<Record<FxShape, number>> = { bolt: Math.PI * 0.75, leaf: Math.PI * 0.75, shard: Math.PI * 0.25, gust: Math.PI / 2 };
+
+export const projKey = (type: string) => `proj-${TYPE_FX[type] ? type : 'normal'}`;
+export const projMode = (type: string): ProjMode => PROJ_MODE[fxFor(type).shape];
+
+/** Ángulo (radianes) del dibujo para un proyectil que va en dirección `a`. */
+export function projRotation(type: string, a: number): number {
+  const shape = fxFor(type).shape;
+  switch (PROJ_MODE[shape]) {
+    case 'tail':
+      return a - Math.PI / 2;
+    case 'head':
+      return a + Math.PI / 2;
+    case 'aim':
+      return a + (PROJ_OFFSET[shape] ?? 0) + Math.PI / 2;
+    default:
+      return 0;
+  }
+}
+
+/** Crea (una vez) las texturas de proyectil de todos los tipos (10x10). */
+export function bakeProjectiles(scene: Phaser.Scene) {
+  for (const type of Object.keys(TYPE_FX)) {
+    const key = projKey(type);
+    if (scene.textures.exists(key)) continue;
+    const fx = TYPE_FX[type];
+    const rows = SHAPES[fx.shape];
+    const on = (x: number, y: number) => y >= 0 && y < 8 && x >= 0 && x < 8 && rows[y][x] === 'X';
+    const g = scene.make.graphics({}, false);
+    // Contorno: cualquier hueco que toca la forma
+    for (let y = -1; y <= 8; y++) {
+      for (let x = -1; x <= 8; x++) {
+        if (on(x, y)) continue;
+        if (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1)) g.fillStyle(0x18202c, 1).fillRect(x + 1, y + 1, 1, 1);
+      }
+    }
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        if (!on(x, y)) continue;
+        // Brillo arriba a la izquierda, sombra abajo a la derecha
+        const edgeTL = !on(x - 1, y) || !on(x, y - 1);
+        const edgeBR = !on(x + 1, y) || !on(x, y + 1);
+        const c = edgeTL ? fx.colors[1] : edgeBR ? shadeHex(fx.colors[0], -0.25) : fx.colors[0];
+        g.fillStyle(c, 1).fillRect(x + 1, y + 1, 1, 1);
+      }
+    }
+    // Un punto de luz
+    for (let y = 0; y < 8; y++) {
+      const x = rows[y].indexOf('X');
+      if (x >= 0 && on(x + 1, y + 1)) {
+        g.fillStyle(fx.colors[2], 1).fillRect(x + 2, y + 2, 1, 1);
+        break;
+      }
+    }
+    g.generateTexture(key, 10, 10);
+    g.destroy();
+    scene.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+  }
+}
+
+function shadeHex(c: number, f: number) {
+  const ch = (v: number) => Math.max(0, Math.min(255, Math.round(f >= 0 ? v + (255 - v) * f : v * (1 + f))));
+  return (ch((c >> 16) & 255) << 16) | (ch((c >> 8) & 255) << 8) | ch(c & 255);
+}

@@ -57,8 +57,8 @@ export const GACHA_RATES: Readonly<Record<Rarity, number>> = {
   legendary: 1,
 };
 
-/** Tickets por tirada. Ajustable cuando sepamos cuánto se gana por partida. */
-export const PULL_COST = 100;
+/** Tickets por tirada (Roberto, 19/10: x1 = 10, x10 = 100; antes 100 y 900 y se ganaban muy pocas). */
+export const PULL_COST = 10;
 
 export type RarityPools = Record<Rarity, number[]>;
 
@@ -114,8 +114,8 @@ export function pull(
 
 // --- Tirada x10 (supervisor) ---
 
-/** Coste de 10 tiradas de golpe: una gratis respecto a tirar de una en una. */
-export const PULL10_COST = PULL_COST * 9;
+/** Coste de 10 tiradas de golpe (con rareza épica asegurada). */
+export const PULL10_COST = PULL_COST * 10;
 /** En una tirada x10 al menos una sale de esta rareza o mejor. */
 export const PULL10_GUARANTEE: Rarity = 'epic';
 
