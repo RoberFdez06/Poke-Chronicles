@@ -5,6 +5,7 @@
 import { activeStorage, type StorageLike } from './storage.ts';
 import { computeStats, type MovePower } from './items.ts';
 import { isMode, type GameMode } from './modes.ts';
+import { isDifficulty, type Difficulty } from './difficulty.ts';
 import { emptyCounters, isCounters, type RunCounters } from './runHistory.ts';
 import { BERRIES, POTIONS, type ShopSlot } from './loot.ts';
 
@@ -20,8 +21,9 @@ export const RUN_SLOTS = 3;
  *     sin sala secreta, de desafío ni cofres.
  * v8: objeto activo (y su carga) y objetos activos en el suelo.
  * v11: desafío diario (los v10 no lo eran).
+ * v12: dificultad (los v11 eran todos Normal).
  */
-export const RUN_VERSION = 11;
+export const RUN_VERSION = 12;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -98,6 +100,8 @@ export interface RunSave {
   counters: RunCounters;
   /** Desafío diario (T34): día y si es la partida que cuenta para el récord; null = partida normal. */
   daily: DailyRun | null;
+  /** Fácil, Normal o Difícil (T40). */
+  difficulty: Difficulty;
 }
 
 export interface DailyRun {
@@ -185,6 +189,11 @@ function migrateV10(d: RunSave): RunSave {
   return { ...d, version: 11, daily: null };
 }
 
+/** v11 no tenía dificultad: era la Normal. */
+function migrateV11(d: RunSave): RunSave {
+  return { ...d, version: 12, difficulty: 'normal' };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -205,6 +214,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 8) d = migrateV8(d);
   if (d.version === 9) d = migrateV9(d);
   if (d.version === 10) d = migrateV10(d);
+  if (d.version === 11) d = migrateV11(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
@@ -222,7 +232,8 @@ export function parseRun(raw: string | null): RunSave | null {
     Array.isArray(d.revealedDoors) && d.revealedDoors.every((k) => typeof k === 'string') &&
     (d.active === null || (!!d.active && typeof d.active.id === 'string' && isInt(d.active.charge) && d.active.charge >= 0)) &&
     typeof d.healed === 'boolean' && isCounters(d.counters) &&
-    (d.daily === null || (!!d.daily && isInt(d.daily.day) && typeof d.daily.counts === 'boolean'));
+    (d.daily === null || (!!d.daily && isInt(d.daily.day) && typeof d.daily.counts === 'boolean')) &&
+    isDifficulty(d.difficulty);
   return ok ? d : null;
 }
 

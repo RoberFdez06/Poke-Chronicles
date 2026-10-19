@@ -6,6 +6,7 @@ import { dailyStarter, dailyText } from '../data/daily';
 import { dayNumber } from '../data/gacha';
 import { fetchSpeciesName } from '../data/pokeapi';
 import { FLOOR_COUNT } from '../level/progression';
+import { DIFFICULTIES, DIFFICULTY_DESC, DIFFICULTY_LABEL, type Difficulty } from '../data/difficulty';
 import { MenuList, NavInput, UI } from '../ui/nav';
 import { addBackButton } from '../ui/cards';
 import { drawBox, fadeIn, goTo } from '../ui/theme';
@@ -36,6 +37,10 @@ export class ModeScene extends Phaser.Scene {
   private day = 0;
   /** Nombre en español del inicial del día (llega de PokeAPI o del índice). */
   private dailyName = '';
+  /** Dificultad elegida (T40): se cambia con izquierda/derecha o con las flechas de la fila de abajo. */
+  private diff: Difficulty = 'normal';
+  private diffText!: Phaser.GameObjects.Text;
+  private diffDesc!: Phaser.GameObjects.Text;
 
   constructor() {
     super('Mode');
@@ -55,7 +60,8 @@ export class ModeScene extends Phaser.Scene {
     addBackButton(this, () => this.back());
     this.add.text(480, 60, 'Elige modo de juego', { fontFamily: UI.FONT, fontSize: '36px', color: '#ffffff' }).setOrigin(0.5);
 
-    this.records = loadRecords();
+    this.diff = 'normal';
+    this.records = loadRecords(undefined, this.diff);
     this.day = dayNumber();
     this.dailyName = '';
     void fetchSpeciesName(dailyStarter(this.day))
@@ -75,8 +81,28 @@ export class ModeScene extends Phaser.Scene {
       .text(510, 430, '', { fontFamily: UI.FONT, fontSize: '19px', fontStyle: 'bold', color: '#b8860b', wordWrap: { width: 370 } })
       .setLineSpacing(4);
 
+    // Fila de la dificultad: ◀ Normal ▶ (clic en las flechas o en el nombre; izquierda/derecha con teclado o mando)
+    const arrow = (x: number, label: string, d: number) =>
+      this.add
+        .text(x, 568, label, { fontFamily: UI.FONT, fontSize: '28px', color: '#ffd34d' })
+        .setOrigin(0.5)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => this.changeDiff(d));
+    this.add.text(330, 568, 'Dificultad:', { fontFamily: UI.FONT, fontSize: '22px', color: '#ffffff' }).setOrigin(1, 0.5);
+    arrow(360, '◀', -1);
+    arrow(560, '▶', 1);
+    this.diffText = this.add
+      .text(460, 568, '', { fontFamily: UI.FONT, fontSize: '24px', fontStyle: 'bold', color: '#ffffff' })
+      .setOrigin(0.5)
+      .on('pointerdown', () => this.changeDiff(1));
+    this.diffDesc = this.add
+      .text(590, 568, '', { fontFamily: UI.FONT, fontSize: '15px', color: '#ffffff', wordWrap: { width: 330 } })
+      .setOrigin(0, 0.5)
+      .setAlpha(0.85);
+    this.paintDiff();
+
     this.add
-      .text(480, 600, 'Flechas, ratón o mando para elegir · Enter, clic o A para empezar · Esc, B o "Volver" para cambiar de Pokémon', {
+      .text(480, 616, 'Arriba/abajo: modo · Izquierda/derecha: dificultad · Enter, clic o A: empezar · Esc, B o "Volver": cambiar de Pokémon', {
         fontFamily: UI.FONT,
         fontSize: '15px',
         color: '#ffffff',
@@ -92,10 +118,27 @@ export class ModeScene extends Phaser.Scene {
     if (i === DAILY_INDEX) {
       // Mismo inicial para todos; solo la primera partida del día cuenta
       const counts = beginDaily(this.day);
-      goTo(this, 'Game', { starterId: dailyStarter(this.day), slot: this.args.slot, mode: 'normal', daily: { day: this.day, counts } });
+      goTo(this, 'Game', { starterId: dailyStarter(this.day), slot: this.args.slot, mode: 'normal', daily: { day: this.day, counts }, difficulty: 'normal' });
       return;
     }
-    goTo(this, 'Game', { starterId: this.args.starterId, slot: this.args.slot, mode: MODES[i] });
+    goTo(this, 'Game', { starterId: this.args.starterId, slot: this.args.slot, mode: MODES[i], difficulty: this.diff });
+  }
+
+  private changeDiff(d: number) {
+    if (this.leaving) return;
+    const n = DIFFICULTIES.length;
+    this.diff = DIFFICULTIES[(DIFFICULTIES.indexOf(this.diff) + d + n) % n];
+    this.records = loadRecords(undefined, this.diff);
+    this.paintDiff();
+    this.shown = -1;
+  }
+
+  private paintDiff() {
+    const colors: Record<Difficulty, string> = { easy: '#8fe39a', normal: '#ffffff', hard: '#ff8a7a' };
+    this.diffText.setText(DIFFICULTY_LABEL[this.diff]).setColor(colors[this.diff]);
+    // Área de clic fija (el texto cambia de largo)
+    this.diffText.setInteractive(new Phaser.Geom.Rectangle(0, 0, Math.max(120, this.diffText.width), this.diffText.height), Phaser.Geom.Rectangle.Contains);
+    this.diffDesc.setText(DIFFICULTY_DESC[this.diff]);
   }
 
   private back() {
@@ -109,13 +152,14 @@ export class ModeScene extends Phaser.Scene {
     const s = this.nav.read();
     if (s.back) return this.back();
     if (s.dy !== 0) this.list.move(s.dy);
+    if (s.dx !== 0) this.changeDiff(s.dx);
     if (s.ok) this.list.activate();
     // La descripción sigue a la opción seleccionada (con teclado, mando o pasando el ratón)
     if (this.list.selected !== this.shown) {
       this.shown = this.list.selected;
       if (this.shown === DAILY_INDEX) {
         const who = this.dailyName || 'cargando…';
-        this.desc.setText(`Desafío diario\n\nNormal con los mismos pisos, jefes y objetos para todos hoy. Inicial del día: ${who}.`);
+        this.desc.setText(`Desafío diario\n\nNormal con los mismos pisos, jefes y objetos para todos hoy (siempre en Normal). Inicial del día: ${who}.`);
         this.record.setText(dailyText(loadDaily(), this.day, FLOOR_COUNT));
         return;
       }

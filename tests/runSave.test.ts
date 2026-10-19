@@ -47,6 +47,7 @@ function sample(): RunSave {
     healed: false,
     counters: { seconds: 125.5, kills: 14, damage: 900, newRecord: false },
     daily: null,
+    difficulty: 'hard',
   };
 }
 
@@ -185,6 +186,15 @@ test('un guardado v10 se migra como partida no diaria', () => {
   const daily = parseRun(JSON.stringify({ ...sample(), daily: { day: 20000, counts: true } }));
   assert.deepEqual(daily?.daily, { day: 20000, counts: true });
   assert.equal(parseRun(JSON.stringify({ ...sample(), daily: { day: 'hoy', counts: true } })), null);
+});
+
+test('un guardado v11 se migra a dificultad Normal', () => {
+  const { difficulty: _d, ...v11 } = sample();
+  const run = parseRun(JSON.stringify({ ...v11, version: 11 }));
+  assert.ok(run);
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.difficulty, 'normal');
+  assert.equal(parseRun(JSON.stringify({ ...sample(), difficulty: 'imposible' })), null);
 });
 
 test('un piso no válido invalida el guardado', () => {

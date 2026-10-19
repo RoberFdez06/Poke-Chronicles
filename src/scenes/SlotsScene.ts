@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { fitDesign } from '../ui/layout';
 import { loadAllRuns, RunSave } from '../data/runSave';
 import { MODE_LABEL, progressText } from '../data/modes';
+import { withDifficulty } from '../data/difficulty';
 import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
 import { addHpBar, ARROW, drawBox, fadeIn, goTo, strokePixelFrame } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
@@ -19,7 +20,7 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 function describe(run: RunSave): string {
   const date = new Date(run.savedAt).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   const rooms = run.mode === 'normal' || run.mode === 'endless' ? ` · Salas ${run.cleared.length}/${run.roomCount}` : '';
-  return `${capitalize(run.starterName)} · ${run.daily ? 'Desafío diario' : MODE_LABEL[run.mode]} · ${progressText(run.mode, run.floor)}${rooms} · PS ${Math.ceil(run.hp)} · ` +
+  return `${capitalize(run.starterName)} · ${withDifficulty(run.daily ? 'Desafío diario' : MODE_LABEL[run.mode], run.difficulty)} · ${progressText(run.mode, run.floor)}${rooms} · PS ${Math.ceil(run.hp)} · ` +
     `${run.passives.length} objetos · ${date}`;
 }
 

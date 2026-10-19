@@ -6,6 +6,7 @@ import { typeColor, typeNameEs } from '../data/types';
 import { addTickets } from '../data/save';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
 import { dailyFloorSeed, dailyRng } from '../data/daily';
+import { applyDifficulty, scaleHeal, scaleTickets, withDifficulty, type Difficulty } from '../data/difficulty';
 import { loadSpeciesIndex } from '../data/speciesIndex';
 import {
   bossTicketsFor,
@@ -217,6 +218,8 @@ export interface GameData {
   carry?: FloorCarry;
   /** Desafío diario (T34): lo decide ModeScene al empezar y pasa de piso en piso. */
   daily?: DailyRun | null;
+  /** Fácil, Normal o Difícil (T40); el desafío diario siempre es Normal. */
+  difficulty?: Difficulty;
 }
 
 /** Una de las especies de enemigo del piso. */
@@ -377,6 +380,7 @@ export class GameScene extends Phaser.Scene {
   /** Desafío diario (null = partida normal) y el azar fijo de cada cosa del piso (ver rng). */
   private daily: DailyRun | null = null;
   private dailyRngs = new Map<number, () => number>();
+  private diff: Difficulty = 'normal';
   /** Oleadas: hay una ronda en marcha (sus enemigos ya han salido). */
   private waveActive = false;
   private floorSeed = 0;
@@ -518,6 +522,7 @@ export class GameScene extends Phaser.Scene {
     this.mode = this.resume?.mode ?? data?.mode ?? 'normal';
     this.daily = this.resume ? this.resume.daily : (data?.daily ?? null);
     this.dailyRngs.clear();
+    this.diff = this.resume ? this.resume.difficulty : (data?.difficulty ?? 'normal');
   }
 
   create() {
@@ -637,7 +642,7 @@ export class GameScene extends Phaser.Scene {
       this.bossHistory = [...r.bossHistory];
     }
     this.waveActive = false;
-    this.difficulty = difficultyFor(this.level());
+    this.difficulty = applyDifficulty(difficultyFor(this.level()), this.diff);
     this.biome = biomeFor(this.mode, this.mode === 'waves' ? this.level() : this.floorNum);
     // Al continuar, el piso se regenera igual con la misma semilla; cada piso nuevo es más grande.
     // Oleadas y Rush de jefes se juegan en una sola sala
@@ -917,6 +922,16 @@ export class GameScene extends Phaser.Scene {
     return r;
   }
 
+  /** Tickets ganados con la dificultad (T40): se suman al total y a los de la partida; devuelve cuántos. */
+  private giveTickets(base: number): number {
+    const n = scaleTickets(base, this.diff);
+    if (n > 0) {
+      this.earned += n;
+      addTickets(n);
+    }
+    return n;
+  }
+
   /** Nivel de dificultad: el piso, el jefe por el que vas o, en Oleadas, el que toca a la ronda. */
   private level(): number {
     return this.mode === 'waves' ? waveSpec(this.floorNum).level : this.floorNum;
@@ -931,7 +946,7 @@ export class GameScene extends Phaser.Scene {
   private toFoeKinds(cards: readonly PokemonCard[], index: readonly SpeciesFact[]): FoeKind[] {
     return cards.map((c) => ({
       key: `foe-${c.id}`,
-      behavior: behaviorFor(c.types),
+      behavior: behaviorForSpecies(c.types, c.id),
       bst: index.find((s) => s.id === c.id)?.bst ?? 300,
       type: c.types[0] ?? 'normal',
       types: c.types.length > 0 ? [...c.types] : ['normal'],
@@ -1254,7 +1269,7 @@ export class GameScene extends Phaser.Scene {
     // En Oleadas el cartel de la ronda lo pone startWave
     if (this.mode !== 'waves') {
       const where = progressText(this.mode, this.floorNum);
-      const head = r ? 'Partida cargada' : (this.daily ? 'Desafío diario' : MODE_LABEL[this.mode]);
+      const head = r ? 'Partida cargada' : withDifficulty(this.daily ? 'Desafío diario' : MODE_LABEL[this.mode], this.diff);
       this.notify(`${head}
 ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
@@ -1420,6 +1435,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       healed: this.healedRun,
       counters: { ...this.counters },
       daily: this.daily ? { ...this.daily } : null,
+      difficulty: this.diff,
     });
   }
 
@@ -1434,7 +1450,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const data: PauseData = {
       starterName: this.starterName,
       slot: this.slot,
-      modeLabel: this.daily ? 'Desafío diario' : MODE_LABEL[this.mode],
+      modeLabel: withDifficulty(this.daily ? 'Desafío diario' : MODE_LABEL[this.mode], this.diff),
       progress: progressText(this.mode, this.floorNum),
       showRooms: this.mode === 'normal' || this.mode === 'endless',
       hp: this.hp,
@@ -3032,7 +3048,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       went = true;
       cam.fadeOut(300, 0, 0, 0);
       cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-        this.scene.restart({ slot: this.slot, starterId: this.starterId, mode: this.mode, carry, daily: this.daily } satisfies GameData);
+        this.scene.restart({ slot: this.slot, starterId: this.starterId, mode: this.mode, carry, daily: this.daily, difficulty: this.diff } satisfies GameData);
       });
     };
     if (!door) return go();
@@ -3548,9 +3564,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else faintEnemy(this, enemy, feetY, ecolor);
     if (mini) {
       // Premio del minijefe: un objeto y tickets
-      const bonus = minibossTicketsFor(this.floorNum);
-      this.earned += bonus;
-      addTickets(bonus);
+      const bonus = this.giveTickets(minibossTicketsFor(this.floorNum));
       const ex = enemy.x;
       const ey = enemy.y;
       const roomId = this.current.id;
@@ -3661,9 +3675,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // Con los PS al máximo la baya se queda en el suelo
       if (!canHeal(this.hp, this.stats.maxHp)) return;
       const b = BERRIES[drop.id];
-      this.hp = healed(this.hp, this.stats.maxHp, b.heal);
+      const amount = scaleHeal(b.heal, this.diff);
+      this.hp = healed(this.hp, this.stats.maxHp, amount);
       sfx('heal');
-      this.popup(this.player.x, this.player.y - 50, `${b.name} +${b.heal} PS`, b.color);
+      this.popup(this.player.x, this.player.y - 50, `${b.name} +${amount} PS`, b.color);
     } else if (drop.kind === 'coin') {
       const value = Math.round(drop.value * this.stats.coinMul);
       this.coins += value;
@@ -3727,7 +3742,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.ended || this.transitioning) return;
     if (this.centerUsed) return this.notify('Ya te has curado en este piso', { kind: 'warning', icon: 'center' });
     if (!canHeal(this.hp, this.stats.maxHp)) return this.notify('Ya tienes todos los PS', { kind: 'warning', icon: 'center' });
-    const amount = centerHeal(this.stats.maxHp);
+    const amount = scaleHeal(centerHeal(this.stats.maxHp), this.diff);
     this.hp = healed(this.hp, this.stats.maxHp, amount);
     this.centerUsed = true;
     sfx('heal');
@@ -3802,8 +3817,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const g = slot.goods;
     if (g.kind === 'potion') {
       const p = POTIONS[g.id];
-      this.hp = healed(this.hp, this.stats.maxHp, p.heal);
-      this.notify(`${p.name}\n+${p.heal} PS`, { kind: 'heal', icon: 'potion' });
+      const amount = scaleHeal(p.heal, this.diff);
+      this.hp = healed(this.hp, this.stats.maxHp, amount);
+      this.notify(`${p.name}\n+${amount} PS`, { kind: 'heal', icon: 'potion' });
     } else if (g.kind === 'move') {
       this.gainItem({ kind: 'move', move: g.move });
     } else {
@@ -3996,10 +4012,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const round = this.floorNum;
     this.foeShots.clear(true, true);
     this.hp = Math.min(this.stats.maxHp, this.hp + this.stats.healOnClear);
-    const reward = waveTickets(round);
-    this.earned += reward;
-    addTickets(reward);
-    const record = submitRecord('waves', round);
+    const reward = this.giveTickets(waveTickets(round));
+    const record = submitRecord('waves', round, undefined, this.diff);
     if (record) this.counters.newRecord = true;
 
     let text = `¡Ronda ${round} superada! +${reward} tickets`;
@@ -4015,7 +4029,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const prevLevel = this.level();
     this.floorNum = round + 1;
     if (shouldEvolve(this.mode, this.floorNum)) void this.evolve();
-    this.difficulty = difficultyFor(this.level());
+    this.difficulty = applyDifficulty(difficultyFor(this.level()), this.diff);
     this.saveNow();
     const ready = this.level() !== prevLevel ? this.reloadFoes(this.level()).catch(() => undefined) : Promise.resolve();
     void ready.then(() => !this.ended && this.time.delayedCall(400, () => this.startWave(1400)));
@@ -4051,19 +4065,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
     // En Rush de jefes no hay salas que den tickets, así que cada jefe da algo menos que en un piso
     const bossReward = bossTicketsFor(this.mode === 'bossrush' ? Math.ceil(this.floorNum / 2) : this.floorNum);
-    const reward = room.kind === 'boss' ? bossReward : roomTicketsFor(this.floorNum);
-    this.earned += reward;
-    addTickets(reward);
+    const reward = this.giveTickets(room.kind === 'boss' ? bossReward : roomTicketsFor(this.floorNum));
 
     if (room.kind === 'boss') {
       // Récord: pisos completados (Normal, Infinito) o jefes vencidos (Rush)
-      const record = submitRecord(this.mode, this.floorNum);
+      const record = submitRecord(this.mode, this.floorNum, undefined, this.diff);
       if (record) this.counters.newRecord = true;
       if (isFinalFloor(this.mode, this.floorNum)) {
         // Reto final superado
         this.mission({ kind: 'win' });
-        this.earned += FINALE_BONUS;
-        addTickets(FINALE_BONUS);
+        this.giveTickets(FINALE_BONUS);
         this.finish(true, `¡Has superado el reto final!\n+${this.earned} tickets en total\nPulsa R, Start o haz clic para ver el resumen`);
         return;
       }

@@ -479,7 +479,13 @@ récord en el navegador (`pokeisaac.records`, en `src/data/save.ts`), que se ve 
 | **Rush de jefes** | Solo jefes legendarios en una arena; tras cada uno, un objeto y una trampilla al siguiente. | Jefes vencidos |
 | **Desafío diario** | Una partida de Normal igual para todos ese día: inicial del día (uno de los iniciales de cada región), y pisos, jefes, tesoros, cofres, tienda y objetos que caen salen de la semilla del día (`src/data/daily.ts`). Solo cuenta la **primera** partida del día (aunque la dejes a medias); se puede repetir sin récord. | Pisos de hoy, mejor resultado y racha de días (`pokeisaac.daily`) |
 
-Las partidas de cualquier modo se guardan en los huecos (`RUN_VERSION` 11; los guardados de versiones
+**Dificultad** (`src/data/difficulty.ts`): en la pantalla de modos, con izquierda/derecha (teclado o mando) o clic en ◀ ▶,
+se elige Fácil, Normal o Difícil. Fácil: enemigos con 75 % de vida y 65 % de daño, curas x1,3 y la mitad de tickets.
+Difícil: 130 % de vida, 135 % de daño, curas x0,8 y 1,5 veces los tickets. Cada dificultad tiene sus récords
+(Normal en `pokeisaac.records`, las otras en `pokeisaac.records.easy` / `.hard`). Se ve en la pausa y en el hueco.
+El desafío diario siempre es Normal.
+
+Las partidas de cualquier modo se guardan en los huecos (`RUN_VERSION` 12; los guardados de versiones
 anteriores se migran solos).
 En Oleadas, al continuar se repite la ronda en la que estabas.
 

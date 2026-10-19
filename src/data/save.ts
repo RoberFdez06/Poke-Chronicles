@@ -8,6 +8,7 @@ import { activeStorage, type StorageLike } from './storage.ts';
 import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } from './modes.ts';
 import { applyMissionEvent, parseMissions, type Completed, type MissionEvent, type MissionState } from './missions.ts';
 import { dayNumber } from './gacha.ts';
+import { recordsKeyFor, type Difficulty } from './difficulty.ts';
 import { emptyDaily, parseDaily, startDaily, withDailyResult, type DailyState } from './daily.ts';
 import { parseTutorial, type TutorialState } from './tutorial.ts';
 import { parseHistory, withRun, type RunRecord } from './runHistory.ts';
@@ -147,20 +148,21 @@ export function spendTickets(amount: number, storage: StorageLike | null = brows
 
 export const RECORDS_KEY = 'pokeisaac.records';
 
-export function loadRecords(storage: StorageLike | null = browserStorage()): Records {
+/** Récords de una dificultad (T40): cada una tiene los suyos; los de Normal son los de siempre. */
+export function loadRecords(storage: StorageLike | null = browserStorage(), diff: Difficulty = 'normal'): Records {
   try {
-    return parseRecords(storage?.getItem(RECORDS_KEY) ?? null);
+    return parseRecords(storage?.getItem(recordsKeyFor(RECORDS_KEY, diff)) ?? null);
   } catch {
     return emptyRecords();
   }
 }
 
 /** Guarda el resultado si mejora el récord del modo; devuelve si lo ha mejorado. */
-export function submitRecord(mode: GameMode, value: number, storage: StorageLike | null = browserStorage()): boolean {
-  const { records, improved } = withRecord(loadRecords(storage), mode, value);
+export function submitRecord(mode: GameMode, value: number, storage: StorageLike | null = browserStorage(), diff: Difficulty = 'normal'): boolean {
+  const { records, improved } = withRecord(loadRecords(storage, diff), mode, value);
   if (improved) {
     try {
-      storage?.setItem(RECORDS_KEY, JSON.stringify(records));
+      storage?.setItem(recordsKeyFor(RECORDS_KEY, diff), JSON.stringify(records));
     } catch {
       // sin almacenamiento: no se guarda
     }
@@ -379,6 +381,8 @@ export const PROGRESS_KEYS: readonly string[] = [
   TICKETS_KEY,
   COINS_KEY,
   RECORDS_KEY,
+  recordsKeyFor(RECORDS_KEY, 'easy'),
+  recordsKeyFor(RECORDS_KEY, 'hard'),
   DAILY_KEY,
   UPGRADES_KEY,
   SHINIES_KEY,

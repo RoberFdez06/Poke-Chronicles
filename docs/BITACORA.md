@@ -846,3 +846,21 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - Dudas: las mejoras permanentes del inicial del día sí cuentan (no es del todo igual para todos); el récord de Normal
   también se actualiza con el desafío. Al continuar una partida diaria guardada, el azar de objetos del piso empieza
   de nuevo (las semillas del piso y de las salas sí se conservan).
+
+## T40 — Selector de dificultad
+- `src/data/difficulty.ts` (tests `tests/difficulty.test.ts`): Fácil/Normal/Difícil con multiplicadores de vida y daño
+  enemigo (`applyDifficulty` sobre la dificultad del piso, así afecta a enemigos, minijefes y jefes), curas
+  (`scaleHeal`: bayas, pociones y Centro; no la curación de objetos) y tickets (`scaleTickets`: en Fácil/Difícil la
+  parte decimal se sortea, así un ticket de sala da 0-1 en Fácil y 1-2 en Difícil, con la media exacta).
+- Récords por dificultad: `loadRecords(storage, diff)` / `submitRecord(modo, valor, storage, diff)`; Normal sigue en
+  `pokeisaac.records` (los récords de antes no se pierden), las otras en `.easy` / `.hard` (también se borran con
+  "Borrar progreso"). El menú principal (MenuScene, que no toco) sigue enseñando los de Normal.
+- `RunSave.difficulty` (**RUN_VERSION 12**, los v11 pasan a Normal) y `GameData.difficulty`; pasa de piso a piso.
+  GameScene: `giveTickets()` junta los cinco sitios que daban tickets. La pausa, los huecos y el cartel de inicio
+  dicen p. ej. "Infinito (Difícil)" (`withDifficulty`).
+- ModeScene: fila "Dificultad: ◀ Normal ▶" bajo la lista (izquierda/derecha, clic en las flechas o en el nombre) con
+  su descripción; el récord del panel es el de la dificultad elegida. El desafío diario va siempre en Normal.
+- N19: el commit de la T34 se llevó `src/scenes/TitleScene.ts` del supervisor (iba con `git add -A`). Desde aquí
+  añado solo mis archivos; en GameScene he subido solo mis trozos (`git apply --cached` con el diff filtrado) y he
+  dejado sin commit los del supervisor (comportamientos nuevos de enemigos, zarpazos). El test de enemigos que falla
+  (`cada tipo tiene un comportamiento…`) es de su enemies.ts a medias, no de esta tarea.

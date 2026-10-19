@@ -289,7 +289,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
   mercader ambulante (otros objetos y precios), altar (das PS máximos a cambio de un objeto), cofre trampa (puede
   ser un enemigo). Iconos en el minimapa al descubrirlas. Con teclado, ratón y mando. Lógica pura con tests.
 
-## [ ] T40 — Selector de dificultad
+## [x] T40 — Selector de dificultad
 - Fácil, Normal y Difícil al elegir modo: multiplicadores de vida/daño enemigo, curación y premio (Difícil da más
   tickets, Fácil menos). Récords separados por dificultad. Se ve en la pausa y en el hueco guardado.
 
