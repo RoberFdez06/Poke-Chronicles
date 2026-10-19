@@ -3,6 +3,7 @@
 import { MUSIC, SFX, midiToFreq, stepSeconds, type AudioSettings, type SfxName, type Tone } from '../data/sounds';
 import { loadAudio, saveAudio } from '../data/save';
 import { fetchCryUrl } from '../data/pokeapi';
+import type { MusicTrack } from '../data/music';
 
 let ctx: AudioContext | null = null;
 let sfxGain: GainNode | null = null;
@@ -13,6 +14,9 @@ let musicWanted = false;
 let musicTimer: number | undefined;
 let nextStepAt = 0;
 let step = 0;
+/** Pista que suena: la del menú por defecto; playTrack() la cambia (biomas y jefe, ver data/music.ts). */
+const MENU_TRACK: MusicTrack = { bpm: MUSIC.bpm, lead: 'square', melody: MUSIC.melody, bass: MUSIC.bass };
+let track: MusicTrack = MENU_TRACK;
 
 /** Crea el contexto de audio (solo tras un gesto del jugador) y aplica el volumen guardado. */
 function ensure(): AudioContext | null {
@@ -112,6 +116,17 @@ export async function cry(id: number) {
 
 // --- Música: bucle programado por adelantado (melodía + bajo) ---
 
+/** Cambia la música a otra pista (del bioma, del jefe…) sin cortes raros: empieza desde su primer compás. */
+export function playTrack(next: MusicTrack) {
+  if (track === next) return;
+  track = next;
+  step = 0;
+  playMusic();
+}
+
+/** Vuelve a la música del menú. */
+export const playMenuMusic = () => playTrack(MENU_TRACK);
+
 /** Empieza (o sigue) la música de fondo. */
 export function playMusic() {
   musicWanted = true;
@@ -128,15 +143,19 @@ function startLoop() {
   const c = ctx;
   if (!c || !musicGain || musicTimer !== undefined) return;
   nextStepAt = c.currentTime + 0.1;
-  const dur = stepSeconds(MUSIC.bpm);
+  let dur = stepSeconds(track.bpm);
   musicTimer = window.setInterval(() => {
     // Programa los pasos del próximo cuarto de segundo
     while (nextStepAt < c.currentTime + 0.25) {
-      const i = step % MUSIC.melody.length;
-      const m = MUSIC.melody[i];
-      const b = MUSIC.bass[i];
+      dur = stepSeconds(track.bpm);
+      const i = step % track.melody.length;
+      const m = track.melody[i];
+      const b = track.bass[i % track.bass.length];
+      const d = track.drums ? track.drums[i % track.drums.length] : 0;
       if (settings.music > 0) {
-        if (m !== null) playTone(c, musicGain!, { freq: midiToFreq(m), dur: dur * 0.9, wave: 'square', gain: 0.18 }, nextStepAt);
+        if (m !== null) playTone(c, musicGain!, { freq: midiToFreq(m), dur: dur * 0.9, wave: track.lead, gain: track.lead === 'triangle' ? 0.3 : 0.16 }, nextStepAt);
+        if (d === 1) playTone(c, musicGain!, { freq: 90, slideTo: 40, dur: 0.12, wave: 'sine', gain: 0.5 }, nextStepAt);
+        if (d === 2) playTone(c, musicGain!, { freq: 1200, dur: 0.08, wave: 'noise', gain: 0.18 }, nextStepAt);
         if (b !== null) playTone(c, musicGain!, { freq: midiToFreq(b), dur: dur * 1.8, wave: 'triangle', gain: 0.35 }, nextStepAt);
       }
       nextStepAt += dur;
