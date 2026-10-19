@@ -7,6 +7,8 @@ import {
   FALLBACK_ENEMIES,
   MIN_ENEMY_POOL,
   behaviorFor,
+  behaviorForSpecies,
+  ALT_BEHAVIOR_BY_TYPE,
   enemyBstRange,
   enemyPool,
   enemyStats,
@@ -76,7 +78,10 @@ test('elige especies distintas y es determinista', () => {
 
 test('cada tipo tiene un comportamiento y hay al menos cuatro distintos', () => {
   assert.equal(Object.keys(BEHAVIOR_BY_TYPE).length, 18);
-  assert.deepEqual(new Set(Object.values(BEHAVIOR_BY_TYPE)), new Set(BEHAVIORS));
+  // Entre los de cada tipo y los alternativos (supervisor) salen todos
+  assert.deepEqual(new Set([...Object.values(BEHAVIOR_BY_TYPE), ...Object.values(ALT_BEHAVIOR_BY_TYPE)]), new Set(BEHAVIORS));
+  assert.equal(behaviorForSpecies(['rock'], 74), 'burrow');
+  assert.equal(behaviorForSpecies(['rock'], 75), 'charge');
   assert.ok(BEHAVIORS.length >= 4);
   assert.equal(behaviorFor(['fire', 'flying']), 'shoot');
   assert.equal(behaviorFor(['rock']), 'charge');

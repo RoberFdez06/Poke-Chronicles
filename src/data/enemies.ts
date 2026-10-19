@@ -4,8 +4,11 @@
 import { classifyRarity, type SpeciesFact } from './gacha.ts';
 import type { FloorDifficulty } from '../level/progression.ts';
 
-/** Perseguir, embestir en línea recta, disparar desde lejos o saltar/teletransportarse cerca de ti. */
-export const BEHAVIORS = ['chase', 'charge', 'shoot', 'hop'] as const;
+/**
+ * Perseguir, embestir en línea recta, disparar desde lejos, saltar/teletransportarse cerca de ti y (supervisor)
+ * rodearte y lanzarse, excavar y salir debajo, enjambre a bandazos, emboscar camuflado y pasadas en picado.
+ */
+export const BEHAVIORS = ['chase', 'charge', 'shoot', 'hop', 'circle', 'burrow', 'swarm', 'ambush', 'swoop'] as const;
 export type EnemyBehavior = (typeof BEHAVIORS)[number];
 
 /** Comportamiento según el tipo principal del Pokémon. */
@@ -29,6 +32,19 @@ export const BEHAVIOR_BY_TYPE: Readonly<Record<string, EnemyBehavior>> = {
   ghost: 'hop',
   dark: 'hop',
 };
+
+/** Segunda forma de moverse de cada tipo (supervisor): la mitad de las especies usa esta, para que haya variedad. */
+export const ALT_BEHAVIOR_BY_TYPE: Readonly<Record<string, EnemyBehavior>> = {
+  normal: 'circle', grass: 'ambush', poison: 'swarm', bug: 'swarm', fairy: 'circle', fighting: 'circle',
+  rock: 'burrow', ground: 'burrow', steel: 'circle', dragon: 'swoop', fire: 'circle', water: 'burrow',
+  electric: 'swoop', ice: 'ambush', flying: 'swoop', psychic: 'circle', ghost: 'ambush', dark: 'ambush',
+};
+
+/** Comportamiento de una especie: el de su tipo o el alternativo, según su número (fijo para cada especie). */
+export function behaviorForSpecies(types: readonly string[], id: number): EnemyBehavior {
+  const alt = ALT_BEHAVIOR_BY_TYPE[types[0] ?? ''];
+  return alt && id % 2 === 0 ? alt : behaviorFor(types);
+}
 
 export function behaviorFor(types: readonly string[]): EnemyBehavior {
   return BEHAVIOR_BY_TYPE[types[0] ?? ''] ?? 'chase';

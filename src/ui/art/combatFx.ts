@@ -224,3 +224,16 @@ export function muzzle(scene: Phaser.Scene, x: number, y: number, dx: number, dy
 export function wallPop(scene: Phaser.Scene, x: number, y: number, color: number) {
   hitSpark(scene, x, y, color, 4, 0.6, 7);
 }
+
+/** Zarpazo: tres arañazos en diagonal que se dibujan de golpe y se apagan (golpes cuerpo a cuerpo). */
+export function clawMarks(scene: Phaser.Scene, x: number, y: number, color: number, angle: number, depth = 9) {
+  const g = scene.add.graphics({ x, y }).setDepth(depth).setRotation(angle + Math.PI / 4);
+  for (let i = -1; i <= 1; i++) {
+    g.lineStyle(9, 0x101828, 0.8).lineBetween(-26, i * 12 - 6, 26, i * 12 + 6);
+    g.lineStyle(5, color, 1).lineBetween(-26, i * 12 - 6, 26, i * 12 + 6);
+    g.lineStyle(2, 0xffffff, 0.9).lineBetween(-20, i * 12 - 5, 20, i * 12 + 4);
+  }
+  g.setScale(0.3, 1);
+  scene.tweens.add({ targets: g, scaleX: 1, duration: 70, ease: 'Quad.easeOut' });
+  scene.tweens.add({ targets: g, alpha: 0, delay: 160, duration: 220, onComplete: () => g.destroy() });
+}

@@ -69,7 +69,7 @@ import { cry, playMenuMusic, playTrack, sfx } from '../ui/audio';
 import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
-import { bakeCombatFx, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
+import { bakeCombatFx, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
 import { decorateRoom } from '../ui/art/roomDecor';
@@ -145,7 +145,7 @@ import {
 } from '../data/items';
 import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, Dir, Floor, Room } from '../level/floorGen';
 import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES } from '../level/biomes';
-import { behaviorFor, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES } from '../data/enemies';
+import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES } from '../data/enemies';
 import { drawMinimap } from './minimap';
 
 // Cada sala ocupa una pantalla del mundo; ROOM es su interior relativo a la celda
@@ -2854,6 +2854,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!ai || ai.behavior === 'chase') {
       walk(toward);
       this.face(e, toPlayer);
+      // Cerca de ti, de vez en cuando se lanza a morder (pequeño salto hacia delante)
+      if (ai && !ai.boss && dist < 95 && time >= ai.until) {
+        e.setVelocity(toPlayer.x * speed * 2.8, toPlayer.y * speed * 2.8);
+        ai.knockUntil = time + 160;
+        ai.until = time + Phaser.Math.Between(900, 1400);
+      }
       return;
     }
 
@@ -2932,6 +2938,154 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           }
         }
         break;
+
+      case 'circle': {
+        // Te rodea a cierta distancia y, cada poco, se lanza en línea recta y vuelve a rodear
+        if (ai.state === 'dash') {
+          if (time >= ai.until) {
+            ai.state = 'walk';
+            ai.until = time + Phaser.Math.Between(1800, 2800);
+          }
+          break;
+        }
+        if (ai.state === 'windup') {
+          e.setVelocity(0, 0);
+          this.face(e, toPlayer);
+          if (time >= ai.until) {
+            ai.state = 'dash';
+            ai.until = time + 380;
+            e.clearTint();
+            e.setVelocity(toPlayer.x * speed * 4, toPlayer.y * speed * 4);
+          }
+          break;
+        }
+        const tangent = new Phaser.Math.Vector2(-toPlayer.y * ai.side, toPlayer.x * ai.side);
+        const radial = Phaser.Math.Clamp((dist - 160) / 80, -1, 1);
+        walk(tangent.scale(1.15).add(toPlayer.clone().scale(radial)).normalize());
+        this.face(e, toPlayer);
+        if (time >= ai.until) {
+          ai.state = 'windup';
+          ai.until = time + 380;
+          e.setTint(0xffe082);
+          if (Math.random() < 0.4) ai.side = -ai.side;
+        }
+        break;
+      }
+
+      case 'swarm': {
+        // Enjambre: rápido y a bandazos hacia ti
+        const zig = toward.clone().rotate(Math.sin(time / 130 + (ai.side > 0 ? 0 : 2)) * 0.9);
+        e.setVelocity(zig.x * speed * 1.3, zig.y * speed * 1.3);
+        this.face(e, zig);
+        break;
+      }
+
+      case 'ambush': {
+        // Escondido y casi invisible hasta que te acercas; entonces se lanza y te persigue un rato
+        if (ai.state === 'walk' && time >= ai.until) {
+          ai.state = 'vanish';
+          e.setAlpha(0.3);
+          ai.until = time + 9000;
+        }
+        if (ai.state === 'vanish') {
+          e.setVelocity(0, 0);
+          if (dist < 180 || time >= ai.until) {
+            ai.state = 'windup';
+            ai.until = time + 300;
+            e.setAlpha(1).setTintFill(0xffffff);
+            this.cameras.main.shake(80, 0.003);
+          }
+        } else if (ai.state === 'windup') {
+          e.setVelocity(0, 0);
+          this.face(e, toPlayer);
+          if (time >= ai.until) {
+            e.clearTint();
+            ai.state = 'dash';
+            ai.until = time + 420;
+            e.setVelocity(toPlayer.x * speed * 4.6, toPlayer.y * speed * 4.6);
+          }
+        } else if (ai.state === 'dash') {
+          if (time >= ai.until) {
+            ai.state = 'walk';
+            ai.until = time + Phaser.Math.Between(2200, 3200);
+          }
+        } else {
+          walk(toward);
+          this.face(e, toPlayer);
+        }
+        break;
+      }
+
+      case 'burrow': {
+        // Excava: bajo tierra (solo se ve el montón de tierra que avanza hacia ti) y sale de golpe debajo
+        const body = e.body as Body;
+        if (ai.state === 'walk') {
+          walk(toward);
+          this.face(e, toPlayer);
+          if (time >= ai.until) {
+            ai.state = 'vanish';
+            ai.until = time + 1500;
+            e.setVelocity(0, 0).setAlpha(0);
+            body.enable = false;
+            dustBurst(this, e.x, e.y + 20, 0.9, 7);
+            const mound = this.add.ellipse(e.x, e.y + 18, 40, 16, 0x6e5a44, 1).setStrokeStyle(2, 0x3a2a1a).setDepth(1.6);
+            e.setData('mound', mound);
+            e.once(Phaser.GameObjects.Events.DESTROY, () => mound.destroy());
+          }
+        } else if (ai.state === 'vanish') {
+          // Avanza bajo tierra
+          const step = (speed * 1.5 * this.game.loop.delta) / 1000;
+          if (dist > 12) e.setPosition(e.x + toPlayer.x * step, e.y + toPlayer.y * step);
+          const mound = e.getData('mound') as Phaser.GameObjects.Ellipse | undefined;
+          mound?.setPosition(e.x, e.y + 18).setScale(1 + 0.15 * Math.sin(time / 60), 1);
+          if (Math.random() < 0.15) dustBurst(this, e.x, e.y + 18, 0.4, 2);
+          if (time >= ai.until) {
+            ai.state = 'appear';
+            ai.until = time + 380;
+            (e.getData('mound') as Phaser.GameObjects.Ellipse | undefined)?.destroy();
+            body.enable = true;
+            body.reset(e.x, e.y);
+            e.setAlpha(1);
+            this.cameras.main.shake(140, 0.006);
+            dustBurst(this, e.x, e.y + 18, 1.4, 12);
+            typeImpact(this, e.x, e.y, ai.type, 1.1, 10);
+            if (Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y) < 70) this.hurtPlayer(e);
+          }
+        } else {
+          e.setVelocity(0, 0);
+          this.face(e, toPlayer);
+          if (time >= ai.until) {
+            ai.state = 'walk';
+            ai.until = time + Phaser.Math.Between(1500, 2500);
+          }
+        }
+        break;
+      }
+
+      case 'swoop': {
+        // Pasadas en picado: se lanza en curva pasando junto a ti y se aleja para coger carrerilla
+        if (ai.state === 'dash') {
+          // Curva: va girando un poco mientras pasa
+          ai.dir.rotate(0.035 * ai.side);
+          e.setVelocity(ai.dir.x * speed * 2.6, ai.dir.y * speed * 2.6);
+          this.face(e, ai.dir);
+          if (time >= ai.until) {
+            ai.state = 'walk';
+            ai.until = time + Phaser.Math.Between(900, 1400);
+          }
+        } else {
+          if (dist < 260) walk(toPlayer.clone().negate().rotate(0.6 * ai.side));
+          else walk(new Phaser.Math.Vector2(-toPlayer.y * ai.side, toPlayer.x * ai.side));
+          this.face(e, toPlayer);
+          if (time >= ai.until) {
+            ai.state = 'dash';
+            ai.until = time + 750;
+            ai.dir.copy(toPlayer).rotate(-0.45 * ai.side);
+            ai.side = Math.random() < 0.5 ? 1 : -1;
+          }
+        }
+        break;
+      }
     }
   }
 
@@ -4192,6 +4346,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (away.lengthSq() < 1) away.set(0, 1);
     away.normalize();
     hitSpark(this, (p.x + from.x) / 2, (p.y + from.y) / 2, 0xff5a4a, 7, 1.2);
+    // Cuerpo a cuerpo: zarpazo del color del tipo del que te ha dado
+    const fai = from.getData('ai') as EnemyAI | undefined;
+    if (fai) clawMarks(this, p.x, p.y, typeColor(fai.type), Math.atan2(p.y - from.y, p.x - from.x));
     damageNumber(this, p.x, p.y - 50, taken, { color: '#ff6a5a' });
     p.setTintFill(0xffffff);
     this.time.delayedCall(70, () => p.active && !this.ended && p.setTint(0xff6666));
@@ -4217,6 +4374,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Quien salta no hace daño mientras desaparece o recién aparecido
     const ai = enemy.getData('ai') as EnemyAI | undefined;
     if (ai && ai.behavior === 'hop' && ai.state !== 'walk') return;
+    // Bajo tierra o escondido no hace daño al tocarte
+    if (ai && (ai.behavior === 'burrow' || ai.behavior === 'ambush') && (ai.state === 'vanish' || ai.state === 'appear')) return;
     if (this.stats.dodge > 0 && Math.random() < this.stats.dodge) {
       this.invulnUntil = now + 500;
       this.popup(this.player.x, this.player.y - 50, '¡Esquivado!', 0xfff8c0);
