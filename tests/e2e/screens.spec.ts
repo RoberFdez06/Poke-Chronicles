@@ -1,7 +1,7 @@
 // Capturas de cada pantalla a 1920×1080 para revisarlas a ojo (se guardan en test-results/screens/).
 // También comprueba que no hay errores en consola por el camino.
 import { test, expect } from '@playwright/test';
-import { collectErrors, mockPokeApi, press, waitScene, waitSceneProp } from './helpers';
+import { collectErrors, mockPokeApi, press, waitScene, waitSceneProp, toMenu } from './helpers';
 
 test.use({ viewport: { width: 1920, height: 1080 } });
 
@@ -14,8 +14,7 @@ test('capturas de todas las pantallas', async ({ page }) => {
   await page.goto('/');
   await waitScene(page, 'Title', 2500);
   await shot(page, '01-titulo');
-  await press(page, 'Enter');
-  await waitScene(page, 'Menu', 1200);
+  await toMenu(page);
   await shot(page, '02-menu');
 
   await press(page, 'Enter');

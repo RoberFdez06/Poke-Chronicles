@@ -943,3 +943,23 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - El supervisor subió mis trozos de GameScene de la T41 en su commit b175d91 (como en N20); aquí van el resto de
   archivos. En `save.ts` no subo su cambio de tickets (2 por sala, 3 por jefe), que aún hace fallar
   `tests/balance.test.ts` ("solo el piso 1: 17"): es suyo y está a medias.
+
+## T29 — Pruebas en navegador
+- Playwright ya estaba (`npm run e2e`, `tests/e2e/`); faltaban los recorridos con ratón y con mando y había pruebas rotas.
+- **Nuevas**: `mouse.spec.ts` (todo con ratón: título → menú → huecos con "← Volver" → región e inicial → modo →
+  partida, clic derecho mueve y clic izquierdo dispara, ❚❚ → Reanudar / Salir y guardar → hueco ocupado → Cancelar →
+  Continuar) y `pad.spec.ts` (lo mismo solo con mando: A/B, cruceta, sticks y Start). Ninguna toca otro dispositivo y
+  todas fallan si hay errores en consola.
+- Helpers (`tests/e2e/helpers.ts`): `useFakePad`/`padPress`/`padAxes` (mando simulado cambiando
+  `navigator.getGamepads`; ojo: Phaser ignora el mando si su `timestamp` es anterior a su creación, así que se usa
+  `performance.now()`, y la pulsación dura un fotograma porque el mando se lee por sondeo), `waitFrames`, `clickText`
+  (clic en un texto de la pantalla convirtiendo con la cámara, también la del HUD), `sceneTexts` y `toMenu` (el título
+  nuevo del supervisor necesita varias pulsaciones: portada, intro y menú).
+- **Arreglos**: "Texture key already in use: starter-X-front" (`flow.spec`): el menú sigue cargando los Pokémon que
+  pasean cuando ya estás eligiendo inicial y `loadCardTextures` (src/ui/cards.ts) pedía la misma textura; ahora, si
+  otra pantalla ya la carga, espera a que llegue. `boss.spec`: el jefe sale con la intro VS (pausa la partida) y la
+  prueba no la saltaba. `controls.spec`: en PC solo salen Teclado y Ratón (cambio del supervisor en ControlsScene).
+- Resultado: **12 de 12 pasan** (`npm run e2e`, ~9 min).
+- **Fallo encontrado (N23, MenuScene del supervisor)**: una A del mando aún pulsada al aparecer el menú cuenta como
+  pulsación nueva y entra en "Jugar". `pad.spec` lo tolera (vuelve con B) y avisa en la consola hasta que se arregle.
+- La skill `comprobar` ahora dice cuándo ejecutar `npm run e2e` y que se añadan solo los archivos propios.

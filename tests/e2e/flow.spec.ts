@@ -1,7 +1,7 @@
 // Recorrido completo con teclado: menú → huecos → primer inicial → modo → partida → pausa → salir y guardar,
 // continuar, y Esc / Retroceso para volver en cada pantalla. Falla si hay errores en consola.
 import { test, expect } from '@playwright/test';
-import { activeScenes, collectErrors, mockPokeApi, press, runSaved, waitScene, waitSceneProp } from './helpers';
+import { activeScenes, collectErrors, mockPokeApi, press, runSaved, waitScene, waitSceneProp, toMenu } from './helpers';
 import { RUN_VERSION } from '../../src/data/runSave';
 
 test.beforeEach(async ({ page }) => {
@@ -13,8 +13,7 @@ test('con teclado: se juega, se guarda, se continúa y Esc vuelve atrás', async
   await page.goto('/');
   // Pantalla de título: cualquier tecla pasa al menú
   await waitScene(page, 'Title', 1500);
-  await press(page, 'Enter');
-  await waitScene(page, 'Menu');
+  await toMenu(page);
 
   // Menú → Huecos, y Esc vuelve
   await press(page, 'Enter');

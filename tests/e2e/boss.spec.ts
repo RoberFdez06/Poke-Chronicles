@@ -1,7 +1,7 @@
 // Ataques del jefe en el navegador (T26): se saca al jefe en la sala inicial y se le hace invocar ayudantes.
 // Comprueba que salen, que tienen menos vida, que no pasan del máximo y que se van al caer el jefe.
 import { test, expect, type Page } from '@playwright/test';
-import { collectErrors, mockPokeApi, press, waitScene, waitSceneProp } from './helpers';
+import { activeScenes, collectErrors, mockPokeApi, press, waitScene, waitSceneProp, toMenu } from './helpers';
 
 test.use({ viewport: { width: 1920, height: 1080 } });
 
@@ -24,8 +24,7 @@ test('el jefe invoca ayudantes con aviso y se van con él', async ({ page }) => 
   const errors = collectErrors(page);
   await page.goto('/');
   await waitScene(page, 'Title', 2500);
-  await press(page, 'Enter');
-  await waitScene(page, 'Menu', 1200);
+  await toMenu(page);
   await press(page, 'Enter');
   await waitScene(page, 'Slots');
   await press(page, 'Enter');
@@ -47,6 +46,11 @@ test('el jefe invoca ayudantes con aviso y se van con él', async ({ page }) => 
   const helpers = 'return g.enemies.getChildren().filter((e) => e.active && e.getData("helper")).length;';
   // Que no muera mientras se prueba (el jefe y sus ayudantes le pegan)
   await game(page, 'g.invulnUntil = 1e12; g.spawnBoss();');
+  // T36: sale la intro VS (pausa la partida); se salta con Enter
+  await waitScene(page, 'BossIntro', 600);
+  await press(page, 'Enter');
+  await expect.poll(() => activeScenes(page)).not.toContain('BossIntro');
+  await page.waitForTimeout(300);
   const boss = 'const b = g.enemies.getChildren().find((e) => e.active && e.getData("ai")?.boss);';
   await game(page, `${boss} g.bossSummon(b, b.getData("ai"));`);
   // Antes de salir hay aviso; luego aparecen 2 (fase 1)
@@ -71,8 +75,7 @@ test('al acabar: resumen, historial y vuelta al menú (T28)', async ({ page }) =
   const errors = collectErrors(page);
   await page.goto('/');
   await waitScene(page, 'Title', 2500);
-  await press(page, 'Enter');
-  await waitScene(page, 'Menu', 1200);
+  await toMenu(page);
   await press(page, 'Enter');
   await waitScene(page, 'Slots');
   await press(page, 'Enter');

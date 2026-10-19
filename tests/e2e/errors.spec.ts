@@ -1,6 +1,6 @@
 // Pantalla de error (T43): un fallo dentro de una escena no deja el juego colgado.
 import { test, expect, type Page } from '@playwright/test';
-import { activeScenes, mockPokeApi, press, waitScene } from './helpers';
+import { activeScenes, mockPokeApi, press, waitScene, toMenu } from './helpers';
 
 /** Hace que la escena falle en su próximo fotograma (y quita el fallo, para que vuelva a funcionar luego). */
 const breakScene = (page: Page, key: string) =>
@@ -20,8 +20,7 @@ test('un error saca "Algo ha fallado" y se vuelve al menú (teclado y ratón)', 
   await mockPokeApi(page);
   await page.goto('/');
   await waitScene(page, 'Title', 2500);
-  await press(page, 'Enter');
-  await waitScene(page, 'Menu', 1200);
+  await toMenu(page);
   await press(page, 'Enter');
   await waitScene(page, 'Slots');
 

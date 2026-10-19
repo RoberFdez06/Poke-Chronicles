@@ -238,7 +238,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
 - Al morir o ganar: pantalla de resumen (tiempo, pisos, enemigos vencidos, daño hecho, objetos, tickets
   ganados, nuevo récord) antes de volver. Historial de las últimas 20 partidas consultable desde el menú.
 
-## [ ] T29 — Pruebas en navegador (sugerida por el supervisor)
+## [x] T29 — Pruebas en navegador (sugerida por el supervisor)
 - Añade Playwright como dependencia de desarrollo y `npm run e2e`: abre el juego con `vite preview`, simula
   PokeAPI con `page.route` (respuestas falsas) y recorre menú → huecos → inicial → modo → partida → pausa →
   salir, con teclado, con ratón y comprobando que Esc vuelve atrás en cada pantalla. Que falle si hay

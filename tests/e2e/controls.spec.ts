@@ -1,6 +1,6 @@
 // T35: pantalla de Controles por secciones desde la pausa, y controles táctiles solo en móvil.
 import { test, expect, type Page } from '@playwright/test';
-import { activeScenes, collectErrors, mockPokeApi, press, waitScene, waitSceneProp } from './helpers';
+import { activeScenes, collectErrors, mockPokeApi, press, waitScene, waitSceneProp, toMenu } from './helpers';
 
 type Game = { touch?: { move: { x: number; y: number } }; player: { body: { velocity: { x: number; y: number } } } };
 const gameProp = <T>(page: Page, f: (g: Game) => T) =>
@@ -16,8 +16,7 @@ const gameProp = <T>(page: Page, f: (g: Game) => T) =>
 async function toGame(page: Page) {
   await page.goto('/');
   await waitScene(page, 'Title', 2500);
-  await press(page, 'Enter');
-  await waitScene(page, 'Menu', 1200);
+  await toMenu(page);
   await press(page, 'Enter');
   await waitScene(page, 'Slots');
   await press(page, 'Enter');
@@ -45,14 +44,14 @@ test.describe('PC', () => {
     await press(page, 'ArrowDown', 2);
     await press(page, 'Enter');
     await waitScene(page, 'Controls');
-    // Teclado, Ratón y Mando (sin Táctil en PC)
+    // Jugando con teclado: Teclado y Ratón (sin Mando ni Táctil; el supervisor enseña solo lo del dispositivo en uso)
     await waitSceneProp(page, 'Controls', 'tab', 0);
-    expect(await page.evaluate(() => (window as unknown as { __POKEISAAC__: { scene: { getScene(k: string): { modes: string[] } } } }).__POKEISAAC__.scene.getScene('Controls').modes)).toEqual(['keyboard', 'mouse', 'gamepad']);
+    expect(await page.evaluate(() => (window as unknown as { __POKEISAAC__: { scene: { getScene(k: string): { modes: string[] } } } }).__POKEISAAC__.scene.getScene('Controls').modes)).toEqual(['keyboard', 'mouse']);
     await press(page, 'ArrowRight');
     await waitSceneProp(page, 'Controls', 'tab', 1);
     await page.screenshot({ path: 'test-results/screens/21-controles.png' });
-    await press(page, 'ArrowLeft', 2);
-    await waitSceneProp(page, 'Controls', 'tab', 2);
+    await press(page, 'ArrowLeft');
+    await waitSceneProp(page, 'Controls', 'tab', 0);
     // Esc cierra solo los Controles: la pausa sigue
     await press(page, 'Escape');
     await expect.poll(() => activeScenes(page)).not.toContain('Controls');

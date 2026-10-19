@@ -1,15 +1,14 @@
 // T41: medida de rendimiento. Sala con muchos enemigos y disparando sin parar, con la CPU frenada (×4, como un PC
 // flojo). Apunta FPS medio y milisegundos de trabajo por fotograma (de prestep a postrender) en la consola de la prueba.
 import { test, expect, type Page } from '@playwright/test';
-import { collectErrors, mockPokeApi, press, waitScene, waitSceneProp } from './helpers';
+import { collectErrors, mockPokeApi, press, waitScene, waitSceneProp, toMenu } from './helpers';
 
 test.use({ viewport: { width: 1920, height: 1080 } });
 
 async function toGame(page: Page) {
   await page.goto('/');
   await waitScene(page, 'Title', 2500);
-  await press(page, 'Enter');
-  await waitScene(page, 'Menu', 1200);
+  await toMenu(page);
   await press(page, 'Enter');
   await waitScene(page, 'Slots');
   await press(page, 'Enter');

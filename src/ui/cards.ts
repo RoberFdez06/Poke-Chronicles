@@ -13,6 +13,19 @@ export const starterKey = (id: number, side: 'front' | 'back' = 'front', shiny =
   `starter-${id}${shiny ? '-s' : ''}-${side}`;
 
 /**
+ * ¿Otra pantalla ya está cargando esta textura? (p. ej. el menú, los Pokémon que pasean). Pedirla otra vez a la
+ * vez daba "Texture key already in use" al llegar la segunda.
+ */
+function loadingElsewhere(scene: Phaser.Scene, key: string): boolean {
+  type Files = { key: string }[] | Phaser.Structs.Set<Phaser.Loader.File>;
+  const has = (files: Files | undefined) => !!files && [...(Array.isArray(files) ? files : files.entries)].some((f) => f.key === key);
+  return scene.sys.game.scene.scenes.some((sc) => {
+    const l = (sc as Phaser.Scene).load as (Phaser.Loader.LoaderPlugin & { inflight?: Files; queue?: Files }) | undefined;
+    return !!l && l !== scene.load && (has(l.list) || has(l.inflight) || has(l.queue));
+  });
+}
+
+/**
  * Carga (si faltan) los sprites de frente y espalda de estos Pokémon (y los shiny de los que estén en `shiny`).
  * Se resuelve aunque alguno falle.
  */
@@ -20,6 +33,8 @@ export function loadCardTextures(scene: Phaser.Scene, cards: readonly PokemonCar
   return new Promise((resolve) => {
     scene.load.crossOrigin = 'anonymous';
     let queued = 0;
+    // Las que ya carga otra pantalla: se esperan (con tope) en vez de pedirlas otra vez
+    const waiting: Promise<void>[] = [];
     const variants = (c: PokemonCard) => (shiny.has(c.id) ? [false, true] : [false]);
     for (const c of cards) {
       for (const sh of variants(c)) {
@@ -27,13 +42,21 @@ export function loadCardTextures(scene: Phaser.Scene, cards: readonly PokemonCar
         for (const side of ['front', 'back'] as const) {
           const key = starterKey(c.id, side, sh);
           if (scene.textures.exists(key)) continue;
+          if (loadingElsewhere(scene, key)) {
+            waiting.push(
+              new Promise<void>((done) => {
+                scene.textures.once(`${Phaser.Textures.Events.ADD_KEY}${key}`, () => done());
+                scene.time.delayedCall(4000, done);
+              }),
+            );
+            continue;
+          }
           scene.load.image(key, urls[side]);
           queued++;
         }
       }
     }
-    if (queued === 0) return resolve();
-    scene.load.once(Phaser.Loader.Events.COMPLETE, () => {
+    const finish = () => {
       // Sprites pixel: escalado sin suavizar para que se vean nítidos
       for (const c of cards) {
         for (const sh of variants(c)) {
@@ -44,7 +67,10 @@ export function loadCardTextures(scene: Phaser.Scene, cards: readonly PokemonCar
         }
       }
       resolve();
-    });
+    };
+    const others = Promise.all(waiting);
+    if (queued === 0) return void others.then(finish);
+    scene.load.once(Phaser.Loader.Events.COMPLETE, () => void others.then(finish));
     scene.load.start();
   });
 }

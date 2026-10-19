@@ -1,6 +1,6 @@
 // Teclas configurables (T44): se cambia la bomba a Q en Ajustes > Controles y la partida la usa.
 import { test, expect } from '@playwright/test';
-import { collectErrors, mockPokeApi, press, waitScene, waitSceneProp } from './helpers';
+import { collectErrors, mockPokeApi, press, waitScene, waitSceneProp, toMenu } from './helpers';
 
 test.use({ viewport: { width: 1920, height: 1080 } });
 
@@ -10,8 +10,7 @@ test('cambiar una tecla en Ajustes y usarla en la partida', async ({ page }) => 
   const errors = collectErrors(page);
   await page.goto('/');
   await waitScene(page, 'Title', 2500);
-  await press(page, 'Enter');
-  await waitScene(page, 'Menu', 1200);
+  await toMenu(page);
   // Menú: Jugar, Gacha, Pokédex, Mejoras, Controles, Ajustes
   await press(page, 'ArrowDown', 5);
   await press(page, 'Enter');
