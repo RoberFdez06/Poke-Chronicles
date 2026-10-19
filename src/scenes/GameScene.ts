@@ -676,6 +676,13 @@ export class GameScene extends Phaser.Scene {
    * Devuelve si lo ha usado (si no, el sprite sigue con el de PokeAPI).
    */
   private applyPmd(sprite: Sprite, id: number | undefined, size: number, circle = false): boolean {
+    // Quita el saltito de dressSprites antes de cambiar de hoja (el cuerpo se recalcula abajo)
+    const lift = (sprite.getData('lift') as number | undefined) ?? 0;
+    if (lift) {
+      sprite.setOrigin(0.5, 0.5);
+      (sprite.body as Body | null)?.offset.add({ x: 0, y: -lift });
+      sprite.setData('lift', 0);
+    }
     const sheet = id === undefined ? undefined : this.pmd.get(id);
     if (!sheet) {
       sprite.setData('pmd', undefined);
@@ -696,6 +703,49 @@ export class GameScene extends Phaser.Scene {
     }
     this.playPmd(sprite);
     return true;
+  }
+
+  /**
+   * Como en PokéSurvivor: sombra redonda bajo los pies de cada Pokémon (jugador, enemigos y jefe) que le sigue, y
+   * al andar un pequeño saltito con balanceo. Los de SpriteCollab ya mueven las patas: a esos solo un saltito suave;
+   * los de PokeAPI (shiny o sin hoja animada) se balancean más para que se note que caminan. Solo toca lo visual
+   * (ángulo y sombra), nunca el cuerpo físico.
+   */
+  private dressSprites(time: number) {
+    const all = [this.player, ...(this.enemies.getChildren() as Sprite[])];
+    for (const s of all) {
+      if (!s.active) continue;
+      const body = s.body as Body | null;
+      if (!body) continue;
+      if (s !== this.player && s.depth < 3) s.setDepth(3);
+      let sh = s.getData('shadow') as Phaser.GameObjects.Ellipse | undefined;
+      if (!sh || !sh.active) {
+        sh = this.add.ellipse(0, 0, 10, 4, 0x000000, 0.28).setDepth(0.5);
+        s.setData('shadow', sh);
+        const shadow = sh;
+        s.once(Phaser.GameObjects.Events.DESTROY, () => shadow.destroy());
+      }
+      const w = Math.max(18, body.width * 1.05);
+      const moving = body.velocity.lengthSq() > 400;
+      const pmd = !!s.getData('pmd');
+      // Saltito al andar: el sprite sube y la sombra se encoge un poco; el balanceo va con cada paso
+      const phase = time / (pmd ? 85 : 70) + ((s.getData('stepSeed') as number | undefined) ?? (s.setData('stepSeed', Math.random() * 6), 0));
+      const hop = moving ? Math.abs(Math.sin(phase)) : 0;
+      sh.setPosition(body.center.x, body.bottom - body.height * 0.08);
+      sh.setSize(w * (1 - hop * 0.18), w * 0.34 * (1 - hop * 0.18));
+      sh.setVisible(s.visible).setAlpha(s.alpha);
+      // Subir el dibujo sin mover el cuerpo: el origen y el desfase del cuerpo cambian lo mismo (en px del frame)
+      const lift = (hop * (pmd ? 4 : 7)) / Math.max(0.01, s.scaleY);
+      const delta = lift - ((s.getData('lift') as number | undefined) ?? 0);
+      if (Math.abs(delta) > 0.01 && s.height > 0) {
+        s.setOrigin(s.originX, s.originY + delta / s.height);
+        body.offset.y += delta;
+        s.setData('lift', lift);
+      }
+      const tilt = moving ? Math.sin(phase) * (pmd ? 3 : 8) : 0;
+      // Suaviza la vuelta a 0 al pararse
+      s.setAngle(Phaser.Math.Linear(s.angle, tilt, 0.35));
+    }
   }
 
   /** Animación de caminar (o reposo si está quieto) en la fila de la dirección a la que mira. */
@@ -2489,6 +2539,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       return;
     }
     if (!this.player || !this.player.active) return;
+    this.dressSprites(time);
     if (!this.ended) this.counters.seconds += delta / 1000;
     // Cualquier subida de PS (bayas, pociones, Centro, robo de vida…) cuenta como curarse
     if (this.hpMark >= 0 && this.hp > this.hpMark + 0.001) this.healedRun = true;
