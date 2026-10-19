@@ -805,3 +805,14 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - `src/scenes/attacks.ts`: el motor (castPattern, updateShots). GameScene le da un `AttackHost` (makeHost) y el daño
   de todo pasa por `hitEnemy` (antes estaba dentro de onHit). El campo `shape` de los poderes ya no se usa para
   disparar (se deja por compatibilidad con los guardados).
+
+## Supervisor — Reto final, minijefes y curación (19/10, noche)
+- Reto final (`src/data/finale.ts`, `FinalPromptScene`): tras el jefe del piso 5 de Normal sale una trampilla dorada;
+  al pisarla se pregunta: aceptar el reto, rendirse y ganar, o todavía no. El piso 6 es una arena con un trío
+  legendario (barra compartida; si cae uno, los demás se enfurecen) o un legendario gigante (x3,5 de vida y furia
+  final al 25 %), al azar. Superarlo da +60 tickets. `progressText` muestra "Reto final" en ese piso.
+- Todos los legendarios invocan ayudantes de su tipo (`summonKinds`, cargados con el piso).
+- Minijefe en cada piso (Normal e Infinito): la sala de combate más lejos de la entrada (rombo naranja en el mapa);
+  el Pokémon más fuerte del bioma en grande, con dos movimientos de su tipo; suelta objeto y tickets.
+- Curación por golpes: Drenar cura una vez por lanzamiento (700 ms) y Drenar y Concha Campana tienen tope de un 4 %
+  de los PS máximos por segundo.

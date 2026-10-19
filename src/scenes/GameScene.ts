@@ -70,6 +70,8 @@ import { bakeCombatFx, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEne
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
 import { decorateRoom } from '../ui/art/roomDecor';
+import { FINALE_BONUS, GIANT_HP_MUL, GIANT_RAGE_AT, GIANT_SIZE, isFinalFloor, isFinaleGate, pickFinale, TRIO_HP_MUL, type Finale } from '../data/finale';
+import type { FinalChoice } from './FinalPromptScene';
 import { castPattern, setMotion, updateShots, type AttackHost, type ShootOpts, type Side } from './attacks';
 import { basicShotFor, bossStyles, foeStyleFor, styleForMove, TYPE_STYLES, type Anim, type Motion, type MoveStyle } from '../data/movePatterns';
 import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
@@ -220,6 +222,8 @@ interface FoeKind {
   types: string[];
   /** Estadísticas base: reparten su fuerza (más vida, más daño o más velocidad). */
   stats: BaseStats;
+  /** Nombre en español (minijefes). */
+  name?: string;
 }
 
 /** Estado de la IA de cada enemigo (guardado en el sprite con setData('ai')). */
@@ -326,6 +330,18 @@ export class GameScene extends Phaser.Scene {
   private host!: AttackHost;
   /** Cayendo por la trampilla (la animación mueve al jugador; dressSprites no lo toca). */
   private falling = false;
+  /** Cartel de piso en pantalla: la intro del jefe espera a que acabe. */
+  private floorIntroOn = false;
+  /** Reto final (piso 6 de Normal): trío o gigante y los datos de cada miembro. */
+  private finale?: Finale;
+  private finaleMembers: { id: number; name: string; types: string[]; stats: BaseStats; key: string }[] = [];
+  /** Ayudantes que invocan los jefes: de su tipo. */
+  private summonKinds: FoeKind[] = [];
+  /** Sala del minijefe de este piso (si hay). */
+  private minibossRoom?: number;
+  /** Curación por golpes (Drenar, Concha Campana): tope por segundo y una vez por lanzamiento. */
+  private healBudget = 0;
+  private drainReadyAt = 0;
   /** Destello rojo sobre la sala al recibir daño (capa del HUD). */
   private hurtFlash?: Phaser.GameObjects.Rectangle;
   /** Tienes shiny al Pokémon elegido: juegas con su sprite shiny (también al evolucionar). */
@@ -362,7 +378,7 @@ export class GameScene extends Phaser.Scene {
   private biome: Biome = BIOMES[0];
   private bossHistory: number[] = [];
   /** Trampilla al piso siguiente: aparece al vencer al jefe y se activa cuando te alejas de ella. */
-  private trapdoor?: { x: number; y: number; armed: boolean };
+  private trapdoor?: { x: number; y: number; armed: boolean; final?: boolean };
   /** Objetos que hay en el suelo (para guardarlos). */
   private floorItems: FloorItemSave[] = [];
   private pauseKey!: Key;
@@ -445,7 +461,7 @@ export class GameScene extends Phaser.Scene {
   /** Restos de PS del robo de vida (se cura de uno en uno). */
   private lifestealAcc = 0;
   /** Barra grande del jefe arriba de la pantalla (nombre, tipo y vida), como en Isaac. */
-  private bossBar?: { boss: Sprite; bar: ReturnType<typeof addHpBar>; objects: Phaser.GameObjects.GameObject[] };
+  private bossBar?: { boss: Sprite; bar: ReturnType<typeof addHpBar>; objects: Phaser.GameObjects.GameObject[]; group?: Sprite[] };
   private escKey!: Phaser.Input.Keyboard.Key;
   private menuPadPrev = false;
   /** El cursor está sobre una ranura de poder: ahí un clic no dispara. */
@@ -547,6 +563,12 @@ export class GameScene extends Phaser.Scene {
     this.visited.clear();
     this.cleared.clear();
     this.trapdoor = undefined;
+    this.finale = undefined;
+    this.finaleMembers = [];
+    this.summonKinds = [];
+    this.minibossRoom = undefined;
+    this.healBudget = 0;
+    this.drainReadyAt = 0;
     this.floorNum = 1;
     this.ability = null;
     this.healedRun = false;
@@ -609,7 +631,7 @@ export class GameScene extends Phaser.Scene {
     // Oleadas y Rush de jefes se juegan en una sola sala
     this.floorSeed = r?.floorSeed ?? Phaser.Math.Between(0, 0x7fffffff);
     if (this.mode === 'waves') this.floor = arenaFloor(this.floorSeed, 'combat');
-    else if (this.mode === 'bossrush') this.floor = arenaFloor(this.floorSeed, 'boss');
+    else if (this.mode === 'bossrush' || isFinalFloor(this.mode, this.floorNum)) this.floor = arenaFloor(this.floorSeed, 'boss');
     else {
       this.layout = r?.layout ?? FLOOR_LAYOUT;
       this.floor = generateFloor({
@@ -646,7 +668,12 @@ export class GameScene extends Phaser.Scene {
       return kept.length > 0 ? kept : ids;
     };
     let bossId = r?.bossId;
-    if (bossId === undefined) {
+    if (isFinalFloor(this.mode, this.floorNum)) {
+      // Reto final: trío legendario o legendario gigante, al azar
+      const okIds = bundled;
+      this.finale = pickFinale(Math.random, (id) => !okIds || okIds.has(id));
+      bossId = this.finale.ids[0];
+    } else if (bossId === undefined) {
       // El jefe intenta ser de un tipo del bioma
       bossId = pickBoss(onlyBundled(biomeBossPool(index, this.biome)), Math.random, this.bossHistory);
       this.bossHistory.push(bossId);
@@ -659,9 +686,19 @@ export class GameScene extends Phaser.Scene {
       fetchPokemon(bossId),
       Promise.all(foeIds.map((id) => fetchPokemonCard(id).catch(() => null))),
     ]);
+    // Miembros del reto final y ayudantes de los jefes (de su tipo)
+    if (this.finale) {
+      const fs = await Promise.all(this.finale.ids.map((id) => fetchPokemon(id).catch(() => null)));
+      this.finaleMembers = fs.filter((f) => f !== null).map((f) => ({ id: f.id, name: f.name, types: f.types.length ? f.types : ['normal'], stats: f.stats, key: `boss-${f.id}` }));
+      if (this.finale.kind === 'giant') this.finale.name = this.finaleMembers[0]?.name ?? '';
+    }
+    const summonTypes = this.finale ? [...new Set(this.finaleMembers.flatMap((m) => m.types))] : boss.types;
+    const summonIds = pickFloorEnemies(onlyBundled(biomeEnemyPool(index, this.level(), { ...this.biome, types: summonTypes })), this.foeRng(this.level() + 77), 3);
+    const summonCards = (await Promise.all(summonIds.map((id) => fetchPokemonCard(id).catch(() => null)))).filter((c) => c !== null);
     let foes = foeCards.filter((c) => c !== null);
     if (foes.length === 0) foes = [await fetchPokemonCard(FALLBACK_ENEMIES[0])];
     this.foeKinds = this.toFoeKinds(foes, index);
+    this.summonKinds = this.toFoeKinds(summonCards, index);
     this.bossType = boss.types[0] ?? 'normal';
     this.bossName = boss.name;
     this.bossTypes = boss.types.length > 0 ? boss.types : ['normal'];
@@ -684,7 +721,8 @@ export class GameScene extends Phaser.Scene {
     const sheets: [string, { front: string; back: string }][] = [
       [this.playerKey, pickSprites(starter.sprites, this.shiny)],
       [this.bossKey, pickSprites(boss.sprites, false)],
-      ...foes.flatMap((c) => [
+      ...(await Promise.all(this.finaleMembers.slice(1).map(async (m) => [m.key, pickSprites((await fetchPokemon(m.id)).sprites, false)] as [string, { front: string; back: string }]))),
+      ...[...foes, ...summonCards.filter((c) => !foes.some((f) => f.id === c.id))].flatMap((c) => [
         [`foe-${c.id}`, pickSprites(c.sprites, false)] as [string, { front: string; back: string }],
         [`foe-${c.id}-s`, pickSprites(c.sprites, true)] as [string, { front: string; back: string }],
       ]),
@@ -702,7 +740,7 @@ export class GameScene extends Phaser.Scene {
         }
       }
       // Sprites animados de 8 direcciones (T31). El shiny se queda con el de PokeAPI (SpriteCollab no lo tiene igual)
-      const pmdIds = [bossId!, ...foes.map((c) => c.id), ...(this.shiny ? [] : [this.formId])];
+      const pmdIds = [bossId!, ...this.finaleMembers.map((m) => m.id), ...foes.map((c) => c.id), ...summonCards.map((c) => c.id), ...(this.shiny ? [] : [this.formId])];
       loadPmd(this, pmdIds)
         .catch(() => new Map<number, PmdSheet>())
         .then((m) => {
@@ -872,6 +910,7 @@ export class GameScene extends Phaser.Scene {
       type: c.types[0] ?? 'normal',
       types: c.types.length > 0 ? [...c.types] : ['normal'],
       stats: c.stats,
+      name: c.name,
     }));
   }
 
@@ -985,6 +1024,15 @@ export class GameScene extends Phaser.Scene {
     this.makeLootTextures();
     this.makeExtraTextures();
     this.floor.rooms.forEach((r) => this.buildRoom(r));
+    // Minijefe del piso (Normal e Infinito): la sala de combate más lejos de la entrada
+    this.minibossRoom = undefined;
+    if ((this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)) {
+      const st = this.floor.rooms[this.floor.startId];
+      const far = this.floor.rooms
+        .filter((rm) => rm.kind === 'combat')
+        .sort((a, b) => Math.abs(b.gx - st.gx) + Math.abs(b.gy - st.gy) - (Math.abs(a.gx - st.gx) + Math.abs(a.gy - st.gy)) || a.id - b.id)[0];
+      this.minibossRoom = far?.id;
+    }
 
     // Al continuar: objetos, estado del jugador y sala donde estabas
     const r = this.resume;
@@ -1161,16 +1209,20 @@ export class GameScene extends Phaser.Scene {
       .setStroke('#1d2848', 5);
 
     // Si ya habías vencido al jefe, la trampilla sigue ahí
-    if (this.mode !== 'waves' && this.cleared.has(this.floor.bossId) && !isLastStage(this.mode, this.floorNum)) this.spawnTrapdoor();
+    if (this.mode !== 'waves' && this.cleared.has(this.floor.bossId)) {
+      if (isFinaleGate(this.mode, this.floorNum)) this.spawnTrapdoor(true);
+      else if (!isLastStage(this.mode, this.floorNum)) this.spawnTrapdoor();
+    }
 
     this.refreshInventory();
     this.cameras.main.centerOn(si.cx, si.cy);
     // Música del bioma (la del jefe la pone spawnBoss); al salir de la partida, la del menú
     playTrack(trackForBiome(this.biome.id));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => playMenuMusic());
-    this.enterRoom(start);
-    // Llegada por la trampilla: cartel del piso y el jugador cae desde arriba
+    // Llegada por la trampilla: cartel del piso y el jugador cae desde arriba (antes de entrar en la sala, para
+    // que la intro del jefe de las arenas espere a que acabe)
     if (this.carry && !r) this.showFloorIntro();
+    this.enterRoom(start);
     void this.loadAbility(this.formId);
     if (usingOfflineData()) this.notifyOffline();
     // En Oleadas el cartel de la ronda lo pone startWave
@@ -1753,7 +1805,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const open = Object.entries(this.floor.rooms[sid].doors).some(([d]) => this.revealedDoors.has(doorKey(sid, d as Dir)));
       if (!open) hidden.add(sid);
     }
-    const bottom = drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2);
+    const marks = new Map<number, number>();
+    if (this.minibossRoom !== undefined && !this.cleared.has(this.minibossRoom)) marks.set(this.minibossRoom, 0xff8c1a);
+    const bottom = drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2, marks);
     this.toasts?.setTop(bottom + 16);
   }
 
@@ -2112,7 +2166,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.time.delayedCall(900, () => this.spawnChallengeWave(room.id));
     } else if ((room.kind === 'combat' || room.kind === 'boss') && !this.cleared.has(room.id)) {
       if (room.kind === 'boss') this.spawnBoss();
-      else {
+      else if (room.id === this.minibossRoom) {
+        this.spawnMiniboss();
+        this.spawnEnemies(1);
+      } else {
         const n = Phaser.Math.Between(...this.difficulty.enemies);
         this.spawnEnemies(n);
       }
@@ -2324,7 +2381,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     behavior: EnemyBehavior = kind.behavior,
     /** Ayudante invocado por el jefe: sale donde se le dice, con menos vida y sin botín. */
     helper?: { x: number; y: number },
-  ) {
+  ): Sprite {
     const { x, y } = helper ?? this.randomSpotInRoom(60);
     // Shiny (1/200): otro color, más vida y más premio
     const shiny = rollShiny(Math.random, SHINY_ODDS.enemy) && this.textures.exists(`${kind.key}-s-front`);
@@ -2351,6 +2408,70 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       e.setData('hp', Math.round(hp * 1.5)).setData('maxHp', Math.round(hp * 1.5)).setData('speed', st.speed * 1.12).setData('elite', true);
       (e as Sprite & { preFX?: { addGlow: (c: number, o?: number, i?: number, k?: boolean, q?: number, d?: number) => unknown } }).preFX?.addGlow(typeColor(kind.type), 4, 0, false, 0.1, 10);
     }
+    return e;
+  }
+
+  /**
+   * Minijefe del piso: el Pokémon más fuerte del bioma en grande, con mucha vida y dos movimientos de su tipo (con
+   * su nombre y aviso). Al caer suelta un objeto y tickets.
+   */
+  private spawnMiniboss() {
+    if (this.foeKinds.length === 0) return;
+    const kind = [...this.foeKinds].sort((a, b) => b.bst - a.bst)[0];
+    const e = this.spawnEnemy(kind, kind.behavior);
+    const id = Number(kind.key.replace('foe-', ''));
+    const size = 112;
+    e.setDisplaySize(size, size).setData('size', size).setData('sheet', kind.key);
+    if (!e.getData('shiny')) this.applyPmd(e, id, size);
+    const hp = Math.round((e.getData('maxHp') as number) * (6 + this.level() * 0.6));
+    e.setData('hp', hp).setData('maxHp', hp).setData('dmg', Math.round((e.getData('dmg') as number) * 1.3)).setData('miniboss', true);
+    const ai = e.getData('ai') as EnemyAI;
+    ai.moves = bossStyles(kind.types, id);
+    ai.eliteMove = ai.moves[0];
+    ai.eliteAt = this.time.now + 2000;
+    (e as Sprite & { preFX?: { addGlow: (c: number, o?: number, i?: number, k?: boolean, q?: number, d?: number) => unknown } }).preFX?.addGlow(0xffd34d, 5, 0, false, 0.1, 12);
+    const name = kind.name ? kind.name.charAt(0).toUpperCase() + kind.name.slice(1) : 'Pokémon';
+    this.notify(`¡Minijefe: ${name}!`, { kind: 'danger', icon: 'star' });
+    sparkle(this, e.x, e.y);
+    void cry(id);
+  }
+
+  /**
+   * Reto final: el trío (los tres a la vez, barra compartida; si cae uno, los demás se enfurecen) o el gigante
+   * (mucha vida y una última furia). Todos invocan ayudantes de su tipo y usan movimientos de su tipo.
+   */
+  private spawnFinale() {
+    const f = this.finale!;
+    const trio = f.kind === 'trio';
+    const st = bossStats(this.bossBase, this.difficulty);
+    const room = this.interior(this.current);
+    const group: Sprite[] = [];
+    this.finaleMembers.forEach((m, k) => {
+      const size = trio ? 130 : GIANT_SIZE;
+      const x = trio ? room.cx + (k - 1) * 220 : room.cx;
+      const y = trio ? room.cy - 80 + (k === 1 ? -40 : 0) : room.cy - 60;
+      const b = this.enemies.create(x, y, `${m.key}-front`) as Sprite;
+      b.setDisplaySize(size, size).setData('sheet', m.key).setData('size', size);
+      this.applyPmd(b, m.id, size);
+      const ms = bossStats(m.stats, this.difficulty);
+      const hp = Math.round(ms.hp * (trio ? TRIO_HP_MUL : GIANT_HP_MUL));
+      b.setData('hp', hp).setData('maxHp', hp).setData('speed', ms.speed * (trio ? 0.9 : 0.8)).setData('dmg', ms.damage);
+      b.setData('bname', m.name).setData('btypes', m.types).setData('finale', true);
+      const ai = this.newAI(behaviorFor([m.types[0]]), m.types[0], true);
+      ai.attacks = [...new Set([...bossAttacks(m.types), 'summon' as const])];
+      ai.moves = bossStyles(m.types, m.id);
+      ai.nextAttack = Number.POSITIVE_INFINITY; // los activa la intro al acabar
+      ai.phase = 1;
+      b.setData('ai', ai);
+      group.push(b);
+    });
+    void st;
+    const label = trio ? f.name : this.finaleMembers[0].name;
+    this.buildBossBar(group[0], label, this.finaleMembers[0].types[0], group);
+    this.notify(trio ? `¡Reto final: ${f.name}!` : `¡Reto final: ${label}, más fuerte que nunca!`, { kind: 'danger', icon: 'star' });
+    this.finaleMembers.forEach((m) => void cry(m.id));
+    playTrack(TRACKS.jefe);
+    this.showBossIntro(group[0].getData('ai') as EnemyAI);
   }
 
   /** Un ataque de su tipo (élites y jefes): aviso con su nombre y destello, y luego sale (más lento que los tuyos). */
@@ -2373,6 +2494,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   private spawnBoss() {
+    if (this.finale && this.finaleMembers.length > 0) return this.spawnFinale();
     const { x, y } = this.randomSpotInRoom(110);
     const b = this.enemies.create(x, y, `${this.bossKey}-front`) as Sprite;
     b.setDisplaySize(150, 150).setData('sheet', this.bossKey).setData('size', 150);
@@ -2384,7 +2506,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.buildBossBar(b);
     // El jefe también se comporta según su tipo
     const ai = this.newAI(behaviorFor([this.bossType]), this.bossType, true);
-    ai.attacks = bossAttacks(this.bossTypes);
+    // Todos los legendarios invocan ayudantes de su tipo
+    ai.attacks = [...new Set([...bossAttacks(this.bossTypes), 'summon' as const])];
     // Movimientos de su tipo (Lanzallamas, Hidrobomba, Terremoto…) además de sus ataques de jefe
     ai.moves = bossStyles(this.bossTypes, this.bossId);
     ai.nextAttack = this.time.now + 2200;
@@ -2404,6 +2527,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const sy = p.scaleY;
     const y0 = p.y;
     p.setVisible(false);
+    this.floorIntroOn = true;
     this.scene.launch('FloorIntro', {
       label: progressText(this.mode, this.floorNum),
       biomeId: this.biome.id,
@@ -2436,6 +2560,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
                 this.falling = false;
                 this.transitioning = false;
                 this.physics.resume();
+                this.floorIntroOn = false;
+                this.events.emit('floorintro-done');
               },
             });
           },
@@ -2447,6 +2573,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Intro "VS" (supervisor) antes de que el jefe ataque: la partida se pausa debajo y se salta con Enter/Esc/clic/A. */
   private showBossIntro(ai: EnemyAI) {
+    if (this.floorIntroOn) {
+      ai.nextAttack = Number.POSITIVE_INFINITY;
+      this.events.once('floorintro-done', () => this.showBossIntro(ai));
+      return;
+    }
     if (!this.scene.manager.keys['BossIntro'] || this.scene.isActive('BossIntro')) return;
     ai.nextAttack = Number.POSITIVE_INFINITY;
     const cap = (n: string) => n.charAt(0).toUpperCase() + n.slice(1);
@@ -2459,7 +2590,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.scene.resume();
         this.input.keyboard?.resetKeys();
         // Un respiro antes del primer ataque (el reloj de la escena estuvo parado)
-        this.time.delayedCall(1200, () => (ai.nextAttack = this.time.now));
+        this.time.delayedCall(1200, () => {
+          ai.nextAttack = this.time.now;
+          // El resto del trío, escalonados
+          let k = 1;
+          for (const c of this.enemies.getChildren()) {
+            const oai = (c as Sprite).getData('ai') as EnemyAI | undefined;
+            if (oai?.boss && oai !== ai) oai.nextAttack = this.time.now + 700 * k++;
+          }
+        });
       },
     });
     this.scene.pause();
@@ -2476,23 +2615,33 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       ai.phase = 2;
       b.setData('speed', (b.getData('speed') as number) * PHASE2_SPEED);
       this.cameras.main.shake(250, 0.006);
-      this.notify(`¡${this.bossName} se enfurece!`, { kind: 'danger', icon: 'pokeball' });
+      this.notify(`¡${(b.getData('bname') as string | undefined) ?? this.bossName} se enfurece!`, { kind: 'danger', icon: 'pokeball' });
       ai.nextAttack = time + 900;
+    }
+    // Gigante del reto final: última furia (ataca mucho más a menudo)
+    if (this.finale?.kind === 'giant' && !b.getData('rage') && ratio < GIANT_RAGE_AT) {
+      b.setData('rage', true);
+      b.setData('speed', (b.getData('speed') as number) * 1.15);
+      this.cameras.main.shake(400, 0.01);
+      this.cameras.main.flash(200, 255, 80, 80);
+      this.notify(`¡${(b.getData('bname') as string | undefined) ?? this.bossName} desata todo su poder!`, { kind: 'danger', icon: 'star' });
     }
     if (time < (ai.nextAttack ?? 0) || this.ended) return;
     // La mitad de las veces, uno de sus movimientos de tipo (sin repetir el último)
-    if (ai.moves?.length && Math.random() < 0.5) {
+    const btypes = (b.getData('btypes') as string[] | undefined) ?? this.bossTypes;
+    const rage = !!b.getData('rage');
+    if (ai.moves?.length && Math.random() < (rage ? 0.7 : 0.5)) {
       const options = ai.moves.length > 1 ? ai.moves.filter((m) => m.id !== b.getData('lastMove')) : ai.moves;
       const mv = options[Math.floor(Math.random() * options.length)];
       b.setData('lastMove', mv.id);
-      const mtype = this.bossTypes.find((t) => (TYPE_STYLES[t] ?? []).includes(mv)) ?? this.bossType;
-      ai.nextAttack = time + attackInterval(ai.phase ?? 1) + TELEGRAPH_MS + 400;
+      const mtype = btypes.find((t) => (TYPE_STYLES[t] ?? []).includes(mv)) ?? ai.type;
+      ai.nextAttack = time + attackInterval(ai.phase ?? 1) * (rage ? 0.65 : 1) + TELEGRAPH_MS + 400;
       this.foeMove(b, mv, mtype, Math.round((b.getData('dmg') as number) * 0.7), TELEGRAPH_MS, true);
       return;
     }
     const attack = pickAttack(ai.attacks, Math.random, ai.lastAttack);
     ai.lastAttack = attack;
-    ai.nextAttack = time + attackInterval(ai.phase ?? 1) + TELEGRAPH_MS;
+    ai.nextAttack = time + attackInterval(ai.phase ?? 1) * (rage ? 0.65 : 1) + TELEGRAPH_MS;
     if (attack === 'ring') this.bossRing(b, ai);
     else if (attack === 'charge') this.bossCharge(b, ai, time);
     else if (attack === 'summon') this.bossSummon(b, ai);
@@ -2503,7 +2652,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private bossSummon(b: Sprite, ai: EnemyAI) {
     const alive = this.enemies.getChildren().filter((c) => c.active && (c as Sprite).getData('helper')).length;
     const n = helpersToSummon(ai.phase ?? 1, alive);
-    if (n === 0 || this.foeKinds.length === 0) return this.bossRing(b, ai);
+    // Ayudantes de su tipo (si no hay, de los del piso)
+    const own = this.summonKinds.filter((k) => k.types.includes(ai.type));
+    const kinds = own.length ? own : this.summonKinds.length ? this.summonKinds : this.foeKinds;
+    if (n === 0 || kinds.length === 0) return this.bossRing(b, ai);
     const i = this.interior(this.current);
     const color = typeColor(ai.type);
     const spots = Array.from({ length: n }, (_, k) => {
@@ -2528,7 +2680,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (!b.active || this.ended) return;
       for (const p of spots) {
         sparkle(this, p.x, p.y);
-        const kind = Phaser.Utils.Array.GetRandom(this.foeKinds) as FoeKind;
+        const kind = Phaser.Utils.Array.GetRandom(kinds) as FoeKind;
         this.spawnEnemy(kind, kind.behavior, p);
       }
     });
@@ -2756,14 +2908,41 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   // --- Trampilla al piso siguiente ---
 
-  private spawnTrapdoor() {
+  private spawnTrapdoor(final = false) {
     const i = this.interior(this.floor.rooms[this.floor.bossId]);
-    this.add.image(i.cx, i.cy, iconKey('trapdoor')).setScale(5).setDepth(1);
+    const img = this.add.image(i.cx, i.cy, iconKey('trapdoor')).setScale(5).setDepth(1);
+    if (final) {
+      // Dorada y con brillo: la del reto final
+      img.setTint(0xffd34d);
+      const glow = this.add.circle(i.cx, i.cy, 46, 0xffd34d, 0.25).setDepth(0.9);
+      this.tweens.add({ targets: glow, scale: 1.35, alpha: 0.05, duration: 900, yoyo: true, repeat: -1 });
+    }
     this.add
-      .text(i.cx, i.cy - 52, 'Trampilla', { fontFamily: FONT, fontSize: '16px', color: '#2b3a67' })
+      .text(i.cx, i.cy - 52, final ? 'Reto final' : 'Trampilla', { fontFamily: FONT, fontSize: '16px', fontStyle: final ? 'bold' : 'normal', color: final ? '#b8860b' : '#2b3a67' })
       .setOrigin(0.5)
       .setDepth(3);
-    this.trapdoor = { x: i.cx, y: i.cy, armed: false };
+    this.trapdoor = { x: i.cx, y: i.cy, armed: false, final };
+  }
+
+  /** Trampilla dorada: pregunta antes de entrar al reto final (o rendirse con la victoria, o todavía no). */
+  private askFinal() {
+    const t = this.trapdoor;
+    if (!t || !this.scene.manager.keys['FinalPrompt'] || this.scene.isActive('FinalPrompt')) return;
+    t.armed = false;
+    this.player.setVelocity(0, 0);
+    this.scene.launch('FinalPrompt', {
+      onChoice: (c: FinalChoice) => {
+        this.scene.stop('FinalPrompt');
+        this.scene.resume();
+        this.input.keyboard?.resetKeys();
+        if (c === 'enter') this.descend();
+        else if (c === 'surrender') {
+          this.mission({ kind: 'win' });
+          this.finish(true, `¡Has completado los ${FLOOR_COUNT} pisos!\n+${this.earned} tickets en total\nPulsa R, Start o haz clic para ver el resumen`);
+        }
+      },
+    });
+    this.scene.pause();
   }
 
   /** Pisar la trampilla: se activa cuando te has alejado de ella (así no bajas sin querer). */
@@ -2775,7 +2954,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (dist > 90) t.armed = true;
       return;
     }
-    if (dist < 36) this.descend();
+    if (dist < 36) {
+      if (t.final) this.askFinal();
+      else this.descend();
+    }
   }
 
   private descend() {
@@ -2858,6 +3040,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     updateShots(this.host, this.shots, time, delta);
     updateShots(this.host, this.foeShots, time, delta);
     if (!this.ended) this.counters.seconds += delta / 1000;
+    // Curación por golpes: se recarga un 4 % de tus PS máximos por segundo (y no se acumula más)
+    const healCap = this.stats.maxHp * 0.04;
+    this.healBudget = Math.min(healCap, this.healBudget + healCap * (delta / 1000));
     // Cualquier subida de PS (bayas, pociones, Centro, robo de vida…) cuenta como curarse
     if (this.hpMark >= 0 && this.hp > this.hpMark + 0.001) this.healedRun = true;
     this.hpMark = this.hp;
@@ -2960,8 +3145,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const eai = e.getData('ai') as EnemyAI | undefined;
       if (eai?.boss) this.updateBossAttacks(e, time);
       else if (eai?.eliteMove && time >= (eai.eliteAt ?? 0)) {
-        eai.eliteAt = time + Math.max(2200, 4400 - this.level() * 220);
-        this.foeMove(e, eai.eliteMove, eai.type, Math.round((e.getData('dmg') as number) * 0.6), 450, false);
+        // Minijefe: alterna sus movimientos (con nombre y algo más de aviso); élite: su ataque extra
+        const mini = !!e.getData('miniboss');
+        const mv = mini && eai.moves?.length ? eai.moves[Math.floor(Math.random() * eai.moves.length)] : eai.eliteMove;
+        eai.eliteAt = time + (mini ? 2600 : Math.max(2200, 4400 - this.level() * 220));
+        this.foeMove(e, mv, eai.type, Math.round((e.getData('dmg') as number) * (mini ? 0.7 : 0.6)), mini ? 650 : 450, mini);
       }
       this.paintEnemy(e, time);
       this.drawEnemyBar(e);
@@ -2974,7 +3162,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.hpText.setText(`${Math.max(0, Math.ceil(this.hp))}/${this.stats.maxHp}`);
     this.hpBar.set(this.hp / this.stats.maxHp);
     const bb = this.bossBar;
-    if (bb) bb.bar.set((bb.boss.getData('hp') as number) / (bb.boss.getData('maxHp') as number));
+    if (bb) {
+      // El trío comparte barra: la suma de los tres
+      const list = bb.group ?? [bb.boss];
+      const hp = list.reduce((a, e) => a + (e.active ? Math.max(0, e.getData('hp') as number) : 0), 0);
+      const max = list.reduce((a, e) => a + ((e.getData('maxHp') as number | undefined) ?? 1), 0);
+      bb.bar.set(hp / Math.max(1, max));
+    }
     this.paintActive();
     if (this.shieldRing) this.shieldRing.setPosition(this.player.x, this.player.y).setVisible(this.shieldLeft > 0);
     this.coinsHud.setText(String(this.coins));
@@ -3235,11 +3429,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Concha Campana: parte del daño vuelve como PS
     if (this.stats.lifesteal > 0) {
       this.lifestealAcc += dmg * this.stats.lifesteal;
-      const heal = Math.floor(this.lifestealAcc);
+      // Con tope por segundo (si no, los ataques de muchos golpes curaban demasiado)
+      const heal = Math.min(Math.floor(this.lifestealAcc), Math.floor(this.healBudget));
       if (heal > 0) {
         this.lifestealAcc -= heal;
+        this.healBudget -= heal;
         this.hp = Math.min(this.stats.maxHp, this.hp + heal);
       }
+      this.lifestealAcc = Math.min(this.lifestealAcc, 5);
     }
     this.countDamage(enemy, dmg);
     const hp = (enemy.getData('hp') as number) - dmg;
@@ -3286,19 +3483,45 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       .filter((d) => hasShop || d.kind !== 'coin')
       .forEach((d, k) => this.dropLoot(enemy.x + (k - 1) * 26, enemy.y + 10, d));
     (enemy.getData('bar') as Phaser.GameObjects.Graphics | undefined)?.destroy();
-    if (this.bossBar?.boss === enemy) {
-      this.bossBar.objects.forEach((o) => o.destroy());
-      this.bossBar = undefined;
+    // Trío: la barra sigue mientras quede alguno; los que quedan se enfurecen
+    const others = boss ? (this.bossBar?.group ?? []).filter((o) => o !== enemy && o.active) : [];
+    if (this.bossBar && (this.bossBar.boss === enemy || this.bossBar.group?.includes(enemy))) {
+      if (others.length > 0) {
+        this.bossBar.boss = others[0];
+        for (const o of others) {
+          const oai = o.getData('ai') as EnemyAI;
+          oai.phase = 2;
+          o.setData('speed', (o.getData('speed') as number) * 1.2);
+          oai.nextAttack = this.time.now + 900;
+        }
+        this.cameras.main.shake(300, 0.008);
+        this.notify(`¡Cae ${(enemy.getData('bname') as string | undefined) ?? ''}! Los demás se enfurecen`, { kind: 'danger', icon: 'star' });
+      } else {
+        this.bossBar.objects.forEach((o) => o.destroy());
+        this.bossBar = undefined;
+      }
     }
     // Se debilita con animación (una copia dibujada; el sprite real se va ya)
     const eb = enemy.body as Body | null;
     const feetY = eb ? eb.bottom : enemy.y + enemy.displayHeight * 0.35;
-    const etypes = boss ? this.bossTypes : ((enemy.getData('types') as string[] | undefined) ?? ['normal']);
+    const etypes = boss ? ((enemy.getData('btypes') as string[] | undefined) ?? this.bossTypes) : ((enemy.getData('types') as string[] | undefined) ?? ['normal']);
     const ecolor = typeColor(etypes[0] ?? 'normal');
-    if (boss) faintBoss(this, enemy, feetY, ecolor, (x, y) => typeImpact(this, x, y, this.bossType, 1.4, 12));
+    const mini = !!enemy.getData('miniboss');
+    if (boss || mini) faintBoss(this, enemy, feetY, ecolor, (x, y) => typeImpact(this, x, y, etypes[0] ?? this.bossType, 1.4, 12));
     else faintEnemy(this, enemy, feetY, ecolor);
+    if (mini) {
+      // Premio del minijefe: un objeto y tickets
+      const bonus = roomTicketsFor(this.floorNum) * 2;
+      this.earned += bonus;
+      addTickets(bonus);
+      const ex = enemy.x;
+      const ey = enemy.y;
+      const roomId = this.current.id;
+      this.time.delayedCall(900, () => !this.ended && this.dropItem(roomId, ex, ey));
+      this.notify(`¡Minijefe derrotado! +${bonus} tickets\nHa caído un objeto`, { kind: 'reward', icon: 'star' });
+    }
     enemy.destroy();
-    if (boss) {
+    if (boss && others.length === 0) {
       playTrack(trackForBiome(this.biome.id));
       // Al caer el jefe se van sus ayudantes
       for (const c of [...this.enemies.getChildren()]) {
@@ -3338,13 +3561,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     g.fillStyle(hpColor(ratio), 1).fillRect(x, y, w * ratio, 4);
   }
 
-  private buildBossBar(boss: Sprite) {
+  private buildBossBar(boss: Sprite, label = this.bossName, type = this.bossType, group?: Sprite[]) {
     this.bossBar?.objects.forEach((o) => o.destroy());
     // En la franja de arriba, encima de la sala (no la tapa)
     const bx = CX - 440;
     const box = drawHudFrame(this.add.graphics(), bx, 4, 880, 52);
-    const name = this.add.text(bx + 22, 30, this.bossName, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#f8f8f8' }).setOrigin(0, 0.5);
-    const chip = addTypeChip(this, bx + 20 + name.width + 56, 30, typeNameEs(this.bossType), typeColor(this.bossType), 92, 24);
+    const name = this.add.text(bx + 22, 30, label, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#f8f8f8' }).setOrigin(0, 0.5);
+    const chip = addTypeChip(this, bx + 20 + name.width + 56, 30, typeNameEs(type), typeColor(type), 92, 24);
     const barX = bx + 20 + name.width + 116;
     const bar = addHpBar(this, barX, 23, bx + 860 - barX, 14);
     const objects = [box, name, ...chip, ...bar.objects];
@@ -3352,7 +3575,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.hudLayer.add(o);
       if (this.hudCam) o.cameraFilter &= ~this.hudCam.id;
     }
-    this.bossBar = { boss, bar, objects };
+    this.bossBar = { boss, bar, objects, group };
   }
 
   // --- Monedas y bayas en el suelo ---
@@ -3641,7 +3864,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           };
     const now = this.time.now;
     if (effect.kind === 'drain') {
-      const heal = drainHeal(damage);
+      // Drenar cura una vez por lanzamiento (no por cada golpe de un chorro o un rayo) y con tope por segundo
+      if (now < this.drainReadyAt) return;
+      const heal = Math.min(drainHeal(damage), Math.floor(this.healBudget));
+      if (heal <= 0) return;
+      this.drainReadyAt = now + 700;
+      this.healBudget -= heal;
       this.hp = Math.min(this.stats.maxHp, this.hp + heal);
       this.popup(this.player.x, this.player.y - 50, `+${heal} PS`, effect.color);
       return;
@@ -3794,6 +4022,23 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // Récord: pisos completados (Normal, Infinito) o jefes vencidos (Rush)
       const record = submitRecord(this.mode, this.floorNum);
       if (record) this.counters.newRecord = true;
+      if (isFinalFloor(this.mode, this.floorNum)) {
+        // Reto final superado
+        this.mission({ kind: 'win' });
+        this.earned += FINALE_BONUS;
+        addTickets(FINALE_BONUS);
+        this.finish(true, `¡Has superado el reto final!\n+${this.earned} tickets en total\nPulsa R, Start o haz clic para ver el resumen`);
+        return;
+      }
+      if (isFinaleGate(this.mode, this.floorNum)) {
+        // Último piso: objeto y trampilla dorada al reto final (al pisarla se pregunta)
+        const i = this.interior(room);
+        this.dropItem(room.id, i.cx + 170, i.cy);
+        this.spawnTrapdoor(true);
+        this.notify(`¡Jefe derrotado! +${reward} tickets\nPisa la trampilla dorada: reto final o rendirte con la victoria`, { kind: 'reward', icon: 'star' });
+        this.saveNow();
+        return;
+      }
       if (isLastStage(this.mode, this.floorNum)) {
         if (this.mode === 'normal') this.mission({ kind: 'win' });
         this.finish(

@@ -22,6 +22,8 @@ export function drawMinimap(
   /** Tamaño (1 = el de siempre) y ancho máximo: si no cabe, se encoge lo justo. */
   scale = 1,
   maxW = Infinity,
+  /** Marcas extra por sala (id → color), p. ej. el minijefe (supervisor). */
+  marks: ReadonlyMap<number, number> = new Map(),
 ): number {
   g.clear();
 
@@ -58,6 +60,13 @@ export function drawMinimap(
     const icon =
       r.kind === 'boss' ? 0xe53935 : r.kind === 'item' ? 0xffc107 : r.kind === 'center' ? 0xff6fae : r.kind === 'shop' ? 0x2ecc71
       : r.kind === 'challenge' ? 0xbdc3c7 : r.kind === 'secret' ? 0x8e44ad : null;
+    const mark = marks.get(r.id);
+    if (mark !== undefined && icon === null) {
+      // Rombo: minijefe
+      const cx = x + CW / 2;
+      const cy = y + CH / 2;
+      g.fillStyle(mark, 1).fillTriangle(cx, cy - 5 * k, cx - 5 * k, cy, cx + 5 * k, cy).fillTriangle(cx, cy + 5 * k, cx - 5 * k, cy, cx + 5 * k, cy);
+    }
     if (icon !== null) g.fillStyle(icon, 1).fillCircle(x + CW / 2, y + CH / 2, 4 * k);
   }
   return top + h;

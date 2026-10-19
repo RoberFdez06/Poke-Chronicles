@@ -40,6 +40,7 @@ export const PROGRESS_LABEL: Record<GameMode, string> = {
 
 /** Texto de progreso para el HUD, la pausa y los huecos. */
 export function progressText(mode: GameMode, n: number): string {
+  if (mode === 'normal' && n > FLOOR_COUNT) return 'Reto final';
   return mode === 'normal' ? `Piso ${n}/${FLOOR_COUNT}` : `${PROGRESS_LABEL[mode]} ${n}`;
 }
 
