@@ -671,3 +671,23 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   (descripciones de 60 caracteres como mucho para que quepan; hay test).
 - El mock de PokeAPI de los e2e ahora trae `abilities` (Mar Llamas o Torrente y una oculta).
 - **Duda**: no hay habilidades para los enemigos ni para los jefes; la tarea solo hablaba de tu Pokémon.
+
+## T28 — Resumen de partida e historial (2026-10-19)
+
+- `src/data/runHistory.ts` (tests en `tests/runHistory.test.ts`): `RunRecord`, `parseHistory` (descarta registros
+  malos sin perder los buenos), `withRun` (últimas 20, la más reciente primero), `formatDuration` y los contadores
+  de la partida. save.ts: `loadRunHistory`/`addRunHistory` con la clave `pokeisaac.history` (en "Borrar progreso").
+  Los nombres no chocan con `loadHistory` del gacha del supervisor.
+- **Contadores** en GameScene: tiempo (suma `delta` en `update`; en pausa la escena está parada y no cuenta),
+  enemigos vencidos, daño hecho (golpes, poderes, bombas, estados y Casco Dentado; sin contar lo que sobra al
+  rematar) y si se bate un récord. Pasan de piso en `FloorCarry` y se guardan: **`RunSave` v10** con `counters`; los
+  v9 se migran con los contadores a cero.
+- **Final**: `finish(won, mensaje)` apunta la partida en el historial, muestra el cartel y va al **resumen**
+  (`SummaryScene`) con R / Start / clic o solo a los 3,5 s. Resumen: Otra partida (al mismo hueco), Historial o Menú
+  (MenuList: teclado, ratón y mando; Esc/B = Menú).
+- **Historial** (`HistoryScene`): tabla de las 20 últimas (verde si ganaste, ★ si hubo récord). Por N5 no está en el
+  menú principal: se abre desde el resumen y desde **Jugar** (botón "Historial" junto a "Misiones y logros"; con
+  flechas, las dos opciones van después de los huecos). Vuelve a donde se abrió.
+- **e2e** (`boss.spec.ts`): pierde una partida, ve el resumen con R, entra en el historial, Esc al menú, y abre el
+  historial desde Partidas (capturas `16-resumen` y `17-historial`). Corregido `screens.spec`: a Misiones ahora se
+  llega con dos flechas arriba.

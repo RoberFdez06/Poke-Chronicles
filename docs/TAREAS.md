@@ -234,7 +234,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
   Mar Llamas (+daño con poca vida), Espesura, Torrente, Intimidación (enemigos −daño), Levitación (cruzas
   agujeros), Velo Arena… Las que no tengan efecto definido dan una mejora pequeña genérica. Se ve en la pausa.
 
-## [ ] T28 — Resumen de partida e historial (sugerida por el supervisor)
+## [x] T28 — Resumen de partida e historial (sugerida por el supervisor)
 - Al morir o ganar: pantalla de resumen (tiempo, pisos, enemigos vencidos, daño hecho, objetos, tickets
   ganados, nuevo récord) antes de volver. Historial de las últimas 20 partidas consultable desde el menú.
 
@@ -266,3 +266,35 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
 - Intro de jefe tipo VS (`src/scenes/BossIntroScene.ts`), efectos por tipo (`src/ui/art/typeFx.ts`),
   marcos del HUD (`src/ui/art/hud.ts`) y música por bioma (`src/data/music.ts`). El supervisor dirá en una nota
   cómo llamar a cada cosa: **ya está, ver N14**.
+
+# Tanda 4 (pedida por Roberto el 19/10 por la mañana)
+
+## [ ] T37 — Notificaciones fuera del centro de la pantalla (PRIORITARIA: hazla justo después de la tarea en curso)
+- **Todos** los avisos (sala limpia, objeto recogido, misión completada, logro, "¡X se enfurece!", sinergia,
+  tutorial, evolución, monedas, tickets, piso nuevo…) dejan de salir en medio de la pantalla tapando el juego.
+- Sistema único de avisos (`src/ui/toast.ts`): tarjetas pequeñas en la franja del HUD (arriba a la derecha o
+  abajo, donde no tapen la sala), que entran deslizando, se apilan (máx. 3–4, las viejas se van) y desaparecen
+  solas. Icono a la izquierda (usa los de `src/ui/art/icons.ts`) y color según el tipo de aviso.
+- Solo quedan en el centro las cosas que deben parar el juego: intro de jefe, fin de partida y diálogos.
+- Revisa todas las escenas (también menús, gacha no, que es del supervisor) y cambia cada `showBanner`/aviso.
+
+## [ ] T38 — Clima por piso
+- Algunos pisos tienen clima (Lluvia, Día soleado, Tormenta de arena, Granizo, Niebla) según el bioma y al azar:
+  Lluvia potencia Agua ×1,3 y debilita Fuego ×0,7; Sol al revés; Arena hace daño leve a quien no sea Roca/Tierra/
+  Acero; Granizo igual salvo Hielo; Niebla reduce la vista (oscurece los bordes). Efecto visual pixel (gotas, rayos
+  de sol, arena, granizo) ligero. Indicador en el HUD. Lógica pura con tests.
+
+## [ ] T39 — Eventos en salas
+- Salas sorpresa (1 de cada pocos pisos): Pokémon raro que huye (si lo vences antes de que escape, buen premio),
+  mercader ambulante (otros objetos y precios), altar (das PS máximos a cambio de un objeto), cofre trampa (puede
+  ser un enemigo). Iconos en el minimapa al descubrirlas. Con teclado, ratón y mando. Lógica pura con tests.
+
+## [ ] T40 — Selector de dificultad
+- Fácil, Normal y Difícil al elegir modo: multiplicadores de vida/daño enemigo, curación y premio (Difícil da más
+  tickets, Fácil menos). Récords separados por dificultad. Se ve en la pausa y en el hueco guardado.
+
+## [ ] T41 — Rendimiento
+- Que vaya fluido en PCs flojos a 1920×1080: reutilizar proyectiles y partículas (pools) en vez de crear/destruir,
+  no redibujar gráficos que no cambian, limitar partículas, y en Ajustes una opción "Efectos: altos / bajos"
+  (bajos quita partículas, temblores, fundidos y el fondo animado de los menús) y "Mostrar FPS".
+- Mide antes y después (FPS medio en una sala con muchos enemigos) y apúntalo en la bitácora.

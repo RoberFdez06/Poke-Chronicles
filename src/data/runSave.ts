@@ -5,6 +5,7 @@
 import type { StorageLike } from './save';
 import { computeStats, type MovePower } from './items.ts';
 import { isMode, type GameMode } from './modes.ts';
+import { emptyCounters, isCounters, type RunCounters } from './runHistory.ts';
 import { BERRIES, POTIONS, type ShopSlot } from './loot.ts';
 
 export const RUN_SLOTS = 3;
@@ -19,7 +20,7 @@ export const RUN_SLOTS = 3;
  *     sin sala secreta, de desafío ni cofres.
  * v8: objeto activo (y su carga) y objetos activos en el suelo.
  */
-export const RUN_VERSION = 9;
+export const RUN_VERSION = 10;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -92,6 +93,8 @@ export interface RunSave {
   active: { id: string; charge: number } | null;
   /** Te has curado en algún momento de la partida (misiones y logros "sin curarte"). */
   healed: boolean;
+  /** Tiempo, enemigos vencidos, daño hecho y récord, para el resumen al acabar (T28). */
+  counters: RunCounters;
 }
 
 const isInt = (n: unknown): n is number => Number.isInteger(n);
@@ -164,6 +167,11 @@ function migrateV8(d: RunSave): RunSave {
   return { ...d, version: 9, healed: true };
 }
 
+/** v9 no llevaba los contadores del resumen: empiezan de cero. */
+function migrateV9(d: RunSave): RunSave {
+  return { ...d, version: 10, counters: emptyCounters() };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -182,6 +190,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 6) d = migrateV6(d);
   if (d.version === 7) d = migrateV7(d);
   if (d.version === 8) d = migrateV8(d);
+  if (d.version === 9) d = migrateV9(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
@@ -198,7 +207,7 @@ export function parseRun(raw: string | null): RunSave | null {
     isInt(d.keys) && d.keys >= 0 && isInt(d.bombs) && d.bombs >= 0 && isIntArray(d.openedChests) &&
     Array.isArray(d.revealedDoors) && d.revealedDoors.every((k) => typeof k === 'string') &&
     (d.active === null || (!!d.active && typeof d.active.id === 'string' && isInt(d.active.charge) && d.active.charge >= 0)) &&
-    typeof d.healed === 'boolean';
+    typeof d.healed === 'boolean' && isCounters(d.counters);
   return ok ? d : null;
 }
 

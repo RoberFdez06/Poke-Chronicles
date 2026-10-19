@@ -21,8 +21,8 @@ test('capturas de todas las pantallas', async ({ page }) => {
   await press(page, 'Enter');
   await waitScene(page, 'Slots');
   await shot(page, '03-huecos');
-  // Misiones y logros: la opción de debajo de los huecos (arriba desde el hueco 1), y Esc vuelve
-  await press(page, 'ArrowUp');
+  // Misiones y logros: debajo de los huecos (dos veces arriba desde el hueco 1; una es Historial), y Esc vuelve
+  await press(page, 'ArrowUp', 2);
   await press(page, 'Enter');
   await waitScene(page, 'Missions');
   await shot(page, '03b-misiones');

@@ -8,6 +8,7 @@ import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } f
 import { applyMissionEvent, parseMissions, type Completed, type MissionEvent, type MissionState } from './missions.ts';
 import { dayNumber } from './gacha.ts';
 import { parseTutorial, type TutorialState } from './tutorial.ts';
+import { parseHistory, withRun, type RunRecord } from './runHistory.ts';
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -300,6 +301,29 @@ export function saveTutorial(state: TutorialState, storage: StorageLike | null =
   }
 }
 
+// --- Historial de partidas (ver runHistory.ts) ---
+
+export const HISTORY_KEY = 'pokeisaac.history';
+
+export function loadRunHistory(storage: StorageLike | null = browserStorage()): RunRecord[] {
+  try {
+    return parseHistory(storage?.getItem(HISTORY_KEY) ?? null);
+  } catch {
+    return [];
+  }
+}
+
+/** Apunta una partida terminada (se quedan las últimas 20). */
+export function addRunHistory(r: RunRecord, storage: StorageLike | null = browserStorage()): RunRecord[] {
+  const list = withRun(loadRunHistory(storage), r);
+  try {
+    storage?.setItem(HISTORY_KEY, JSON.stringify(list));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+  return list;
+}
+
 // --- Borrar progreso (Ajustes) ---
 
 /** Todo lo que se pierde al borrar el progreso: desbloqueos, tickets, récords y partidas. El volumen se queda. */
@@ -312,6 +336,7 @@ export const PROGRESS_KEYS: readonly string[] = [
   SHINIES_KEY,
   MISSIONS_KEY,
   TUTORIAL_KEY,
+  HISTORY_KEY,
   'pokeisaac.run.0',
   'pokeisaac.run.1',
   'pokeisaac.run.2',

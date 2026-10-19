@@ -22,7 +22,7 @@ Abre la URL que muestra Vite (normalmente http://localhost:5173).
 | Usar (Centro Pokémon, tienda, cofre) | Enter cerca, o pisarlo | Clic en el mostrador, el artículo o el cofre | A cerca, o pisarlo |
 | Soltar bomba | E | Clic en la bomba del HUD | RB |
 | Objeto activo | Espacio | Clic en su cuadro (abajo a la izquierda) | LB |
-| Nueva partida (al morir o ganar) | R | Clic | Start |
+| Ver el resumen (al morir o ganar) | R | Clic | Start |
 | Consejo del tutorial: cerrar / no más consejos | T / N | "Vale" / "No más consejos" | RT / LT |
 | Menús | Flechas o W A S D, Enter / espacio, Esc para volver | Pasar el cursor, clic y botón "Volver" | Stick o cruceta, A para elegir, B para volver |
 
@@ -117,6 +117,13 @@ compran con dinero real. Todos los nombres (Pokémon, movimientos y tipos) salen
 `species-index.json` (`nameEs`) y, si faltan, de `pokemon-species/{id}`. Una tirada cuesta 100 y da un Pokémon según su rareza (común, raro, épico, ultraente
 o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 tickets. La lista de especies
 se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `node scripts/buildSpeciesIndex.mjs`.
+
+## Resumen e historial
+
+Al morir o ganar sale el **resumen** de la partida (tiempo jugado sin contar la pausa, hasta dónde llegaste,
+enemigos vencidos, daño hecho, tickets, objetos y si has batido un récord), con **Otra partida**, **Historial** o
+**Menú**. El **Historial** guarda tus últimas 20 partidas (`pokeisaac.history`); se abre desde el resumen o desde
+**Jugar** (botón junto a Misiones). Lógica en `src/data/runHistory.ts`.
 
 ## Tutorial
 
@@ -343,6 +350,7 @@ src/
     save.ts               tickets, desbloqueos, récords, mejoras, misiones, tutorial, volumen y borrar progreso (localStorage)
     tutorial.ts           consejos del tutorial (textos y cuáles se han visto)
     abilities.ts          habilidades de PokeAPI: cuál toca, nombre en español y efecto
+    runHistory.ts         registro de cada partida terminada, historial de las últimas 20 y contadores
     missions.ts           misiones diarias (semilla del día) y logros: progreso, premios y objetos bloqueados
     runSave.ts            partidas guardadas en 3 huecos (con migraciones)
     controls.ts           lista de controles que enseñan el menú, la pausa y los ajustes
@@ -362,8 +370,10 @@ src/
     art/                  pixel art por código: iconos, baldosas de bioma, paisajes y gacha (del supervisor)
   scenes/
     MenuScene.ts          menú principal
-    SlotsScene.ts         los 3 huecos de partida y acceso a Misiones
+    SlotsScene.ts         los 3 huecos de partida y acceso a Misiones e Historial
     MissionsScene.ts      misiones de hoy y logros
+    SummaryScene.ts       resumen al morir o ganar
+    HistoryScene.ts       historial de las últimas partidas
     StarterScene.ts       elegir Pokémon de tu colección
     FirstStarterScene.ts  primera partida: elegir región e inicial
     ModeScene.ts          elegir modo de juego

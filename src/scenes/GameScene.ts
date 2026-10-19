@@ -26,9 +26,10 @@ import {
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
-import { loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMission, saveTutorial, submitRecord } from '../data/save';
+import { addRunHistory, loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMission, saveTutorial, submitRecord } from '../data/save';
 import { disableTips, markTipSeen, shouldShowTip, TIPS, type TipId } from '../data/tutorial';
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
+import { emptyCounters, type RunCounters, type RunRecord } from '../data/runHistory';
 import { ACHIEVEMENTS, lockedItems, rewardText, type MissionEvent } from '../data/missions';
 import {
   attackInterval,
@@ -173,7 +174,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters'
 >;
 
 export interface GameData {
@@ -282,6 +283,11 @@ export class GameScene extends Phaser.Scene {
   private shiny = false;
   /** Te has curado en esta partida (misiones "sin curarte"); hpMark = PS del fotograma anterior (-1 = sin medir). */
   private healedRun = false;
+  /** Registro de la partida al terminar (para el resumen). */
+  private lastRecord?: RunRecord;
+  private leavingToSummary = false;
+  /** Tiempo, enemigos vencidos, daño hecho y récord de la partida (para el resumen, T28). */
+  private counters: RunCounters = emptyCounters();
   /** Habilidad de PokeAPI de tu Pokémon (T27); null mientras carga o si no tiene. */
   private ability: Ability | null = null;
   private hpMark = -1;
@@ -495,6 +501,9 @@ export class GameScene extends Phaser.Scene {
     this.floorNum = 1;
     this.ability = null;
     this.healedRun = false;
+    this.counters = emptyCounters();
+    this.lastRecord = undefined;
+    this.leavingToSummary = false;
     this.hpMark = -1;
     this.toastQueue = [];
     this.toastBusy = false;
@@ -520,6 +529,7 @@ export class GameScene extends Phaser.Scene {
       this.bombs = c.bombs;
       this.active = c.active ? { ...c.active } : null;
       this.healedRun = c.healed;
+      this.counters = { ...c.counters };
     }
     this.cameras.main.setScroll(0, 0);
     this.cameras.main.resetFX();
@@ -1137,6 +1147,7 @@ ${where} — ${this.biome.name}`, 1600);
     this.bombs = r.bombs;
     this.active = r.active && activeById(r.active.id) ? { ...r.active } : null;
     this.healedRun = r.healed;
+    this.counters = { ...r.counters };
     this.centerUsed = r.centerUsed;
     this.shop = r.shop.map((s) => ({ ...s }));
     for (const f of r.floorItems) {
@@ -1184,6 +1195,7 @@ ${where} — ${this.biome.name}`, 1600);
       revealedDoors: [...this.revealedDoors],
       active: this.active ? { ...this.active } : null,
       healed: this.healedRun,
+      counters: { ...this.counters },
     });
   }
 
@@ -1503,6 +1515,7 @@ ${where} — ${this.biome.name}`, 1600);
     for (const c of [...this.enemies.getChildren()]) {
       const e = c as Sprite;
       if (!e.active || !inBlast(x, y, e.x, e.y, R + (e.getData('size') as number) / 3)) continue;
+      this.countDamage(e, BOMB.damage);
       const hp = (e.getData('hp') as number) - BOMB.damage;
       e.setData('hp', hp).setTint(0xff6666).setData('flashUntil', this.time.now + 120);
       if (hp <= 0) this.killEnemy(e);
@@ -1511,7 +1524,7 @@ ${where} — ${this.biome.name}`, 1600);
       this.invulnUntil = this.time.now + 900;
       this.hp -= BOMB.selfDamage;
       sfx('hurt');
-      if (this.hp <= 0) this.finish(`Has caído · +${this.earned} tickets\nPulsa R, Start o haz clic para volver a empezar`);
+      if (this.hp <= 0) this.finish(false, `Has caído · +${this.earned} tickets\nPulsa R, Start o haz clic para ver el resumen`);
     }
 
     // Rocas y hierba alta de la sala
@@ -2419,6 +2432,7 @@ ${where} — ${this.biome.name}`, 1600);
       bombs: this.bombs,
       active: this.active ? { ...this.active } : null,
       healed: this.healedRun,
+      counters: { ...this.counters },
     };
     this.cameras.main.fadeOut(350, 0, 0, 0);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
@@ -2443,6 +2457,7 @@ ${where} — ${this.biome.name}`, 1600);
       return;
     }
     if (!this.player || !this.player.active) return;
+    if (!this.ended) this.counters.seconds += delta / 1000;
     // Cualquier subida de PS (bayas, pociones, Centro, robo de vida…) cuenta como curarse
     if (this.hpMark >= 0 && this.hp > this.hpMark + 0.001) this.healedRun = true;
     this.hpMark = this.hp;
@@ -2454,7 +2469,7 @@ ${where} — ${this.biome.name}`, 1600);
       // Nueva partida (vuelves a elegir inicial): R, Start, o A del mando pasado un momento.
       // El clic se registra en armRestartClick.
       const start = hasPad && (!!pad!.buttons[9]?.pressed || (pad!.A && time - this.endedAt > 700));
-      if (Phaser.Input.Keyboard.JustDown(this.restartKey) || start) goTo(this, 'Starter', { slot: this.slot });
+      if (Phaser.Input.Keyboard.JustDown(this.restartKey) || start) this.toSummary();
       return;
     }
     if (this.transitioning) return;
@@ -2727,6 +2742,7 @@ ${where} — ${this.biome.name}`, 1600);
         this.hp = Math.min(this.stats.maxHp, this.hp + heal);
       }
     }
+    this.countDamage(enemy, dmg);
     const hp = (enemy.getData('hp') as number) - dmg;
     sfx('hit');
     enemy.setData('hp', hp);
@@ -2742,8 +2758,14 @@ ${where} — ${this.biome.name}`, 1600);
     if (hp <= 0) this.killEnemy(enemy);
   }
 
+  /** Suma al daño hecho de la partida (sin contar lo que sobra al rematar). */
+  private countDamage(e: Sprite, dmg: number) {
+    this.counters.damage += Math.max(0, Math.min(dmg, e.getData('hp') as number));
+  }
+
   private killEnemy(enemy: Sprite) {
     const boss = !!(enemy.getData('ai') as EnemyAI | undefined)?.boss;
+    this.counters.kills++;
     this.mission({ kind: 'defeat', types: boss ? this.bossTypes : ((enemy.getData('types') as string[] | undefined) ?? []) });
     // Monedas solo donde hay tienda en la que gastarlas; bayas siempre
     const hasShop = this.floor.shopId !== undefined;
@@ -3126,6 +3148,7 @@ ${where} — ${this.biome.name}`, 1600);
     const { damage, list: rest } = tickStatuses(list, time);
     e.setData('statuses', rest);
     if (damage <= 0) return false;
+    this.countDamage(e, damage);
     const hp = (e.getData('hp') as number) - damage;
     e.setData('hp', hp);
     if (hp > 0) return false;
@@ -3180,6 +3203,7 @@ ${where} — ${this.biome.name}`, 1600);
     this.earned += reward;
     addTickets(reward);
     const record = submitRecord('waves', round);
+    if (record) this.counters.newRecord = true;
 
     let text = `¡Ronda ${round} superada! +${reward} tickets`;
     if (record) text += '\n¡Nuevo récord!';
@@ -3232,10 +3256,12 @@ ${where} — ${this.biome.name}`, 1600);
     if (room.kind === 'boss') {
       // Récord: pisos completados (Normal, Infinito) o jefes vencidos (Rush)
       const record = submitRecord(this.mode, this.floorNum);
+      if (record) this.counters.newRecord = true;
       if (isLastStage(this.mode, this.floorNum)) {
         if (this.mode === 'normal') this.mission({ kind: 'win' });
         this.finish(
-          `¡Has completado los ${FLOOR_COUNT} pisos!\n+${this.earned} tickets en total\nPulsa R, Start o haz clic para empezar otra partida`,
+          true,
+          `¡Has completado los ${FLOOR_COUNT} pisos!\n+${this.earned} tickets en total\nPulsa R, Start o haz clic para ver el resumen`,
         );
         return;
       }
@@ -3342,6 +3368,7 @@ ${where} — ${this.biome.name}`, 1600);
     sfx('hurt');
     // Casco Dentado: quien te toca se hace daño
     if (ai && this.stats.thorns > 0 && enemy.active) {
+      this.countDamage(enemy, this.stats.thorns);
       const ehp = (enemy.getData('hp') as number) - this.stats.thorns;
       enemy.setData('hp', ehp).setData('flashUntil', now + 90).setTint(0xff6666);
       if (ehp <= 0) this.time.delayedCall(0, () => enemy.active && this.killEnemy(enemy));
@@ -3367,19 +3394,45 @@ ${where} — ${this.biome.name}`, 1600);
 
     if (this.hp <= 0) {
       const where = this.mode === 'normal' ? '' : ` en ${progressText(this.mode, this.floorNum).toLowerCase()}`;
-      this.finish(`Has caído${where} · +${this.earned} tickets\nPulsa R, Start o haz clic para volver a empezar`);
+      this.finish(false, `Has caído${where} · +${this.earned} tickets\nPulsa R, Start o haz clic para ver el resumen`);
     }
   }
 
   /** Fin de partida: congela el juego y deja salir con teclado (R), mando (Start / A) o ratón (clic). */
-  private finish(message: string) {
+  private finish(won: boolean, message: string) {
     // Como en Isaac: al morir o ganar, la partida guardada se borra
     clearRun(this.slot);
     this.ended = true;
     this.endedAt = this.time.now;
     this.physics.pause();
     this.showBanner(message);
-    // Un momento de margen y un clic nuevo, para no saltarse la pantalla si estabas disparando
-    this.time.delayedCall(700, () => this.input.once('pointerdown', () => goTo(this, 'Starter', { slot: this.slot })));
+    // Se apunta en el historial (T28) y luego se ve el resumen
+    const counts = new Map<string, number>();
+    for (const id of this.passives) counts.set(id, (counts.get(id) ?? 0) + 1);
+    this.lastRecord = {
+      endedAt: Date.now(),
+      starterId: this.starterId,
+      starterName: this.starterName,
+      mode: this.mode,
+      floor: this.floorNum,
+      won,
+      seconds: Math.round(this.counters.seconds),
+      kills: this.counters.kills,
+      damage: Math.round(this.counters.damage),
+      items: [...counts].map(([id, n]) => (passiveById(id)?.name ?? id) + (n > 1 ? ` x${n}` : '')),
+      tickets: this.earned,
+      newRecord: this.counters.newRecord,
+    };
+    addRunHistory(this.lastRecord);
+    // Un momento de margen y un clic nuevo, para no saltarse la pantalla si estabas disparando; si no, va solo
+    this.time.delayedCall(700, () => this.input.once('pointerdown', () => this.toSummary()));
+    this.time.delayedCall(3500, () => this.toSummary());
+  }
+
+  /** Pantalla de resumen de la partida que acaba de terminar. */
+  private toSummary() {
+    if (!this.lastRecord || this.leavingToSummary) return;
+    this.leavingToSummary = true;
+    goTo(this, 'Summary', { record: this.lastRecord, slot: this.slot });
   }
 }

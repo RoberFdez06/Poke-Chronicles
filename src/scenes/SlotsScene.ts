@@ -7,9 +7,13 @@ import { addHpBar, ARROW, drawBox, fadeIn, goTo, strokePixelFrame } from '../ui/
 import { addMenuBackdrop } from '../ui/art/landscape';
 
 const CARD = { w: 600, h: 120, gap: 22 };
-/** Botón "Misiones y logros" debajo de los huecos (es la opción 3 al moverse con flechas o mando). */
-const MISSIONS = { y: 566, w: 320, h: 48 };
-const OPTIONS = 4;
+/** Botones "Misiones y logros" e "Historial" debajo de los huecos (opciones 3 y 4 con flechas o mando). */
+const EXTRA = { y: 566, w: 290, h: 48 };
+const EXTRA_BUTTONS: { label: string; scene: string; x: number }[] = [
+  { label: 'Misiones y logros', scene: 'Missions', x: 315 },
+  { label: 'Historial', scene: 'History', x: 645 },
+];
+const OPTIONS = 3 + EXTRA_BUTTONS.length;
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 function describe(run: RunSave): string {
@@ -53,7 +57,7 @@ export class SlotsScene extends Phaser.Scene {
 
     const top = 300 - (3 * CARD.h + 2 * CARD.gap) / 2 + CARD.h / 2;
     this.runs.forEach((run, i) => this.cards.push(this.buildCard(run, i, 480, top + i * (CARD.h + CARD.gap))));
-    this.cards.push(this.buildMissionsButton());
+    EXTRA_BUTTONS.forEach((b, k) => this.cards.push(this.buildExtraButton(b.label, b.x, 3 + k)));
 
     this.add
       .text(480, 616, 'Flechas, ratón o mando para elegir · Enter, clic o A para abrir · Esc o B para volver', {
@@ -97,21 +101,21 @@ export class SlotsScene extends Phaser.Scene {
     return { box, glow, arrow };
   }
 
-  private buildMissionsButton() {
-    const { w, h } = MISSIONS;
+  private buildExtraButton(text: string, x: number, index: number) {
+    const { w, h } = EXTRA;
     const bg = drawBox(this.add.graphics(), -w / 2, -h / 2, w, h, { radius: 12 });
     const glow = this.add.graphics();
     strokePixelFrame(glow, -w / 2 - 8, -h / 2 - 8, w + 16, h + 16, UI.GOLD, 6);
     const arrow = this.add.text(-w / 2 - 34, 0, ARROW, { fontFamily: UI.FONT, fontSize: '24px', color: '#ffd34d' }).setOrigin(0, 0.5);
-    const label = this.add.text(0, 0, 'Misiones y logros', { fontFamily: UI.FONT, fontSize: '22px', fontStyle: 'bold', color: '#2b3a67' }).setOrigin(0.5);
-    const box = this.add.container(480, MISSIONS.y, [bg, glow, arrow, label]).setSize(w, h);
+    const label = this.add.text(0, 0, text, { fontFamily: UI.FONT, fontSize: '22px', fontStyle: 'bold', color: '#2b3a67' }).setOrigin(0.5);
+    const box = this.add.container(x, EXTRA.y, [bg, glow, arrow, label]).setSize(w, h);
     box.setInteractive(new Phaser.Geom.Rectangle(0, 0, w, h), Phaser.Geom.Rectangle.Contains);
     box.input!.cursor = 'pointer';
-    box.on('pointerover', () => !this.dialog && this.select(3));
+    box.on('pointerover', () => !this.dialog && this.select(index));
     box.on('pointerdown', () => {
       if (this.dialog) return;
-      this.select(3);
-      this.open(3);
+      this.select(index);
+      this.open(index);
     });
     return { box, glow, arrow };
   }
@@ -137,9 +141,9 @@ export class SlotsScene extends Phaser.Scene {
   }
 
   private open(slot: number) {
-    if (slot === 3) {
+    if (slot >= 3) {
       this.leaving = true;
-      goTo(this, 'Missions');
+      goTo(this, EXTRA_BUTTONS[slot - 3].scene, { from: 'Slots' });
       return;
     }
     const run = this.runs[slot];
