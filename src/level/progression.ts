@@ -26,11 +26,11 @@ export interface FloorDifficulty {
 
 export function difficultyFor(floor: number): FloorDifficulty {
   const k = Math.max(0, Math.floor(floor) - 1);
-  const extra = Math.min(4, k);
+  const extra = Math.min(3, k);
   return {
     // T32: algo más duros por piso (antes +35 % de vida y +25 % de daño)
-    hp: 1 + 0.45 * k,
-    damage: 1 + 0.3 * k,
+    hp: 1 + 0.35 * k,
+    damage: 1 + 0.22 * k,
     speed: Math.min(1.6, 1 + 0.08 * k),
     enemies: [3 + extra, 5 + extra],
   };

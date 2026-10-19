@@ -218,7 +218,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
   desbloquean cosas (un Pokémon, un objeto nuevo en el sorteo). Aviso en partida al completar una.
 - Lógica pura con tests (progreso, fecha de las diarias con semilla del día).
 
-## [ ] T25 — Tutorial y equilibrio
+## [x] T25 — Tutorial y equilibrio
 - Primera partida guiada: carteles cortos que explican moverse, disparar, poderes, pausa, objetos, Centro y
   tienda la primera vez que pasan (se pueden saltar; se guarda que ya se vieron). Con los 3 controles.
 - Equilibrio: script `scripts/simulate.mjs` (o tests) que simule partidas con la lógica pura y saque tiempos
@@ -243,3 +243,26 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
   PokeAPI con `page.route` (respuestas falsas) y recorre menú → huecos → inicial → modo → partida → pausa →
   salir, con teclado, con ratón y comprobando que Esc vuelve atrás en cada pantalla. Que falle si hay
   errores en consola. Úsalo en la skill `comprobar` a partir de aquí.
+
+# Tanda 3 (pedida por Roberto el 19/10)
+
+## [ ] T34 — Desafío diario
+- Modo nuevo "Desafío diario": misma semilla para todos ese día (piso, inicial fijo del día y objetos), una
+  partida al día cuenta para el récord diario; se puede repetir sin récord. Récord y racha de días en `save.ts`.
+- Lógica pura (semilla del día, elección del inicial del día) en `src/data/` con tests. Sale en la pantalla de modos.
+
+## [ ] T35 — Controles táctiles (solo en móvil) y pantalla de controles por secciones
+- **Táctil**: joystick virtual a la izquierda (moverse), zona/joystick a la derecha (disparar en esa dirección),
+  botones de poderes 1-4, objeto activo y pausa. **Solo aparecen si se detecta un móvil o tablet**
+  (`pointer: coarse` / `navigator.maxTouchPoints > 0` y sin ratón; en PC nunca). Menús: tocar = clic (ya funciona).
+  Que la página no haga zoom ni scroll al tocar (`touch-action: none`, meta viewport).
+- **Pantalla de Controles** (menú, pausa y ajustes): por secciones/pestañas **Teclado**, **Ratón**, **Mando** y
+  **Táctil** (esta última solo en móvil), cada una con TODOS los controles de ese modo (moverse, disparar,
+  poderes, objeto activo, bomba, pausa, menús, volver…). Se cambia de pestaña con flechas/LB-RB/clic.
+- Un solo sitio con los datos de controles (`src/data/controls.ts`) con test de que cada acción tiene entrada en
+  todos los modos.
+
+## [ ] T36 — Integrar el arte nuevo del supervisor (cuando avise en NOTAS_SUPERVISOR)
+- Intro de jefe tipo VS (`src/scenes/BossIntroScene.ts`), efectos por tipo (`src/ui/art/typeFx.ts`),
+  marcos del HUD (`src/ui/art/hud.ts`) y música por bioma (`src/data/music.ts`). El supervisor dirá en una nota
+  cómo llamar a cada cosa; hasta entonces, esta tarea espera (sáltala y sigue).

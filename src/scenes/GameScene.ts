@@ -26,7 +26,8 @@ import {
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
-import { loadMissions, loadShinies, loadUpgrades, recordMission, submitRecord } from '../data/save';
+import { loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMission, saveTutorial, submitRecord } from '../data/save';
+import { disableTips, markTipSeen, shouldShowTip, TIPS, type TipId } from '../data/tutorial';
 import { ACHIEVEMENTS, lockedItems, rewardText, type MissionEvent } from '../data/missions';
 import {
   attackInterval,
@@ -79,6 +80,7 @@ import {
   healed,
   rollEnemyLoot,
   rollShop,
+  CLEAR_DROP_CHANCE,
   roomClearCoins,
   rollChest,
   inBlast,
@@ -132,8 +134,6 @@ const ROOM = { x: 80, y: 80, w: 800, h: 480 };
 const WALL = 40;
 const DOOR = 120;
 const SLOT_COUNT = 4;
-/** Probabilidad de que una sala de combate limpiada deje un objeto. */
-const CLEAR_DROP_CHANCE = 0.25;
 /** Separación en radianes entre los proyectiles de un abanico. */
 const SPREAD = 0.2;
 
@@ -309,6 +309,13 @@ export class GameScene extends Phaser.Scene {
   /** Objetos que hay en el suelo (para guardarlos). */
   private floorItems: FloorItemSave[] = [];
   private pauseKey!: Key;
+  /** Consejos del tutorial: T cierra el que se ve, N los desactiva (en el mando, RT y LT). */
+  private tipKey!: Key;
+  private noTipsKey!: Key;
+  private tipQueue: TipId[] = [];
+  private tipObjects: Phaser.GameObjects.GameObject[] = [];
+  private tipTimer?: Phaser.Time.TimerEvent;
+  private triggerPrev = [false, false];
 
   // Combate: disparo continuo, objetos pasivos y poderes (movimientos) en ranuras
   private stats: PlayerStats = { ...BASE_STATS };
@@ -485,6 +492,9 @@ export class GameScene extends Phaser.Scene {
     this.hpMark = -1;
     this.toastQueue = [];
     this.toastBusy = false;
+    this.tipQueue = [];
+    this.tipObjects = [];
+    this.tipTimer = undefined;
     this.bossHistory = [];
     const c = this.carry;
     if (c) {
@@ -882,6 +892,8 @@ export class GameScene extends Phaser.Scene {
     this.activeKey = kb.addKey(K.SPACE);
     this.escKey = kb.addKey(K.ESC);
     this.pauseKey = kb.addKey(K.P);
+    this.tipKey = kb.addKey(K.T);
+    this.noTipsKey = kb.addKey(K.N);
     this.menuPadPrev = false;
     // El clic derecho sirve para moverse con el ratón, así que sin menú contextual
     this.input.mouse?.disableContextMenu();
@@ -1622,10 +1634,66 @@ ${where} — ${this.biome.name}`, 1600);
     });
   }
 
+  /** Pone en cola un consejo del tutorial si aún no se ha visto (y no están desactivados). */
+  private tip(id: TipId) {
+    if (!shouldShowTip(loadTutorial(), id) || this.tipQueue.includes(id)) return;
+    this.tipQueue.push(id);
+    this.nextTip();
+  }
+
+  /** Cartel del consejo arriba de la sala: no para el juego y se cierra solo, con T / RT / "Vale" o para siempre con N / LT. */
+  private nextTip(): void {
+    if (this.tipObjects.length > 0 || !this.hudLayer?.active || this.ended) return;
+    const id = this.tipQueue.shift();
+    if (!id) return;
+    const state = loadTutorial();
+    if (!shouldShowTip(state, id)) return this.nextTip();
+    saveTutorial(markTipSeen(state, id));
+    const w = 940;
+    const x = CX - w / 2;
+    const y = GAME_VIEW.y + 14;
+    const title = this.add.text(x + 24, y + 26, `Consejo · ${TIPS[id].title}`, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5);
+    const text = this.add.text(x + 24, y + 50, TIPS[id].text, { fontFamily: FONT, fontSize: '18px', color: HEX.textSoft, wordWrap: { width: w - 48 } });
+    const h = Math.max(120, text.height + 104);
+    const box = drawBox(this.add.graphics(), x, y, w, h, { radius: 14 }).setAlpha(0.96);
+    const button = (bx: number, label: string, onClick: () => void) => {
+      const b = this.add.text(bx, y + h - 26, label, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' })
+        .setOrigin(1, 0.5).setPadding(8, 6).setInteractive({ useHandCursor: true });
+      b.on('pointerover', () => b.setColor(HEX.text));
+      b.on('pointerout', () => b.setColor('#b8860b'));
+      b.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
+        ev?.stopPropagation?.();
+        onClick();
+      });
+      return b;
+    };
+    const ok = button(x + w - 20, 'Vale (T · RT)', () => this.closeTip());
+    const off = button(ok.x - ok.width - 24, 'No más consejos (N · LT)', () => this.closeTip(true));
+    this.tipObjects = [box, title, text, ok, off];
+    for (const o of this.tipObjects) {
+      this.hudLayer.add(o);
+      if (this.hudCam) o.cameraFilter &= ~this.hudCam.id;
+    }
+    this.tipTimer = this.time.delayedCall(9000, () => this.closeTip());
+  }
+
+  private closeTip(all = false) {
+    if (all) {
+      saveTutorial(disableTips(loadTutorial()));
+      this.tipQueue = [];
+    }
+    this.tipTimer?.remove();
+    this.tipTimer = undefined;
+    this.tipObjects.forEach((o) => o.destroy());
+    this.tipObjects = [];
+    if (this.tipQueue.length > 0) this.time.delayedCall(500, () => this.nextTip());
+  }
+
   /** Te quedas un pasivo o un poder (cogido del suelo o comprado). */
   private gainItem(item: DroppedItem) {
     sfx('pickup');
     this.mission({ kind: 'item' });
+    this.tip(item.kind === 'move' ? 'powers' : item.kind === 'passive' ? 'items' : 'active');
     const before = new Set(this.synergies);
     if (item.kind === 'active') {
       // Como en Isaac: si ya llevabas uno, se queda en el suelo
@@ -1737,6 +1805,12 @@ ${where} — ${this.biome.name}`, 1600);
     this.current = room;
     this.shieldLeft = this.stats.shieldPerRoom;
     this.visited.add(room.id);
+    // Tutorial: la primera vez que pasa cada cosa
+    if (room.kind === 'start') this.tip('move');
+    else if (room.kind === 'center') this.tip('center');
+    else if (room.kind === 'shop') this.tip('shop');
+    if (!this.cleared.has(room.id) && (this.mode === 'waves' || room.kind === 'combat' || room.kind === 'boss' || room.kind === 'challenge')) this.tip('shoot');
+    if (this.chests.has(room.id)) this.tip('chest');
 
     if (this.mode === 'waves') this.startWave(1200);
     else if (room.kind === 'challenge' && !this.cleared.has(room.id)) {
@@ -2371,6 +2445,13 @@ ${where} — ${this.biome.name}`, 1600);
     if (Phaser.Input.Keyboard.JustDown(this.activeKey) || (lbNow && !this.lbPrev)) this.useActive();
     this.lbPrev = lbNow;
     if (this.stats.homing > 0) this.steerShots(delta);
+    const ltNow = hasPad && (pad!.buttons[6]?.value ?? 0) > 0.5;
+    const rtNow = hasPad && (pad!.buttons[7]?.value ?? 0) > 0.5;
+    if (this.tipObjects.length > 0) {
+      if (Phaser.Input.Keyboard.JustDown(this.noTipsKey) || (ltNow && !this.triggerPrev[0])) this.closeTip(true);
+      else if (Phaser.Input.Keyboard.JustDown(this.tipKey) || (rtNow && !this.triggerPrev[1])) this.closeTip();
+    }
+    this.triggerPrev = [ltNow, rtNow];
     const padA = hasPad && pad!.A && !this.padPrev[0];
     const usedA = this.updateInteract(Phaser.Input.Keyboard.JustDown(this.enterKey), padA);
 
@@ -3055,6 +3136,7 @@ ${where} — ${this.biome.name}`, 1600);
     this.cleared.add(room.id);
     this.chargeActive();
     this.mission({ kind: 'room' });
+    this.tip('pause');
     if (room.kind === 'boss') this.mission({ kind: 'boss' });
     sfx('clear');
     this.setDoorsLocked(room, false);

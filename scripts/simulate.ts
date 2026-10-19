@@ -2,7 +2,7 @@
 //   node scripts/simulate.ts
 // Saca, por piso y por partida Normal completa: tickets, monedas de partida y bayas medias, la vida y el daño de
 // enemigos y jefes, y cuánto tarda un personaje normal sin mejoras en vencer a un jefe.
-import { expectedFloorRewards, expectedRunRewards, averageCombatRooms } from '../src/data/balance.ts';
+import { expectedFloorRewards, expectedRunRewards, averageCombatRooms, simulateRuns } from '../src/data/balance.ts';
 import { difficultyFor, FLOOR_COUNT } from '../src/level/progression.ts';
 import { enemyStats } from '../src/data/enemies.ts';
 import { bossStats, AVERAGE_STATS } from '../src/data/pokeStats.ts';
@@ -28,3 +28,15 @@ console.log(`\nPartida Normal completa: ${run.tickets.toFixed(0)} tickets (${(ru
 const good = expectedRunRewards(3);
 console.log(`Partida que llega al piso 3: ${good.tickets.toFixed(0)} tickets, ${good.coins.toFixed(0)} monedas, ${good.berries.toFixed(1)} bayas`);
 console.log(`DPS supuesto del jugador: ${dps.toFixed(1)}`);
+
+// --- Partidas simuladas (T25): tiempo y daño por sala, cuántos llegan a cada piso ---
+const sim = simulateRuns(2000, 7);
+console.log('\nSimulación de 2000 partidas Normal (modelo en balance.ts, SIM_DEFAULTS):');
+console.log('Piso  llegan  superan   s/sala  daño/sala   PS ante jefe   s jefe  daño jefe');
+for (const f of sim.floors) {
+  const pct = (n: number) => `${(n * 100).toFixed(0)} %`.padStart(7);
+  console.log(
+    `${String(f.floor).padStart(4)} ${pct(f.reached)} ${pct(f.cleared)} ${fmt(f.roomSeconds)}  ${fmt(f.roomDamage)}        ${fmt(f.hpAtBoss)} ${fmt(f.bossSeconds)}  ${fmt(f.bossDamage)}`,
+  );
+}
+console.log(`Media por partida: ${sim.tickets.toFixed(1)} tickets, ${sim.coins.toFixed(0)} monedas gastables, ${sim.minutes.toFixed(1)} min de juego`);

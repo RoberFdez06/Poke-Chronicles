@@ -615,3 +615,30 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - **N12**: leída; no he tocado el gacha. No hay misión de "tira en el gacha" para no depender de él (se podría con
   `loadHistory()`).
 - **Comprobado**: tsc, tests (166), build y e2e (captura `03b-misiones` entrando con teclado y saliendo con Esc).
+
+## T25 — Tutorial y equilibrio (2026-10-19)
+
+- **Tutorial** (`src/data/tutorial.ts` + `loadTutorial`/`saveTutorial` en save.ts, tests en `tests/tutorial.test.ts`):
+  9 consejos (moverse, disparar, pausa, poderes, objetos, objeto activo, Centro, tienda, cofres y bombas) que salen
+  la primera vez que pasa cada cosa, con los tres controles en el texto. **No paran el juego** (decisión: todos los
+  botones frontales del mando ya hacen algo en partida y un cartel bloqueante obligaría a cambiar controles). Se
+  cierran solos a los 9 s, con T / RT / clic en "Vale"; "No más consejos" con N / LT / clic. Si salen varios a la vez,
+  van en cola. El e2e comprueba que T cierra el primero y que queda guardado.
+- **Simulación** (`simulateRuns` en balance.ts, `scripts/simulate.ts`, test en balance.test.ts): Monte Carlo con
+  la dificultad, estadísticas de enemigos y jefes, salas reales de `generateFloor`, bayas, Centro, tienda y objetos
+  (+12 % de DPS cada uno). Lo que no se puede sacar del código es cuánto te aciertan: lo he supuesto
+  (`hitsPerSecond` 0,035 por enemigo vivo y 0,07 el jefe).
+- **Qué salió con los números de la T32** (sin mejoras): piso 1 lo supera el 97 %, el piso 2 el 21 % y nadie pasa
+  del 3. El daño por sala crece mucho por tres cosas a la vez: +45 % de vida por piso, enemigos más fuertes (franja
+  de estadísticas) y un enemigo más por sala hasta +4 (y con más enemigos vivos a la vez, el daño crece con el
+  cuadrado). Las bayas (0,8 % + 0,2 %) casi no curaban.
+- **Cambios** (moderados, para no deshacer la T32): vida por piso +45 % → +35 %, daño +30 % → +22 %, como mucho
+  +3 enemigos por sala (antes +4), Baya Aranja 0,8 % → 1,3 % y Zidra 0,2 % → 0,4 % (siguen siendo 1-2 bayas por piso,
+  el test de la T32 se mantiene). `CLEAR_DROP_CHANCE` pasa de GameScene a loot.ts para que la simulación use el
+  mismo número.
+- **Resultado** (modelo): piso 1 97 %, piso 2 ~45 %, piso 3 casi nadie sin mejoras; con mejoras (+40 % daño,
+  +30 PS) el piso 2 siempre y el 3 más de la mitad; esquivando el doble se llega al 4-5. Me parece razonable para
+  un roguelike con mejoras permanentes, pero **hay que probarlo jugando**: si Roberto lo nota muy duro, lo primero
+  sería bajar `difficultyFor().hp` o subir `itemDpsGain` real (objetos).
+- **Tickets**: una partida media da ~15 tickets (0,15 tiradas) sin contar misiones (unos 10-12 al día con las 3
+  diarias). No lo he tocado: la T32 lo dejó así a propósito.

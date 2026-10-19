@@ -46,6 +46,10 @@ test('capturas de todas las pantallas', async ({ page }) => {
   await waitScene(page, 'Game', 3500);
   await page.waitForTimeout(1800); // que se vaya el cartel del piso
   await shot(page, '08-partida');
+  // Primer consejo del tutorial (Moverse): T lo cierra y queda guardado como visto
+  await press(page, 't');
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('pokeisaac.tutorial') ?? '{}').seen)).toContain('move');
+  expect(await page.evaluate(() => (window as unknown as { __POKEISAAC__: { scene: { getScene(k: string): { tipObjects: unknown[] } } } }).__POKEISAAC__.scene.getScene('Game').tipObjects.length)).toBe(0);
   await page.keyboard.down('d');
   await page.waitForTimeout(500);
   await shot(page, '08b-andando');

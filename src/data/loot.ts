@@ -38,12 +38,13 @@ export const centerHeal = (maxHp: number): number => Math.round(maxHp / 2);
 export type LootDrop = { kind: 'coin'; value: number } | { kind: 'berry'; id: BerryId } | { kind: 'key' } | { kind: 'bomb' };
 
 export const LOOT_CHANCE = {
-  // T32: bastante menos (antes 35 % de monedas, 10 % + 3 % de bayas y 5 % de llaves y bombas)
+  // T32: bastante menos (antes 35 % de monedas, 10 % + 3 % de bayas y 5 % de llaves y bombas).
+  // T25: bayas algo menos raras (eran 0,8 % + 0,2 %): siguen siendo 1-2 por piso, ver scripts/simulate.ts
   coin: 0.08,
   /** De las monedas que caen, cuántas son de 5. */
   bigCoin: 0.12,
-  aranja: 0.008,
-  zidra: 0.002,
+  aranja: 0.013,
+  zidra: 0.004,
   key: 0.03,
   bomb: 0.03,
 } as const;
@@ -160,3 +161,6 @@ export function canBuy(slot: ShopSlot, coins: number, hp: number, maxHp: number)
   if (slot.goods.kind === 'potion' && !canHeal(hp, maxHp)) return 'full';
   return 'ok';
 }
+
+/** Probabilidad de que una sala de combate limpiada deje un objeto. */
+export const CLEAR_DROP_CHANCE = 0.25;

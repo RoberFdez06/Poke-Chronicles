@@ -46,9 +46,9 @@ test('los enemigos a veces sueltan monedas y bayas', () => {
       else if (d.kind === 'berry') berries++;
     }
   }
-  // T32: 8 % de monedas y 1 % de bayas por enemigo
+  // T32: 8 % de monedas; T25: 1,7 % de bayas por enemigo
   assert.ok(coins > 110 && coins < 220, `monedas ${coins}`);
-  assert.ok(berries > 5 && berries < 40, `bayas ${berries}`);
+  assert.ok(berries > 15 && berries < 60, `bayas ${berries}`);
 });
 
 test('limpiar sala da 0 o 1 moneda (T32)', () => {

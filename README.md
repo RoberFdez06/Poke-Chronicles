@@ -23,6 +23,7 @@ Abre la URL que muestra Vite (normalmente http://localhost:5173).
 | Soltar bomba | E | Clic en la bomba del HUD | RB |
 | Objeto activo | Espacio | Clic en su cuadro (abajo a la izquierda) | LB |
 | Nueva partida (al morir o ganar) | R | Clic | Start |
+| Consejo del tutorial: cerrar / no más consejos | T / N | "Vale" / "No más consejos" | RT / LT |
 | Menús | Flechas o W A S D, Enter / espacio, Esc para volver | Pasar el cursor, clic y botón "Volver" | Stick o cruceta, A para elegir, B para volver |
 
 **Regla del proyecto:** todo se puede manejar con teclado, con ratón y con mando, cada uno por sí solo. Cualquier
@@ -116,6 +117,21 @@ compran con dinero real. Todos los nombres (Pokémon, movimientos y tipos) salen
 `species-index.json` (`nameEs`) y, si faltan, de `pokemon-species/{id}`. Una tirada cuesta 100 y da un Pokémon según su rareza (común, raro, épico, ultraente
 o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 tickets. La lista de especies
 se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `node scripts/buildSpeciesIndex.mjs`.
+
+## Tutorial
+
+La primera vez que pasa cada cosa (empezar, primera sala con enemigos, primera sala limpia, primer poder, objeto u
+objeto activo, Centro Pokémon, tienda y sala con cofre) sale un **consejo** arriba de la sala con los controles de
+teclado, ratón y mando. No para el juego: se cierra solo, con T / RT / "Vale", o se desactivan todos con N / LT /
+"No más consejos". Lo visto se guarda (`pokeisaac.tutorial`; "Borrar progreso" lo vuelve a activar). Textos en
+`src/data/tutorial.ts`.
+
+## Equilibrio
+
+`node scripts/simulate.ts` saca los premios esperados por piso y **simula 2000 partidas** Normal con la lógica del
+juego (`simulateRuns` en `src/data/balance.ts`): tiempo y daño por sala, PS al llegar al jefe, cuánto dura el
+jefe, qué parte de las partidas llega a cada piso, tickets y monedas. Es un modelo (los golpes por segundo que
+acierta cada enemigo son una suposición, `SIM_DEFAULTS`): sirve para comparar cambios, no para predecir segundos.
 
 ## Misiones y logros
 
@@ -315,7 +331,8 @@ src/
     regions.ts            regiones, iniciales y filtros de la colección
     modes.ts              modos de juego, oleadas, arena y récords
     sounds.ts             efectos y música como datos, volumen
-    save.ts               tickets, desbloqueos, récords, mejoras, misiones, volumen y borrar progreso (localStorage)
+    save.ts               tickets, desbloqueos, récords, mejoras, misiones, tutorial, volumen y borrar progreso (localStorage)
+    tutorial.ts           consejos del tutorial (textos y cuáles se han visto)
     missions.ts           misiones diarias (semilla del día) y logros: progreso, premios y objetos bloqueados
     runSave.ts            partidas guardadas en 3 huecos (con migraciones)
     controls.ts           lista de controles que enseñan el menú, la pausa y los ajustes

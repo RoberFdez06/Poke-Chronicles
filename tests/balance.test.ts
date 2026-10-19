@@ -1,7 +1,7 @@
 // Ejecutar con `npm test`. Fija los rangos del equilibrio (T32): si alguien cambia un número y se sale, falla.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { expectedFloorRewards, expectedRunRewards } from '../src/data/balance.ts';
+import { expectedFloorRewards, expectedRunRewards, simulateRuns, SIM_DEFAULTS } from '../src/data/balance.ts';
 import { FLOOR_COUNT, difficultyFor } from '../src/level/progression.ts';
 import { PULL_COST } from '../src/data/gacha.ts';
 import { bossStats, AVERAGE_STATS } from '../src/data/pokeStats.ts';
@@ -60,4 +60,17 @@ test('al menos uno de cada tres enemigos dispara', () => {
   assert.ok(room.filter((b) => b === 'shoot').length >= 3);
   assert.deepEqual(mixBehaviors(['shoot', 'chase', 'chase']), ['shoot', 'chase', 'chase']);
   assert.deepEqual(mixBehaviors([]), []);
+});
+
+test('simulación (T25): determinista, el piso 1 se supera casi siempre y cada piso es más duro', () => {
+  const a = simulateRuns(400, 3);
+  assert.deepEqual(simulateRuns(400, 3), a);
+  assert.ok(a.floors[0].cleared >= 0.85, `piso 1: ${a.floors[0].cleared}`);
+  for (let k = 1; k < a.floors.length; k++) {
+    assert.ok(a.floors[k].reached <= a.floors[k - 1].reached);
+    if (a.floors[k].reached > 0.05) assert.ok(a.floors[k].roomDamage > a.floors[k - 1].roomDamage, `piso ${k + 1}`);
+  }
+  // Esquivar más o tener mejoras ayuda
+  const easy = simulateRuns(400, 3, { ...SIM_DEFAULTS, hitsPerSecond: SIM_DEFAULTS.hitsPerSecond / 2, baseDps: SIM_DEFAULTS.baseDps * 1.4 });
+  assert.ok(easy.floors[2].cleared > a.floors[2].cleared);
 });

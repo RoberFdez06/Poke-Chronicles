@@ -7,6 +7,7 @@ import { levelsFor, parseUpgrades, upgradeCost, type UpgradeBook, type UpgradeKi
 import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } from './modes.ts';
 import { applyMissionEvent, parseMissions, type Completed, type MissionEvent, type MissionState } from './missions.ts';
 import { dayNumber } from './gacha.ts';
+import { parseTutorial, type TutorialState } from './tutorial.ts';
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -279,6 +280,26 @@ export function recordMission(e: MissionEvent, day = dayNumber(), storage: Stora
   return completed;
 }
 
+// --- Tutorial: consejos vistos (ver tutorial.ts) ---
+
+export const TUTORIAL_KEY = 'pokeisaac.tutorial';
+
+export function loadTutorial(storage: StorageLike | null = browserStorage()): TutorialState {
+  try {
+    return parseTutorial(storage?.getItem(TUTORIAL_KEY) ?? null);
+  } catch {
+    return parseTutorial(null);
+  }
+}
+
+export function saveTutorial(state: TutorialState, storage: StorageLike | null = browserStorage()) {
+  try {
+    storage?.setItem(TUTORIAL_KEY, JSON.stringify(state));
+  } catch {
+    // sin almacenamiento: los consejos vuelven a salir
+  }
+}
+
 // --- Borrar progreso (Ajustes) ---
 
 /** Todo lo que se pierde al borrar el progreso: desbloqueos, tickets, récords y partidas. El volumen se queda. */
@@ -290,6 +311,7 @@ export const PROGRESS_KEYS: readonly string[] = [
   UPGRADES_KEY,
   SHINIES_KEY,
   MISSIONS_KEY,
+  TUTORIAL_KEY,
   'pokeisaac.run.0',
   'pokeisaac.run.1',
   'pokeisaac.run.2',
