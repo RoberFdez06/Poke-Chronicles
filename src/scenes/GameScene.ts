@@ -26,7 +26,8 @@ import {
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
-import { loadShinies, loadUpgrades, submitRecord } from '../data/save';
+import { loadMissions, loadShinies, loadUpgrades, recordMission, submitRecord } from '../data/save';
+import { ACHIEVEMENTS, lockedItems, rewardText, type MissionEvent } from '../data/missions';
 import {
   attackInterval,
   bossAttacks,
@@ -112,6 +113,7 @@ import type { PokemonCard } from '../data/pokeapi';
 import {
   BASE_STATS,
   computeStats,
+  PASSIVE_ITEMS,
   passiveById,
   rollItem,
   toMovePower,
@@ -168,7 +170,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed'
 >;
 
 export interface GameData {
@@ -185,6 +187,8 @@ interface FoeKind {
   behavior: EnemyBehavior;
   bst: number;
   type: string;
+  /** Todos sus tipos (misiones de "vence enemigos de tipo X"). */
+  types: string[];
   /** Estadísticas base: reparten su fuerza (más vida, más daño o más velocidad). */
   stats: BaseStats;
 }
@@ -273,6 +277,12 @@ export class GameScene extends Phaser.Scene {
   private evolving = false;
   /** Tienes shiny al Pokémon elegido: juegas con su sprite shiny (también al evolucionar). */
   private shiny = false;
+  /** Te has curado en esta partida (misiones "sin curarte"); hpMark = PS del fotograma anterior (-1 = sin medir). */
+  private healedRun = false;
+  private hpMark = -1;
+  /** Avisos de misión o logro cumplido, uno detrás de otro (franja de abajo). */
+  private toastQueue: string[] = [];
+  private toastBusy = false;
   /** Sprites animados de SpriteCollab cargados (por id de Pokémon); los que no estén usan el de PokeAPI. */
   private pmd = new Map<number, PmdSheet>();
   private starterName = '';
@@ -471,6 +481,10 @@ export class GameScene extends Phaser.Scene {
     this.bannerTimer = undefined;
     this.trapdoor = undefined;
     this.floorNum = 1;
+    this.healedRun = false;
+    this.hpMark = -1;
+    this.toastQueue = [];
+    this.toastBusy = false;
     this.bossHistory = [];
     const c = this.carry;
     if (c) {
@@ -489,6 +503,7 @@ export class GameScene extends Phaser.Scene {
       this.keys = c.keys;
       this.bombs = c.bombs;
       this.active = c.active ? { ...c.active } : null;
+      this.healedRun = c.healed;
     }
     this.cameras.main.setScroll(0, 0);
     this.cameras.main.resetFX();
@@ -706,6 +721,7 @@ export class GameScene extends Phaser.Scene {
       behavior: behaviorFor(c.types),
       bst: index.find((s) => s.id === c.id)?.bst ?? 300,
       type: c.types[0] ?? 'normal',
+      types: c.types.length > 0 ? [...c.types] : ['normal'],
       stats: c.stats,
     }));
   }
@@ -965,7 +981,7 @@ export class GameScene extends Phaser.Scene {
 
     // Tienda: al continuar, lo que quedaba; si no, artículos nuevos para este piso
     if (this.floor.shopId !== undefined) {
-      if (this.shop.length === 0) this.shop = rollShop(Math.random, new Set(this.passives), this.movePool);
+      if (this.shop.length === 0) this.shop = rollShop(Math.random, new Set(this.passives), this.movePool, this.passivePool());
       this.buildShop(this.floor.rooms[this.floor.shopId]);
     }
     this.prompt = this.add
@@ -1053,6 +1069,7 @@ ${where} — ${this.biome.name}`, 1600);
           this.stats = this.calcStats();
           // Lo que suben los PS máximos también te cura
           this.hp = Math.min(this.stats.maxHp, this.hp + Math.max(0, this.stats.maxHp - prevMax));
+          this.hpMark = this.hp;
           this.starterName = data.name;
           this.tearType = data.types[0] ?? this.tearType;
           this.showBanner(`¡${oldName} ha evolucionado!\nAhora es ${data.name}`, 2600);
@@ -1095,6 +1112,7 @@ ${where} — ${this.biome.name}`, 1600);
     this.keys = r.keys;
     this.bombs = r.bombs;
     this.active = r.active && activeById(r.active.id) ? { ...r.active } : null;
+    this.healedRun = r.healed;
     this.centerUsed = r.centerUsed;
     this.shop = r.shop.map((s) => ({ ...s }));
     for (const f of r.floorItems) {
@@ -1141,6 +1159,7 @@ ${where} — ${this.biome.name}`, 1600);
       openedChests: [...this.openedChests],
       revealedDoors: [...this.revealedDoors],
       active: this.active ? { ...this.active } : null,
+      healed: this.healedRun,
     });
   }
 
@@ -1418,6 +1437,7 @@ ${where} — ${this.biome.name}`, 1600);
     if (this.keys <= 0) return this.showBanner('Necesitas una llave para abrir el cofre', 1300);
     this.keys--;
     this.openedChests.add(roomId);
+    this.mission({ kind: 'chest' });
     chest.img.setTexture(iconKey('chestOpen'));
     sfx('buy');
     const prize = rollChest(Math.random);
@@ -1528,7 +1548,7 @@ ${where} — ${this.biome.name}`, 1600);
 
   /** Deja en el suelo un objeto al azar: un pasivo propio o un poder (movimiento de PokeAPI). */
   private dropItem(roomId: number, x: number, y: number) {
-    this.spawnPickup(roomId, x, y, rollItem(Math.random, new Set(this.passives), this.movePool, ACTIVE_DROP_CHANCE, ACTIVE_IDS));
+    this.spawnPickup(roomId, x, y, rollItem(Math.random, new Set(this.passives), this.movePool, ACTIVE_DROP_CHANCE, ACTIVE_IDS, this.passivePool()));
   }
 
   private spawnPickup(roomId: number, x: number, y: number, item: DroppedItem) {
@@ -1564,9 +1584,48 @@ ${where} — ${this.biome.name}`, 1600);
     this.gainItem(item);
   }
 
+  /** Pasivos que pueden salir: todos menos los que aún bloquea un logro (missions.ts). */
+  private passivePool() {
+    const locked = lockedItems(loadMissions());
+    return PASSIVE_ITEMS.filter((i) => !locked.has(i.id));
+  }
+
+  /** Suma un suceso a las misiones y logros; lo que se cumpla se avisa abajo (los premios ya se han dado). */
+  private mission(e: MissionEvent) {
+    for (const c of recordMission(e)) {
+      const reward = rewardText(c.reward, { item: c.reward.item ? passiveById(c.reward.item)?.name : undefined });
+      if (c.kind === 'daily') this.toastQueue.push(`¡Misión diaria cumplida! ${c.text}\n${reward}`);
+      else this.toastQueue.push(`¡Logro: ${c.text}! ${ACHIEVEMENTS.find((a) => a.id === c.id)?.text ?? ''}\n${reward}`);
+    }
+    this.nextToast();
+  }
+
+  private nextToast() {
+    if (this.toastBusy || !this.hudLayer?.active) return;
+    const text = this.toastQueue.shift();
+    if (!text) return;
+    this.toastBusy = true;
+    sfx('buy');
+    const t = this.add.text(CX, H - 31, text, { fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: HEX.text, align: 'center' }).setOrigin(0.5);
+    const w = t.width + 56;
+    const box = drawBox(this.add.graphics(), CX - w / 2, H - 58, w, 54, { radius: 12 });
+    for (const o of [box, t]) {
+      this.hudLayer.add(o);
+      if (this.hudCam) o.cameraFilter &= ~this.hudCam.id;
+    }
+    this.tweens.add({ targets: [box, t], alpha: { from: 0, to: 1 }, duration: 200 });
+    this.time.delayedCall(3400, () => {
+      box.destroy();
+      t.destroy();
+      this.toastBusy = false;
+      this.nextToast();
+    });
+  }
+
   /** Te quedas un pasivo o un poder (cogido del suelo o comprado). */
   private gainItem(item: DroppedItem) {
     sfx('pickup');
+    this.mission({ kind: 'item' });
     const before = new Set(this.synergies);
     if (item.kind === 'active') {
       // Como en Isaac: si ya llevabas uno, se queda en el suelo
@@ -1581,6 +1640,7 @@ ${where} — ${this.biome.name}`, 1600);
       this.stats = this.calcStats();
       // Más PS máximos también te curan esa misma cantidad
       this.hp = Math.min(this.stats.maxHp, this.hp + Math.max(0, this.stats.maxHp - prevMax));
+      this.hpMark = this.hp;
       this.showBanner(`${item.item.name}\n${item.item.description}`, 2400);
     } else {
       const free = this.slots.indexOf(null);
@@ -1909,8 +1969,9 @@ ${where} — ${this.biome.name}`, 1600);
     if (shiny) {
       sparkle(this, x, y);
       this.popup(x, y - 40, '¡Shiny!', 0xffd34d);
+      this.mission({ kind: 'shiny' });
     }
-    e.setData('ai', this.newAI(behavior, kind.type, false));
+    e.setData('ai', this.newAI(behavior, kind.type, false)).setData('types', kind.types);
   }
 
   private spawnBoss() {
@@ -2213,6 +2274,7 @@ ${where} — ${this.biome.name}`, 1600);
       keys: this.keys,
       bombs: this.bombs,
       active: this.active ? { ...this.active } : null,
+      healed: this.healedRun,
     };
     this.cameras.main.fadeOut(350, 0, 0, 0);
     this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
@@ -2237,6 +2299,9 @@ ${where} — ${this.biome.name}`, 1600);
       return;
     }
     if (!this.player || !this.player.active) return;
+    // Cualquier subida de PS (bayas, pociones, Centro, robo de vida…) cuenta como curarse
+    if (this.hpMark >= 0 && this.hp > this.hpMark + 0.001) this.healedRun = true;
+    this.hpMark = this.hp;
 
     const pad = this.input.gamepad?.getPad(0);
     const hasPad = !!pad && pad.connected;
@@ -2528,6 +2593,7 @@ ${where} — ${this.biome.name}`, 1600);
 
   private killEnemy(enemy: Sprite) {
     const boss = !!(enemy.getData('ai') as EnemyAI | undefined)?.boss;
+    this.mission({ kind: 'defeat', types: boss ? this.bossTypes : ((enemy.getData('types') as string[] | undefined) ?? []) });
     // Monedas solo donde hay tienda en la que gastarlas; bayas siempre
     const hasShop = this.floor.shopId !== undefined;
     const loot = rollEnemyLoot(Math.random, boss);
@@ -2644,6 +2710,7 @@ ${where} — ${this.biome.name}`, 1600);
     } else if (drop.kind === 'coin') {
       const value = Math.round(drop.value * this.stats.coinMul);
       this.coins += value;
+      this.mission({ kind: 'coins', amount: value });
       sfx('coin');
       this.popup(sprite.x, sprite.y - 16, `+${value}`, 0xffd34d);
     } else if (drop.kind === 'key') {
@@ -2987,6 +3054,8 @@ ${where} — ${this.biome.name}`, 1600);
     }
     this.cleared.add(room.id);
     this.chargeActive();
+    this.mission({ kind: 'room' });
+    if (room.kind === 'boss') this.mission({ kind: 'boss' });
     sfx('clear');
     this.setDoorsLocked(room, false);
     this.foeShots.clear(true, true);
@@ -3002,6 +3071,7 @@ ${where} — ${this.biome.name}`, 1600);
       // Récord: pisos completados (Normal, Infinito) o jefes vencidos (Rush)
       const record = submitRecord(this.mode, this.floorNum);
       if (isLastStage(this.mode, this.floorNum)) {
+        if (this.mode === 'normal') this.mission({ kind: 'win' });
         this.finish(
           `¡Has completado los ${FLOOR_COUNT} pisos!\n+${this.earned} tickets en total\nPulsa R, Start o haz clic para empezar otra partida`,
         );

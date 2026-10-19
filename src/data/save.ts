@@ -5,6 +5,8 @@ import { parseAudio, type AudioSettings } from './sounds.ts';
 import { parseShinies } from './shiny.ts';
 import { levelsFor, parseUpgrades, upgradeCost, type UpgradeBook, type UpgradeKind } from './upgrades.ts';
 import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } from './modes.ts';
+import { applyMissionEvent, parseMissions, type Completed, type MissionEvent, type MissionState } from './missions.ts';
+import { dayNumber } from './gacha.ts';
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -247,6 +249,36 @@ export function addShiny(id: number, storage: StorageLike | null = browserStorag
   return true;
 }
 
+// --- Misiones diarias y logros (ver missions.ts) ---
+
+export const MISSIONS_KEY = 'pokeisaac.missions';
+
+export function loadMissions(day = dayNumber(), storage: StorageLike | null = browserStorage()): MissionState {
+  try {
+    return parseMissions(storage?.getItem(MISSIONS_KEY) ?? null, day);
+  } catch {
+    return parseMissions(null, day);
+  }
+}
+
+/**
+ * Suma un suceso de la partida a las misiones y logros, guarda y entrega los premios de lo que se complete
+ * (tickets y desbloqueos). Devuelve lo completado para avisar en la partida.
+ */
+export function recordMission(e: MissionEvent, day = dayNumber(), storage: StorageLike | null = browserStorage()): Completed[] {
+  const { state, completed } = applyMissionEvent(loadMissions(day, storage), e, day);
+  try {
+    storage?.setItem(MISSIONS_KEY, JSON.stringify(state));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+  for (const c of completed) {
+    addTickets(c.reward.tickets, storage);
+    if (c.reward.pokemon) unlockPokemon(c.reward.pokemon, storage);
+  }
+  return completed;
+}
+
 // --- Borrar progreso (Ajustes) ---
 
 /** Todo lo que se pierde al borrar el progreso: desbloqueos, tickets, récords y partidas. El volumen se queda. */
@@ -257,6 +289,7 @@ export const PROGRESS_KEYS: readonly string[] = [
   RECORDS_KEY,
   UPGRADES_KEY,
   SHINIES_KEY,
+  MISSIONS_KEY,
   'pokeisaac.run.0',
   'pokeisaac.run.1',
   'pokeisaac.run.2',

@@ -2,7 +2,7 @@
 // Las monedas solo valen dentro de la partida (en la tienda) y se pierden al acabarla; los tickets
 // (save.ts) son otra cosa y se gastan fuera, en el gacha.
 // Lógica pura, sin Phaser ni red, para poder testearla.
-import { PASSIVE_ITEMS, type MovePower } from './items.ts';
+import { PASSIVE_ITEMS, type MovePower, type PassiveItem } from './items.ts';
 
 export type BerryId = 'aranja' | 'zidra';
 export type PotionId = 'pocion' | 'superpocion';
@@ -125,14 +125,20 @@ export const SHOP_PRICES = { pocion: 5, superpocion: 12, item: 15 } as const;
  * Los 3 artículos de la tienda: Poción, Superpoción y un pasivo o un poder al azar.
  * El poder sale (y se quita) de `movePool`, como los objetos del suelo; los pasivos evitan los que ya tienes.
  */
-export function rollShop(rng: () => number, ownedPassives: ReadonlySet<string>, movePool: MovePower[]): ShopSlot[] {
+export function rollShop(
+  rng: () => number,
+  ownedPassives: ReadonlySet<string>,
+  movePool: MovePower[],
+  /** Pasivos que pueden salir (sin los bloqueados por logros). */
+  pool: readonly PassiveItem[] = PASSIVE_ITEMS,
+): ShopSlot[] {
   let goods: ShopGoods;
   if (movePool.length > 0 && rng() < 0.5) {
     const [move] = movePool.splice(Math.floor(rng() * movePool.length), 1);
     goods = { kind: 'move', move };
   } else {
-    const fresh = PASSIVE_ITEMS.filter((i) => !ownedPassives.has(i.id));
-    const list = fresh.length > 0 ? fresh : PASSIVE_ITEMS;
+    const fresh = pool.filter((i) => !ownedPassives.has(i.id));
+    const list = fresh.length > 0 ? fresh : pool;
     goods = { kind: 'passive', id: list[Math.floor(rng() * list.length)].id };
   }
   return [

@@ -212,7 +212,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
 - **Sinergias**: combinaciones con efecto extra y aviso "¡Sinergia!" (p. ej. Carbón + poder de fuego = quemaduras
   más fuertes). Tabla pura con tests.
 
-## [ ] T24 — Misiones y logros
+## [x] T24 — Misiones y logros
 - Pantalla "Misiones" en el menú: retos permanentes (logros) y 3 misiones diarias que cambian cada día
   (vence 10 enemigos de tipo Agua, llega al piso 3 sin curarte, abre 2 cofres…). Dan tickets y algunos logros
   desbloquean cosas (un Pokémon, un objeto nuevo en el sorteo). Aviso en partida al completar una.

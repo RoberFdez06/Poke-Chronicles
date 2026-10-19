@@ -311,13 +311,15 @@ export function rollItem(
   /** Probabilidad de un objeto activo (ids en `actives`); 0 = nunca. */
   activeChance = 0,
   actives: readonly string[] = [],
+  /** Pasivos que pueden salir (sin los bloqueados por logros, ver missions.ts). */
+  pool: readonly PassiveItem[] = PASSIVE_ITEMS,
 ): DroppedItem {
   if (actives.length > 0 && rng() < activeChance) return { kind: 'active', id: actives[Math.floor(rng() * actives.length)] };
   if (movePool.length > 0 && rng() < MOVE_ITEM_CHANCE) {
     const [move] = movePool.splice(Math.floor(rng() * movePool.length), 1);
     return { kind: 'move', move };
   }
-  const fresh = PASSIVE_ITEMS.filter((i) => !ownedPassives.has(i.id));
-  const list = fresh.length > 0 ? fresh : PASSIVE_ITEMS;
+  const fresh = pool.filter((i) => !ownedPassives.has(i.id));
+  const list = fresh.length > 0 ? fresh : pool;
   return { kind: 'passive', item: list[Math.floor(rng() * list.length)] };
 }

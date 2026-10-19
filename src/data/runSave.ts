@@ -19,7 +19,7 @@ export const RUN_SLOTS = 3;
  *     sin sala secreta, de desafío ni cofres.
  * v8: objeto activo (y su carga) y objetos activos en el suelo.
  */
-export const RUN_VERSION = 8;
+export const RUN_VERSION = 9;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -90,6 +90,8 @@ export interface RunSave {
   revealedDoors: string[];
   /** Objeto activo que llevas y cuántas salas lleva cargadas (null = ninguno). */
   active: { id: string; charge: number } | null;
+  /** Te has curado en algún momento de la partida (misiones y logros "sin curarte"). */
+  healed: boolean;
 }
 
 const isInt = (n: unknown): n is number => Number.isInteger(n);
@@ -157,6 +159,11 @@ function migrateV7(d: RunSave): RunSave {
   return { ...d, version: 8, active: null };
 }
 
+/** v8 no sabía si te habías curado: se cuenta que sí (no regala la misión "sin curarte"). */
+function migrateV8(d: RunSave): RunSave {
+  return { ...d, version: 9, healed: true };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -174,6 +181,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 5) d = migrateV5(d);
   if (d.version === 6) d = migrateV6(d);
   if (d.version === 7) d = migrateV7(d);
+  if (d.version === 8) d = migrateV8(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
@@ -189,7 +197,8 @@ export function parseRun(raw: string | null): RunSave | null {
     Array.isArray(d.shop) && d.shop.every(isShopSlot) && [1, 2, 3].includes(d.layout) &&
     isInt(d.keys) && d.keys >= 0 && isInt(d.bombs) && d.bombs >= 0 && isIntArray(d.openedChests) &&
     Array.isArray(d.revealedDoors) && d.revealedDoors.every((k) => typeof k === 'string') &&
-    (d.active === null || (!!d.active && typeof d.active.id === 'string' && isInt(d.active.charge) && d.active.charge >= 0));
+    (d.active === null || (!!d.active && typeof d.active.id === 'string' && isInt(d.active.charge) && d.active.charge >= 0)) &&
+    typeof d.healed === 'boolean';
   return ok ? d : null;
 }
 

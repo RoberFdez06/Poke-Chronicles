@@ -592,3 +592,26 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - **No hecho (por N5/N11)**: los tickets del menú principal (`MenuScene`) y del gacha (`GachaScene`) no los he tocado;
   si el supervisor quiere el icono allí, es `addIcon(scene, x, y, 'ticket', 2)`.
 - **Comprobado**: tsc, tests, build y e2e (capturas de la sala inicial con baldosas y del HUD con iconos).
+
+## T24 — Misiones y logros (2026-10-19)
+
+- **Lógica** (`src/data/missions.ts`, tests en `tests/missions.test.ts`): la partida manda sucesos (enemigo
+  vencido con sus tipos, jefe, cofre, monedas, sala limpia, objeto, shiny, piso alcanzado con "te has curado o no",
+  victoria). 8 plantillas de misión diaria; cada día se eligen 3 distintas con `mulberry32` y la semilla del día
+  (`dayNumber` de gacha.ts, cambia a medianoche local). 9 logros permanentes. `applyMissionEvent` es pura;
+  `recordMission` (save.ts, clave `pokeisaac.missions`, incluida en "Borrar progreso") guarda y da los premios
+  (tickets y desbloqueo de Pokémon).
+- **Objetos nuevos en el sorteo**: Cinta Elegida, Moneda Amuleto, Banda Focus y Gafas Elegidas no salen (suelo ni
+  tienda) hasta conseguir su logro. `rollItem` y `rollShop` aceptan ahora el `pool` de pasivos.
+- **"Sin curarte"**: `GameScene` marca `healedRun` si los PS suben (bayas, pociones, Centro, robo de vida, Restos…),
+  salvo cuando suben por más PS máximos (objeto o evolución). Se guarda: `RunSave` v9 con `healed`; los
+  guardados v8 se migran con `healed: true` para no regalar la misión.
+- **Pantalla**: `MissionsScene` (diarias con barra y premio, cuenta atrás hasta medianoche, logros 3×3). Aviso en
+  partida en la franja de abajo, en cola si se cumplen varias a la vez.
+- **Decisión (N5)**: no puedo tocar `MenuScene`, así que el acceso está en **Jugar** (SlotsScene): una cuarta opción
+  "Misiones y logros" debajo de los huecos. Si el supervisor quiere un botón en el menú principal, basta con
+  `{ label: 'Misiones', action: () => goTo(this, 'Missions') }` en MenuScene (y que `back()` de MissionsScene vuelva
+  a 'Menu').
+- **N12**: leída; no he tocado el gacha. No hay misión de "tira en el gacha" para no depender de él (se podría con
+  `loadHistory()`).
+- **Comprobado**: tsc, tests (166), build y e2e (captura `03b-misiones` entrando con teclado y saliendo con Esc).

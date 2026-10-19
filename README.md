@@ -117,6 +117,16 @@ compran con dinero real. Todos los nombres (Pokémon, movimientos y tipos) salen
 o legendario, de menos a más valiosa; probabilidades en `src/data/gacha.ts`). Si ya lo tenías, devuelve 30 tickets. La lista de especies
 se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `node scripts/buildSpeciesIndex.mjs`.
 
+## Misiones y logros
+
+En **Jugar**, debajo de los 3 huecos, está **Misiones y logros** (flechas/mando hasta ella y Enter/A, o clic; Esc, B
+o "Volver" para salir). Cada día hay **3 misiones diarias** distintas (las mismas todo el día, cambian a
+medianoche): vence enemigos de un tipo, llega a un piso sin curarte, abre cofres, recoge monedas, derrota jefes,
+limpia salas o coge objetos. Los **logros** son permanentes; algunos desbloquean un Pokémon (Eevee, Dratini) o un
+**objeto nuevo** que hasta entonces no sale en el suelo ni en la tienda (Cinta Elegida, Moneda Amuleto, Banda
+Focus, Gafas Elegidas). Se cumplen jugando, el premio (tickets) se da solo y en la partida sale un aviso abajo.
+Lógica en `src/data/missions.ts` (con tests); el progreso se guarda en `pokeisaac.missions`.
+
 ## Shinies
 
 Como en los juegos, a veces sale un Pokémon **shiny** (otro color; sprites `front_shiny`/`back_shiny` de PokeAPI, reglas
@@ -305,7 +315,8 @@ src/
     regions.ts            regiones, iniciales y filtros de la colección
     modes.ts              modos de juego, oleadas, arena y récords
     sounds.ts             efectos y música como datos, volumen
-    save.ts               tickets, desbloqueos, récords, mejoras, volumen y borrar progreso (localStorage)
+    save.ts               tickets, desbloqueos, récords, mejoras, misiones, volumen y borrar progreso (localStorage)
+    missions.ts           misiones diarias (semilla del día) y logros: progreso, premios y objetos bloqueados
     runSave.ts            partidas guardadas en 3 huecos (con migraciones)
     controls.ts           lista de controles que enseñan el menú, la pausa y los ajustes
   level/                  lógica pura de los pisos, con tests
@@ -324,7 +335,8 @@ src/
     art/                  pixel art por código: iconos, baldosas de bioma, paisajes y gacha (del supervisor)
   scenes/
     MenuScene.ts          menú principal
-    SlotsScene.ts         los 3 huecos de partida
+    SlotsScene.ts         los 3 huecos de partida y acceso a Misiones
+    MissionsScene.ts      misiones de hoy y logros
     StarterScene.ts       elegir Pokémon de tu colección
     FirstStarterScene.ts  primera partida: elegir región e inicial
     ModeScene.ts          elegir modo de juego

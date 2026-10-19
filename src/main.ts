@@ -10,6 +10,7 @@ import { ModeScene } from './scenes/ModeScene';
 import { SettingsScene } from './scenes/SettingsScene';
 import { PokedexScene } from './scenes/PokedexScene';
 import { UpgradeScene } from './scenes/UpgradeScene';
+import { MissionsScene } from './scenes/MissionsScene';
 import { PauseScene } from './scenes/PauseScene';
 import { COLORS, hex, loadThemeFont } from './ui/theme';
 import { initAudio, playMusic } from './ui/audio';
@@ -43,7 +44,7 @@ function startGame() {
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     // La primera escena es la que arranca; añade las nuevas (p. ej. GachaScene) al final
     // PauseScene va la última para dibujarse encima de la partida
-    scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, PauseScene],
+    scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, PauseScene],
   });
   lockEscapeInFullscreen(game);
   // Para las pruebas de navegador (npm run e2e): saber qué pantalla está activa

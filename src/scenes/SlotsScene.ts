@@ -7,6 +7,9 @@ import { addHpBar, ARROW, drawBox, fadeIn, goTo, strokePixelFrame } from '../ui/
 import { addMenuBackdrop } from '../ui/art/landscape';
 
 const CARD = { w: 600, h: 120, gap: 22 };
+/** Botón "Misiones y logros" debajo de los huecos (es la opción 3 al moverse con flechas o mando). */
+const MISSIONS = { y: 566, w: 320, h: 48 };
+const OPTIONS = 4;
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 function describe(run: RunSave): string {
@@ -48,11 +51,12 @@ export class SlotsScene extends Phaser.Scene {
     back.on('pointerout', () => back.setColor('#ffffff'));
     back.on('pointerdown', () => !this.dialog && this.goBack());
 
-    const top = 320 - (3 * CARD.h + 2 * CARD.gap) / 2 + CARD.h / 2;
+    const top = 300 - (3 * CARD.h + 2 * CARD.gap) / 2 + CARD.h / 2;
     this.runs.forEach((run, i) => this.cards.push(this.buildCard(run, i, 480, top + i * (CARD.h + CARD.gap))));
+    this.cards.push(this.buildMissionsButton());
 
     this.add
-      .text(480, 604, 'Flechas, ratón o mando para elegir · Enter, clic o A para abrir · Esc o B para volver', {
+      .text(480, 616, 'Flechas, ratón o mando para elegir · Enter, clic o A para abrir · Esc o B para volver', {
         fontFamily: UI.FONT, fontSize: '15px', color: '#ffffff',
       })
       .setOrigin(0.5).setAlpha(0.6);
@@ -93,6 +97,25 @@ export class SlotsScene extends Phaser.Scene {
     return { box, glow, arrow };
   }
 
+  private buildMissionsButton() {
+    const { w, h } = MISSIONS;
+    const bg = drawBox(this.add.graphics(), -w / 2, -h / 2, w, h, { radius: 12 });
+    const glow = this.add.graphics();
+    strokePixelFrame(glow, -w / 2 - 8, -h / 2 - 8, w + 16, h + 16, UI.GOLD, 6);
+    const arrow = this.add.text(-w / 2 - 34, 0, ARROW, { fontFamily: UI.FONT, fontSize: '24px', color: '#ffd34d' }).setOrigin(0, 0.5);
+    const label = this.add.text(0, 0, 'Misiones y logros', { fontFamily: UI.FONT, fontSize: '22px', fontStyle: 'bold', color: '#2b3a67' }).setOrigin(0.5);
+    const box = this.add.container(480, MISSIONS.y, [bg, glow, arrow, label]).setSize(w, h);
+    box.setInteractive(new Phaser.Geom.Rectangle(0, 0, w, h), Phaser.Geom.Rectangle.Contains);
+    box.input!.cursor = 'pointer';
+    box.on('pointerover', () => !this.dialog && this.select(3));
+    box.on('pointerdown', () => {
+      if (this.dialog) return;
+      this.select(3);
+      this.open(3);
+    });
+    return { box, glow, arrow };
+  }
+
   private select(i: number) {
     this.selected = i;
     this.cards.forEach((c, k) => {
@@ -114,6 +137,11 @@ export class SlotsScene extends Phaser.Scene {
   }
 
   private open(slot: number) {
+    if (slot === 3) {
+      this.leaving = true;
+      goTo(this, 'Missions');
+      return;
+    }
     const run = this.runs[slot];
     if (!run) return this.startNew(slot);
     this.showDialog(`Hueco ${slot + 1}\n${capitalize(run.starterName)}`, ['Continuar', 'Nueva partida', 'Cancelar'], (k) => {
@@ -157,7 +185,7 @@ export class SlotsScene extends Phaser.Scene {
     }
     if (s.back) return this.goBack();
     const d = s.dy || s.dx;
-    if (d !== 0) this.select((this.selected + Math.sign(d) + 3) % 3);
+    if (d !== 0) this.select((this.selected + Math.sign(d) + OPTIONS) % OPTIONS);
     if (s.ok) this.open(this.selected);
   }
 }

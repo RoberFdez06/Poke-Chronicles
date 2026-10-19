@@ -44,6 +44,7 @@ function sample(): RunSave {
     openedChests: [4],
     revealedDoors: ['3:up'],
     active: { id: 'pokeblock', charge: 2 },
+    healed: false,
   };
 }
 
@@ -153,6 +154,15 @@ test('un guardado v7 (sin objeto activo) se migra sin él', () => {
   assert.equal(run.version, RUN_VERSION);
   assert.equal(run.active, null);
   assert.equal(parseRun(JSON.stringify({ ...sample(), active: { id: 'x', charge: -1 } })), null);
+});
+
+test('un guardado v8 se migra contando que te has curado', () => {
+  const { healed: _h, ...v8 } = sample();
+  const run = parseRun(JSON.stringify({ ...v8, version: 8 }));
+  assert.ok(run);
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.healed, true);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), healed: 'no' })), null);
 });
 
 test('un piso no válido invalida el guardado', () => {
