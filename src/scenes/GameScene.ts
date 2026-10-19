@@ -68,7 +68,8 @@ import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeTypeFx, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
 import { bakeCombatFx, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
-import { bakeBiomeTiles, TILE as ART_TILE } from '../ui/art/tiles';
+import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
+import { decorateRoom } from '../ui/art/roomDecor';
 import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, W } from '../ui/layout';
@@ -1396,8 +1397,25 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Baldosas de 32 px escaladas a las casillas de 40 de la sala, así cuadran con los obstáculos
     const ts = TILE / ART_TILE;
     this.add.tileSprite(i.x0 - WALL, i.y0 - WALL, ROOM.w + WALL * 2, ROOM.h + WALL * 2, this.tiles.wall).setOrigin(0).setTileScale(ts).setDepth(0);
-    if (plain) this.add.tileSprite(i.x0, i.y0, ROOM.w, ROOM.h, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0);
-    else g.fillStyle(floorColor, 1).fillRoundedRect(i.x0, i.y0, ROOM.w, ROOM.h, 24);
+    this.add.tileSprite(i.x0, i.y0, ROOM.w, ROOM.h, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0);
+    // Paisaje alrededor, manchas, detalles y sombras del bioma (supervisor)
+    decorateRoom(this, this.biome, { x: room.gx * VIEW.w, y: room.gy * VIEW.h, w: VIEW.w, h: VIEW.h }, i, WALL, this.floorSeed * 31 + room.id, ts * 2.4);
+    if (!plain) {
+      // Salas especiales: alfombra de su color (Centro rosa, tienda verde, objeto dorado…) sobre el suelo del bioma
+      const rug = this.add.graphics().setDepth(0.2);
+      const m = 70;
+      const rx = i.x0 + m;
+      const ry = i.y0 + m * 0.7;
+      const rw = ROOM.w - m * 2;
+      const rh = ROOM.h - m * 1.4;
+      rug.fillStyle(0x000000, 0.18).fillRect(rx + 6, ry + 8, rw, rh);
+      rug.fillStyle(shade(floorColor, -0.35), 1).fillRect(rx, ry, rw, rh);
+      rug.fillStyle(floorColor, 1).fillRect(rx + 8, ry + 8, rw - 16, rh - 16);
+      rug.lineStyle(4, shade(floorColor, 0.45), 1).strokeRect(rx + 18, ry + 18, rw - 36, rh - 36);
+      for (let k = 0; k < 4; k++) rug.fillStyle(shade(floorColor, -0.2), 1).fillRect(rx + 30 + k * 12, ry + rh / 2 - 2, 6, 4).fillRect(rx + rw - 36 - k * 12, ry + rh / 2 - 2, 6, 4);
+      // Flecos
+      for (let x = rx + 6; x < rx + rw - 6; x += 10) rug.fillStyle(shade(floorColor, 0.3), 1).fillRect(x, ry - 6, 4, 6).fillRect(x, ry + rh, 4, 6);
+    }
     g.setDepth(0.5);
 
     for (const d of DIRS) {
@@ -1453,8 +1471,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private drawDoor(room: Room, d: Dir, g: Phaser.GameObjects.Graphics, floorColor: number) {
     const r = this.doorRect(room, d);
     const plain = room.kind === 'start' || room.kind === 'combat' || room.kind === 'boss';
-    if (plain) this.add.tileSprite(r.x, r.y, r.w, r.h, this.tiles.floor).setOrigin(0).setTileScale(TILE / ART_TILE).setDepth(0.4);
-    else g.fillStyle(floorColor, 1).fillRect(r.x, r.y, r.w, r.h);
+    void plain;
+    void floorColor;
+    this.add.tileSprite(r.x, r.y, r.w, r.h, this.tiles.floor).setOrigin(0).setTileScale(TILE / ART_TILE).setDepth(0.4);
     const kind = this.floor.rooms[room.doors[d]!].kind;
     const frame =
       kind === 'boss' ? 0xe53935
