@@ -5,7 +5,7 @@
 // - Cofre trampa: se abre sin llave, pero a veces es un enemigo (si lo vences, suelta el objeto).
 // Sale de la semilla del piso, así al continuar o en el desafío diario es el mismo. Lógica pura, sin Phaser.
 import type { Floor } from './floorGen.ts';
-import { PASSIVE_ITEMS, type MovePower, type PassiveItem } from '../data/items.ts';
+import { PASSIVE_ITEMS, takeMoveByRarity, type MovePower, type PassiveItem } from '../data/items.ts';
 import type { ShopGoods, ShopSlot } from '../data/loot.ts';
 
 export const ROOM_EVENTS = ['runaway', 'merchant', 'altar', 'trapChest'] as const;
@@ -74,13 +74,13 @@ export function merchantStock(
   ownedPassives: ReadonlySet<string>,
   movePool: MovePower[],
   pool: readonly PassiveItem[] = PASSIVE_ITEMS,
+  floor = 1,
 ): ShopSlot[] {
   const used = new Set<string>();
   return MERCHANT_PRICES.map((price) => {
     let goods: ShopGoods;
     if (movePool.length > 0 && rng() < 0.35) {
-      const [move] = movePool.splice(Math.floor(rng() * movePool.length), 1);
-      goods = { kind: 'move', move };
+      goods = { kind: 'move', move: takeMoveByRarity(rng, movePool, floor) };
     } else {
       const fresh = pool.filter((i) => !ownedPassives.has(i.id) && !used.has(i.id));
       const list = fresh.length > 0 ? fresh : pool;

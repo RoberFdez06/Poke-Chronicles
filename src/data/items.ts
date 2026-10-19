@@ -303,8 +303,66 @@ export function shapeForPower(power: number): MoveShape {
   return 'bolt'; // disparo rápido
 }
 
+// --- Rarezas de los poderes: los más potentes son más raros, tardan más en recargar y salen más en pisos altos ---
+
+export const MOVE_RARITIES = ['common', 'rare', 'epic', 'legendary'] as const;
+export type MoveRarity = (typeof MOVE_RARITIES)[number];
+
+export const MOVE_RARITY_LABEL: Record<MoveRarity, string> = { common: 'Común', rare: 'Raro', epic: 'Épico', legendary: 'Legendario' };
+export const MOVE_RARITY_COLOR: Record<MoveRarity, number> = { common: 0xb8c4d8, rare: 0x4fa8ff, epic: 0xb36bff, legendary: 0xffb02e };
+
+/** Rareza según la potencia del movimiento. */
+export function moveRarity(power: number): MoveRarity {
+  if (power >= 100) return 'legendary';
+  if (power >= 70) return 'epic';
+  if (power >= 50) return 'rare';
+  return 'common';
+}
+
+/** Cuánto se alarga la recarga de cada rareza. */
+const RARITY_COOLDOWN: Record<MoveRarity, number> = { common: 1, rare: 1.25, epic: 1.6, legendary: 2.1 };
+
+/** Recarga en ms: más potencia y más rareza, más espera (antes salían demasiado seguidos). Tope de 9 s. */
 export function cooldownForPower(power: number): number {
-  return Math.min(4000, 600 + power * 8);
+  return Math.min(9000, Math.round((900 + power * 12) * RARITY_COOLDOWN[moveRarity(power)]));
+}
+
+/** Probabilidad (en pesos) de cada rareza al soltar un poder, según el piso: cuanto más abajo, más raros. */
+export function moveRarityWeights(floor: number): Record<MoveRarity, number> {
+  const f = Math.max(1, Math.floor(floor));
+  const table: Record<MoveRarity, number>[] = [
+    { common: 70, rare: 25, epic: 5, legendary: 0 },
+    { common: 55, rare: 32, epic: 11, legendary: 2 },
+    { common: 40, rare: 35, epic: 20, legendary: 5 },
+    { common: 28, rare: 34, epic: 27, legendary: 11 },
+    { common: 18, rare: 30, epic: 32, legendary: 20 },
+  ];
+  return table[Math.min(f, table.length) - 1];
+}
+
+/**
+ * Saca (y quita) un poder de `pool` eligiendo antes la rareza con los pesos del piso. Si de esa rareza no queda
+ * ninguno, se baja a la siguiente que haya.
+ */
+export function takeMoveByRarity(rng: () => number, pool: MovePower[], floor: number): MovePower {
+  const w = moveRarityWeights(floor);
+  const present = MOVE_RARITIES.filter((r) => pool.some((m) => moveRarity(m.power) === r));
+  const total = present.reduce((a, r) => a + w[r], 0);
+  let pick: MoveRarity = present[0];
+  if (total > 0) {
+    let x = rng() * total;
+    for (const r of present) {
+      x -= w[r];
+      if (x < 0) {
+        pick = r;
+        break;
+      }
+    }
+  }
+  const candidates = pool.filter((m) => moveRarity(m.power) === pick);
+  const move = candidates[Math.floor(rng() * candidates.length)];
+  pool.splice(pool.indexOf(move), 1);
+  return move;
 }
 
 export function toMovePower(m: MoveInfo): MovePower {
@@ -334,11 +392,12 @@ export function rollItem(
   actives: readonly string[] = [],
   /** Pasivos que pueden salir (sin los bloqueados por logros, ver missions.ts). */
   pool: readonly PassiveItem[] = PASSIVE_ITEMS,
+  /** Piso actual: cuanto más alto, más raros los poderes que salen. */
+  floor = 1,
 ): DroppedItem {
   if (actives.length > 0 && rng() < activeChance) return { kind: 'active', id: actives[Math.floor(rng() * actives.length)] };
   if (movePool.length > 0 && rng() < MOVE_ITEM_CHANCE) {
-    const [move] = movePool.splice(Math.floor(rng() * movePool.length), 1);
-    return { kind: 'move', move };
+    return { kind: 'move', move: takeMoveByRarity(rng, movePool, floor) };
   }
   const fresh = pool.filter((i) => !ownedPassives.has(i.id));
   const list = fresh.length > 0 ? fresh : pool;

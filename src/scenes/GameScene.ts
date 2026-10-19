@@ -163,6 +163,9 @@ import {
   passiveById,
   rollItem,
   toMovePower,
+  moveRarity,
+  MOVE_RARITY_COLOR,
+  MOVE_RARITY_LABEL,
   DroppedItem,
   MovePower,
   PlayerStats,
@@ -1122,7 +1125,7 @@ export class GameScene extends Phaser.Scene {
 
     if (kind === 'merchant') {
       // Puesto con tres artículos; los poderes se copian para no gastar la bolsa si no compras
-      const stock = merchantStock(rng, new Set(this.passives), [...this.movePool], this.passivePool());
+      const stock = merchantStock(rng, new Set(this.passives), [...this.movePool], this.passivePool(), this.floorNum);
       const g = keep(this.add.graphics().setDepth(2));
       g.fillStyle(0x6b4423, 1).fillRect(i.cx - 200, i.cy - 120, 400, 26);
       for (let k = 0; k < 5; k++) g.fillStyle(k % 2 ? 0xf4f1e6 : 0x1abc9c, 1).fillTriangle(i.cx - 200 + k * 80, i.cy - 120, i.cx - 120 + k * 80, i.cy - 120, i.cx - 160 + k * 80, i.cy - 156);
@@ -1662,7 +1665,7 @@ export class GameScene extends Phaser.Scene {
 
     // Tienda: al continuar, lo que quedaba; si no, artículos nuevos para este piso
     if (this.floor.shopId !== undefined) {
-      if (this.shop.length === 0) this.shop = rollShop(this.rng(RNG.shop), new Set(this.passives), this.movePool, this.passivePool());
+      if (this.shop.length === 0) this.shop = rollShop(this.rng(RNG.shop), new Set(this.passives), this.movePool, this.passivePool(), this.floorNum);
       this.buildShop(this.floor.rooms[this.floor.shopId]);
     }
     this.prompt = this.add
@@ -2410,7 +2413,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Deja en el suelo un objeto al azar: un pasivo propio o un poder (movimiento de PokeAPI). */
   private dropItem(roomId: number, x: number, y: number) {
-    this.spawnPickup(roomId, x, y, rollItem(this.rng(RNG.items), new Set(this.passives), this.movePool, ACTIVE_DROP_CHANCE, ACTIVE_IDS, this.passivePool()));
+    this.spawnPickup(roomId, x, y, rollItem(this.rng(RNG.items), new Set(this.passives), this.movePool, ACTIVE_DROP_CHANCE, ACTIVE_IDS, this.passivePool(), this.floorNum));
   }
 
   private spawnPickup(roomId: number, x: number, y: number, item: DroppedItem) {
@@ -2433,6 +2436,19 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       .setDepth(3);
     s.setData('label', label);
     s.setData('shadow', shadow);
+    // Rareza del poder: nombre en su color y, en los épicos y legendarios, un halo que late
+    if (item.kind === 'move') {
+      const rar = moveRarity(item.move.power);
+      if (rar !== 'common') {
+        const rc = MOVE_RARITY_COLOR[rar];
+        label.setText(`${name}\n${MOVE_RARITY_LABEL[rar]}`).setColor('#' + rc.toString(16).padStart(6, '0')).setY(y - 48).setAlign('center');
+        if (rar === 'epic' || rar === 'legendary') {
+          const halo = this.add.circle(x, y, 30, rc, 0.28).setDepth(1.5).setStrokeStyle(3, rc, 0.9);
+          this.tweens.add({ targets: halo, scale: 1.5, alpha: 0.05, duration: rar === 'legendary' ? 650 : 900, repeat: -1 });
+          s.setData('halo', halo);
+        }
+      }
+    }
     this.tweens.add({ targets: s, y: y - 8, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
   }
 
@@ -2516,6 +2532,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     (sprite.getData('label') as Phaser.GameObjects.Text | undefined)?.destroy();
     (sprite.getData('shadow') as Phaser.GameObjects.Ellipse | undefined)?.destroy();
+    const halo = sprite.getData('halo') as Phaser.GameObjects.Arc | undefined;
+    if (halo) {
+      this.tweens.killTweensOf(halo);
+      halo.destroy();
+    }
     this.floorItems = this.floorItems.filter((f) => f !== sprite.getData('entry'));
     this.tweens.killTweensOf(sprite);
     sprite.destroy();

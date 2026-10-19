@@ -7,6 +7,9 @@ import {
   PASSIVE_ITEMS,
   computeStats,
   cooldownForPower,
+  moveRarity,
+  moveRarityWeights,
+  takeMoveByRarity,
   passiveById,
   rollItem,
   shapeForPower,
@@ -58,10 +61,44 @@ test('la forma del poder depende de la potencia', () => {
   assert.equal(shapeForPower(250), 'big');
 });
 
-test('la recarga crece con la potencia y tiene tope', () => {
-  assert.ok(cooldownForPower(40) < cooldownForPower(90));
-  assert.equal(cooldownForPower(250), 2600);
-  assert.equal(cooldownForPower(1000), 4000);
+test('la recarga crece con la potencia y la rareza, y tiene tope', () => {
+  assert.ok(cooldownForPower(40) < cooldownForPower(60));
+  assert.ok(cooldownForPower(60) < cooldownForPower(90));
+  assert.ok(cooldownForPower(90) < cooldownForPower(120));
+  assert.equal(cooldownForPower(40), 1380);
+  assert.equal(cooldownForPower(1000), 9000);
+});
+
+test('rareza por potencia y pesos por piso', () => {
+  assert.equal(moveRarity(40), 'common');
+  assert.equal(moveRarity(50), 'rare');
+  assert.equal(moveRarity(70), 'epic');
+  assert.equal(moveRarity(100), 'legendary');
+  for (let f = 1; f <= 8; f++) {
+    const w = moveRarityWeights(f);
+    assert.ok(w.common + w.rare + w.epic + w.legendary > 0);
+  }
+  assert.equal(moveRarityWeights(1).legendary, 0);
+  assert.ok(moveRarityWeights(5).legendary > moveRarityWeights(2).legendary);
+  assert.ok(moveRarityWeights(5).common < moveRarityWeights(1).common);
+  assert.deepEqual(moveRarityWeights(99), moveRarityWeights(5));
+});
+
+test('takeMoveByRarity: en pisos altos salen más poderes raros', () => {
+  const mk = () => [30, 40, 55, 60, 75, 90, 110, 120].map((p, i) => mp(i + 1, p));
+  const legends = (floor: number) => {
+    let n = 0;
+    let seed = 12345;
+    const rng = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+    for (let i = 0; i < 400; i++) if (moveRarity(takeMoveByRarity(rng, mk(), floor).power) === 'legendary') n++;
+    return n;
+  };
+  assert.equal(legends(1), 0);
+  assert.ok(legends(5) > legends(2));
+  // Si solo queda una rareza, sale de esa; y el poder se quita del pool
+  const pool = [mp(1, 30)];
+  assert.equal(takeMoveByRarity(() => 0.99, pool, 5).id, 1);
+  assert.equal(pool.length, 0);
 });
 
 test('rollItem saca el poder del pool', () => {

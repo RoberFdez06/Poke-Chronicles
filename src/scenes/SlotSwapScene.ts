@@ -1,3 +1,4 @@
+import { MOVE_RARITY_LABEL, moveRarity } from '../data/items';
 import Phaser from 'phaser';
 import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { MenuList, NavInput } from '../ui/nav';
@@ -47,7 +48,7 @@ export class SlotSwapScene extends Phaser.Scene {
     const m = this.args.move;
     this.add.circle(250, 178, 9, typeColor(m.type)).setStrokeStyle(2, 0xffffff);
     this.add
-      .text(270, 178, `Nuevo: ${pretty(m.name)} · ${typeNameEs(m.type)} · potencia ${m.power}`, { fontFamily: FONT, fontSize: '19px', color: HEX.text })
+      .text(270, 178, `Nuevo: ${pretty(m.name)} · ${typeNameEs(m.type)} · ${MOVE_RARITY_LABEL[moveRarity(m.power)]} · potencia ${m.power}`, { fontFamily: FONT, fontSize: '19px', color: HEX.text })
       .setOrigin(0, 0.5);
     this.add.text(480, 216, '¿Cuál quieres sustituir?', { fontFamily: FONT, fontSize: '16px', color: HEX.textSoft }).setOrigin(0.5);
     const labels = this.args.slots.map((s, i) => (s ? `${i + 1} · ${pretty(s.name)} (${typeNameEs(s.type)}, pot. ${s.power})` : `${i + 1} · vacío`));

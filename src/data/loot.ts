@@ -2,7 +2,7 @@
 // Las monedas solo valen dentro de la partida (en la tienda) y se pierden al acabarla; los tickets
 // (save.ts) son otra cosa y se gastan fuera, en el gacha.
 // Lógica pura, sin Phaser ni red, para poder testearla.
-import { PASSIVE_ITEMS, type MovePower, type PassiveItem } from './items.ts';
+import { PASSIVE_ITEMS, takeMoveByRarity, type MovePower, type PassiveItem } from './items.ts';
 
 export type BerryId = 'aranja' | 'zidra';
 export type PotionId = 'pocion' | 'superpocion';
@@ -132,11 +132,11 @@ export function rollShop(
   movePool: MovePower[],
   /** Pasivos que pueden salir (sin los bloqueados por logros). */
   pool: readonly PassiveItem[] = PASSIVE_ITEMS,
+  floor = 1,
 ): ShopSlot[] {
   let goods: ShopGoods;
   if (movePool.length > 0 && rng() < 0.5) {
-    const [move] = movePool.splice(Math.floor(rng() * movePool.length), 1);
-    goods = { kind: 'move', move };
+    goods = { kind: 'move', move: takeMoveByRarity(rng, movePool, floor) };
   } else {
     const fresh = pool.filter((i) => !ownedPassives.has(i.id));
     const list = fresh.length > 0 ? fresh : pool;
