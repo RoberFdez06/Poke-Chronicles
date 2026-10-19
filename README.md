@@ -267,6 +267,17 @@ enemigos, un 3 % de daño a quien no sea Roca/Tierra/Acero; al jugador nunca lo 
 afecta), **Granizo** (igual, salvo Hielo) y **Niebla** (oscurece los bordes alrededor del jugador). Se ve en el HUD
 junto al piso y con un aviso al empezar.
 
+## Controles táctiles y pantalla de Controles
+
+- **Pantalla de Controles** (`src/scenes/ControlsScene.ts`, datos en `controlSections` de `src/data/controls.ts`): desde la
+  pausa y desde Ajustes (encima de la pausa). Pestañas **Teclado**, **Ratón**, **Mando** y **Táctil** (esta solo en móvil o
+  tableta) con todas las acciones; se cambia con izquierda/derecha, LB/RB o clic, y se cierra con Esc, B, Enter, A o
+  "← Volver". Las teclas que enseña son las configuradas.
+- **Táctil** (`src/ui/touchControls.ts`): solo si la pantalla es táctil y no hay ratón (`touchOnlyDevice`; en PC nunca).
+  Joystick izquierdo para moverse, joystick derecho para disparar hacia donde lo empujes, botones 1-4 (poderes),
+  Activo, Bomba y Usar; la pausa es el botón ❚❚ del HUD. En los menús, tocar = clic. La página no hace zoom ni
+  scroll al tocar (`touch-action: none` y viewport sin zoom en `index.html`).
+
 ## Salas sorpresa
 
 Desde el piso 2 de Normal e Infinito, más o menos uno de cada tres pisos tiene una **sala sorpresa** (`src/level/roomEvents.ts`):

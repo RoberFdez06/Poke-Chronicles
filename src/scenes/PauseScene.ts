@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
-import { CONTROLS } from '../data/controls';
+import { openControls } from './ControlsScene';
 import type { MovePower, PlayerStats } from '../data/items';
 import { typeColor, typeHex, typeNameEs } from '../data/types';
 import { addHpBar, addTypeChip, drawBox, shorten } from '../ui/theme';
@@ -187,17 +187,8 @@ export class PauseScene extends Phaser.Scene {
   }
 
   private showControls() {
-    const layer = addPanel(this, 480, 320, 700, 400, 50);
-    layer.add(this.add.text(480, 158, 'Controles', { fontFamily: UI.FONT, fontSize: '34px', fontStyle: 'bold', color: '#2b3a67' }).setOrigin(0.5));
-    CONTROLS.forEach(([what, how], k) => {
-      const y = 196 + k * 56;
-      layer.add(this.add.text(170, y, what, { fontFamily: UI.FONT, fontSize: '22px', fontStyle: 'bold', color: '#2b3a67' }));
-      layer.add(this.add.text(170, y + 28, how, { fontFamily: UI.FONT, fontSize: '18px', color: '#4a5578' }));
-    });
-    layer.add(this.add.text(480, 484, 'Esc, Enter, B, A o clic para cerrar', { fontFamily: UI.FONT, fontSize: '15px', color: '#4a5578' }).setOrigin(0.5));
-    // Clic en cualquier sitio cierra
-    (layer.list[0] as Phaser.GameObjects.Rectangle).on('pointerdown', () => this.closeSub());
-    this.openSub(layer);
+    // T35: pantalla de Controles por secciones (Teclado, Ratón, Mando y Táctil)
+    openControls(this);
   }
 
   update() {

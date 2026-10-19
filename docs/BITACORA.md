@@ -899,3 +899,24 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   aparte). Lo miro en la T29.
 - En GameScene solo he subido mis trozos: los del supervisor (puertas de Gimnasio en `buildDoor`/`setDoorsLocked`)
   siguen sin commit en su copia.
+
+## T35 — Controles táctiles (solo en móvil) y pantalla de Controles por secciones
+- `src/data/controls.ts` (tests `tests/controls.test.ts`): `controlSections(teclas)` con las 9 acciones (moverse,
+  disparar, poderes, activo, bomba, usar, pausa, menús, volver) en los 4 modos; test de que cada acción está en
+  todos. `isTouchOnly`/`touchOnlyDevice` (pantalla táctil sin ningún puntero fino: en PC, aunque sea táctil, nunca)
+  y `visibleModes`. `CONTROLS` sigue igual para el menú principal (MenuScene es del supervisor).
+- `ControlsScene` (clave 'Controls', registrada antes de PauseScene; al abrirla se hace `bringToTop` y la escena que
+  la abre se pausa y luego `resetKeys`, por lo de N10). La abren la pausa (opción Controles) y Ajustes encima de la
+  pausa (`openControls`). Desde Ajustes del menú sigue yendo a Teclas (T44). Empieza en la pestaña del modo en uso
+  (Mando si hay uno conectado, Táctil en móvil).
+- **Pendiente para el supervisor**: el cuadro de Controles del menú principal (MenuScene) podría llamar a
+  `openControls(this)` de `ControlsScene.ts` para tener también las secciones.
+- `src/ui/touchControls.ts`: dos joysticks (dedos separados, `addPointer(3)`) y botones 1-4, Activo, Bomba y Usar en
+  las franjas del HUD. GameScene los lee junto al teclado y el mando; con táctil, tocar la sala no dispara (lo hace
+  el joystick). `index.html`: `touch-action: none`, sin zoom ni selección.
+- e2e `tests/e2e/controls.spec.ts`: en PC (sin táctil) pausa → Controles → pestañas con flechas → Esc cierra solo
+  los Controles; en móvil emulado (hasTouch/isMobile) aparecen los joysticks y arrastrar el izquierdo mueve al
+  Pokémon (capturas `21-controles`, `22-tactil`). Las dos pasan.
+- Nota: en pantallas pequeñas, el joystick derecho y los botones 1-4 tapan en parte las ranuras de poder del HUD
+  (son semitransparentes y las ranuras también se pueden tocar).
+- N20: el commit 169b204 del supervisor llevaba mis trozos de GameScene; aquí van el resto de archivos de la T35.

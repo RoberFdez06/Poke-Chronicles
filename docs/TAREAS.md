@@ -251,7 +251,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
   partida al día cuenta para el récord diario; se puede repetir sin récord. Récord y racha de días en `save.ts`.
 - Lógica pura (semilla del día, elección del inicial del día) en `src/data/` con tests. Sale en la pantalla de modos.
 
-## [ ] T35 — Controles táctiles (solo en móvil) y pantalla de controles por secciones
+## [x] T35 — Controles táctiles (solo en móvil) y pantalla de controles por secciones
 - **Táctil**: joystick virtual a la izquierda (moverse), zona/joystick a la derecha (disparar en esa dirección),
   botones de poderes 1-4, objeto activo y pausa. **Solo aparecen si se detecta un móvil o tablet**
   (`pointer: coarse` / `navigator.maxTouchPoints > 0` y sin ratón; en PC nunca). Menús: tocar = clic (ya funciona).

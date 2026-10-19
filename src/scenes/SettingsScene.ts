@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { fitDesign, COVER_H, COVER_W, DCX, DCY } from '../ui/layout';
-import { CONTROLS } from '../data/controls';
+import { openControls } from './ControlsScene';
 import { resetProgress } from '../data/save';
 import { stepVolume } from '../data/sounds';
 import { getAudioSettings, setAudioSettings, sfx } from '../ui/audio';
@@ -216,16 +216,8 @@ export class SettingsScene extends Phaser.Scene {
   }
 
   private showControls() {
-    const layer = addPanel(this, 480, 330, 720, 420, 50);
-    layer.add(this.add.text(480, 160, 'Controles', { fontFamily: FONT, fontSize: '32px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5));
-    CONTROLS.forEach(([what, how], k) => {
-      const y = 205 + k * 54;
-      layer.add(this.add.text(160, y, what, { fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: HEX.text }));
-      layer.add(this.add.text(160, y + 25, how, { fontFamily: FONT, fontSize: '16px', color: HEX.textSoft }));
-    });
-    layer.add(this.add.text(480, 510, 'Esc, Enter, B, A o clic para cerrar', { fontFamily: FONT, fontSize: '15px', color: HEX.textSoft }).setOrigin(0.5));
-    (layer.list[0] as Phaser.GameObjects.Rectangle).on('pointerdown', () => this.closeDialog());
-    this.dialog = { layer };
+    // T35: pantalla de Controles por secciones (Teclado, Ratón, Mando y Táctil)
+    openControls(this);
   }
 
   /** Doble confirmación: no se puede deshacer. */
