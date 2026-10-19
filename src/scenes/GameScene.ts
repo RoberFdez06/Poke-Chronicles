@@ -1455,7 +1455,29 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       : 0x1d2848;
     g.lineStyle(6, frame, 1).strokeRect(r.x, r.y, r.w, r.h);
     if (kind === 'challenge') g.lineStyle(2, 0xffffff, 1).strokeRect(r.x + 5, r.y + 5, r.w - 10, r.h - 10);
-    const block = this.add.rectangle(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h, DOOR_COLOR).setDepth(1);
+    const block = this.add.rectangle(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h, 0x1d1a24).setDepth(1);
+    // Barrotes de hierro (supervisor): cruzan el paso; se ven solo con la puerta cerrada
+    const bars = this.add.graphics().setDepth(1.6).setPosition(r.x + r.w / 2, r.y + r.h / 2);
+    const across = r.w >= r.h; // puerta arriba/abajo: barrotes verticales
+    const len = across ? r.w : r.h;
+    const thick = across ? r.h : r.w;
+    const n = 6;
+    for (let k = 0; k < n; k++) {
+      const o = -len / 2 + (len / n) * (k + 0.5);
+      const [bx, by, bw, bh] = across ? [o - 5, -thick / 2, 10, thick] : [-thick / 2, o - 5, thick, 10];
+      bars.fillStyle(0x101828, 1).fillRect(bx - 2, by, bw + 4, bh);
+      bars.fillStyle(0x7d8aa8, 1).fillRect(bx, by, bw, bh);
+      bars.fillStyle(0xc8d2e8, 1).fillRect(bx + (across ? 2 : 0), by + (across ? 0 : 2), across ? 3 : bw, across ? bh : 3);
+    }
+    // Travesaño con remaches
+    const [cx0, cy0, cw, ch] = across ? [-len / 2, -6, len, 12] : [-6, -len / 2, 12, len];
+    bars.fillStyle(0x101828, 1).fillRect(cx0, cy0 - 2, cw, ch + 4);
+    bars.fillStyle(DOOR_COLOR, 1).fillRect(cx0, cy0, cw, ch);
+    for (let k = 0; k < n; k++) {
+      const o = -len / 2 + (len / n) * (k + 0.5);
+      bars.fillStyle(0xffd34d, 1).fillRect(across ? o - 2 : -2, across ? -2 : o - 2, 4, 4);
+    }
+    block.setData('bars', bars).setData('across', across);
     this.doorBlocks.add(block);
     this.doorMap.set(doorKey(room.id, d), block);
   }
@@ -1504,6 +1526,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const block = this.doorMap.get(k);
       if (block) {
         block.setVisible(false);
+        (block.getData('bars') as Phaser.GameObjects.Graphics | undefined)?.setVisible(false);
         (block.body as Phaser.Physics.Arcade.StaticBody).enable = false;
       }
     }
@@ -1666,12 +1689,41 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.toasts?.setTop(bottom + 16);
   }
 
-  private setDoorsLocked(room: Room, locked: boolean) {
+  /** Cierra o abre las puertas de la sala. Con `animate`, los barrotes caen con un golpe o se retiran con polvo. */
+  private setDoorsLocked(room: Room, locked: boolean, animate = false) {
     for (const d of DIRS) {
       const block = this.doorMap.get(`${room.id}:${d}`);
       if (!block) continue;
-      block.setVisible(locked);
       (block.body as Phaser.Physics.Arcade.StaticBody).enable = locked;
+      const bars = block.getData('bars') as Phaser.GameObjects.Graphics | undefined;
+      const across = !!block.getData('across');
+      if (!bars) {
+        block.setVisible(locked);
+        continue;
+      }
+      this.tweens.killTweensOf(bars);
+      if (!animate) {
+        block.setVisible(locked);
+        bars.setVisible(locked).setScale(1).setAlpha(1);
+        continue;
+      }
+      if (locked) {
+        block.setVisible(true).setAlpha(0);
+        this.tweens.add({ targets: block, alpha: 1, duration: 160 });
+        bars.setVisible(true).setAlpha(1).setScale(across ? 1 : 0.1, across ? 0.1 : 1);
+        this.tweens.add({ targets: bars, scaleX: 1, scaleY: 1, duration: 300, ease: 'Bounce.easeOut' });
+        dustBurst(this, block.x, block.y, 0.8, 6);
+      } else {
+        this.tweens.add({
+          targets: bars, scaleX: across ? 1 : 0.05, scaleY: across ? 0.05 : 1, alpha: 0.3, duration: 240, ease: 'Back.easeIn',
+          onComplete: () => {
+            bars.setVisible(false).setScale(1).setAlpha(1);
+            block.setVisible(false);
+            dustBurst(this, block.x, block.y, 0.9, 7);
+            hitSpark(this, block.x, block.y, 0xffd34d, 6, 1);
+          },
+        });
+      }
     }
   }
 
@@ -1970,7 +2022,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else if (room.kind === 'challenge' && !this.cleared.has(room.id)) {
       // Sala de desafío: se cierra y salen oleadas; al ganarlas, premio
       this.challengeWave = 1;
-      this.setDoorsLocked(room, true);
+      this.setDoorsLocked(room, true, true);
       sfx('door');
       this.notify(`¡Sala de desafío!\nOleada 1/${CHALLENGE_WAVES}`, { kind: 'danger', icon: 'heart' });
       this.time.delayedCall(900, () => this.spawnChallengeWave(room.id));
@@ -1980,7 +2032,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         const n = Phaser.Math.Between(...this.difficulty.enemies);
         this.spawnEnemies(n);
       }
-      this.setDoorsLocked(room, true);
+      this.setDoorsLocked(room, true, true);
       sfx('door');
     }
 
@@ -3516,7 +3568,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.tip('pause');
     if (room.kind === 'boss') this.mission({ kind: 'boss' });
     sfx('clear');
-    this.setDoorsLocked(room, false);
+    this.setDoorsLocked(room, false, true);
+    // Onda de "sala limpia" que sale del jugador y recorre la sala
+    for (const [delay, color] of [[0, 0xffffff], [120, 0xffd34d]] as const) {
+      const wave = this.add.circle(this.player.x, this.player.y, 20).setStrokeStyle(10, color, 0.85).setDepth(7);
+      this.tweens.add({ targets: wave, radius: 620, alpha: 0, duration: 700, delay, ease: 'Cubic.easeOut', onComplete: () => wave.destroy() });
+    }
     this.foeShots.clear(true, true);
     this.hp = Math.min(this.stats.maxHp, this.hp + this.stats.healOnClear);
 
