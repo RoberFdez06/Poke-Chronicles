@@ -278,7 +278,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
 - Solo quedan en el centro las cosas que deben parar el juego: intro de jefe, fin de partida y diálogos.
 - Revisa todas las escenas (también menús, gacha no, que es del supervisor) y cambia cada `showBanner`/aviso.
 
-## [ ] T38 — Clima por piso
+## [x] T38 — Clima por piso
 - Algunos pisos tienen clima (Lluvia, Día soleado, Tormenta de arena, Granizo, Niebla) según el bioma y al azar:
   Lluvia potencia Agua ×1,3 y debilita Fuego ×0,7; Sol al revés; Arena hace daño leve a quien no sea Roca/Tierra/
   Acero; Granizo igual salvo Hielo; Niebla reduce la vista (oscurece los bordes). Efecto visual pixel (gotas, rayos

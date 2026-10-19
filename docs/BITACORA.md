@@ -864,3 +864,17 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   añado solo mis archivos; en GameScene he subido solo mis trozos (`git apply --cached` con el diff filtrado) y he
   dejado sin commit los del supervisor (comportamientos nuevos de enemigos, zarpazos). El test de enemigos que falla
   (`cada tipo tiene un comportamiento…`) es de su enemies.ts a medias, no de esta tarea.
+
+## T38 — Clima por piso
+- `src/data/weather.ts` (tests `tests/weather.test.ts`): 5 climas con nombre y descripción, climas posibles por bioma
+  (`BIOME_WEATHERS`), `weatherFor(bioma, piso, rng)` (45 %, nunca en el piso 1), `weatherPowerMul` (Lluvia/Sol con
+  Agua/Fuego), `weatherHurts` (arena salvo Roca/Tierra/Acero, granizo salvo Hielo) y `weatherChip` (3 % de PS máx.).
+- GameScene: clima con `mulberry32(floorSeed ^ …)` (no hace falta guardarlo: sale igual al continuar y en el
+  desafío diario), solo en pisos con salas de Normal/Infinito (no en Oleadas, Rush ni el reto final). El multiplicador
+  va en `hitEnemy` (tus ataques, por tipo) y en `hurtPlayer` (contacto por el tipo del enemigo; disparos por `ptype`).
+  Arena/granizo: `weatherTick` cada 4 s solo mientras hay enemigos en la sala; al jugador nunca lo deja por debajo
+  de 1 PS y a los jefes no les afecta. HUD: "Piso 2/5 · Lluvia · 3 enem." y aviso al empezar el piso.
+- `src/ui/weatherFx.ts` (fuera de `ui/art`, que es del supervisor): un Graphics con 40-70 cuadraditos (gotas,
+  arena, granizo) o rayos de sol, un tinte encima de la sala y, con niebla, una viñeta (textura con degradado hecha
+  una vez) que sigue al jugador. Profundidad 20 (encima de la sala, debajo de los carteles). Tiene modo `low` con
+  menos partículas, para la T41.

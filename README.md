@@ -260,6 +260,13 @@ Rush de jefes y Oleadas (cada 3 rondas) los rotan. Cambian los colores del suelo
 hierba, agujeros y charcos (en el volcán, lava) y el tipo de los enemigos (Bosque → Planta/Bicho, Volcán →
 Fuego/Roca, Mar → Agua/Volador…). El jefe legendario intenta ser de un tipo del bioma. Al entrar sale "Piso 2 — Cueva".
 
+**Clima** (`src/data/weather.ts`, efecto en `src/ui/weatherFx.ts`): desde el piso 2 de Normal e Infinito, un 45 % de los
+pisos tienen clima según el bioma (sale de la semilla del piso: igual al continuar y en el desafío diario).
+**Lluvia** (Agua x1,3, Fuego x0,7), **Día soleado** (al revés), **Tormenta de arena** (cada 4 s, mientras hay
+enemigos, un 3 % de daño a quien no sea Roca/Tierra/Acero; al jugador nunca lo baja de 1 PS y a los jefes no les
+afecta), **Granizo** (igual, salvo Hielo) y **Niebla** (oscurece los bordes alrededor del jugador). Se ve en el HUD
+junto al piso y con un aviso al empezar.
+
 ## Salas con obstáculos
 
 Las salas de combate tienen diseños variados (`src/level/roomLayouts.ts`, elegidos con la semilla del piso y a veces

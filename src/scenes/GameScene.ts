@@ -6,6 +6,8 @@ import { typeColor, typeNameEs } from '../data/types';
 import { addTickets } from '../data/save';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
 import { dailyFloorSeed, dailyRng } from '../data/daily';
+import { weatherChip, weatherFor, weatherHurts, weatherPowerMul, WEATHER_DESC, WEATHER_LABEL, WEATHER_TICK_MS, type Weather } from '../data/weather';
+import { WeatherFx } from '../ui/weatherFx';
 import { applyDifficulty, scaleHeal, scaleTickets, withDifficulty, type Difficulty } from '../data/difficulty';
 import { loadSpeciesIndex } from '../data/speciesIndex';
 import {
@@ -381,6 +383,12 @@ export class GameScene extends Phaser.Scene {
   private daily: DailyRun | null = null;
   private dailyRngs = new Map<number, () => number>();
   private diff: Difficulty = 'normal';
+  /** Clima del piso (T38) y su efecto visual; la arena y el granizo hacen daño cada WEATHER_TICK_MS. */
+  private weather: Weather | null = null;
+  private weatherFx?: WeatherFx;
+  private weatherTickAt = 0;
+  /** Tipos del Pokémon del jugador (cambian al evolucionar). */
+  private playerTypes: string[] = ['normal'];
   /** Oleadas: hay una ronda en marcha (sus enemigos ya han salido). */
   private waveActive = false;
   private floorSeed = 0;
@@ -658,6 +666,12 @@ export class GameScene extends Phaser.Scene {
         extra: this.layout >= 3,
       });
     }
+    this.weather =
+      (this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)
+        ? weatherFor(this.biome.id, this.floorNum, mulberry32(this.floorSeed ^ 0x3c6ef372))
+        : null;
+    this.weatherFx = undefined;
+    this.weatherTickAt = 0;
     if (r) {
       r.openedChests.forEach((id) => this.openedChests.add(id));
       r.revealedDoors.forEach((k) => this.revealedDoors.add(k));
@@ -727,6 +741,7 @@ export class GameScene extends Phaser.Scene {
     this.stats = this.calcStats();
     this.hp = !r && !this.carry ? this.stats.maxHp : Math.min(this.stats.maxHp, this.hp);
     this.tearType = starter.types[0] ?? 'normal';
+    this.playerTypes = starter.types.length > 0 ? [...starter.types] : ['normal'];
     this.starterName = starter.name;
     // Misma clave que usa StarterScene, así las texturas ya están cargadas
     this.playerKey = `starter-${starter.id}${this.shiny ? '-s' : ''}`;
@@ -920,6 +935,35 @@ export class GameScene extends Phaser.Scene {
       this.dailyRngs.set(stream, r);
     }
     return r;
+  }
+
+  /**
+   * Arena y granizo (T38): cada WEATHER_TICK_MS hacen un poco de daño al jugador y a los enemigos que no son de sus
+   * tipos. Al jugador nunca lo deja por debajo de 1 PS; a los jefes no les afecta.
+   */
+  private weatherTick(time: number) {
+    const w = this.weather;
+    // Solo mientras hay pelea en la sala (en las salas tranquilas no molesta)
+    if (!w || this.ended || this.transitioning || (w !== 'sand' && w !== 'hail') || this.enemies.countActive(true) === 0) return;
+    if (this.weatherTickAt === 0) this.weatherTickAt = time + WEATHER_TICK_MS;
+    if (time < this.weatherTickAt) return;
+    this.weatherTickAt = time + WEATHER_TICK_MS;
+    const color = w === 'sand' ? 0xe7c27a : 0xcfe8ff;
+    if (weatherHurts(w, this.playerTypes) && this.hp > 1) {
+      const chip = Math.min(weatherChip(this.stats.maxHp), Math.ceil(this.hp) - 1);
+      if (chip > 0) {
+        this.hp -= chip;
+        this.popup(this.player.x, this.player.y - 50, `-${chip} PS`, color);
+      }
+    }
+    for (const o of this.enemies.getChildren()) {
+      const e = o as Sprite;
+      const ai = e.getData('ai') as EnemyAI | undefined;
+      if (!e.active || !ai || ai.boss || !weatherHurts(w, (e.getData('types') as string[] | undefined) ?? [ai.type])) continue;
+      const hp = (e.getData('hp') as number) - weatherChip((e.getData('maxHp') as number | undefined) ?? 10);
+      e.setData('hp', hp).setData('flashUntil', time + 80);
+      if (hp <= 0) this.time.delayedCall(0, () => e.active && this.killEnemy(e));
+    }
   }
 
   /** Tickets ganados con la dificultad (T40): se suman al total y a los de la partida; devuelve cuántos. */
@@ -1273,6 +1317,11 @@ export class GameScene extends Phaser.Scene {
       this.notify(`${head}
 ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
+    if (this.weather) {
+      this.weatherFx = new WeatherFx(this, this.weather, 20);
+      const w = this.weather;
+      this.time.delayedCall(900, () => !this.ended && this.notify(`${WEATHER_LABEL[w]}\n${WEATHER_DESC[w]}`, { kind: 'info', icon: 'star' }));
+    }
     if (this.evolvePending) {
       this.evolvePending = false;
       this.time.delayedCall(1300, () => void this.evolve());
@@ -1342,6 +1391,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           this.hpMark = this.hp;
           this.starterName = data.name;
           this.tearType = data.types[0] ?? this.tearType;
+          if (data.types.length > 0) this.playerTypes = [...data.types];
           this.notify(`¡${oldName} ha evolucionado!\nAhora es ${data.name}`, { kind: 'item', icon: 'pokeball' });
           void cry(next);
           // La forma nueva puede tener otra habilidad
@@ -3246,7 +3296,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.orientShots();
     updateShots(this.host, this.shots, time, delta);
     updateShots(this.host, this.foeShots, time, delta);
+    this.weatherFx?.update(delta, this.player);
     if (!this.ended) this.counters.seconds += delta / 1000;
+    this.weatherTick(time);
     // Curación por golpes: se recarga un 4 % de tus PS máximos por segundo (y no se acumula más)
     const healCap = this.stats.maxHp * 0.04;
     this.healBudget = Math.min(healCap, this.healBudget + healCap * (delta / 1000));
@@ -3365,7 +3417,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // HUD
     const foes = this.enemies.countActive(true);
     this.nameText.setText(this.starterName.charAt(0).toUpperCase() + this.starterName.slice(1));
-    this.progressHud.setText(`${progressText(this.mode, this.floorNum)}${foes ? ` · ${foes} enem.` : ''}`);
+    this.progressHud.setText(`${progressText(this.mode, this.floorNum)}${this.weather ? ` · ${WEATHER_LABEL[this.weather]}` : ''}${foes ? ` · ${foes} enem.` : ''}`);
     this.hpText.setText(`${Math.max(0, Math.ceil(this.hp))}/${this.stats.maxHp}`);
     this.hpBar.set(this.hp / this.stats.maxHp);
     const bb = this.bossBar;
@@ -3626,8 +3678,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    */
   private hitEnemy(enemy: Sprite, base: number, status: string | undefined, sx: number, sy: number, color: number, push?: Phaser.Math.Vector2): number | undefined {
     if (!enemy.active) return undefined;
-    // Dragón: los poderes hacen más daño
-    let dmg = base * (status ? hitDamageMul(status) : 1);
+    // Dragón: los poderes hacen más daño; Lluvia y Sol cambian Agua y Fuego (T38)
+    let dmg = base * (status ? hitDamageMul(status) : 1) * weatherPowerMul(this.weather, status);
     let crit = false;
     if (this.stats.critChance > 0 && Math.random() < this.stats.critChance) {
       dmg *= this.stats.critMul;
@@ -4399,7 +4451,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Defensa y Def. Esp. reducen el daño recibido
     // Los proyectiles ya llevan el debilitamiento; el contacto lo mira ahora (Hada: −30 %)
     const weak = enemy.getData('ai') ? enemyDamageMul((enemy.getData('statuses') as ActiveStatus[] | undefined) ?? [], now) : 1;
-    const taken = Math.max(1, Math.round(((enemy.getData('dmg') as number | undefined) ?? 10) * weak * this.stats.damageTaken));
+    // Lluvia y Sol también cambian los ataques de Agua y Fuego de los enemigos
+    const foeType = ai?.type ?? (enemy.getData('ptype') as string | undefined);
+    const taken = Math.max(1, Math.round(((enemy.getData('dmg') as number | undefined) ?? 10) * weak * this.stats.damageTaken * weatherPowerMul(this.weather, foeType)));
     if (this.hp - taken <= 0 && this.focusLeft > 0) {
       // Banda Focus: aguanta con 1 PS
       this.focusLeft--;
