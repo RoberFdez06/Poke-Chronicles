@@ -25,7 +25,7 @@ test('todas las plantillas miden 20 × 12 y solo usan casillas conocidas', () =>
     assert.equal(rows.length, ROWS, name);
     for (const r of rows) {
       assert.equal(r.length, COLS, `${name}: "${r}"`);
-      assert.match(r, /^[.RPBHW]+$/, name);
+      assert.match(r, /^[.RPBHWX]+$/, name);
     }
   }
 });

@@ -2851,6 +2851,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             this.rocks.set(`${room.id}:${tx},${ty}`, [rock, this.addWall(x, y, TILE, TILE)]);
             break;
           }
+          case 'X': {
+            // Muro que da forma a la sala (en L, cruz, T…): mismo bloque que la pared
+            this.add.tileSprite(x, y, TILE, TILE, this.tiles.wall).setOrigin(0).setTileScale(sc).setDepth(1);
+            const edge = this.add.graphics().setDepth(1.1);
+            edge.fillStyle(0xffffff, 0.14).fillRect(x, y, TILE, 3);
+            edge.fillStyle(0x000000, 0.28).fillRect(x, y + TILE - 4, TILE, 4);
+            this.addWall(x, y, TILE, TILE);
+            break;
+          }
           case 'P':
             // La columna es más alta que la casilla: apoyada en su base
             this.add.image(cx, y + TILE, this.tiles.pillar).setOrigin(0.5, 1).setScale(sc).setDepth(2);

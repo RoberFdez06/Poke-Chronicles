@@ -340,15 +340,14 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
 
 # Tanda 6 (pedida por Roberto el 20/10)
 
-## [ ] T46 — Salas con formas distintas (como en Isaac)
-- Hoy todas las salas son 20 × 12. Añadir salas grandes que ocupan varias casillas del piso: horizontal (2×1),
-  vertical (1×2), grande (2×2) y en L / en L invertida (3 casillas). Se generan en `floorGen.ts` juntando 2-4
-  salas contiguas de combate; la sala unida tiene un solo conjunto de enemigos (más y más fuertes) y las puertas
-  solo en el borde exterior.
-- Cámara: la sala grande es más ancha/alta que la pantalla; la cámara sigue al jugador dentro de los límites de la
-  sala (o se reduce el zoom si queda bien). Los obstáculos de `roomLayouts.ts` se componen por trozos de 20 × 12
-  (en la L, el trozo que falta es pared).
-- Minimapa: dibuja la forma real. Respetar teclado, ratón y mando, guardado y continuar partida.
-- Con tests de la lógica pura: todas las puertas conectadas, sin salas solapadas, jefe/tienda/objeto/inicio siguen
-  siendo salas simples.
-- GameScene, floorGen y minimapa son del implementador; los diseños y el arte de obstáculos son del supervisor.
+## [x] T46 — Salas con formas distintas (hecho por el supervisor)
+- Casilla nueva `X` (muro que da forma a la sala): salas en L, T, cruz, zigzag y octógono, con obstáculos encima.
+  Los muros se dibujan con el bloque de pared del bioma y bloquean paso y disparos. Todas conservan puertas y centro
+  libres y conectados (lo comprueban los tests de `roomLayouts`).
+
+## [ ] T47 — Salas grandes que ocupan varias casillas del piso (como en Isaac)
+- Es un cambio profundo: hoy `GameScene` asume una sala = una pantalla (`interior`, `buildRoom`, `checkExit`,
+  `transition`, cámara, `spawnEnemies`, minimapa). Plan: en `floorGen.ts` unir 2-4 salas de combate contiguas en un
+  grupo (2×1, 1×2, 2×2, L); sala unida = un solo conjunto de enemigos (más y más fuertes), sin puertas internas, la
+  cámara sigue al jugador dentro del grupo y el minimapa dibuja la forma real. Jefe, tienda, objeto e inicio siguen
+  simples. Tests de lógica pura (sin solapes, puertas conectadas) y probar continuar partida.

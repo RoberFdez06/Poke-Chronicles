@@ -8,14 +8,15 @@ export const COLS = 20;
 export const ROWS = 12;
 
 /**
+ * 'X' muro (da forma a la sala: en L, en cruz, en T…; bloquea paso y disparos y no se rompe).
  * '.' suelo · 'R' roca (bloquea paso y disparos) · 'P' columna (igual) · 'B' hierba alta (bloquea el paso y se
  * rompe a disparos) · 'H' agujero (no se cruza a pie, los disparos pasan) · 'W' charco (se cruza, más despacio).
  */
-export type Cell = '.' | 'R' | 'P' | 'B' | 'H' | 'W';
+export type Cell = '.' | 'R' | 'P' | 'B' | 'H' | 'W' | 'X';
 export type Grid = Cell[][];
 
 export const isWalkable = (c: Cell): boolean => c === '.' || c === 'W';
-export const blocksShots = (c: Cell): boolean => c === 'R' || c === 'P';
+export const blocksShots = (c: Cell): boolean => c === 'R' || c === 'P' || c === 'X';
 
 /** Casillas por las que se entra desde cada puerta (las puertas van centradas en cada pared). */
 export const DOOR_TILES: Record<Dir, [number, number][]> = {
@@ -229,6 +230,90 @@ export const TEMPLATES: Readonly<Record<string, readonly string[]>> = {
     '....HHH......HHH....',
     '...BB..........BB...',
     '....................',
+    '....................',
+  ],
+  salaEle: [
+    '............XXXXXXXX',
+    '............XXXXXXXX',
+    '............XXXXXXXX',
+    '............XXXXXXXX',
+    '............XXXXXXXX',
+    '....................',
+    '....................',
+    '....................',
+    '....................',
+    '....................',
+    '....................',
+    '....................',
+  ],
+  salaCruz: [
+    'XXXXXX........XXXXXX',
+    'XXXXXX........XXXXXX',
+    'XXXXXX........XXXXXX',
+    'XXXXXX........XXXXXX',
+    '....................',
+    '....................',
+    '....................',
+    '....................',
+    'XXXXXX........XXXXXX',
+    'XXXXXX........XXXXXX',
+    'XXXXXX........XXXXXX',
+    'XXXXXX........XXXXXX',
+  ],
+  salaT: [
+    'XXXXXXX......XXXXXXX',
+    'XXXXXXX......XXXXXXX',
+    'XXXXXXX......XXXXXXX',
+    'XXXXXXX......XXXXXXX',
+    'XXXXXXX......XXXXXXX',
+    '....................',
+    '....................',
+    '....................',
+    '....................',
+    '....................',
+    '....................',
+    '....................',
+  ],
+  salaZ: [
+    '............XXXXXXXX',
+    '............XXXXXXXX',
+    '............XXXXXXXX',
+    '............XXXXXXXX',
+    '....................',
+    '....................',
+    '....................',
+    '....................',
+    'XXXXXXXX............',
+    'XXXXXXXX............',
+    'XXXXXXXX............',
+    'XXXXXXXX............',
+  ],
+  salaOctogono: [
+    'XXXXXX........XXXXXX',
+    'XXXX............XXXX',
+    'XX................XX',
+    'X..................X',
+    '....................',
+    '....................',
+    '....................',
+    '....................',
+    'X..................X',
+    'XX................XX',
+    'XXXX............XXXX',
+    'XXXXXX........XXXXXX',
+  ],
+  salaEleRocas: [
+    '............XXXXXXXX',
+    '............XXXXXXXX',
+    '..BB........XXXXXXXX',
+    '..BB........XXXXXXXX',
+    '............XXXXXXXX',
+    '....................',
+    '....................',
+    '....RR......RR......',
+    '....RR......RR......',
+    '..HH................',
+    '..HH................',
     '....................',
   ],
 };
