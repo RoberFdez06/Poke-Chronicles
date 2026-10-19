@@ -49,6 +49,8 @@ const SHAPE: Record<string, string> = {
   'cuchara-torcida': 'spoon', 'colmillo-dragon': 'fang', hechizo: 'tag', 'gafas-de-sol': 'glasses', 'revestimiento-metalico': 'plate',
   'seda-fina': 'scarf', 'pico-afilado': 'beak', 'polvo-plata': 'powder', 'flecha-venenosa': 'arrow', 'arena-fina': 'powder',
   'poke-flauta': 'flute', repelente: 'bottle', pokeblock: 'block', 'ataque-x': 'bottle',
+  'baya-zidra': 'apple', 'baya-meloc': 'apple', 'caramelo-raro': 'ball', 'piedra-escudo': 'rock', 'pluma-pretty': 'feather',
+  'orbe-vital': 'ball', 'lupa-doble': 'lens', 'cascabel-cura': 'shell', 'tablilla-pesada': 'plate', 'reloj-arena': 'drop',
 };
 
 const shade = (c: number, f: number) => {
