@@ -253,6 +253,14 @@ Un Pokémon medio (unos 70 en cada estadística) juega igual que antes y los ext
 ejemplo, va de ×0,7 a ×1,6). Los enemigos y jefes reparten su fuerza (la del piso) según sus estadísticas: mucha
 vida, mucho daño o mucha velocidad. Las 6 estadísticas se ven en barras en las tarjetas al elegir Pokémon y en la pausa.
 
+## Habilidades
+
+Tu Pokémon juega con su **habilidad real** de PokeAPI (la primera que no es oculta; al evolucionar puede cambiar),
+con un efecto pasivo sencillo: Mar Llamas, Espesura, Torrente y Enjambre (+50 % al daño de su tipo con menos de 1/3
+de PS), Intimidación (−15 % de daño recibido), Levitación (cruzas los agujeros), Velo Arena, Elec. Estática,
+Potencia, Robustez, Sebo, Recogida… (unas 40 en `src/data/abilities.ts`). Las demás dan +5 % de daño. Se ve en la
+pausa.
+
 ## Evolución en partida
 
 Si tu Pokémon tiene evolución (PokeAPI `evolution-chain`, `src/data/evolution.ts`), evoluciona al llegar a los pisos
@@ -334,6 +342,7 @@ src/
     sounds.ts             efectos y música como datos, volumen
     save.ts               tickets, desbloqueos, récords, mejoras, misiones, tutorial, volumen y borrar progreso (localStorage)
     tutorial.ts           consejos del tutorial (textos y cuáles se han visto)
+    abilities.ts          habilidades de PokeAPI: cuál toca, nombre en español y efecto
     missions.ts           misiones diarias (semilla del día) y logros: progreso, premios y objetos bloqueados
     runSave.ts            partidas guardadas en 3 huecos (con migraciones)
     controls.ts           lista de controles que enseñan el menú, la pausa y los ajustes

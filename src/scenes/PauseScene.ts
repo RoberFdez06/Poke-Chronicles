@@ -20,6 +20,8 @@ export interface PauseData {
   stats: PlayerStats;
   /** Estadísticas base del Pokémon (PokeAPI). */
   baseStats: BaseStats;
+  /** Habilidad del Pokémon (T27) y lo que hace. */
+  ability?: { name: string; description: string };
   /** Nombres de los objetos pasivos, ya agrupados ("Lupa x2"). */
   items: string[];
   moves: (MovePower | null)[];
@@ -103,12 +105,16 @@ export class PauseScene extends Phaser.Scene {
     const base = STAT_KEYS.map((k) => `${STAT_LABEL[k]} ${d.baseStats[k]}`);
     t(66, 334, base.slice(0, 3).join(' · '), 13, '#4a5578');
     t(66, 350, base.slice(3).join(' · '), 13, '#4a5578');
-    t(66, 372, 'Objetos', 20, '#2b3a67', true);
-    t(66, 398, d.items.length ? d.items.join(' · ') : 'Ninguno todavía', 15, '#4a5578');
-    t(66, 448, 'Poderes', 20, '#2b3a67', true);
+    if (d.ability) {
+      t(66, 370, `Habilidad · ${d.ability.name}`, 17, '#2b3a67', true);
+      t(66, 392, d.ability.description, 13, '#4a5578');
+    }
+    t(66, 414, 'Objetos', 18, '#2b3a67', true);
+    t(66, 436, d.items.length ? d.items.join(' · ') : 'Ninguno todavía', 14, '#4a5578');
+    t(66, 474, 'Poderes', 18, '#2b3a67', true);
     d.moves.forEach((m, i) => {
       const x = 66 + (i % 2) * 245;
-      const y = 478 + Math.floor(i / 2) * 32;
+      const y = 500 + Math.floor(i / 2) * 30;
       t(x, y, `${i + 1}  ${m ? shorten(pretty(m.name), 13) : '—'}`, 16, m ? typeHex(m.type) : '#9aa5b1', true)
         .setStroke(m ? '#2b3a67' : '#00000000', m ? 2 : 0);
       // Ficha del tipo del poder

@@ -229,7 +229,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
   invocar ayudantes) y una segunda fase al bajar del 50 % de vida (más rápido, cambio de color). Aviso
   visual antes de cada ataque para poder esquivarlo.
 
-## [ ] T27 — Habilidades de PokeAPI (sugerida por el supervisor)
+## [x] T27 — Habilidades de PokeAPI (sugerida por el supervisor)
 - Tu Pokémon tiene su habilidad real de PokeAPI (`abilities`, nombre en español) con un efecto pasivo sencillo:
   Mar Llamas (+daño con poca vida), Espesura, Torrente, Intimidación (enemigos −daño), Levitación (cruzas
   agujeros), Velo Arena… Las que no tengan efecto definido dan una mejora pequeña genérica. Se ve en la pausa.

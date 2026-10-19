@@ -656,3 +656,18 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   pasar con la lluvia de la T32 (mismo patrón). Ahora se mata el tween antes de destruir.
 - **e2e nuevo** `tests/e2e/boss.spec.ts`: saca al jefe en la sala inicial, le hace invocar 3 veces (2, luego 4, y
   no pasa de 4) y comprueba que los ayudantes se van al vencerlo, sin errores (captura `15-invocacion`).
+
+## T27 — Habilidades de PokeAPI (2026-10-19)
+
+- `src/data/abilities.ts` (tests en `tests/abilities.test.ts`): `pickAbility` coge la primera habilidad no oculta;
+  `ABILITY_EFFECTS` tiene ~40 con efecto y nombre en español (así no hace falta pedirlo); las demás usan
+  `GENERIC_EFFECT` (+5 % de daño) y su nombre en español se pide a `ability/{nombre}` (`fetchAbility` en
+  pokeapi.ts, con caché; si falla, el nombre en inglés arreglado).
+- Efectos: casi todos son cambios de estadísticas como un objeto (se aplican en `calcStats` después de objetos y
+  sinergias). Mar Llamas/Espesura/Torrente/Enjambre: ×1,5 al daño del disparo y de los poderes de su tipo con menos
+  de 1/3 de PS (`pinchMul`). Levitación: el colisionador del jugador con los agujeros tiene un `processCallback`
+  que lo desactiva.
+- Se carga al empezar cada piso (de la forma actual) y al evolucionar. En la pausa: "Habilidad · Nombre" y su efecto
+  (descripciones de 60 caracteres como mucho para que quepan; hay test).
+- El mock de PokeAPI de los e2e ahora trae `abilities` (Mar Llamas o Torrente y una oculta).
+- **Duda**: no hay habilidades para los enemigos ni para los jefes; la tarea solo hablaba de tu Pokémon.

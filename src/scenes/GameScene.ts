@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { fetchAttackMovesForTypes, fetchMoveInfo, fetchNextEvolutions, fetchPokemon, fetchPokemonCard, pickSprites } from '../data/pokeapi';
+import { fetchAbility, fetchAttackMovesForTypes, fetchMoveInfo, fetchNextEvolutions, fetchPokemon, fetchPokemonCard, pickSprites } from '../data/pokeapi';
 import { pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
@@ -28,6 +28,7 @@ import {
 } from '../data/modes';
 import { loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMission, saveTutorial, submitRecord } from '../data/save';
 import { disableTips, markTipSeen, shouldShowTip, TIPS, type TipId } from '../data/tutorial';
+import { abilityFor, pinchMul, type Ability } from '../data/abilities';
 import { ACHIEVEMENTS, lockedItems, rewardText, type MissionEvent } from '../data/missions';
 import {
   attackInterval,
@@ -281,6 +282,8 @@ export class GameScene extends Phaser.Scene {
   private shiny = false;
   /** Te has curado en esta partida (misiones "sin curarte"); hpMark = PS del fotograma anterior (-1 = sin medir). */
   private healedRun = false;
+  /** Habilidad de PokeAPI de tu Pokémon (T27); null mientras carga o si no tiene. */
+  private ability: Ability | null = null;
   private hpMark = -1;
   /** Avisos de misión o logro cumplido, uno detrás de otro (franja de abajo). */
   private toastQueue: string[] = [];
@@ -490,6 +493,7 @@ export class GameScene extends Phaser.Scene {
     this.bannerTimer = undefined;
     this.trapdoor = undefined;
     this.floorNum = 1;
+    this.ability = null;
     this.healedRun = false;
     this.hpMark = -1;
     this.toastQueue = [];
@@ -708,6 +712,7 @@ export class GameScene extends Phaser.Scene {
     const types = this.slots.flatMap((m) => (m ? [m.type] : []));
     const { stats, active } = applySynergies(computeStats(this.passives, this.base), this.passives, types);
     this.synergies = active.map((syn) => syn.id);
+    this.ability?.apply?.(stats);
     return stats;
   }
 
@@ -863,7 +868,9 @@ export class GameScene extends Phaser.Scene {
     this.shots = this.physics.add.group();
     this.foeShots = this.physics.add.group();
 
-    this.physics.add.collider(this.player, [this.walls, this.doorBlocks, this.bushes, this.holes]);
+    this.physics.add.collider(this.player, [this.walls, this.doorBlocks, this.bushes]);
+    // Con Levitación cruzas los agujeros
+    this.physics.add.collider(this.player, this.holes, undefined, () => !this.ability?.levitate);
     this.physics.add.collider(this.enemies, [this.walls, this.doorBlocks, this.bushes, this.holes]);
     // Los enemigos se empujan entre sí para no amontonarse en el mismo sitio
     this.physics.add.collider(this.enemies, this.enemies);
@@ -1010,6 +1017,7 @@ export class GameScene extends Phaser.Scene {
     this.refreshInventory();
     this.cameras.main.centerOn(si.cx, si.cy);
     this.enterRoom(start);
+    void this.loadAbility(this.formId);
     // En Oleadas el cartel de la ronda lo pone startWave
     if (this.mode !== 'waves') {
       const where = progressText(this.mode, this.floorNum);
@@ -1088,6 +1096,8 @@ ${where} — ${this.biome.name}`, 1600);
           this.tearType = data.types[0] ?? this.tearType;
           this.showBanner(`¡${oldName} ha evolucionado!\nAhora es ${data.name}`, 2600);
           void cry(next);
+          // La forma nueva puede tener otra habilidad
+          void this.loadAbility(next);
           this.saveNow();
         },
       });
@@ -1194,6 +1204,7 @@ ${where} — ${this.biome.name}`, 1600);
       hp: this.hp,
       stats: this.stats,
       baseStats: this.baseStats,
+      ability: this.ability ? { name: this.ability.name, description: this.ability.description } : undefined,
       items: [
         ...[...counts].map(([id, n]) => (passiveById(id)?.name ?? id) + (n > 1 ? ` x${n}` : '')),
         ...(this.active ? [`Activo: ${activeById(this.active.id)?.name} (${this.active.charge}/${activeById(this.active.id)?.charge})`] : []),
@@ -1689,6 +1700,17 @@ ${where} — ${this.biome.name}`, 1600);
     this.tipObjects.forEach((o) => o.destroy());
     this.tipObjects = [];
     if (this.tipQueue.length > 0) this.time.delayedCall(500, () => this.nextTip());
+  }
+
+  /** Carga la habilidad de la forma actual (al empezar y al evolucionar) y recalcula las estadísticas. */
+  private async loadAbility(id: number) {
+    const a = await fetchAbility(id);
+    if (!a || this.ended || !this.player?.active) return;
+    const prevMax = this.stats.maxHp;
+    this.ability = abilityFor(a.id, a.nameEs);
+    this.stats = this.calcStats();
+    this.hp = Math.min(this.stats.maxHp, this.hp + Math.max(0, this.stats.maxHp - prevMax));
+    this.hpMark = this.hp;
   }
 
   /** Te quedas un pasivo o un poder (cogido del suelo o comprado). */
@@ -2622,7 +2644,7 @@ ${where} — ${this.biome.name}`, 1600);
     const s = this.stats;
     const n = 1 + s.extraShots;
     const opts = {
-      damage: s.damage * this.dmgMul(),
+      damage: s.damage * this.dmgMul() * pinchMul(this.ability, this.tearType, this.hp, s.maxHp),
       speed: s.shotSpeed,
       // Pokéradar: más alcance cuantos más enemigos queden
       life: s.range * (1 + s.rangePerEnemy * this.enemies.countActive(true)),
@@ -2647,7 +2669,7 @@ ${where} — ${this.biome.name}`, 1600);
     // At. Esp. del Pokémon y, encima, lo que suban el daño los objetos
     // Potenciadores de tipo (Carbón, Imán…) y Ataque X van encima
     const boost = 1 + (this.stats.typeBoost[m.type] ?? 0);
-    const dmg = Math.max(6, Math.round(m.power * 0.5 * this.stats.powerMul * (this.stats.damage / this.base.damage) * boost * this.dmgMul()));
+    const dmg = Math.max(6, Math.round(m.power * 0.5 * this.stats.powerMul * (this.stats.damage / this.base.damage) * boost * this.dmgMul() * pinchMul(this.ability, m.type, this.hp, this.stats.maxHp)));
     const base = {
       color: typeColor(m.type),
       pierce: this.stats.pierce,

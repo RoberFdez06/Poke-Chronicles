@@ -17,6 +17,7 @@ const pokemon = (id: number) => ({
   sprites: { front_default: SPRITE, back_default: SPRITE, front_shiny: SPRITE, back_shiny: SPRITE, other: { 'official-artwork': { front_default: SPRITE } } },
   stats: ['hp', 'attack', 'defense', 'special-attack', 'special-defense', 'speed'].map((name) => ({ base_stat: 70, stat: { name } })),
   cries: { latest: null },
+  abilities: [{ ability: { name: id % 2 ? 'blaze' : 'torrent' }, is_hidden: false, slot: 1 }, { ability: { name: 'solar-power' }, is_hidden: true, slot: 3 }],
   moves: [],
 });
 

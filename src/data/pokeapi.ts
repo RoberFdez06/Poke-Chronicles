@@ -3,6 +3,7 @@ import { isUsableMove, localName, pickMoveIds, typeMoveIds } from './moves';
 import { loadSpeciesIndex } from './speciesIndex';
 import { parseApiStats, type BaseStats } from './pokeStats';
 import { nextEvolutionIds, type ChainLink } from './evolution';
+import { ABILITY_EFFECTS, pickAbility } from './abilities';
 
 const BASE = 'https://pokeapi.co/api/v2';
 
@@ -159,4 +160,30 @@ export async function fetchAttackMovesForTypes(
     for (const m of batch) if (m && out.length < n && isUsableMove(m, types)) out.push(m);
   }
   return out;
+}
+
+const abilityCache = new Map<number, Promise<{ id: string; nameEs?: string } | null>>();
+
+/**
+ * Habilidad del Pokémon (T27): la primera no oculta de `pokemon/{id}`. El nombre en español solo se pide a
+ * `ability/{nombre}` si no está en la tabla de abilities.ts. null si no tiene o falla.
+ */
+export function fetchAbility(id: number): Promise<{ id: string; nameEs?: string } | null> {
+  return cached(abilityCache, id, async () => {
+    const p = await getPokemonRaw(id);
+    const list = ((p.abilities ?? []) as { ability: { name: string }; is_hidden: boolean; slot: number }[]).map((a) => ({
+      name: a.ability.name,
+      hidden: a.is_hidden,
+      slot: a.slot,
+    }));
+    const name = pickAbility(list);
+    if (!name) return null;
+    if (ABILITY_EFFECTS[name]) return { id: name };
+    try {
+      const ab = await getJson(`${BASE}/ability/${name}`);
+      return { id: name, nameEs: localName(ab.names, name) };
+    } catch {
+      return { id: name };
+    }
+  }).catch(() => null);
 }
