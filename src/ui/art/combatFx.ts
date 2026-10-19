@@ -276,3 +276,55 @@ export function bossAura(scene: Phaser.Scene, boss: Phaser.GameObjects.Sprite, c
   scene.events.once('shutdown', () => scene.events.off('update', tick));
   return aura;
 }
+
+/**
+ * Evolución estilo GBA: halo blanco que late, chispas que se van acercando en espiral al Pokémon y su silueta que
+ * se infla más rápido cada vez. Dura `ms`; al acabar, el que llama hace el cambio de forma y `evolveBurst`.
+ */
+export function evolveGlow(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, ms = 1320, depth = 12) {
+  const halo = scene.add.ellipse(s.x, s.y, s.displayWidth * 1.7, s.displayHeight * 1.5).setFillStyle(0xffffff, 0.35).setDepth(depth - 1);
+  scene.tweens.add({ targets: halo, scaleX: 1.35, scaleY: 1.35, alpha: 0.7, duration: ms / 4, yoyo: true, repeat: 3, ease: 'Sine.easeInOut' });
+  const follow = () => {
+    if (!s.active) return;
+    halo.setPosition(s.x, s.y);
+  };
+  scene.events.on('update', follow);
+  scene.time.delayedCall(ms + 80, () => {
+    scene.events.off('update', follow);
+    halo.destroy();
+  });
+  // Chispas en espiral hacia el centro
+  const n = 18;
+  for (let i = 0; i < n; i++) {
+    scene.time.delayedCall((i / n) * ms * 0.8, () => {
+      if (!s.active) return;
+      const a = Math.random() * Math.PI * 2;
+      const r = 90 + Math.random() * 50;
+      const p = scene.add.image(s.x + Math.cos(a) * r, s.y + Math.sin(a) * r * 0.7, STAR).setTint(i % 2 ? 0xfff2a8 : 0xffffff).setScale(1.6).setDepth(depth + 1);
+      scene.tweens.add({
+        targets: p, x: s.x, y: s.y, scale: 0.3, alpha: 0.2, angle: 270,
+        duration: 520 + Math.random() * 160, ease: 'Cubic.easeIn', onComplete: () => p.destroy(),
+      });
+    });
+  }
+  // La silueta se infla cada vez más rápido
+  const base = s.scaleX;
+  const sheet = s.getData('sheet');
+  scene.tweens.chain({
+    targets: s,
+    tweens: [
+      { scaleX: base * 1.1, scaleY: base * 1.1, duration: 200, yoyo: true },
+      { scaleX: base * 1.14, scaleY: base * 1.14, duration: 150, yoyo: true },
+      { scaleX: base * 1.2, scaleY: base * 1.2, duration: 100, yoyo: true },
+      { scaleX: base * 1.25, scaleY: base * 1.25, duration: 60, yoyo: true, repeat: 1 },
+    ],
+    onComplete: () => s.active && s.getData('sheet') === sheet && s.setScale(base),
+  });
+}
+
+/** Estallido al cambiar de forma. */
+export function evolveBurst(scene: Phaser.Scene, x: number, y: number, feetY: number) {
+  scene.cameras.main.flash(260, 255, 255, 255);
+  phaseShock(scene, x, feetY, 0xfff2a8, 1.2, 14);
+  starBurst(scene, x, y, 0xffffff, 10, 1.5, 15);
+}

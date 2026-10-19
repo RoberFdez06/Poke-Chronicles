@@ -89,7 +89,7 @@ import { shotSfx } from '../data/sounds';
 import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
-import { bakeCombatFx, bossAura, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
+import { bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
 import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
@@ -460,6 +460,7 @@ export class GameScene extends Phaser.Scene {
   private slots: (MovePower | null)[] = [];
   private slotReady: number[] = [];
   private nextSlotReplace = 0;
+  private lastShotAt = -1e9;
   /** Ranura que has elegido en la pantalla de cambio (la usa gainItem una sola vez). */
   private chosenSlot?: number;
   private swapOpen = false;
@@ -974,7 +975,10 @@ export class GameScene extends Phaser.Scene {
         body.offset.y += delta;
         s.setData('lift', lift);
       }
-      const tilt = moving ? Math.sin(phase) * (pmd ? 3 : 8) : 0;
+      // Quieto respira (balanceo suave) y al disparar se echa un poco hacia atrás
+      const idle = !moving && !pmd ? Math.sin(time / 420 + ((s.getData('stepSeed') as number | undefined) ?? 0)) * 1.6 : 0;
+      const kick = s === this.player ? Math.max(0, 1 - (time - this.lastShotAt) / 130) * -Math.sign(this.aim.x || 1) * 7 : 0;
+      const tilt = (moving ? Math.sin(phase) * (pmd ? 3 : 8) : idle) + kick;
       // Suaviza la vuelta a 0 al pararse (al acabar, el jugador lo anima combatFx: no se toca)
       if (!(this.ended && s === this.player)) s.setAngle(Phaser.Math.Linear(s.angle, tilt, 0.35));
     }
@@ -1728,6 +1732,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.cameras.main.flash(600, 255, 255, 255);
       // Parpadeo en blanco, como en los juegos, y al final cambia de forma
       this.player.setTintFill(0xffffff);
+      evolveGlow(this, this.player, 1320);
       this.tweens.add({
         targets: this.player,
         alpha: 0.3,
@@ -1737,6 +1742,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         onComplete: () => {
           if (!this.player?.active) return;
           this.player.clearTint().setAlpha(1);
+          {
+            const pb = this.player.body as Body | null;
+            evolveBurst(this, this.player.x, this.player.y, pb ? pb.bottom : this.player.y + 30);
+          }
           this.formId = next;
           this.playerKey = key;
           this.player.setData('sheet', key).setData('facing', undefined);
@@ -4121,6 +4130,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Disparo básico. Los pasivos cambian cuántos salen, cuánto daño hacen y hasta dónde llegan. */
   private fireTear(dir: Phaser.Math.Vector2) {
     sfx(shotSfx(this.tearType));
+    this.lastShotAt = this.time.now;
     const s = this.stats;
     const n = 1 + s.extraShots;
     const opts = {
@@ -4151,6 +4161,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const style = styleForMove(m);
     this.slotReady[i] = time + m.cooldown * style.cd;
     sfx(shotSfx(m.type));
+    this.lastShotAt = time;
 
     const dir = this.aim.clone().normalize();
     if (this.fxBudget.take(this.time.now)) muzzle(this, this.player.x, this.player.y, dir.x, dir.y, typeColor(m.type));
