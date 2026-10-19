@@ -73,6 +73,7 @@ import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
 import { bakeCombatFx, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
+import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
 import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
 import { decorateRoom } from '../ui/art/roomDecor';
 import { FINALE_BONUS, GIANT_HP_MUL, GIANT_RAGE_AT, GIANT_SIZE, isFinalFloor, isFinaleGate, pickFinale, TRIO_HP_MUL, type Finale } from '../data/finale';
@@ -496,6 +497,9 @@ export class GameScene extends Phaser.Scene {
   private progressHud!: Phaser.GameObjects.Text;
   private hpBar!: ReturnType<typeof addHpBar>;
   private invText!: Phaser.GameObjects.Text;
+  /** Iconos de los objetos pasivos en el HUD. */
+  private invIcons: Phaser.GameObjects.GameObject[] = [];
+  private activeIcon?: Phaser.GameObjects.Image;
   /** Fondo de cada ranura de poder y lo que muestra (para no redibujarlo en cada fotograma). */
   private slotBoxes: Phaser.GameObjects.Graphics[] = [];
   private slotShown: string[] = [];
@@ -588,6 +592,8 @@ export class GameScene extends Phaser.Scene {
     this.visited.clear();
     this.cleared.clear();
     this.trapdoor = undefined;
+    this.invIcons = [];
+    this.activeIcon = undefined;
     this.finale = undefined;
     this.finaleMembers = [];
     this.summonKinds = [];
@@ -1096,6 +1102,7 @@ export class GameScene extends Phaser.Scene {
     bakeTypeFx(this);
     bakeProjectiles(this);
     bakeCombatFx(this);
+    bakeItemIcons(this);
     this.tiles = bakeBiomeTiles(this, this.biome);
     this.walls = this.physics.add.staticGroup();
     this.bushes = this.physics.add.staticGroup();
@@ -1974,8 +1981,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
     const shadow = this.add.ellipse(x, y + 18, 90, 34, 0xc9b27a).setDepth(1);
     // Pasivo: bolsa; poder: disco del color de su tipo; activo: Poké Ball
-    const icon = item.kind === 'passive' ? 'bag' : item.kind === 'move' ? 'disc' : 'pokeball';
-    const s = this.pickups.create(x, y, iconKey(icon)) as Sprite;
+    // Cada objeto con su dibujo (gafas, garra, lupa…); los poderes, un disco de su tipo
+    const tex = item.kind === 'passive' ? itemIconKey(item.item.id) : item.kind === 'move' ? iconKey('disc') : itemIconKey(item.id);
+    const s = this.pickups.create(x, y, this.textures.exists(tex) ? tex : iconKey('bag')) as Sprite;
     s.setScale(3).setDepth(2).setData('item', item).setData('entry', entry);
     if (item.kind === 'move') s.setTint(color);
     const label = this.add
@@ -2219,9 +2227,18 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const bw = HUD.left.w - HUD.pad * 2;
     const y = H - HUD.pad - 110;
     drawHudFrame(g, x, y, bw, 110).setAlpha(a ? 1 : 0.6);
-    if (!a) return void h.text.setText('Sin objeto activo');
+    if (!a) {
+      this.activeIcon?.setVisible(false);
+      return void h.text.setText('Sin objeto activo');
+    }
     const ready = isCharged(this.active!.charge, a.charge);
-    g.fillStyle(a.color, ready ? 1 : 0.45).fillCircle(x + 36, y + 40, 20);
+    g.fillStyle(0x000000, 0.35).fillCircle(x + 36, y + 40, 22);
+    if (!this.activeIcon || !this.activeIcon.active) {
+      this.activeIcon = this.add.image(x + 36, y + 40, itemIconKey(a.id)).setScale(2.4);
+      this.hudLayer.add(this.activeIcon);
+      if (this.hudCam) this.activeIcon.cameraFilter &= ~this.hudCam.id;
+    }
+    this.activeIcon.setTexture(this.textures.exists(itemIconKey(a.id)) ? itemIconKey(a.id) : iconKey('pokeball')).setVisible(true).setAlpha(ready ? 1 : 0.5);
     const sw = (bw - 32) / a.charge;
     for (let k = 0; k < a.charge; k++) {
       g.fillStyle(k < this.active!.charge ? 0x3fc35a : 0x404a5c, 1).fillRect(x + 16 + k * sw, y + 80, sw - 4, 12);
@@ -2232,8 +2249,24 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private refreshInventory() {
     const counts = new Map<string, number>();
     for (const id of this.passives) counts.set(id, (counts.get(id) ?? 0) + 1);
-    const names = [...counts].map(([id, n]) => (passiveById(id)?.name ?? id) + (n > 1 ? ` x${n}` : ''));
-    this.invText.setText(names.join(' · '));
+    // Iconos de los objetos en rejilla (con "x2" si se repiten); el texto queda vacío
+    this.invIcons.forEach((o) => o.destroy());
+    this.invIcons = [];
+    this.invText.setText('');
+    const LX = HUD.left.x + HUD.pad;
+    const LW = HUD.left.w - HUD.pad * 2;
+    const cols = Math.max(1, Math.floor(LW / 46));
+    [...counts].forEach(([id, n], k) => {
+      const x = LX + 22 + (k % cols) * 46;
+      const y = 352 + Math.floor(k / cols) * 46;
+      const objs: Phaser.GameObjects.GameObject[] = [this.add.circle(x, y, 20, 0x000000, 0.35), this.add.image(x, y, this.textures.exists(itemIconKey(id)) ? itemIconKey(id) : iconKey('bag')).setScale(2.2)];
+      if (n > 1) objs.push(this.add.text(x + 18, y + 16, `x${n}`, { fontFamily: FONT, fontSize: '14px', fontStyle: 'bold', color: '#ffffff' }).setOrigin(1, 1).setStroke('#101828', 4));
+      for (const o of objs) {
+        this.hudLayer.add(o);
+        if (this.hudCam) o.cameraFilter &= ~this.hudCam.id;
+        this.invIcons.push(o);
+      }
+    });
   }
 
   // --- Navegación entre salas ---
