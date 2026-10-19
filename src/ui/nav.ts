@@ -46,7 +46,11 @@ export class NavInput {
     // escena estaba parada, Phaser la creería aún pulsada y la siguiente pulsación no contaría (había que darle 2 veces)
     Object.values(this.keys).forEach((k) => k.reset());
     this.prev = this.padNow();
+    // Un botón que sigue pulsado de la pantalla anterior (o un mando que se conecta justo ahora) no cuenta: se espera un momento
+    this.born = scene.time.now;
   }
+
+  private born = 0;
 
   private padNow(): Record<string, boolean> {
     const pad = this.scene.input.gamepad?.getPad(0);
@@ -74,7 +78,9 @@ export class NavInput {
       pause: J(k.P),
     };
     const now = this.padNow();
-    const edge = (name: string) => !!now[name] && !this.prev[name];
+    // Los primeros 300 ms solo se mira cuándo se suelta: lo que ya estaba apretado no vale como pulsación nueva
+    const warm = this.scene.time.now - this.born < 300;
+    const edge = (name: string) => !warm && !!now[name] && !this.prev[name];
     if (edge('up')) s.dy -= 1;
     if (edge('down')) s.dy += 1;
     if (edge('left')) s.dx -= 1;
