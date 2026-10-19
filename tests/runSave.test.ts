@@ -46,6 +46,7 @@ function sample(): RunSave {
     active: { id: 'pokeblock', charge: 2 },
     healed: false,
     counters: { seconds: 125.5, kills: 14, damage: 900, newRecord: false },
+    daily: null,
   };
 }
 
@@ -173,6 +174,17 @@ test('un guardado v9 se migra con los contadores a cero', () => {
   assert.equal(run.version, RUN_VERSION);
   assert.deepEqual(run.counters, { seconds: 0, kills: 0, damage: 0, newRecord: false });
   assert.equal(parseRun(JSON.stringify({ ...sample(), counters: { seconds: -1, kills: 0, damage: 0, newRecord: false } })), null);
+});
+
+test('un guardado v10 se migra como partida no diaria', () => {
+  const { daily: _d, ...v10 } = sample();
+  const run = parseRun(JSON.stringify({ ...v10, version: 10 }));
+  assert.ok(run);
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.daily, null);
+  const daily = parseRun(JSON.stringify({ ...sample(), daily: { day: 20000, counts: true } }));
+  assert.deepEqual(daily?.daily, { day: 20000, counts: true });
+  assert.equal(parseRun(JSON.stringify({ ...sample(), daily: { day: 'hoy', counts: true } })), null);
 });
 
 test('un piso no válido invalida el guardado', () => {

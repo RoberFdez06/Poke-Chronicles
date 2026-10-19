@@ -8,6 +8,7 @@ import { activeStorage, type StorageLike } from './storage.ts';
 import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } from './modes.ts';
 import { applyMissionEvent, parseMissions, type Completed, type MissionEvent, type MissionState } from './missions.ts';
 import { dayNumber } from './gacha.ts';
+import { emptyDaily, parseDaily, startDaily, withDailyResult, type DailyState } from './daily.ts';
 import { parseTutorial, type TutorialState } from './tutorial.ts';
 import { parseHistory, withRun, type RunRecord } from './runHistory.ts';
 import { parseKeys, type KeyMap } from './keybinds.ts';
@@ -165,6 +166,40 @@ export function submitRecord(mode: GameMode, value: number, storage: StorageLike
     }
   }
   return improved;
+}
+
+// --- Desafío diario (ver daily.ts) ---
+
+export const DAILY_KEY = 'pokeisaac.daily';
+
+export function loadDaily(storage: StorageLike | null = browserStorage()): DailyState {
+  try {
+    return parseDaily(storage?.getItem(DAILY_KEY) ?? null);
+  } catch {
+    return emptyDaily();
+  }
+}
+
+function saveDaily(s: DailyState, storage: StorageLike | null) {
+  try {
+    storage?.setItem(DAILY_KEY, JSON.stringify(s));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+}
+
+/** Empieza una partida del desafío de `day`; devuelve si cuenta (la primera del día). */
+export function beginDaily(day: number, storage: StorageLike | null = browserStorage()): boolean {
+  const { state, counts } = startDaily(loadDaily(storage), day);
+  if (counts) saveDaily(state, storage);
+  return counts;
+}
+
+/** Resultado de la partida que contaba ese día (pisos completados); devuelve si es el mejor de siempre. */
+export function submitDaily(day: number, floors: number, storage: StorageLike | null = browserStorage()): boolean {
+  const { state, newBest } = withDailyResult(loadDaily(storage), day, floors);
+  saveDaily(state, storage);
+  return newBest;
 }
 
 // --- Volumen de música y efectos (ver sounds.ts) ---
@@ -344,6 +379,7 @@ export const PROGRESS_KEYS: readonly string[] = [
   TICKETS_KEY,
   COINS_KEY,
   RECORDS_KEY,
+  DAILY_KEY,
   UPGRADES_KEY,
   SHINIES_KEY,
   MISSIONS_KEY,

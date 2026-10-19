@@ -477,8 +477,9 @@ récord en el navegador (`pokeisaac.records`, en `src/data/save.ts`), que se ve 
 | **Oleadas** | Una sola sala; rondas cada vez con más enemigos. Cada 3 rondas cae un objeto y suben la dificultad y la fuerza de las especies. | Rondas superadas |
 | **Infinito** | Como Normal, pero los pisos no se acaban y cada uno es más difícil. | Pisos completados |
 | **Rush de jefes** | Solo jefes legendarios en una arena; tras cada uno, un objeto y una trampilla al siguiente. | Jefes vencidos |
+| **Desafío diario** | Una partida de Normal igual para todos ese día: inicial del día (uno de los iniciales de cada región), y pisos, jefes, tesoros, cofres, tienda y objetos que caen salen de la semilla del día (`src/data/daily.ts`). Solo cuenta la **primera** partida del día (aunque la dejes a medias); se puede repetir sin récord. | Pisos de hoy, mejor resultado y racha de días (`pokeisaac.daily`) |
 
-Las partidas de cualquier modo se guardan en los huecos (`RUN_VERSION` 8; los guardados de versiones
+Las partidas de cualquier modo se guardan en los huecos (`RUN_VERSION` 11; los guardados de versiones
 anteriores se migran solos).
 En Oleadas, al continuar se repite la ronda en la que estabas.
 

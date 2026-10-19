@@ -246,7 +246,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
 
 # Tanda 3 (pedida por Roberto el 19/10)
 
-## [ ] T34 — Desafío diario
+## [x] T34 — Desafío diario
 - Modo nuevo "Desafío diario": misma semilla para todos ese día (piso, inicial fijo del día y objetos), una
   partida al día cuenta para el récord diario; se puede repetir sin récord. Récord y racha de días en `save.ts`.
 - Lógica pura (semilla del día, elección del inicial del día) en `src/data/` con tests. Sale en la pantalla de modos.

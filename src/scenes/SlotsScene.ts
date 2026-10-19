@@ -19,7 +19,7 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 function describe(run: RunSave): string {
   const date = new Date(run.savedAt).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   const rooms = run.mode === 'normal' || run.mode === 'endless' ? ` · Salas ${run.cleared.length}/${run.roomCount}` : '';
-  return `${capitalize(run.starterName)} · ${MODE_LABEL[run.mode]} · ${progressText(run.mode, run.floor)}${rooms} · PS ${Math.ceil(run.hp)} · ` +
+  return `${capitalize(run.starterName)} · ${run.daily ? 'Desafío diario' : MODE_LABEL[run.mode]} · ${progressText(run.mode, run.floor)}${rooms} · PS ${Math.ceil(run.hp)} · ` +
     `${run.passives.length} objetos · ${date}`;
 }
 

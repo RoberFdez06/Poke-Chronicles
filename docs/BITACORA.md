@@ -827,3 +827,22 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   la simulación da al menos una tirada).
 - **Duda para el supervisor**: el reto final da +60 (`FINALE_BONUS`, finale.ts, que no toco). Con eso una partida
   con reto da ~136 tickets, más que una x10. Si parece mucho, con 30 quedaría en ~106 (una x10 justa).
+
+## T34 — Desafío diario
+- `src/data/daily.ts` (tests en `tests/daily.test.ts`): semilla del día (`dayNumber` de gacha.ts, hora local, como
+  las misiones), inicial del día entre los 27 iniciales de las 9 regiones (nunca el mismo dos días seguidos), semilla de
+  cada piso y `dailyRng(día, piso, secuencia)`. Estado `pokeisaac.daily` (save.ts: `loadDaily`, `beginDaily`,
+  `submitDaily`; entra en "Borrar progreso"): último día, pisos de hoy, mejor, racha y mejor racha.
+- **Cuenta la primera partida del día al empezarla** (no al acabarla): así salir a mitad y repetir no sirve para
+  mejorar el récord. La racha sube al empezar; se ve a 0 si ayer no se jugó.
+- Es una partida de Normal (`mode: 'normal'`) con `daily: { day, counts }` en `GameData` y en `RunSave`
+  (**RUN_VERSION 11**, los v10 se migran con `daily: null`). Pasa de piso a piso por `scene.restart`.
+- GameScene: con desafío, la semilla del piso es la del día y salas, jefe (y reto final), tesoros/objetos que caen,
+  cofres, tienda y objeto al limpiar usan `this.rng(secuencia)` (una secuencia fija por piso y por cosa); fuera del
+  desafío sigue siendo `Math.random`. Al acabar, la partida que cuenta apunta los pisos completados (récord en el
+  resumen si es el mejor). El combate (críticos, botín de enemigos) sigue al azar normal.
+- ModeScene: quinta opción "Desafío diario" con el inicial del día (nombre en español) y el texto de hoy/racha.
+  Huecos, pausa y cartel de inicio dicen "Desafío diario".
+- Dudas: las mejoras permanentes del inicial del día sí cuentan (no es del todo igual para todos); el récord de Normal
+  también se actualiza con el desafío. Al continuar una partida diaria guardada, el azar de objetos del piso empieza
+  de nuevo (las semillas del piso y de las salas sí se conservan).

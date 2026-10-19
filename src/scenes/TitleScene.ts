@@ -4,6 +4,12 @@ import { addLogo, addSparkles } from '../ui/art/logo';
 import { addIcon } from '../ui/art/icons';
 import { FONT, fadeIn, goTo } from '../ui/theme';
 import { DH, DW, fitDesign } from '../ui/layout';
+import { addRays } from '../ui/art/gachaMachine';
+import { fetchPokemonCard } from '../data/pokeapi';
+import { loadUnlocked } from '../data/save';
+
+/** Pokémon que pueden cruzar la pantalla de título (además de los tuyos). */
+const PARADE = [1, 4, 7, 25, 133, 152, 155, 158, 252, 255, 258, 387, 390, 393, 495, 498, 501, 650, 653, 656, 722, 725, 728];
 
 /**
  * Pantalla de título al abrir el juego: cae una Poké Ball, se abre con un destello y aparece el logo.
@@ -68,9 +74,53 @@ export class TitleScene extends Phaser.Scene {
   }
 
   private showReady(logo: Phaser.GameObjects.Text, press: Phaser.GameObjects.Text) {
+    // Rayos dorados que giran detrás del logo
+    const rays = addRays(this, logo.x, logo.y, 0xffe066, 420, 16).setDepth(5).setAlpha(0.22);
+    this.tweens.add({ targets: rays, alpha: 0.32, duration: 1500, yoyo: true, repeat: -1 });
+    // Un Pokémon al azar cruza la pantalla de vez en cuando
+    this.time.addEvent({ delay: 4200, loop: true, callback: () => void this.parade() });
+    this.time.delayedCall(600, () => void this.parade());
     this.tweens.add({ targets: logo, y: logo.y + 8, duration: 1300, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.tweens.add({ targets: press, alpha: { from: 1, to: 0.15 }, duration: 650, yoyo: true, repeat: -1 });
     addSparkles(this, logo.getBounds(), 6, Math.max(3, 4)).forEach((s) => s.setDepth(7));
+  }
+
+  /** Un Pokémon (de los tuyos o de los iniciales) cruza corriendo por abajo con su sombra, a veces dando un salto. */
+  private async parade() {
+    if (this.leaving) return;
+    const pool = [...new Set([...loadUnlocked(), ...PARADE])];
+    const id = pool[Math.floor(Math.random() * pool.length)];
+    const card = await fetchPokemonCard(id).catch(() => null);
+    if (!card || this.leaving || !this.sys.isActive()) return;
+    const key = `title-${id}`;
+    if (!this.textures.exists(key)) {
+      await new Promise<void>((done) => {
+        this.load.crossOrigin = 'anonymous';
+        this.load.image(key, card.sprites.front);
+        this.load.once(Phaser.Loader.Events.COMPLETE, () => done());
+        this.load.start();
+      });
+      if (!this.textures.exists(key) || this.leaving || !this.sys.isActive()) return;
+      this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+    const u = DH / 640;
+    const right = Math.random() < 0.5;
+    const y = DH * 0.9;
+    const x0 = right ? -60 : DW + 60;
+    const x1 = right ? DW + 60 : -60;
+    const shadow = this.add.ellipse(x0, y + 4 * u, 46 * u, 12 * u, 0x000000, 0.3).setDepth(4);
+    const img = this.add.image(x0, y, key).setOrigin(0.5, 0.9).setScale(1.2 * u).setFlipX(right).setDepth(4);
+    const ms = 4200 + Math.random() * 1800;
+    this.tweens.add({ targets: [img, shadow], x: x1, duration: ms, ease: 'Linear', onComplete: () => [img, shadow].forEach((o) => o.destroy()) });
+    // Pasitos y, a mitad, un salto
+    this.tweens.add({ targets: img, y: y - 6 * u, duration: 160, yoyo: true, repeat: Math.floor(ms / 320) });
+    if (Math.random() < 0.6) {
+      this.time.delayedCall(ms * (0.35 + Math.random() * 0.3), () => {
+        if (!img.active) return;
+        this.tweens.add({ targets: img, y: y - 50 * u, angle: right ? 360 : -360, duration: 520, yoyo: false, ease: 'Sine.easeOut',
+          onComplete: () => img.active && this.tweens.add({ targets: img, y, angle: right ? 360 : -360, duration: 220, ease: 'Quad.easeIn' }) });
+      });
+    }
   }
 
   private next() {

@@ -19,8 +19,9 @@ export const RUN_SLOTS = 3;
  * v7: llaves, bombas, cofres abiertos y paredes secretas abiertas. Los pisos de v6 siguen con su diseño (2),
  *     sin sala secreta, de desafío ni cofres.
  * v8: objeto activo (y su carga) y objetos activos en el suelo.
+ * v11: desafío diario (los v10 no lo eran).
  */
-export const RUN_VERSION = 10;
+export const RUN_VERSION = 11;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -95,6 +96,13 @@ export interface RunSave {
   healed: boolean;
   /** Tiempo, enemigos vencidos, daño hecho y récord, para el resumen al acabar (T28). */
   counters: RunCounters;
+  /** Desafío diario (T34): día y si es la partida que cuenta para el récord; null = partida normal. */
+  daily: DailyRun | null;
+}
+
+export interface DailyRun {
+  day: number;
+  counts: boolean;
 }
 
 const isInt = (n: unknown): n is number => Number.isInteger(n);
@@ -172,6 +180,11 @@ function migrateV9(d: RunSave): RunSave {
   return { ...d, version: 10, counters: emptyCounters() };
 }
 
+/** v10 no tenía desafío diario. */
+function migrateV10(d: RunSave): RunSave {
+  return { ...d, version: 11, daily: null };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -191,6 +204,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 7) d = migrateV7(d);
   if (d.version === 8) d = migrateV8(d);
   if (d.version === 9) d = migrateV9(d);
+  if (d.version === 10) d = migrateV10(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
@@ -207,7 +221,8 @@ export function parseRun(raw: string | null): RunSave | null {
     isInt(d.keys) && d.keys >= 0 && isInt(d.bombs) && d.bombs >= 0 && isIntArray(d.openedChests) &&
     Array.isArray(d.revealedDoors) && d.revealedDoors.every((k) => typeof k === 'string') &&
     (d.active === null || (!!d.active && typeof d.active.id === 'string' && isInt(d.active.charge) && d.active.charge >= 0)) &&
-    typeof d.healed === 'boolean' && isCounters(d.counters);
+    typeof d.healed === 'boolean' && isCounters(d.counters) &&
+    (d.daily === null || (!!d.daily && isInt(d.daily.day) && typeof d.daily.counts === 'boolean'));
   return ok ? d : null;
 }
 

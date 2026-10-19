@@ -4,7 +4,8 @@ import { pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
 import { addTickets } from '../data/save';
-import { clearRun, saveRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
+import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
+import { dailyFloorSeed, dailyRng } from '../data/daily';
 import { loadSpeciesIndex } from '../data/speciesIndex';
 import {
   bossTicketsFor,
@@ -27,7 +28,7 @@ import {
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
-import { addRunHistory, loadKeys, loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMission, saveTutorial, submitRecord } from '../data/save';
+import { addRunHistory, loadKeys, loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMission, saveTutorial, submitDaily, submitRecord } from '../data/save';
 import { disableTips, markTipSeen, shouldShowTip, TIPS, type TipId } from '../data/tutorial';
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
 import { emptyCounters, type RunCounters, type RunRecord } from '../data/runHistory';
@@ -205,12 +206,17 @@ export type FloorCarry = Pick<
   'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters'
 >;
 
+/** Secuencias de azar del desafío diario (ver GameScene.rng). */
+const RNG = { rooms: 0, boss: 1, items: 2, chest: 3, shop: 4, clear: 5 } as const;
+
 export interface GameData {
   starterId?: number;
   slot?: number;
   mode?: GameMode;
   resume?: RunSave;
   carry?: FloorCarry;
+  /** Desafío diario (T34): lo decide ModeScene al empezar y pasa de piso en piso. */
+  daily?: DailyRun | null;
 }
 
 /** Una de las especies de enemigo del piso. */
@@ -368,6 +374,9 @@ export class GameScene extends Phaser.Scene {
   private carry: FloorCarry | null = null;
   /** Modo de juego. En Oleadas `floorNum` es la ronda y en Rush de jefes, el jefe por el que vas. */
   private mode: GameMode = 'normal';
+  /** Desafío diario (null = partida normal) y el azar fijo de cada cosa del piso (ver rng). */
+  private daily: DailyRun | null = null;
+  private dailyRngs = new Map<number, () => number>();
   /** Oleadas: hay una ronda en marcha (sus enemigos ya han salido). */
   private waveActive = false;
   private floorSeed = 0;
@@ -507,6 +516,8 @@ export class GameScene extends Phaser.Scene {
     this.falling = false;
     this.shiny = loadShinies().includes(this.starterId);
     this.mode = this.resume?.mode ?? data?.mode ?? 'normal';
+    this.daily = this.resume ? this.resume.daily : (data?.daily ?? null);
+    this.dailyRngs.clear();
   }
 
   create() {
@@ -630,14 +641,14 @@ export class GameScene extends Phaser.Scene {
     this.biome = biomeFor(this.mode, this.mode === 'waves' ? this.level() : this.floorNum);
     // Al continuar, el piso se regenera igual con la misma semilla; cada piso nuevo es más grande.
     // Oleadas y Rush de jefes se juegan en una sola sala
-    this.floorSeed = r?.floorSeed ?? Phaser.Math.Between(0, 0x7fffffff);
+    this.floorSeed = r?.floorSeed ?? (this.daily ? dailyFloorSeed(this.daily.day, this.floorNum) : Phaser.Math.Between(0, 0x7fffffff));
     if (this.mode === 'waves') this.floor = arenaFloor(this.floorSeed, 'combat');
     else if (this.mode === 'bossrush' || isFinalFloor(this.mode, this.floorNum)) this.floor = arenaFloor(this.floorSeed, 'boss');
     else {
       this.layout = r?.layout ?? FLOOR_LAYOUT;
       this.floor = generateFloor({
         seed: this.floorSeed,
-        roomCount: r?.roomCount ?? roomCountFor(this.floorNum, Math.random),
+        roomCount: r?.roomCount ?? roomCountFor(this.floorNum, this.rng(RNG.rooms)),
         special: this.layout >= 2,
         extra: this.layout >= 3,
       });
@@ -672,11 +683,11 @@ export class GameScene extends Phaser.Scene {
     if (isFinalFloor(this.mode, this.floorNum)) {
       // Reto final: trío legendario o legendario gigante, al azar
       const okIds = bundled;
-      this.finale = pickFinale(Math.random, (id) => !okIds || okIds.has(id));
+      this.finale = pickFinale(this.rng(RNG.boss), (id) => !okIds || okIds.has(id));
       bossId = this.finale.ids[0];
     } else if (bossId === undefined) {
       // El jefe intenta ser de un tipo del bioma
-      bossId = pickBoss(onlyBundled(biomeBossPool(index, this.biome)), Math.random, this.bossHistory);
+      bossId = pickBoss(onlyBundled(biomeBossPool(index, this.biome)), this.rng(RNG.boss), this.bossHistory);
       this.bossHistory.push(bossId);
     }
     this.bossId = bossId;
@@ -890,6 +901,20 @@ export class GameScene extends Phaser.Scene {
   /** Multiplicador de daño de Ataque X mientras dura. */
   private dmgMul(): number {
     return this.time.now < this.buffUntil ? ACTIVE_EFFECT.buffMul : 1;
+  }
+
+  /**
+   * Azar de las cosas del piso que deben ser iguales para todos en el desafío diario (salas, jefe, objetos, cofres,
+   * tienda): una secuencia fija por piso y por cosa. Fuera del desafío, Math.random.
+   */
+  private rng(stream: number): () => number {
+    if (!this.daily) return Math.random;
+    let r = this.dailyRngs.get(stream);
+    if (!r) {
+      r = dailyRng(this.daily.day, this.floorNum, stream);
+      this.dailyRngs.set(stream, r);
+    }
+    return r;
   }
 
   /** Nivel de dificultad: el piso, el jefe por el que vas o, en Oleadas, el que toca a la ronda. */
@@ -1200,7 +1225,7 @@ export class GameScene extends Phaser.Scene {
 
     // Tienda: al continuar, lo que quedaba; si no, artículos nuevos para este piso
     if (this.floor.shopId !== undefined) {
-      if (this.shop.length === 0) this.shop = rollShop(Math.random, new Set(this.passives), this.movePool, this.passivePool());
+      if (this.shop.length === 0) this.shop = rollShop(this.rng(RNG.shop), new Set(this.passives), this.movePool, this.passivePool());
       this.buildShop(this.floor.rooms[this.floor.shopId]);
     }
     this.prompt = this.add
@@ -1229,7 +1254,7 @@ export class GameScene extends Phaser.Scene {
     // En Oleadas el cartel de la ronda lo pone startWave
     if (this.mode !== 'waves') {
       const where = progressText(this.mode, this.floorNum);
-      const head = r ? 'Partida cargada' : MODE_LABEL[this.mode];
+      const head = r ? 'Partida cargada' : (this.daily ? 'Desafío diario' : MODE_LABEL[this.mode]);
       this.notify(`${head}
 ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
@@ -1394,6 +1419,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       active: this.active ? { ...this.active } : null,
       healed: this.healedRun,
       counters: { ...this.counters },
+      daily: this.daily ? { ...this.daily } : null,
     });
   }
 
@@ -1408,7 +1434,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const data: PauseData = {
       starterName: this.starterName,
       slot: this.slot,
-      modeLabel: MODE_LABEL[this.mode],
+      modeLabel: this.daily ? 'Desafío diario' : MODE_LABEL[this.mode],
       progress: progressText(this.mode, this.floorNum),
       showRooms: this.mode === 'normal' || this.mode === 'endless',
       hp: this.hp,
@@ -1713,7 +1739,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.mission({ kind: 'chest' });
     chest.img.setTexture(iconKey('chestOpen'));
     sfx('buy');
-    const prize = rollChest(Math.random);
+    const prize = rollChest(this.rng(RNG.chest));
     if (prize.kind === 'item') {
       const p = this.freeSpot(chest.x, chest.y + 60);
       this.dropItem(roomId, p.x, p.y);
@@ -1870,7 +1896,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Deja en el suelo un objeto al azar: un pasivo propio o un poder (movimiento de PokeAPI). */
   private dropItem(roomId: number, x: number, y: number) {
-    this.spawnPickup(roomId, x, y, rollItem(Math.random, new Set(this.passives), this.movePool, ACTIVE_DROP_CHANCE, ACTIVE_IDS, this.passivePool()));
+    this.spawnPickup(roomId, x, y, rollItem(this.rng(RNG.items), new Set(this.passives), this.movePool, ACTIVE_DROP_CHANCE, ACTIVE_IDS, this.passivePool()));
   }
 
   private spawnPickup(roomId: number, x: number, y: number, item: DroppedItem) {
@@ -3006,7 +3032,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       went = true;
       cam.fadeOut(300, 0, 0, 0);
       cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-        this.scene.restart({ slot: this.slot, starterId: this.starterId, mode: this.mode, carry } satisfies GameData);
+        this.scene.restart({ slot: this.slot, starterId: this.starterId, mode: this.mode, carry, daily: this.daily } satisfies GameData);
       });
     };
     if (!door) return go();
@@ -4086,7 +4112,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
 
     // A veces la sala limpiada deja un objeto, como en Isaac
-    if (Math.random() < CLEAR_DROP_CHANCE) {
+    if (this.rng(RNG.clear)() < CLEAR_DROP_CHANCE) {
       const i = this.interior(room);
       this.dropItem(room.id, i.cx, i.cy);
       this.notify(`¡Sala limpia! +${reward} tickets\nHa caído un objeto`, { kind: 'reward', icon: 'ticket' });
@@ -4228,6 +4254,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private finish(won: boolean, message: string) {
     // Como en Isaac: al morir o ganar, la partida guardada se borra
     clearRun(this.slot);
+    // Desafío diario: la partida que cuenta apunta los pisos completados
+    if (this.daily?.counts && submitDaily(this.daily.day, won ? this.floorNum : this.floorNum - 1)) this.counters.newRecord = true;
     this.ended = true;
     this.endedAt = this.time.now;
     this.physics.pause();
