@@ -8,6 +8,8 @@ import {
   SFX_NAMES,
   midiToFreq,
   parseAudio,
+  shotSfx,
+  SHOT_TYPES,
   sfxLength,
   stepSeconds,
   stepVolume,
@@ -52,4 +54,12 @@ test('el volumen se guarda y se lee, siempre entre 0 y 1', () => {
   assert.equal(stepVolume(1, 1), 1);
   assert.equal(stepVolume(0.1, -1), 0);
   assert.equal(stepVolume(0, -1), 0);
+});
+
+test('cada tipo tiene su disparo y los desconocidos usan el básico', () => {
+  for (const t of SHOT_TYPES) assert.ok(SFX_NAMES.includes(shotSfx(t)), t);
+  assert.equal(shotSfx('fire'), 'shot_fire');
+  assert.equal(shotSfx('???'), 'shot');
+  const firmas = new Set(SHOT_TYPES.map((t) => JSON.stringify(SFX[shotSfx(t)])));
+  assert.equal(firmas.size, SHOT_TYPES.length);
 });

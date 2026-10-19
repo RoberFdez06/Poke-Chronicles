@@ -82,6 +82,7 @@ import { rollShiny, SHINY_ENEMY, SHINY_ODDS } from '../data/shiny';
 import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
 import { cry, playMenuMusic, playTrack, sfx } from '../ui/audio';
+import { shotSfx } from '../data/sounds';
 import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
@@ -1137,7 +1138,7 @@ export class GameScene extends Phaser.Scene {
     if (this.ended || this.transitioning || this.eventsDone.has(room.id)) return;
     this.clearEventObjs();
     if (trapChestOutcome(rng) === 'item') {
-      sfx('buy');
+      sfx('chest');
       const img = this.add.image(x, y, iconKey('chestOpen')).setScale(3.4).setDepth(2);
       this.time.delayedCall(4000, () => img.active && img.destroy());
       const p = this.freeSpot(x, y + 60);
@@ -1630,7 +1631,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         if (this.textures.exists(`${key}-${side}`)) this.textures.get(`${key}-${side}`).setFilter(Phaser.Textures.FilterMode.NEAREST);
       }
       const oldName = this.starterName;
-      sfx('heal');
+      sfx('evolve');
       this.cameras.main.flash(600, 255, 255, 255);
       // Parpadeo en blanco, como en los juegos, y al final cambia de forma
       this.player.setTintFill(0xffffff);
@@ -2272,12 +2273,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const prop = across ? 'x' : 'y';
       if (locked) {
         // Se cierran deslizándose desde los lados con un golpe al encajar
+        sfx('gymClose');
         block.setVisible(true);
         bars.setVisible(true);
         place(1);
         leaves.forEach((l, k) => this.tweens.add({ targets: l, [prop]: 0, duration: 260, ease: 'Quad.easeIn', onComplete: () => k === 0 && (this.cameras.main.shake(70, 0.002), hitSpark(this, block.x, block.y, 0xffffff, 4, 0.7)) }));
       } else {
         // Se abren: la luz destella y las hojas se meten en la pared
+        sfx('gymOpen');
         hitSpark(this, block.x, block.y, 0xffd34d, 6, 1);
         leaves.forEach((l, k) => this.tweens.add({
           targets: l, [prop]: (k === 0 ? -1 : 1) * slide, duration: 360, ease: 'Cubic.easeOut', delay: 80,
@@ -3078,6 +3081,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const ratio = (b.getData('hp') as number) / (b.getData('maxHp') as number);
     if (ai.phase === 1 && bossPhase(ratio) === 2) {
       ai.phase = 2;
+      sfx('enrage');
       b.setData('speed', (b.getData('speed') as number) * PHASE2_SPEED);
       this.cameras.main.shake(250, 0.006);
       this.notify(`¡${(b.getData('bname') as string | undefined) ?? this.bossName} se enfurece!`, { kind: 'danger', icon: 'pokeball' });
@@ -3604,6 +3608,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     };
     // Caída por la trampilla: se coloca encima, gira encogiéndose hacia el agujero y la cámara se acerca
     const p = this.player;
+    sfx('fall');
     this.falling = true;
     this.physics.pause();
     p.setAngle(0);
@@ -3967,7 +3972,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Disparo básico. Los pasivos cambian cuántos salen, cuánto daño hacen y hasta dónde llegan. */
   private fireTear(dir: Phaser.Math.Vector2) {
-    sfx('shot');
+    sfx(shotSfx(this.tearType));
     const s = this.stats;
     const n = 1 + s.extraShots;
     const opts = {
@@ -3997,7 +4002,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Cada movimiento sale con su estilo (catálogo de ataques): chorro, rayo, onda, lluvia, bumerán…
     const style = styleForMove(m);
     this.slotReady[i] = time + m.cooldown * style.cd;
-    sfx('shot');
+    sfx(shotSfx(m.type));
 
     const dir = this.aim.clone().normalize();
     muzzle(this, this.player.x, this.player.y, dir.x, dir.y, typeColor(m.type));
@@ -4865,7 +4870,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const pb = this.player?.body as Body | null;
     if (this.player?.active) {
       if (won) cheerPlayer(this, this.player);
-      else faintPlayer(this, this.player, pb ? pb.bottom : this.player.y + 30, GAME_ZOOM);
+      else (sfx('faint'), faintPlayer(this, this.player, pb ? pb.bottom : this.player.y + 30, GAME_ZOOM));
     }
     this.setBanner(message);
     // Se apunta en el historial (T28) y luego se ve el resumen

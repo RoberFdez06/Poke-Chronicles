@@ -156,6 +156,7 @@ export class BossIntroScene extends Phaser.Scene {
         cam.flash(220, 255, 255, 255);
         cam.shake(260, 0.008);
         sfx('boom');
+        this.time.delayedCall(120, () => sfx('roar'));
       }),
     });
     this.tweens.add({ targets: vs, scale: 1.08, duration: 300, delay: 900, yoyo: true, repeat: -1 });
