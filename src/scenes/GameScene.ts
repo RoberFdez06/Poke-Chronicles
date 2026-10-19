@@ -3,7 +3,7 @@ import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetch
 import { pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
-import { addCandies, addTickets, CANDY_PER_TICKET } from '../data/save';
+import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal } from '../data/save';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
 import { dailyFloorSeed, dailyRng } from '../data/daily';
 import { damageMul, effectOf, EFFECT_COLOR, EFFECT_LABEL } from '../data/typeChart';
@@ -4910,6 +4910,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // Récord: pisos completados (Normal, Infinito) o jefes vencidos (Rush)
       const record = submitRecord(this.mode, this.floorNum, undefined, this.diff);
       if (record) this.counters.newRecord = true;
+      // Medalla del bioma (solo la primera vez que se vence a su jefe; los invitados no guardan)
+      const medal = earnMedal(this.biome.id);
+      if (medal.gained) {
+        this.giveTickets(medal.tickets);
+        this.notify(
+          medal.complete
+            ? `¡${medal.gained.name}! ¡Las 9 medallas!\n+${medal.tickets} tickets`
+            : `¡${medal.gained.name} conseguida!\n+${medal.tickets} tickets`,
+          { kind: 'reward', icon: 'star' },
+        );
+      }
       if (isFinalFloor(this.mode, this.floorNum)) {
         // Reto final superado
         this.mission({ kind: 'win' });
