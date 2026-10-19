@@ -9,6 +9,9 @@ import { formatDuration, type RunRecord } from '../data/runHistory';
 import { MenuList, NavInput } from '../ui/nav';
 import { drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
+import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
+import { PASSIVE_ITEMS } from '../data/items';
+import { sfx } from '../ui/audio';
 
 export interface SummaryData {
   record: RunRecord;
@@ -42,6 +45,8 @@ export class SummaryScene extends Phaser.Scene {
     addMenuBackdrop(this);
     const r = this.data_.record;
     bakeIcons(this);
+    bakeItemIcons(this);
+    sfx(r.won ? 'clear' : 'faint');
     // Derrota: el paisaje un poco más oscuro
     if (!r.won) this.add.rectangle(DCX, DCY, COVER_W + 4, COVER_H + 4, 0x0d1425, 0.35);
     else this.confetti();
@@ -79,8 +84,8 @@ export class SummaryScene extends Phaser.Scene {
       ['candy', 'Caramelos ganados', r.tickets * CANDY_PER_TICKET, (n) => `+${n}`],
     ];
     rows.forEach(([icon, label, value, fmt], i) => {
-      const y = 276 + i * 42;
-      if (i % 2 === 0) this.add.graphics().fillStyle(0x283068, 0.06).fillRect(60, y - 18, 520, 36);
+      const y = 268 + i * 36;
+      if (i % 2 === 0) this.add.graphics().fillStyle(0x283068, 0.06).fillRect(60, y - 16, 520, 32);
       addIcon(this, 82, y, icon, 2);
       t(108, y, label, 19, HEX.textSoft).setOrigin(0, 0.5);
       const v = t(566, y, fmt(0), 21, HEX.text, true).setOrigin(1, 0.5);
@@ -97,12 +102,24 @@ export class SummaryScene extends Phaser.Scene {
       const star = this.add.image(-66, 0, iconKey('star')).setScale(2);
       const label = this.add.text(12, 0, '¡NUEVO RÉCORD!', { fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: '#283068' }).setOrigin(0.5);
       stamp.add([g, star, label]);
-      this.tweens.add({ targets: stamp, scale: 1, duration: 320, delay: 900, ease: 'Back.easeOut' });
+      this.tweens.add({ targets: stamp, scale: 1, duration: 320, delay: 900, ease: 'Back.easeOut', onStart: () => this.time.delayedCall(900, () => sfx('record')), onComplete: () => this.cameras.main.flash(180, 255, 235, 150) });
       this.tweens.add({ targets: star, angle: 360, duration: 2400, repeat: -1 });
     }
 
-    t(66, 452, 'Objetos', 19, HEX.text, true);
-    t(66, 482, r.items.length ? r.items.join(' · ') : 'Ninguno', 15, HEX.textSoft);
+    // Objetos: cada uno con su dibujo (y "x2" si lo llevabas repetido)
+    t(66, 462, `Objetos${r.items.length ? ` (${r.items.length})` : ''}`, 18, HEX.text, true);
+    if (r.items.length === 0) t(66, 490, 'Ninguno', 15, HEX.textSoft);
+    r.items.slice(0, 22).forEach((label, i) => {
+      const m = / x(\d+)$/.exec(label);
+      const name = label.replace(/ x\d+$/, '');
+      const id = PASSIVE_ITEMS.find((p) => p.name === name)?.id;
+      const x = 80 + (i % 11) * 46;
+      const y = 496 + Math.floor(i / 11) * 40;
+      const key = id ? itemIconKey(id) : iconKey('bag');
+      const img = this.add.image(x, y, this.textures.exists(key) ? key : iconKey('bag')).setScale(0).setAlpha(0);
+      this.tweens.add({ targets: img, scale: 1.8, alpha: 1, duration: 260, delay: 600 + i * 70, ease: 'Back.easeOut' });
+      if (m) this.add.text(x + 14, y + 12, `x${m[1]}`, { fontFamily: FONT, fontSize: '12px', fontStyle: 'bold', color: '#ffffff' }).setOrigin(1, 1).setStroke('#101828', 3);
+    });
 
     this.menu = new MenuList(this, 780, 230, ['Otra partida', 'Historial', 'Menú'], (i) => this.pick(i), { w: 280, h: 56, gap: 22 });
     this.add
