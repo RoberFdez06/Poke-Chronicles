@@ -720,7 +720,7 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   `REGIONS`, `biomeEnemyPool` de los 5 pisos de cada bioma, `biomeBossPool`, `FALLBACK_ENEMIES`): 186 Pokémon
   con sprites normales y shiny, especies (nombre en español), cadenas de evolución de los iniciales, habilidades
   sin efecto propio, y 14 movimientos con potencia de cada uno de los 18 tipos. Mismo formato que PokeAPI
-  (recortado), así el juego lo usa tal cual. ~2 MB reales (744 PNG pequeños).
+  (recortado), así el juego lo usa tal cual. ~1 MB (744 PNG pequeños).
 - **Si falla**: `getJson` espera como mucho 6 s y si no, tira de `data/offline/<recurso>/<id>.json`
   (`offlinePath`). Si un Pokémon no está ni en la red ni en el paquete, `substitutePokemon` lo inventa con
   species-index (tipos reales, estadísticas repartidas, Poké Ball genérica de `scripts/makePlaceholder.ts`).
@@ -733,3 +733,20 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   Charmander de verdad y sale el aviso; captura `18-sin-conexion`).
 - **Dudas**: la caché del service worker no tiene límite de tamaño (sprites pequeños; si crece mucho, se puede
   añadir un tope). Los gritos no van en el paquete (pesan; sin red simplemente no suenan).
+
+## T43 — Pantalla de error en lugar de cuelgue (2026-10-19)
+
+- `src/ui/errorScreen.ts`: escucha `error` y `unhandledrejection` de window. Es **HTML encima del canvas** (no una
+  escena de Phaser) porque un error dentro de un fotograma para el bucle de Phaser: su `requestAnimationFrame` no
+  vuelve a pedir el siguiente (lo vimos en la T26). "Volver al menú" duerme y despierta `game.loop` (así se
+  reanuda), para las escenas activas y arranca `Menu`; si eso fallara, recarga la página.
+- Teclado: flechas/Tab mueven, Enter/espacio elige, Esc/Retroceso vuelve al menú (se captura antes que Phaser).
+  Mando: se lee con `navigator.getGamepads()` en un intervalo (el bucle puede estar parado): cruceta/stick, A, B;
+  lo que ya estaba pulsado al abrir no cuenta. Ratón: botones. "Copiar detalles" usa el portapapeles.
+- `src/data/errorReport.ts` (tests): mensaje corto de una línea, informe con fecha, pantallas activas, dirección,
+  navegador y pila (también va entero a `console.error`), y lista de errores inofensivos que no sacan el cuadro
+  (ResizeObserver, audio bloqueado por el navegador, peticiones abortadas).
+- El fallo al cargar una partida (antes dejaba el texto "No se pudo cargar PokeAPI" para siempre) usa ahora esta
+  pantalla (`reportError`).
+- e2e `errors.spec.ts`: rompe el update de Partidas (`sys.sceneUpdate`, que es lo que llama Phaser), comprueba el
+  cuadro, vuelve con Enter, comprueba que el menú responde, y lo repite con el ratón (captura `19-error`).

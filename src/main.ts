@@ -18,6 +18,7 @@ import { COLORS, hex, loadThemeFont } from './ui/theme';
 import { initAudio, playMusic } from './ui/audio';
 import { H, U, W } from './ui/layout';
 import { PLACEHOLDER_SPRITE } from './data/offline';
+import { installErrorScreen } from './ui/errorScreen';
 
 // T30: los menús se escalan ×1,6875 desde su diseño de 960×640; para que el texto no se vea borroso, todos los
 // textos se generan a doble resolución (Phaser los rasteriza en un canvas aparte).
@@ -72,6 +73,8 @@ function startGame() {
     scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, SummaryScene, HistoryScene, PauseScene],
   });
   lockEscapeInFullscreen(game);
+  // T43: un error no deja el juego colgado: pantalla "Algo ha fallado" con vuelta al menú
+  installErrorScreen(game);
   // Para las pruebas de navegador (npm run e2e): saber qué pantalla está activa
   (window as Window & { __POKEISAAC__?: Phaser.Game }).__POKEISAAC__ = game;
 }

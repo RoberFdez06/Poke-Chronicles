@@ -310,7 +310,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
 - Si una petición falla o tarda (>6 s), usar lo empaquetado o un sustituto y seguir; nunca quedarse en "Cargando…".
   Aviso discreto (toast de T37) "Sin conexión: usando datos guardados".
 
-## [ ] T43 — Pantalla de error en lugar de cuelgue
+## [x] T43 — Pantalla de error en lugar de cuelgue
 - Capturar errores globales (`window.onerror`, `unhandledrejection` y fallos dentro de escenas): mostrar un cuadro
   "Algo ha fallado" con el mensaje corto, botón "Volver al menú" (teclado, ratón y mando) y "Copiar detalles".
   El guardado no se toca. Registrar el error en consola con detalle.

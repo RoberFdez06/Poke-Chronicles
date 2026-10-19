@@ -123,13 +123,21 @@ se genera sola la primera vez con `npm run dev` (necesita internet); a mano: `no
 El juego no depende de que PokeAPI o GitHub respondan:
 - **Caché persistente** (`public/sw.js`, un service worker, solo en la versión construida): todo lo descargado de
   PokeAPI, los sprites (PokeAPI y SpriteCollab) y los gritos se guarda y se sirve al instante, también sin red.
-- **Paquete sin conexión** (`public/data/offline/`, ~2 MB): datos con nombres en español, tipos, estadísticas,
+- **Paquete sin conexión** (`public/data/offline/`, ~1 MB): datos con nombres en español, tipos, estadísticas,
   habilidades y sprites de los iniciales de las 9 regiones y sus evoluciones, de enemigos de cada bioma y piso y de
   jefes de cada bioma (186 Pokémon), y movimientos con potencia de los 18 tipos. Se regenera con
   `node scripts/buildOffline.ts` (necesita internet).
 - Si una petición falla o tarda más de 6 s se usa el paquete; si tampoco está, un **sustituto** con el índice de
   especies y una Poké Ball como sprite. Una imagen que no carga en 8 s también se cambia por la Poké Ball. Sin red,
   los enemigos y el jefe se eligen entre los del paquete. En la partida sale el aviso "Sin conexión".
+
+## Si algo falla
+
+Un error (dentro de una pantalla, o una promesa sin capturar) no deja el juego colgado: sale un cuadro
+**"Algo ha fallado"** con el mensaje corto, **Volver al menú** y **Copiar detalles** (copia el informe completo con
+la pila, para enviarlo). Se maneja con flechas/Tab + Enter (Esc vuelve al menú), con el ratón o con el mando
+(cruceta, A, B). El guardado no se toca. El informe completo también sale en la consola. (`src/ui/errorScreen.ts`,
+textos en `src/data/errorReport.ts`.)
 
 ## Avisos
 
@@ -372,6 +380,7 @@ src/
     tutorial.ts           consejos del tutorial (textos y cuáles se han visto)
     abilities.ts          habilidades de PokeAPI: cuál toca, nombre en español y efecto
     offline.ts            sin conexión: ruta de cada respuesta en el paquete, sustituto y tiempo límite
+    errorReport.ts        mensaje corto e informe de un error; errores del navegador que no cuentan
     runHistory.ts         registro de cada partida terminada, historial de las últimas 20 y contadores
     missions.ts           misiones diarias (semilla del día) y logros: progreso, premios y objetos bloqueados
     runSave.ts            partidas guardadas en 3 huecos (con migraciones)
@@ -383,6 +392,7 @@ src/
     progression.ts        pisos: tamaño, dificultad, tickets y jefes legendarios
   ui/
     toast.ts              avisos en tarjetas apiladas en la franja del HUD
+    errorScreen.ts        pantalla "Algo ha fallado" (HTML encima del juego) y vuelta al menú
     layout.ts             tamaños de pantalla (1920×1080), espacio de diseño de los menús y franjas del HUD
     theme.ts              tema: fuente, colores, cuadros, barra de PS, fichas de tipo y transiciones
     nav.ts                entrada de menús (NavInput, PadButtons) y botones (MenuList, addPanel)

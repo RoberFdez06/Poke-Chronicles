@@ -31,6 +31,7 @@ import { disableTips, markTipSeen, shouldShowTip, TIPS, type TipId } from '../da
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
 import { emptyCounters, type RunCounters, type RunRecord } from '../data/runHistory';
 import { ToastStack, type ToastOptions } from '../ui/toast';
+import { reportError } from '../ui/errorScreen';
 import { ACHIEVEMENTS, lockedItems, rewardText, type MissionEvent } from '../data/missions';
 import {
   attackInterval,
@@ -542,7 +543,8 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.boot(loading).catch((err) => {
-      loading.setText('No se pudo cargar PokeAPI.\n' + String(err));
+      loading.setText('');
+      reportError(this.game, err);
     });
   }
 
