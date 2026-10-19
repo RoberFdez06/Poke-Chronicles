@@ -66,7 +66,7 @@ import { cry, playMenuMusic, playTrack, sfx } from '../ui/audio';
 import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeTypeFx, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
-import { bakeCombatFx, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
+import { bakeCombatFx, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeBiomeTiles, TILE as ART_TILE } from '../ui/art/tiles';
 import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
@@ -289,6 +289,8 @@ export class GameScene extends Phaser.Scene {
   private evolving = false;
   /** Empujón al recibir un golpe: hasta entonces el movimiento no pisa la velocidad. */
   private playerKnockUntil = 0;
+  /** Cayendo por la trampilla (la animación mueve al jugador; dressSprites no lo toca). */
+  private falling = false;
   /** Destello rojo sobre la sala al recibir daño (capa del HUD). */
   private hurtFlash?: Phaser.GameObjects.Rectangle;
   /** Tienes shiny al Pokémon elegido: juegas con su sprite shiny (también al evolucionar). */
@@ -450,6 +452,7 @@ export class GameScene extends Phaser.Scene {
     // Solo al llegar a un piso nuevo por la trampilla (al continuar una partida ya había evolucionado)
     this.evolvePending = !!data?.carry && shouldEvolve(this.resume?.mode ?? data?.mode ?? 'normal', data.carry.floor);
     this.evolving = false;
+    this.falling = false;
     this.shiny = loadShinies().includes(this.starterId);
     this.mode = this.resume?.mode ?? data?.mode ?? 'normal';
   }
@@ -719,7 +722,7 @@ export class GameScene extends Phaser.Scene {
   private dressSprites(time: number) {
     const all = [this.player, ...(this.enemies.getChildren() as Sprite[])];
     for (const s of all) {
-      if (!s.active) continue;
+      if (!s.active || (this.falling && s === this.player)) continue;
       const body = s.body as Body | null;
       if (!body) continue;
       if (s !== this.player && s.depth < 3) s.setDepth(3);
@@ -1113,6 +1116,8 @@ export class GameScene extends Phaser.Scene {
     playTrack(trackForBiome(this.biome.id));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => playMenuMusic());
     this.enterRoom(start);
+    // Llegada por la trampilla: cartel del piso y el jugador cae desde arriba
+    if (this.carry && !r) this.showFloorIntro();
     void this.loadAbility(this.formId);
     if (usingOfflineData()) this.notifyOffline();
     // En Oleadas el cartel de la ronda lo pone startWave
@@ -2182,6 +2187,55 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.showBossIntro(ai);
   }
 
+  /** Cartel del piso nuevo (FloorIntroScene) y, al irse, el jugador cae botando en la sala. */
+  private showFloorIntro() {
+    if (!this.scene.manager.keys['FloorIntro'] || this.scene.isActive('FloorIntro')) return;
+    const p = this.player;
+    const sx = p.scaleX;
+    const sy = p.scaleY;
+    const y0 = p.y;
+    p.setVisible(false);
+    this.scene.launch('FloorIntro', {
+      label: progressText(this.mode, this.floorNum),
+      biomeId: this.biome.id,
+      biomeName: this.biome.name,
+      floor: this.biome.colors.floor,
+      wall: this.biome.colors.wall,
+      onDone: () => {
+        this.scene.stop('FloorIntro');
+        this.scene.resume();
+        this.input.keyboard?.resetKeys();
+        if (!p.active) return;
+        this.transitioning = true;
+        this.falling = true;
+        this.physics.pause();
+        p.setVisible(true).setPosition(p.x, y0 - 320).setScale(sx * 0.7, sy * 1.3);
+        // Sombra que crece donde va a caer
+        const land = this.add.ellipse(p.x, y0 + p.displayHeight * 0.3, 8, 3, 0x000000, 0.28).setDepth(0.5);
+        this.tweens.add({ targets: land, width: 50, height: 17, duration: 420, ease: 'Quad.easeIn', onComplete: () => land.destroy() });
+        this.tweens.add({
+          targets: p, y: y0, duration: 420, ease: 'Quad.easeIn',
+          onComplete: () => {
+            dustBurst(this, p.x, y0 + p.displayHeight * 0.35, 1.3, 12);
+            this.cameras.main.shake(160, 0.006);
+            sfx('hit');
+            // Aplastón al tocar el suelo y vuelta a su forma
+            p.setScale(sx * 1.3, sy * 0.7);
+            this.tweens.add({
+              targets: p, scaleX: sx, scaleY: sy, duration: 260, ease: 'Back.easeOut',
+              onComplete: () => {
+                this.falling = false;
+                this.transitioning = false;
+                this.physics.resume();
+              },
+            });
+          },
+        });
+      },
+    });
+    this.scene.pause();
+  }
+
   /** Intro "VS" (supervisor) antes de que el jefe ataque: la partida se pausa debajo y se salta con Enter/Esc/clic/A. */
   private showBossIntro(ai: EnemyAI) {
     if (!this.scene.manager.keys['BossIntro'] || this.scene.isActive('BossIntro')) return;
@@ -2505,6 +2559,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   private descend() {
+    const door = this.trapdoor;
     this.transitioning = true;
     this.trapdoor = undefined;
     this.player.setVelocity(0, 0);
@@ -2525,10 +2580,40 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       healed: this.healedRun,
       counters: { ...this.counters },
     };
-    this.cameras.main.fadeOut(350, 0, 0, 0);
-    this.cameras.main.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-      this.scene.restart({ slot: this.slot, starterId: this.starterId, mode: this.mode, carry } satisfies GameData);
+    // Caída por la trampilla: se coloca encima, gira encogiéndose hacia el agujero y la cámara se acerca
+    const p = this.player;
+    this.falling = true;
+    this.physics.pause();
+    p.setAngle(0);
+    (p.getData('shadow') as Phaser.GameObjects.Ellipse | undefined)?.setVisible(false);
+    const cam = this.cameras.main;
+    let went = false;
+    const go = () => {
+      if (went) return;
+      went = true;
+      cam.fadeOut(300, 0, 0, 0);
+      cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
+        this.scene.restart({ slot: this.slot, starterId: this.starterId, mode: this.mode, carry } satisfies GameData);
+      });
+    };
+    if (!door) return go();
+    sfx('door');
+    this.tweens.add({
+      targets: p, x: door.x, y: door.y - 6, duration: 160, ease: 'Quad.easeOut',
+      onComplete: () => {
+        dustBurst(this, door.x, door.y + 10, 1.2, 10);
+        const ring = this.add.circle(door.x, door.y, 30).setStrokeStyle(6, 0x101828, 0.8).setDepth(1.5);
+        this.tweens.add({ targets: ring, radius: 4, alpha: 0, duration: 700, ease: 'Quad.easeIn', onComplete: () => ring.destroy() });
+        cam.zoomTo(GAME_ZOOM * 1.18, 700, 'Sine.easeInOut', true);
+        cam.pan(door.x, door.y, 700, 'Sine.easeInOut', true);
+        this.tweens.add({
+          targets: p, angle: 720, scaleX: p.scaleX * 0.08, scaleY: p.scaleY * 0.08, y: door.y + 8, alpha: 0.3,
+          duration: 700, ease: 'Quad.easeIn', onComplete: go,
+        });
+      },
     });
+    // Por si el reloj del juego va lento, no quedarse a medias
+    window.setTimeout(() => go(), 2500);
   }
 
   // --- Bucle ---

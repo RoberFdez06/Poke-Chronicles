@@ -790,3 +790,8 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   del estado mientras dura (quemado, congelado…).
 - HUD: paneles oscuros con borde dorado (`drawHudFrame`) y ranuras de poder con la franja del tipo
   (`drawSlotFrame`, gris al recargar); textos del HUD en blanco. Barra del jefe con el mismo marco.
+
+## Supervisor — Arte y animaciones (19/10, tarde)
+- Pantalla de victoria/derrota, sombra y saltito al andar, animaciones de combate (`src/ui/art/combatFx.ts`),
+  Pokédex nueva (`src/ui/art/dexCard.ts`) y transición entre pisos: caída girando por la trampilla y cartel del piso
+  con el emblema del bioma (`FloorIntroScene`, registrada en main.ts), y el jugador cae botando en la sala nueva.
