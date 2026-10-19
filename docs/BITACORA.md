@@ -816,3 +816,14 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   el Pokémon más fuerte del bioma en grande, con dos movimientos de su tipo; suelta objeto y tickets.
 - Curación por golpes: Drenar cura una vez por lanzamiento (700 ms) y Drenar y Concha Campana tienen tope de un 4 %
   de los PS máximos por segundo.
+
+## Tickets con el gacha a 10 (19/10, noche)
+- Repaso: con 1 ticket por sala, 1×piso por jefe y 2 por minijefe, llegar al piso 3 da ~33 tickets (3 tiradas), la
+  partida completa ~70 (7 tiradas) y con el reto final ~136. No he cambiado los números de las salas ni del jefe:
+  una partida buena da varias tiradas y una mala (piso 1-2) da 1-2.
+- `minibossTicketsFor` (progression.ts) en vez de `roomTicketsFor * 2` suelto en GameScene, y el minijefe entra en
+  `expectedFloorRewards` y en `simulateRuns`. Nuevo `expectedFinaleRunTickets`.
+- tests/balance.test.ts: rangos en tiradas (piso 3: 2,5-4,5; completa: 5-8; con reto final: menos de 2 tiradas x10;
+  la simulación da al menos una tirada).
+- **Duda para el supervisor**: el reto final da +60 (`FINALE_BONUS`, finale.ts, que no toco). Con eso una partida
+  con reto da ~136 tickets, más que una x10. Si parece mucho, con 30 quedaría en ~106 (una x10 justa).

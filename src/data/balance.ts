@@ -5,7 +5,8 @@ import { BERRIES, centerHeal, CLEAR_DROP_CHANCE, LOOT_CHANCE, POTIONS, roomClear
 import { BASE_STATS } from './items.ts';
 import { BEHAVIORS, enemyBstRange, enemyStats } from './enemies.ts';
 import { AVERAGE_STATS, bossStats } from './pokeStats.ts';
-import { bossTicketsFor, difficultyFor, FLOOR_COUNT, roomCountFor, roomTicketsFor } from '../level/progression.ts';
+import { bossTicketsFor, difficultyFor, FLOOR_COUNT, minibossTicketsFor, roomCountFor, roomTicketsFor } from '../level/progression.ts';
+import { FINALE_BONUS } from './finale.ts';
 import { generateFloor, mulberry32 } from '../level/floorGen.ts';
 
 /** Media de salas de combate (incluida la de desafío) de un piso, con varias semillas. */
@@ -32,12 +33,12 @@ export interface Rewards {
   berries: number;
 }
 
-/** Lo que se gana de media en un piso de Normal limpiándolo entero (salas de combate y jefe). */
+/** Lo que se gana de media en un piso de Normal limpiándolo entero (salas de combate, minijefe y jefe). */
 export function expectedFloorRewards(floor: number, combatRooms = averageCombatRooms(floor)): Rewards {
   const [lo, hi] = difficultyFor(floor).enemies;
   const enemies = combatRooms * ((lo + hi) / 2);
   return {
-    tickets: combatRooms * roomTicketsFor(floor) + bossTicketsFor(floor),
+    tickets: combatRooms * roomTicketsFor(floor) + minibossTicketsFor(floor) + bossTicketsFor(floor),
     coins: enemies * coinsPerEnemy() + combatRooms * avgRoomClearCoins(floor) + BOSS_COINS_DROP,
     // El jefe siempre suelta una Baya Zidra
     berries: enemies * berriesPerEnemy() + 1,
@@ -57,6 +58,11 @@ export function expectedRunRewards(floors: number): Rewards {
     out.berries += r.berries;
   }
   return out;
+}
+
+/** Tickets de una partida Normal que supera también el reto final (piso 6: su jefe y el premio). */
+export function expectedFinaleRunTickets(): number {
+  return expectedRunRewards(FLOOR_COUNT).tickets + bossTicketsFor(FLOOR_COUNT + 1) + FINALE_BONUS;
 }
 
 /** Para el informe: las constantes base. */
@@ -174,6 +180,8 @@ export function simulateRuns(runs: number, seed = 1, p: SimParams = SIM_DEFAULTS
           break;
         }
         tickets += roomTicketsFor(f);
+        // El minijefe está en una de las salas de combate (la más lejana: la última que se limpia)
+        if (r === combat - 1) tickets += minibossTicketsFor(f);
         if (hasShop) coins += roomClearCoins(rng, f);
         if (rng() < CLEAR_DROP_CHANCE) items++;
         tryHeal();

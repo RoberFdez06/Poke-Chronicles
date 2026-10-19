@@ -19,6 +19,10 @@ export interface BossIntroData {
   subtitle?: string;
   /** Se llama al terminar (o al saltarla): la partida debe parar esta escena y reanudarse. */
   onDone: () => void;
+  /** Reto final con trío: los otros dos entran uno a uno detrás del primero. */
+  extra?: Fighter[];
+  /** Estilo: 'mini' (minijefe, más corto y plateado) o 'final' (reto final, dorado y más largo). */
+  tier?: 'mini' | 'final';
 }
 
 const DURATION = 2600;
@@ -46,6 +50,8 @@ export class BossIntroScene extends Phaser.Scene {
 
   create() {
     const { player, boss } = this.info;
+    const tier = this.info.tier;
+    const dur = tier === 'final' ? DURATION + 900 : tier === 'mini' ? DURATION - 500 : DURATION;
     const cam = this.cameras.main;
     // Fondo oscuro con líneas de velocidad
     this.add.rectangle(W / 2, H / 2, W, H, 0x0d1425, 0.88);
@@ -69,8 +75,16 @@ export class BossIntroScene extends Phaser.Scene {
       this.tweens.add({ targets: g, x: 0, duration: 380, ease: 'Cubic.easeOut' });
       return g;
     };
-    band(150, bossColor, true);
+    band(150, tier === 'final' ? 0xd4a017 : tier === 'mini' ? 0x8a94b8 : bossColor, true);
     band(H - 450, playerColor, false);
+    if (tier) {
+      // Cartel arriba: MINIJEFE o RETO FINAL
+      const tag = this.add
+        .text(W / 2, 70, tier === 'final' ? 'RETO FINAL' : 'MINIJEFE', { fontFamily: FONT, fontSize: '64px', fontStyle: 'bold', color: tier === 'final' ? '#ffd34d' : '#e8ecf8' })
+        .setOrigin(0.5).setStroke('#101828', 12).setDepth(5).setAlpha(0).setScale(2);
+      this.tweens.add({ targets: tag, alpha: 1, scale: 1, duration: 300, delay: 100, ease: 'Back.easeOut' });
+      if (tier === 'final') this.tweens.add({ targets: tag, scale: 1.08, duration: 500, delay: 500, yoyo: true, repeat: -1 });
+    }
 
     // Pokémon (pixel, sin suavizar) y nombres
     const sprite = (f: Fighter, x: number, y: number, flip: boolean, fromRight: boolean) => {
@@ -82,7 +96,17 @@ export class BossIntroScene extends Phaser.Scene {
       this.tweens.add({ targets: img, y: y - 10, duration: 700, delay: 640, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       return img;
     };
-    sprite(boss, W - 420, 300, false, true);
+    const extra = this.info.extra ?? [];
+    if (extra.length) {
+      // Trío: entran uno tras otro, con un golpe de pantalla cada uno
+      [boss, ...extra].forEach((f, k) => {
+        const img = sprite(f, W - 700 + k * 270, 300 + (k === 1 ? -30 : 20), false, true);
+        img.setScale(img.scale * 0.8);
+        this.tweens.getTweensOf(img).forEach((tw) => tw.stop());
+        this.tweens.add({ targets: img, x: W - 700 + k * 270, duration: 420, delay: 150 + k * 380, ease: 'Back.easeOut', onComplete: () => cam.shake(140, 0.006) });
+        this.tweens.add({ targets: img, y: img.y - 10, duration: 700, delay: 700 + k * 380, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      });
+    } else sprite(boss, W - 420, 300, false, true);
     sprite(player, 420, H - 300, true, false);
 
     const name = (text: string, x: number, y: number, align: 'left' | 'right', fromRight: boolean) => {
@@ -95,7 +119,7 @@ export class BossIntroScene extends Phaser.Scene {
       this.tweens.add({ targets: t, x, duration: 460, delay: 220, ease: 'Cubic.easeOut' });
       return t;
     };
-    name(boss.name, 160, 260, 'left', true);
+    name(extra.length ? boss.name : boss.name, 160, 260, 'left', true);
     if (this.info.subtitle) {
       const sub = this.add
         .text(W + 200, 330, this.info.subtitle, { fontFamily: FONT, fontSize: '34px', color: '#ffd34d' })
@@ -137,9 +161,9 @@ export class BossIntroScene extends Phaser.Scene {
     this.tweens.add({ targets: vs, scale: 1.08, duration: 300, delay: 900, yoyo: true, repeat: -1 });
 
     // Fin solo o al saltar
-    this.time.delayedCall(DURATION, () => this.finish());
+    this.time.delayedCall(dur, () => this.finish());
     // Por si el juego va a pocos FPS: termina también en tiempo real
-    window.setTimeout(() => this.finish(), DURATION + 1200);
+    window.setTimeout(() => this.finish(), dur + 1200);
     const skipAfter = this.time.now + 350;
     const skip = () => this.time.now > skipAfter && this.finish();
     this.input.keyboard?.on('keydown', (e: KeyboardEvent) => ['Enter', ' ', 'Escape', 'Backspace'].includes(e.key) && skip());

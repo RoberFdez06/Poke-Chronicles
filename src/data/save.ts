@@ -95,8 +95,8 @@ export const TICKETS_KEY = 'pokeisaac.tickets';
 export const COINS_KEY = 'pokeisaac.coins';
 /**
  * Tickets por sala de combate limpiada y por vencer al jefe (× número de piso). Ajustables.
- * T32: antes 15 y 60 (una partida completa daba ~2100 tickets); ahora una partida buena da ~30-60, una tirada
- * del gacha cada 2-3 partidas.
+ * T32: antes 15 y 60 (una partida completa daba ~2100 tickets). Con el gacha a 10 por tirada (19/10): llegar al
+ * piso 3 da ~33 (3 tiradas), la partida completa ~70 (7) y con el reto final ~136 (ver tests/balance.test.ts).
  */
 export const ROOM_TICKETS = 1;
 export const BOSS_TICKETS = 1;

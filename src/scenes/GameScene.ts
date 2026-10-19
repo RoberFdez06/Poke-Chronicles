@@ -11,6 +11,7 @@ import {
   difficultyFor,
   pickBoss,
   roomTicketsFor,
+  minibossTicketsFor,
   roomCountFor,
   FloorDifficulty,
   FLOOR_COUNT,
@@ -2428,12 +2429,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const ai = e.getData('ai') as EnemyAI;
     ai.moves = bossStyles(kind.types, id);
     ai.eliteMove = ai.moves[0];
-    ai.eliteAt = this.time.now + 2000;
+    ai.eliteAt = Number.POSITIVE_INFINITY; // empieza al acabar su intro
     (e as Sprite & { preFX?: { addGlow: (c: number, o?: number, i?: number, k?: boolean, q?: number, d?: number) => unknown } }).preFX?.addGlow(0xffd34d, 5, 0, false, 0.1, 12);
     const name = kind.name ? kind.name.charAt(0).toUpperCase() + kind.name.slice(1) : 'Pokémon';
     this.notify(`¡Minijefe: ${name}!`, { kind: 'danger', icon: 'star' });
     sparkle(this, e.x, e.y);
     void cry(id);
+    this.showBossIntro(ai, { boss: { texture: `${kind.key}-front`, name, types: kind.types }, tier: 'mini', subtitle: `Minijefe · ${progressText(this.mode, this.floorNum)}` });
   }
 
   /**
@@ -2471,7 +2473,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.notify(trio ? `¡Reto final: ${f.name}!` : `¡Reto final: ${label}, más fuerte que nunca!`, { kind: 'danger', icon: 'star' });
     this.finaleMembers.forEach((m) => void cry(m.id));
     playTrack(TRACKS.jefe);
-    this.showBossIntro(group[0].getData('ai') as EnemyAI);
+    const fighter = (m: (typeof this.finaleMembers)[number]) => ({ texture: `${m.key}-front`, name: m.name, types: m.types });
+    this.showBossIntro(group[0].getData('ai') as EnemyAI, {
+      boss: { ...fighter(this.finaleMembers[0]), name: label },
+      extra: trio ? this.finaleMembers.slice(1).map(fighter) : undefined,
+      tier: 'final',
+      subtitle: trio ? 'Tres legendarios a la vez' : 'Legendario gigante',
+    });
   }
 
   /** Un ataque de su tipo (élites y jefes): aviso con su nombre y destello, y luego sale (más lento que los tuyos). */
@@ -2572,10 +2580,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Intro "VS" (supervisor) antes de que el jefe ataque: la partida se pausa debajo y se salta con Enter/Esc/clic/A. */
-  private showBossIntro(ai: EnemyAI) {
+  private showBossIntro(ai: EnemyAI, o: { boss?: { texture: string; name: string; types: string[] }; extra?: { texture: string; name: string; types: string[] }[]; tier?: 'mini' | 'final'; subtitle?: string } = {}) {
     if (this.floorIntroOn) {
       ai.nextAttack = Number.POSITIVE_INFINITY;
-      this.events.once('floorintro-done', () => this.showBossIntro(ai));
+      this.events.once('floorintro-done', () => this.showBossIntro(ai, o));
       return;
     }
     if (!this.scene.manager.keys['BossIntro'] || this.scene.isActive('BossIntro')) return;
@@ -2583,8 +2591,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const cap = (n: string) => n.charAt(0).toUpperCase() + n.slice(1);
     this.scene.launch('BossIntro', {
       player: { texture: `${this.playerKey}-front`, name: cap(this.starterName), types: [this.tearType] },
-      boss: { texture: `${this.bossKey}-front`, name: cap(this.bossName), types: this.bossTypes },
-      subtitle: `Legendario · ${progressText(this.mode, this.floorNum)}`,
+      boss: o.boss ? { ...o.boss, name: cap(o.boss.name) } : { texture: `${this.bossKey}-front`, name: cap(this.bossName), types: this.bossTypes },
+      extra: o.extra,
+      tier: o.tier,
+      subtitle: o.subtitle ?? `Legendario · ${progressText(this.mode, this.floorNum)}`,
       onDone: () => {
         this.scene.stop('BossIntro');
         this.scene.resume();
@@ -2592,6 +2602,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         // Un respiro antes del primer ataque (el reloj de la escena estuvo parado)
         this.time.delayedCall(1200, () => {
           ai.nextAttack = this.time.now;
+          if (ai.eliteMove) ai.eliteAt = this.time.now + 600;
           // El resto del trío, escalonados
           let k = 1;
           for (const c of this.enemies.getChildren()) {
@@ -3511,7 +3522,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else faintEnemy(this, enemy, feetY, ecolor);
     if (mini) {
       // Premio del minijefe: un objeto y tickets
-      const bonus = roomTicketsFor(this.floorNum) * 2;
+      const bonus = minibossTicketsFor(this.floorNum);
       this.earned += bonus;
       addTickets(bonus);
       const ex = enemy.x;

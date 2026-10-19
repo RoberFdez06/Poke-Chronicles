@@ -1,21 +1,27 @@
 // Ejecutar con `npm test`. Fija los rangos del equilibrio (T32): si alguien cambia un número y se sale, falla.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { expectedFloorRewards, expectedRunRewards, simulateRuns, SIM_DEFAULTS } from '../src/data/balance.ts';
+import { expectedFinaleRunTickets, expectedFloorRewards, expectedRunRewards, simulateRuns, SIM_DEFAULTS } from '../src/data/balance.ts';
 import { FLOOR_COUNT, difficultyFor } from '../src/level/progression.ts';
-import { PULL_COST } from '../src/data/gacha.ts';
+import { PULL_COST, PULL10_COST } from '../src/data/gacha.ts';
 import { bossStats, AVERAGE_STATS } from '../src/data/pokeStats.ts';
 import { BASE_STATS } from '../src/data/items.ts';
 import { BOSS_PHASE2_AT, MAX_HELPERS, attackInterval, bossAttacks, bossPhase, helpersToSummon, mixBehaviors, pickAttack, ringCount } from '../src/data/bossPatterns.ts';
 import { mulberry32 } from '../src/level/floorGen.ts';
 
-test('tickets: varias tiradas del gacha por partida buena (x1 = 10 tickets)', () => {
+test('tickets: una buena partida da para varias tiradas del gacha (x1 = 10), sin pasarse', () => {
+  // Contando salas, minijefe y jefe de cada piso
   const full = expectedRunRewards(FLOOR_COUNT).tickets;
   const floor3 = expectedRunRewards(3).tickets;
-  assert.ok(full >= 40 && full <= 70, `partida completa: ${full}`);
-  assert.ok(floor3 >= 15 && floor3 <= 40, `hasta el piso 3: ${floor3}`);
-  const good = (full + floor3) / 2;
-  assert.ok(good / PULL_COST >= 2 && good / PULL_COST <= 7, `tiradas por partida: ${good / PULL_COST}`);
+  const floor1 = expectedRunRewards(1).tickets;
+  assert.ok(floor1 >= 5 && floor1 < PULL_COST * 1.5, `solo el piso 1: ${floor1}`);
+  assert.ok(floor3 / PULL_COST >= 2.5 && floor3 / PULL_COST <= 4.5, `hasta el piso 3: ${floor3}`);
+  assert.ok(full / PULL_COST >= 5 && full / PULL_COST <= 8, `partida completa: ${full}`);
+  // Ni con el reto final llega a dos tiradas x10
+  const finale = expectedFinaleRunTickets();
+  assert.ok(finale > full && finale < 2 * PULL10_COST, `con el reto final: ${finale}`);
+  // La simulación (que muere más que un jugador real) da al menos una tirada de media
+  assert.ok(simulateRuns(400, 3).tickets >= PULL_COST, 'simulación');
 });
 
 test('monedas: la tienda obliga a elegir', () => {

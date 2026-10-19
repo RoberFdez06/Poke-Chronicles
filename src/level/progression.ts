@@ -40,6 +40,8 @@ export function difficultyFor(floor: number): FloorDifficulty {
 export const roomTicketsFor = (_floor: number): number => ROOM_TICKETS;
 /** Tickets por vencer al jefe: se multiplican por el número de piso. */
 export const bossTicketsFor = (floor: number): number => BOSS_TICKETS * Math.max(1, Math.floor(floor));
+/** Tickets por vencer al minijefe del piso (uno por piso): lo que dos salas. */
+export const minibossTicketsFor = (floor: number): number => roomTicketsFor(floor) * 2;
 
 /** Lo mínimo de cada especie para elegir jefe (encaja con SpeciesFact de gacha.ts). */
 export interface BossCandidate {

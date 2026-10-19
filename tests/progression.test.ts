@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   bossTicketsFor,
+  minibossTicketsFor,
   bossPool,
   difficultyFor,
   pickBoss,
@@ -46,6 +47,7 @@ test('los tickets del jefe escalan con el piso; los de sala no (T32)', () => {
   assert.equal(roomTicketsFor(3), ROOM_TICKETS);
   assert.equal(bossTicketsFor(1), BOSS_TICKETS);
   assert.equal(bossTicketsFor(3), BOSS_TICKETS * 3);
+  assert.equal(minibossTicketsFor(2), ROOM_TICKETS * 2);
 });
 
 test('el jefe siempre es legendario o singular', () => {
