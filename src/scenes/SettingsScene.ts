@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { fitDesign, COVER_H, COVER_W, DCX, DCY } from '../ui/layout';
 import { openControls } from './ControlsScene';
-import { resetProgress } from '../data/save';
+import { loadFx, resetProgress, saveFx } from '../data/save';
 import { stepVolume } from '../data/sounds';
 import { getAudioSettings, setAudioSettings, sfx } from '../ui/audio';
 import { addPanel, MenuList, NavInput } from '../ui/nav';
@@ -20,9 +20,9 @@ export interface SettingsData {
   onReset?: () => void;
 }
 
-type Row = 'music' | 'sfx' | 'fullscreen' | 'controls' | 'account' | 'credits' | 'reset' | 'back';
-const ROWS: Row[] = ['music', 'sfx', 'fullscreen', 'controls', 'account', 'credits', 'reset', 'back'];
-const ROW = { w: 520, h: 50, gap: 10, top: 136 };
+type Row = 'music' | 'sfx' | 'fullscreen' | 'effects' | 'fps' | 'controls' | 'account' | 'credits' | 'reset' | 'back';
+const ROWS: Row[] = ['music', 'sfx', 'fullscreen', 'effects', 'fps', 'controls', 'account', 'credits', 'reset', 'back'];
+const ROW = { w: 520, h: 42, gap: 6, top: 128 };
 
 /** Créditos (T31): de dónde salen los datos, los sprites y la fuente. */
 const CREDITS: [string, string][] = [
@@ -77,7 +77,7 @@ export class SettingsScene extends Phaser.Scene {
     ROWS.forEach((row, i) => {
       const y = ROW.top + i * (ROW.h + ROW.gap);
       const bg = this.add.graphics();
-      const text = this.add.text(480, y, '', { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5);
+      const text = this.add.text(480, y, '', { fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5);
       const arrow = this.add.text(480 - ROW.w / 2 + 16, y, ARROW, { fontFamily: FONT, fontSize: '20px', color: HEX.text }).setOrigin(0, 0.5);
       // Ratón: clic en la fila la usa; en las de volumen, la mitad izquierda baja y la derecha sube
       const zone = this.add.zone(480, y, ROW.w, ROW.h).setInteractive({ useHandCursor: true });
@@ -112,6 +112,10 @@ export class SettingsScene extends Phaser.Scene {
         return `Efectos   ◀ ${pct(a.sfx)} ▶`;
       case 'fullscreen':
         return `Pantalla completa: ${this.scale.isFullscreen ? 'Sí' : 'No'}`;
+      case 'effects':
+        return `Efectos visuales: ${loadFx().low ? 'Bajos' : 'Altos'}`;
+      case 'fps':
+        return `Mostrar FPS: ${loadFx().showFps ? 'Sí' : 'No'}`;
       case 'account': {
         const a = accountInfo();
         if (this.args.overlay) return 'Cuenta (desde el menú)';
@@ -146,6 +150,15 @@ export class SettingsScene extends Phaser.Scene {
     this.refresh();
   }
 
+  /** Efectos visuales altos/bajos y contador de FPS (T41): se aplican al empezar el siguiente piso o partida. */
+  private toggleFx(row: 'effects' | 'fps') {
+    const fx = loadFx();
+    if (row === 'effects') fx.low = !fx.low;
+    else fx.showFps = !fx.showFps;
+    saveFx(fx);
+    this.refresh();
+  }
+
   private adjust(row: 'music' | 'sfx', d: number) {
     const a = getAudioSettings();
     a[row] = stepVolume(a[row], d);
@@ -158,6 +171,7 @@ export class SettingsScene extends Phaser.Scene {
     const row = ROWS[this.selected];
     sfx('select');
     if (row === 'music' || row === 'sfx') this.adjust(row, 1);
+    else if (row === 'effects' || row === 'fps') this.toggleFx(row);
     else if (row === 'fullscreen') {
       // El navegador solo lo permite tras un gesto (Enter, A o clic lo son)
       try {
@@ -275,6 +289,7 @@ export class SettingsScene extends Phaser.Scene {
     if (s.dy) this.select(this.selected + Math.sign(s.dy));
     const row = ROWS[this.selected];
     if (s.dx && (row === 'music' || row === 'sfx')) this.adjust(row, Math.sign(s.dx));
+    if (s.dx && (row === 'effects' || row === 'fps')) this.toggleFx(row);
     if (s.ok) this.activate();
   }
 }

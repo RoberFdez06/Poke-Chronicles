@@ -96,6 +96,12 @@ Desde el menú principal y desde la pausa (`src/scenes/SettingsScene.ts`): volum
 derecha, clic en ◀ ▶), pantalla completa, controles y **Borrar progreso** (con doble confirmación: borra Pokémon,
 tickets, récords y partidas, pero no el volumen). Arriba/abajo para elegir, Enter/A/clic para usar, Esc/B o "Volver".
 
+**Rendimiento (T41)**: "Efectos visuales: Altos/Bajos" (bajos quita las partículas decorativas, los temblores de cámara
+y reduce el clima) y "Mostrar FPS" (contador abajo a la derecha en la partida); se guardan en `pokeisaac.fx` y se aplican
+al empezar el siguiente piso. Con efectos altos hay un tope de partículas (`FxBudget`, 14 cada 100 ms). La cámara de la
+partida solo pinta la sala actual (antes pintaba las ~9 salas del piso cada fotograma). Medida: `tests/e2e/perf.spec.ts`
+(30 enemigos disparando; `PERF_CPU=4`, `PERF_LOW=1`, `PERF_PROFILE=1` para el perfil de CPU).
+
 ## Pausa y partidas guardadas
 
 Funciona como en Isaac. **Jugar** abre los 3 huecos de partida: uno vacío empieza una nueva; uno ocupado deja

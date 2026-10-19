@@ -920,3 +920,26 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - Nota: en pantallas pequeñas, el joystick derecho y los botones 1-4 tapan en parte las ranuras de poder del HUD
   (son semitransparentes y las ranuras también se pueden tocar).
 - N20: el commit 169b204 del supervisor llevaba mis trozos de GameScene; aquí van el resto de archivos de la T35.
+
+## T41 — Rendimiento
+- **Medida** (`tests/e2e/perf.spec.ts`, `npx playwright test -c tests/e2e/playwright.config.ts perf.spec.ts`): primera sala
+  del piso 1 con 30 enemigos más, disparando sin parar 6 s; FPS reales y ms de trabajo por fotograma (de `prestep` a
+  `postrender`). Chromium sin pantalla pinta WebGL por software (≈65 % del tiempo en el perfil), así que es un "PC
+  flojo"; frenar la CPU ×4 con CDP casi no cambiaba nada. Cada piso es distinto, así que hay ruido (±0,5 FPS).
+  - Antes: 3,3 / 3,4 / 3,5 / 3,9 FPS, 34-40 ms por fotograma, ~900-1100 objetos en la escena.
+  - El desglose de objetos mostró la causa: se construyen las ~9 salas del piso al empezar y Phaser las pintaba
+    **todas** en cada fotograma (46 TileSprites, ~370 imágenes, ~40 Graphics) aunque solo se ve una.
+  - Después (solo la sala actual en cámara + tope de partículas): 6,5 / 6,5 / 7,0 FPS, 28-34 ms (efectos altos);
+    6,6 / 6,7 / 7,2 FPS, 24-31 ms (efectos bajos). Unas **×1,9** más FPS.
+- GameScene: `roomObjs` guarda lo que crea `buildRoom` de cada sala y `showRooms` lo quita de la cámara principal con
+  `cameraFilter` (no con `visible`, que ya usa el juego para rejas, grietas…); se enseñan la sala actual y, durante el
+  paso de puerta, la siguiente. `FxBudget` (src/data/fxSettings.ts, con tests) limita las partículas frecuentes
+  (chispas al golpear, impactos de tipo, fogonazos, estelas, bocanadas de estado, polvo) a 14 cada 100 ms.
+- Ajustes: "Efectos visuales: Altos/Bajos" y "Mostrar FPS" (`pokeisaac.fx`, no se borra con el progreso). Bajos: sin
+  esas partículas, sin temblores de cámara (`shake` anulado en la cámara de la partida) y el clima con menos
+  partículas. keys.spec.ts: Controles y teclas ahora es la 6.ª fila de Ajustes.
+- **No hecho (archivos del supervisor, nota N21)**: pools de proyectiles (se destruyen dentro de `attacks.ts`) y que
+  los fundidos (`theme.ts`) y el fondo animado de los menús (`ui/art/landscape.ts`) respeten "Efectos bajos".
+- El supervisor subió mis trozos de GameScene de la T41 en su commit b175d91 (como en N20); aquí van el resto de
+  archivos. En `save.ts` no subo su cambio de tickets (2 por sala, 3 por jefe), que aún hace fallar
+  `tests/balance.test.ts` ("solo el piso 1: 17"): es suyo y está a medias.

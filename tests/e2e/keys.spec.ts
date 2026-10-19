@@ -16,8 +16,8 @@ test('cambiar una tecla en Ajustes y usarla en la partida', async ({ page }) => 
   await press(page, 'ArrowDown', 5);
   await press(page, 'Enter');
   await waitScene(page, 'Settings');
-  // Ajustes: Música, Efectos, Pantalla completa, Controles y teclas
-  await press(page, 'ArrowDown', 3);
+  // Ajustes: Música, Efectos, Pantalla completa, Efectos visuales, Mostrar FPS, Controles y teclas
+  await press(page, 'ArrowDown', 5);
   await press(page, 'Enter');
   await waitScene(page, 'Keys');
 

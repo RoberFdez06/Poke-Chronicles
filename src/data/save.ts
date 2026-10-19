@@ -9,6 +9,7 @@ import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } f
 import { applyMissionEvent, parseMissions, type Completed, type MissionEvent, type MissionState } from './missions.ts';
 import { dayNumber } from './gacha.ts';
 import { recordsKeyFor, type Difficulty } from './difficulty.ts';
+import { parseFx, type FxSettings } from './fxSettings.ts';
 import { emptyDaily, parseDaily, startDaily, withDailyResult, type DailyState } from './daily.ts';
 import { parseTutorial, type TutorialState } from './tutorial.ts';
 import { parseHistory, withRun, type RunRecord } from './runHistory.ts';
@@ -219,6 +220,26 @@ export function loadAudio(storage: StorageLike | null = browserStorage()): Audio
 export function saveAudio(settings: AudioSettings, storage: StorageLike | null = browserStorage()) {
   try {
     storage?.setItem(AUDIO_KEY, JSON.stringify(parseAudio(JSON.stringify(settings))));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+}
+
+// --- Efectos visuales y FPS (T41, ver fxSettings.ts) ---
+
+export const FX_KEY = 'pokeisaac.fx';
+
+export function loadFx(storage: StorageLike | null = browserStorage()): FxSettings {
+  try {
+    return parseFx(storage?.getItem(FX_KEY) ?? null);
+  } catch {
+    return parseFx(null);
+  }
+}
+
+export function saveFx(settings: FxSettings, storage: StorageLike | null = browserStorage()) {
+  try {
+    storage?.setItem(FX_KEY, JSON.stringify(parseFx(JSON.stringify(settings))));
   } catch {
     // sin almacenamiento: no se guarda
   }

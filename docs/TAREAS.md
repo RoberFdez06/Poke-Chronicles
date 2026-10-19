@@ -293,7 +293,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
 - Fácil, Normal y Difícil al elegir modo: multiplicadores de vida/daño enemigo, curación y premio (Difícil da más
   tickets, Fácil menos). Récords separados por dificultad. Se ve en la pausa y en el hueco guardado.
 
-## [ ] T41 — Rendimiento
+## [x] T41 — Rendimiento
 - Que vaya fluido en PCs flojos a 1920×1080: reutilizar proyectiles y partículas (pools) en vez de crear/destruir,
   no redibujar gráficos que no cambian, limitar partículas, y en Ajustes una opción "Efectos: altos / bajos"
   (bajos quita partículas, temblores, fundidos y el fondo animado de los menús) y "Mostrar FPS".
