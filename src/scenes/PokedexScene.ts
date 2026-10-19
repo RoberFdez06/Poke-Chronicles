@@ -11,6 +11,9 @@ import { FilterBar } from '../ui/collection';
 import { NavInput, PadButtons } from '../ui/nav';
 import { COLORS, drawBox, fadeIn, FONT, goTo, hex, HEX, RARITY_COLORS, shorten, strokePixelFrame } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
+import { addTwinkles, DexCard, drawDexTile } from '../ui/art/dexCard';
+import { fetchPokemonCard } from '../data/pokeapi';
+import { sfx } from '../ui/audio';
 
 const COLS = 7;
 const ROWS = 3;
@@ -43,7 +46,9 @@ export class PokedexScene extends Phaser.Scene {
   private pad!: PadButtons;
   private keys!: Record<'Q' | 'E' | 'R' | 'T' | 'F', Key>;
   private grid?: Phaser.GameObjects.Container;
-  private tiles: { box: Phaser.GameObjects.Container; glow: Phaser.GameObjects.Graphics }[] = [];
+  private tiles: { box: Phaser.GameObjects.Container; glow: Phaser.GameObjects.Graphics; sprite: Phaser.GameObjects.GameObject & { y: number } }[] = [];
+  /** Ficha grande abierta (Enter, A o clic sobre un Pokémon). */
+  private card?: DexCard;
   private page = -1;
   private selected = 0;
   private pageToken = 0;
@@ -67,6 +72,7 @@ export class PokedexScene extends Phaser.Scene {
     this.page = -1;
     this.selected = 0;
     this.leaving = false;
+    this.card = undefined;
     this.nav = new NavInput(this);
     this.pad = new PadButtons(this);
     this.keys = this.input.keyboard!.addKeys('Q,E,R,T,F', false) as PokedexScene['keys'];
@@ -117,7 +123,7 @@ export class PokedexScene extends Phaser.Scene {
       t.on('pointerdown', () => !this.filters?.searching && this.turnPage(d));
     }
     this.add
-      .text(480, 620, 'Flechas: mover · Enter/A/clic: grito · Q E / LB RB: región · R / X: rareza · T / LT RT: tipo · F / Y: buscar · Esc/B: volver', {
+      .text(480, 620, 'Flechas: mover · Enter/A/clic: ficha · Q E / LB RB: región · R / X: rareza · T / LT RT: tipo · F / Y: buscar · Esc/B: volver', {
         fontFamily: FONT,
         fontSize: '13px',
         color: '#ffffff',
@@ -215,31 +221,29 @@ export class PokedexScene extends Phaser.Scene {
 
   private buildTile(e: DexEntry, x: number, y: number) {
     const { w, h } = TILE;
-    const bg = drawBox(this.add.graphics(), -w / 2, -h / 2, w, h, {
-      radius: 10,
-      border: e.owned ? RARITY_COLORS[e.rarity] : 0x4a5578,
-      fill: e.owned ? COLORS.panel : 0xd5dae6,
-    });
+    const bg = drawDexTile(this.add.graphics(), w, h, { owned: e.owned, rarity: e.rarity, type: e.types?.[0] ?? 'normal' });
     const glow = this.add.graphics();
     strokePixelFrame(glow, -w / 2 - 6, -h / 2 - 6, w + 12, h + 12, COLORS.gold, 4).setVisible(false);
     const key = dexKey(e);
     const sprite = this.textures.exists(key)
-      ? this.add.image(0, -10, key).setDisplaySize(84, 84)
-      : this.add.text(0, -10, '?', { fontFamily: FONT, fontSize: '40px', color: HEX.text }).setOrigin(0.5);
-    // Los que no tienes, en silueta
-    if (!e.owned && sprite instanceof Phaser.GameObjects.Image) sprite.setTintFill(0x2b3a67).setAlpha(0.75);
-    const num = this.add.text(-w / 2 + 10, -h / 2 + 8, `#${String(e.id).padStart(4, '0')}`, { fontFamily: FONT, fontSize: '11px', color: HEX.textSoft });
+      ? this.add.image(0, -8, key).setDisplaySize(84, 84)
+      : this.add.text(0, -8, '?', { fontFamily: FONT, fontSize: '40px', color: e.owned ? HEX.text : '#5a6488' }).setOrigin(0.5);
+    // Los que no tienes, en silueta oscura
+    if (!e.owned && sprite instanceof Phaser.GameObjects.Image) sprite.setTintFill(0x161d33).setAlpha(0.9);
+    const num = this.add.text(-w / 2 + 8, -h / 2 + 5, `#${String(e.id).padStart(4, '0')}`, { fontFamily: FONT, fontSize: '11px', color: e.owned ? HEX.textSoft : '#8a94b8' });
     const name = this.add
-      .text(0, h / 2 - 16, shorten(e.name, 12), { fontFamily: FONT, fontSize: '13px', fontStyle: 'bold', color: e.owned ? HEX.text : '#5f6b7a' })
+      .text(0, h / 2 - 15, shorten(e.name, 12), { fontFamily: FONT, fontSize: '13px', fontStyle: 'bold', color: e.owned ? HEX.text : '#aab4d0' })
       .setOrigin(0.5);
     const parts: Phaser.GameObjects.GameObject[] = [bg, glow, sprite, num, name];
     if (e.shiny) {
-      parts.push(this.add.text(w / 2 - 14, -h / 2 + 14, '★', { fontFamily: FONT, fontSize: '18px', color: '#ffd34d' }).setOrigin(0.5).setStroke('#8a6d1a', 3));
+      parts.push(this.add.text(w / 2 - 16, h / 2 - 40, '★', { fontFamily: FONT, fontSize: '18px', color: '#ffd34d' }).setOrigin(0.5).setStroke('#8a6d1a', 3));
     }
+    // Legendarios y ultraentes que tienes: destellos
+    if (e.owned && (e.rarity === 'legendary' || e.rarity === 'ultra')) parts.push(...addTwinkles(this, w, h, RARITY_COLORS[e.rarity], 2));
     const box = this.add.container(x, y, parts).setSize(w, h);
     box.setInteractive(new Phaser.Geom.Rectangle(0, 0, w, h) /* Phaser la centra solo */, Phaser.Geom.Rectangle.Contains);
     box.input!.cursor = 'pointer';
-    return { box, glow };
+    return { box, glow, sprite };
   }
 
   private highlight() {
@@ -247,6 +251,10 @@ export class PokedexScene extends Phaser.Scene {
     this.tiles.forEach((t, k) => {
       t.glow.setVisible(k === local);
       t.box.setScale(k === local ? 1.08 : 1).setDepth(k === local ? 1 : 0);
+      // El elegido da saltitos
+      this.tweens.killTweensOf(t.sprite);
+      t.sprite.y = -8;
+      if (k === local) this.tweens.add({ targets: t.sprite, y: -16, duration: 260, yoyo: true, repeat: -1, repeatDelay: 220, ease: 'Quad.easeOut' });
     });
     const e = this.view[this.selected];
     if (!e) return;
@@ -256,10 +264,45 @@ export class PokedexScene extends Phaser.Scene {
     this.info.setColor(e.owned ? hex(RARITY_COLORS[e.rarity]) : HEX.textSoft);
   }
 
-  /** Enter, A o clic: suena el grito de los que tienes. */
+  /** Enter, A o clic: abre la ficha grande (y suena el grito de los que tienes). */
   private use() {
+    this.openCard(0);
+  }
+
+  private openCard(dir: number) {
     const e = this.view[this.selected];
-    if (e?.owned) void cry(e.id);
+    if (!e) return;
+    this.card?.destroy();
+    sfx('select');
+    const card = new DexCard(
+      this,
+      { id: e.id, name: e.name, rarity: e.rarity, types: e.types?.length ? [...e.types] : ['normal'], owned: e.owned, shiny: e.shiny, texture: this.textures.exists(dexKey(e)) ? dexKey(e) : undefined },
+      () => this.closeCard(),
+      dir,
+    );
+    this.card = card;
+    if (e.owned) {
+      void cry(e.id);
+      fetchPokemonCard(e.id)
+        .then((c) => this.card === card && card.setStats(c.stats))
+        .catch(() => undefined);
+    }
+  }
+
+  private closeCard() {
+    const c = this.card;
+    this.card = undefined;
+    c?.close();
+  }
+
+  /** Con la ficha abierta, ◀ ▶ pasan al anterior/siguiente (cargando su sprite si hace falta). */
+  private async stepCard(d: number) {
+    const n = this.view.length;
+    if (n === 0) return;
+    this.select((this.selected + d + n) % n);
+    const e = this.view[this.selected];
+    if (e && !this.textures.exists(dexKey(e))) await this.loadSprites([e]);
+    if (this.card) this.openCard(d);
   }
 
   update() {
@@ -271,6 +314,11 @@ export class PokedexScene extends Phaser.Scene {
     const keys = { q: J(k.Q), e: J(k.E), r: J(k.R), t: J(k.T), f: J(k.F) };
     if (!this.filters) {
       if (s.back) this.goBack();
+      return;
+    }
+    if (this.card) {
+      if (s.back || s.ok) this.closeCard();
+      else if (s.dx) void this.stepCard(Math.sign(s.dx));
       return;
     }
     if (this.filters.handle(keys, pad)) return;
