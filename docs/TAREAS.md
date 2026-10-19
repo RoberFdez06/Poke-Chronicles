@@ -284,7 +284,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
   Acero; Granizo igual salvo Hielo; Niebla reduce la vista (oscurece los bordes). Efecto visual pixel (gotas, rayos
   de sol, arena, granizo) ligero. Indicador en el HUD. Lógica pura con tests.
 
-## [ ] T39 — Eventos en salas
+## [x] T39 — Eventos en salas
 - Salas sorpresa (1 de cada pocos pisos): Pokémon raro que huye (si lo vences antes de que escape, buen premio),
   mercader ambulante (otros objetos y precios), altar (das PS máximos a cambio de un objeto), cofre trampa (puede
   ser un enemigo). Iconos en el minimapa al descubrirlas. Con teclado, ratón y mando. Lógica pura con tests.

@@ -878,3 +878,24 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   arena, granizo) o rayos de sol, un tinte encima de la sala y, con niebla, una viñeta (textura con degradado hecha
   una vez) que sigue al jugador. Profundidad 20 (encima de la sala, debajo de los carteles). Tiene modo `low` con
   menos partículas, para la T41.
+
+## T39 — Eventos en salas (salas sorpresa)
+- `src/level/roomEvents.ts` (tests `tests/roomEvents.test.ts`): `pickRoomEvent` (35 % de los pisos desde el 2, una sala
+  de combate sin cofre ni minijefe, mejor sin salida; con la semilla del piso), Pokémon raro (`RUNAWAY_SECONDS` 12,
+  vida x2,5, `runawayTickets`), mercader (`merchantStock`: 3 pasivos/poderes a 8, 14 y 22 monedas, sin pociones),
+  altar (`altarCost` 15 % de PS máx., no baja de 30) y cofre trampa (`trapChestOutcome`, 45 % enemigo).
+- **RUN_VERSION 13**: `eventsDone` (salas sorpresa resueltas del piso) y `hpSacrificed` (PS máx. dados en altares,
+  pasa de piso en piso por `FloorCarry`); los v12 se migran con [] y 0. `calcStats` resta `hpSacrificed`.
+- GameScene: `startEvent` al entrar en la sala sin resolver (antes que el combate normal). El Pokémon raro es un
+  enemigo con `runaway` (no hace daño al tocarte; `updateRunaway` lo aleja de ti cada fotograma, se escurre de lado
+  en las paredes y a los 12 s se va con humo: la sala queda limpia con su ticket normal). Mercader, altar y cofre se
+  usan con Enter / A / clic cerca (`eventSpots` en `updateInteract`, aviso encima) o clic en el objeto; al resolverse
+  la sala queda limpia sin dar tickets (`finishEvent`). El enemigo del cofre trampa lleva `mimic`; al vencerlo
+  (o al raro) `eventFoeDefeated` da el premio. Marca en el minimapa (rombo con el color del evento) al visitarla.
+- Dibujos sencillos con Graphics (puesto, altar) e iconos que ya había (bolsa, disco, estrella, cofre tintado);
+  si el supervisor quiere, puede cambiarlos por arte suyo.
+- e2e: `boss.spec.ts` (ayudantes del jefe: 0 en vez de 2) y `flow.spec.ts` ("Texture key already in use:
+  starter-X-front") **ya fallaban en 5b60bce**, antes de mis tareas (lo he comprobado con una copia de trabajo
+  aparte). Lo miro en la T29.
+- En GameScene solo he subido mis trozos: los del supervisor (puertas de Gimnasio en `buildDoor`/`setDoorsLocked`)
+  siguen sin commit en su copia.

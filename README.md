@@ -267,6 +267,19 @@ enemigos, un 3 % de daño a quien no sea Roca/Tierra/Acero; al jugador nunca lo 
 afecta), **Granizo** (igual, salvo Hielo) y **Niebla** (oscurece los bordes alrededor del jugador). Se ve en el HUD
 junto al piso y con un aviso al empezar.
 
+## Salas sorpresa
+
+Desde el piso 2 de Normal e Infinito, más o menos uno de cada tres pisos tiene una **sala sorpresa** (`src/level/roomEvents.ts`):
+una sala de combate (nunca la del minijefe ni las de cofre) que guarda otra cosa. Se marca en el minimapa con un rombo de
+color al descubrirla, hasta resolverla.
+- **Pokémon raro** (celeste): el Pokémon más fuerte del piso, brillante, que huye de ti; si lo vences en 12 s da
+  tickets (3 + piso) y un objeto; si no, se escapa.
+- **Mercader ambulante** (turquesa): tres objetos o poderes por 8, 14 y 22 monedas; compras uno y se marcha.
+- **Altar** (morado): das un 15 % de tus PS máximos (para el resto de la partida) a cambio de un objeto.
+- **Cofre misterioso** (dorado): se abre sin llave; a veces es una trampa y sale un Pokémon fuerte que suelta el objeto.
+
+Se usan con Enter / A / clic cerca (como el cofre o la tienda).
+
 ## Salas con obstáculos
 
 Las salas de combate tienen diseños variados (`src/level/roomLayouts.ts`, elegidos con la semilla del piso y a veces
@@ -492,7 +505,7 @@ Difícil: 130 % de vida, 135 % de daño, curas x0,8 y 1,5 veces los tickets. Cad
 (Normal en `pokeisaac.records`, las otras en `pokeisaac.records.easy` / `.hard`). Se ve en la pausa y en el hueco.
 El desafío diario siempre es Normal.
 
-Las partidas de cualquier modo se guardan en los huecos (`RUN_VERSION` 12; los guardados de versiones
+Las partidas de cualquier modo se guardan en los huecos (`RUN_VERSION` 13; los guardados de versiones
 anteriores se migran solos).
 En Oleadas, al continuar se repite la ronda en la que estabas.
 

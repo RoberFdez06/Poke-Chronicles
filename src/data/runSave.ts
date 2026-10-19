@@ -22,8 +22,9 @@ export const RUN_SLOTS = 3;
  * v8: objeto activo (y su carga) y objetos activos en el suelo.
  * v11: desafío diario (los v10 no lo eran).
  * v12: dificultad (los v11 eran todos Normal).
+ * v13: salas sorpresa ya resueltas en el piso y PS máximos dados en altares (los v12 no tenían).
  */
-export const RUN_VERSION = 12;
+export const RUN_VERSION = 13;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -102,6 +103,10 @@ export interface RunSave {
   daily: DailyRun | null;
   /** Fácil, Normal o Difícil (T40). */
   difficulty: Difficulty;
+  /** Salas sorpresa (T39) de este piso ya resueltas. */
+  eventsDone: number[];
+  /** PS máximos dados en altares en toda la partida (se restan de los máximos). */
+  hpSacrificed: number;
 }
 
 export interface DailyRun {
@@ -194,6 +199,11 @@ function migrateV11(d: RunSave): RunSave {
   return { ...d, version: 12, difficulty: 'normal' };
 }
 
+/** v12 no tenía salas sorpresa. */
+function migrateV12(d: RunSave): RunSave {
+  return { ...d, version: 13, eventsDone: [], hpSacrificed: 0 };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -215,6 +225,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 9) d = migrateV9(d);
   if (d.version === 10) d = migrateV10(d);
   if (d.version === 11) d = migrateV11(d);
+  if (d.version === 12) d = migrateV12(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
@@ -233,7 +244,7 @@ export function parseRun(raw: string | null): RunSave | null {
     (d.active === null || (!!d.active && typeof d.active.id === 'string' && isInt(d.active.charge) && d.active.charge >= 0)) &&
     typeof d.healed === 'boolean' && isCounters(d.counters) &&
     (d.daily === null || (!!d.daily && isInt(d.daily.day) && typeof d.daily.counts === 'boolean')) &&
-    isDifficulty(d.difficulty);
+    isDifficulty(d.difficulty) && isIntArray(d.eventsDone) && isInt(d.hpSacrificed) && d.hpSacrificed >= 0;
   return ok ? d : null;
 }
 

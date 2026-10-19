@@ -8,6 +8,20 @@ import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, Saved
 import { dailyFloorSeed, dailyRng } from '../data/daily';
 import { weatherChip, weatherFor, weatherHurts, weatherPowerMul, WEATHER_DESC, WEATHER_LABEL, WEATHER_TICK_MS, type Weather } from '../data/weather';
 import { WeatherFx } from '../ui/weatherFx';
+import {
+  altarCost,
+  canUseAltar,
+  merchantStock,
+  pickRoomEvent,
+  runawayTickets,
+  trapChestOutcome,
+  RoomEvent,
+  RoomEventKind,
+  ROOM_EVENT_COLOR,
+  ROOM_EVENT_LABEL,
+  RUNAWAY_HP_MUL,
+  RUNAWAY_SECONDS,
+} from '../level/roomEvents';
 import { applyDifficulty, scaleHeal, scaleTickets, withDifficulty, type Difficulty } from '../data/difficulty';
 import { loadSpeciesIndex } from '../data/speciesIndex';
 import {
@@ -207,7 +221,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed'
 >;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
@@ -390,6 +404,15 @@ export class GameScene extends Phaser.Scene {
   private weatherTickAt = 0;
   /** Tipos del Pokémon del jugador (cambian al evolucionar). */
   private playerTypes: string[] = ['normal'];
+  /** Sala sorpresa del piso (T39), las ya resueltas y los PS máximos dados en altares (toda la partida). */
+  private roomEvent: RoomEvent | null = null;
+  private eventsDone = new Set<number>();
+  private hpSacrificed = 0;
+  /** Lo dibujado del evento de la sala actual y los sitios donde se usa con Enter / A / clic. */
+  private eventObjs: Phaser.GameObjects.GameObject[] = [];
+  private eventSpots: { x: number; y: number; prompt: () => string; use: () => void }[] = [];
+  /** Pokémon raro que huye: hasta cuándo se queda y su cuenta atrás. */
+  private runaway?: { sprite: Sprite; until: number; label: Phaser.GameObjects.Text; name: string };
   /** Oleadas: hay una ronda en marcha (sus enemigos ya han salido). */
   private waveActive = false;
   private floorSeed = 0;
@@ -651,6 +674,11 @@ export class GameScene extends Phaser.Scene {
 
   private async boot(loading: Phaser.GameObjects.Text) {
     const r = this.resume;
+    this.hpSacrificed = r?.hpSacrificed ?? this.carry?.hpSacrificed ?? 0;
+    this.eventsDone = new Set(r?.eventsDone ?? []);
+    this.eventObjs = [];
+    this.eventSpots = [];
+    this.runaway = undefined;
     if (r) {
       this.floorNum = r.floor;
       this.bossHistory = [...r.bossHistory];
@@ -921,6 +949,8 @@ export class GameScene extends Phaser.Scene {
     const { stats, active } = applySynergies(computeStats(this.passives, this.base), this.passives, types);
     this.synergies = active.map((syn) => syn.id);
     this.ability?.apply?.(stats);
+    // Altares (T39): los PS máximos dados se pierden para el resto de la partida
+    if (this.hpSacrificed > 0) stats.maxHp = Math.max(1, stats.maxHp - this.hpSacrificed);
     return stats;
   }
 
@@ -970,6 +1000,234 @@ export class GameScene extends Phaser.Scene {
       e.setData('hp', hp).setData('flashUntil', time + 80);
       if (hp <= 0) this.time.delayedCall(0, () => e.active && this.killEnemy(e));
     }
+  }
+
+  // --- Salas sorpresa (T39, roomEvents.ts) ---
+
+  /** Al entrar en la sala sorpresa sin resolver: prepara su evento. */
+  private startEvent(room: Room, kind: RoomEventKind) {
+    this.clearEventObjs();
+    const i = this.interior(room);
+    // Mismo azar cada vez que entras en esta sala (y en el desafío diario, el de todos)
+    const rng = mulberry32((this.floorSeed ^ Math.imul(room.id + 1, 0x9e3779b1)) >>> 0);
+    this.notify(`¡Sala sorpresa!\n${ROOM_EVENT_LABEL[kind]}`, { kind: 'info', icon: 'star' });
+    const keep = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
+      this.eventObjs.push(o);
+      return o;
+    };
+    const clickable = (o: Phaser.GameObjects.Image | Phaser.GameObjects.Zone, use: () => void) => {
+      o.setInteractive({ useHandCursor: true });
+      o.on('pointerover', () => (this.overHud = true));
+      o.on('pointerout', () => (this.overHud = false));
+      o.on('pointerdown', () => this.current?.id === room.id && use());
+    };
+    const label = (x: number, y: number, text: string, size = 15, color = '#ffffff') =>
+      keep(this.add.text(x, y, text, { fontFamily: FONT, fontSize: `${size}px`, color, stroke: '#101828', strokeThickness: 4, align: 'center' }).setOrigin(0.5).setDepth(4));
+
+    if (kind === 'runaway') {
+      if (this.foeKinds.length === 0) return this.finishEvent(room);
+      // El más raro del piso (el de más estadísticas), brillante y deprisa
+      const k = [...this.foeKinds].sort((a, b) => b.bst - a.bst)[0];
+      const e = this.spawnEnemy(k, 'chase');
+      const ai = e.getData('ai') as EnemyAI;
+      ai.eliteMove = undefined;
+      const hp = Math.round((e.getData('maxHp') as number) * RUNAWAY_HP_MUL);
+      e.setData('hp', hp).setData('maxHp', hp).setData('runaway', true).setData('elite', false);
+      (e as Sprite & { preFX?: { addGlow: (c: number, o?: number, i?: number, k?: boolean, q?: number, d?: number) => unknown } }).preFX?.addGlow(0x4fc3f7, 5, 0, false, 0.1, 12);
+      sparkle(this, e.x, e.y);
+      void cry(Number(k.key.replace('foe-', '')));
+      const name = k.name ? k.name.charAt(0).toUpperCase() + k.name.slice(1) : 'Pokémon raro';
+      this.runaway = { sprite: e, until: this.time.now + RUNAWAY_SECONDS * 1000, label: label(e.x, e.y - 50, '', 16, '#9fe3ff'), name };
+      this.notify(`¡Un ${name} raro! Véncelo antes de que huya`, { kind: 'danger', icon: 'clock' });
+      this.setDoorsLocked(room, true, true);
+      sfx('door');
+      return;
+    }
+
+    if (kind === 'merchant') {
+      // Puesto con tres artículos; los poderes se copian para no gastar la bolsa si no compras
+      const stock = merchantStock(rng, new Set(this.passives), [...this.movePool], this.passivePool());
+      const g = keep(this.add.graphics().setDepth(2));
+      g.fillStyle(0x6b4423, 1).fillRect(i.cx - 200, i.cy - 120, 400, 26);
+      for (let k = 0; k < 5; k++) g.fillStyle(k % 2 ? 0xf4f1e6 : 0x1abc9c, 1).fillTriangle(i.cx - 200 + k * 80, i.cy - 120, i.cx - 120 + k * 80, i.cy - 120, i.cx - 160 + k * 80, i.cy - 156);
+      label(i.cx, i.cy - 176, 'Mercader ambulante: elige uno y se marcha', 16, '#ffe9a8');
+      stock.forEach((slot, k) => {
+        const x = i.cx + (k - 1) * 150;
+        const y = i.cy + 10;
+        const gd = slot.goods;
+        const passive = gd.kind === 'passive' ? passiveById(gd.id) : undefined;
+        const name = gd.kind === 'move' ? pretty(gd.move.name) : (passive?.name ?? 'Objeto');
+        keep(this.add.ellipse(x, y + 26, 80, 26, 0x000000, 0.25).setDepth(1));
+        const img = keep(this.add.image(x, y, iconKey(gd.kind === 'move' ? 'disc' : 'bag')).setScale(3).setDepth(3));
+        if (gd.kind === 'move') img.setTint(typeColor(gd.move.type));
+        clickable(img, () => this.buyFromMerchant(room, slot, name));
+        label(x, y + 48, name, 14);
+        label(x, y + 68, `${slot.price} monedas`, 14, '#ffd34d');
+        this.eventSpots.push({ x, y, prompt: () => `Enter / A / clic: comprar ${name} por ${slot.price} (tienes ${this.coins})`, use: () => this.buyFromMerchant(room, slot, name) });
+      });
+      return;
+    }
+
+    if (kind === 'altar') {
+      const g = keep(this.add.graphics().setDepth(2));
+      g.fillStyle(0x4a4a5a, 1).fillRect(i.cx - 60, i.cy - 10, 120, 50);
+      g.fillStyle(0x6e6e84, 1).fillRect(i.cx - 72, i.cy - 22, 144, 16);
+      g.fillStyle(0xb388ff, 0.8).fillRect(i.cx - 40, i.cy + 4, 80, 6);
+      const orb = keep(this.add.image(i.cx, i.cy - 56, iconKey('star')).setScale(3).setDepth(3).setTint(0xd9c2ff));
+      this.tweens.add({ targets: orb, y: i.cy - 66, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      label(i.cx, i.cy + 64, 'Altar: da PS máximos a cambio de un objeto', 15, '#e3d4ff');
+      const use = () => this.useAltar(room, i.cx, i.cy + 90);
+      clickable(keep(this.add.zone(i.cx, i.cy + 9, 144, 62)), use);
+      this.eventSpots.push({
+        x: i.cx,
+        y: i.cy,
+        prompt: () =>
+          canUseAltar(this.stats.maxHp) ? `Enter / A / clic: dar ${altarCost(this.stats.maxHp)} PS máximos por un objeto` : 'Tienes muy pocos PS máximos para el altar',
+        use,
+      });
+      return;
+    }
+
+    // Cofre misterioso: se abre sin llave… pero puede ser una trampa
+    const img = keep(this.add.image(i.cx, i.cy, iconKey('chest')).setScale(3.4).setDepth(3).setTint(0xd9b3ff));
+    this.tweens.add({ targets: img, angle: { from: -4, to: 4 }, duration: 260, yoyo: true, repeat: -1, repeatDelay: 1400 });
+    label(i.cx, i.cy + 52, 'Cofre misterioso (sin llave)', 15, '#f0dcff');
+    const open = () => this.openTrapChest(room, i.cx, i.cy, rng);
+    clickable(img, open);
+    this.eventSpots.push({ x: i.cx, y: i.cy, prompt: () => 'Enter / A / clic: abrir el cofre', use: open });
+  }
+
+  private buyFromMerchant(room: Room, slot: ShopSlot, name: string) {
+    if (this.ended || this.transitioning || this.eventsDone.has(room.id)) return;
+    if (this.coins < slot.price) return this.notify(`Te faltan monedas (${this.coins}/${slot.price})`, { kind: 'warning', icon: 'coin' });
+    this.coins -= slot.price;
+    sfx('buy');
+    const g = slot.goods;
+    if (g.kind === 'move') {
+      // Sale de la bolsa de poderes, como en la tienda
+      const k = this.movePool.findIndex((m) => m.name === g.move.name);
+      if (k >= 0) this.movePool.splice(k, 1);
+      this.gainItem({ kind: 'move', move: g.move });
+    } else if (g.kind === 'passive') {
+      const item = passiveById(g.id);
+      if (item) this.gainItem({ kind: 'passive', item });
+    }
+    this.notify(`Has comprado ${name}\nEl mercader se marcha`, { kind: 'item', icon: 'shop' });
+    this.refreshInventory();
+    this.finishEvent(room);
+  }
+
+  private useAltar(room: Room, x: number, y: number) {
+    if (this.ended || this.transitioning || this.eventsDone.has(room.id)) return;
+    if (!canUseAltar(this.stats.maxHp)) return this.notify('Tienes muy pocos PS máximos para el altar', { kind: 'warning', icon: 'heart' });
+    const cost = altarCost(this.stats.maxHp);
+    this.hpSacrificed += cost;
+    this.stats = this.calcStats();
+    this.hp = Math.min(this.hp, this.stats.maxHp);
+    sfx('heal');
+    this.cameras.main.flash(250, 180, 140, 255);
+    this.popup(this.player.x, this.player.y - 50, `-${cost} PS máx.`, 0xb388ff);
+    this.notify(`Has dado ${cost} PS máximos\nEl altar te da un objeto`, { kind: 'item', icon: 'star' });
+    const p = this.freeSpot(x, y);
+    this.dropItem(room.id, p.x, p.y);
+    this.finishEvent(room);
+  }
+
+  private openTrapChest(room: Room, x: number, y: number, rng: () => number) {
+    if (this.ended || this.transitioning || this.eventsDone.has(room.id)) return;
+    this.clearEventObjs();
+    if (trapChestOutcome(rng) === 'item') {
+      sfx('buy');
+      const img = this.add.image(x, y, iconKey('chestOpen')).setScale(3.4).setDepth(2);
+      this.time.delayedCall(4000, () => img.active && img.destroy());
+      const p = this.freeSpot(x, y + 60);
+      this.dropItem(room.id, p.x, p.y);
+      this.notify('¡Cofre abierto!', { kind: 'reward', icon: 'chestOpen' });
+      this.finishEvent(room);
+      return;
+    }
+    // ¡Trampa! Sale un Pokémon fuerte del piso; al vencerlo suelta el objeto
+    if (this.foeKinds.length === 0) return this.finishEvent(room);
+    const k = [...this.foeKinds].sort((a, b) => b.bst - a.bst)[0];
+    const e = this.spawnEnemy(k, k.behavior);
+    (e.body as Body).reset(x, y);
+    const hp = Math.round((e.getData('maxHp') as number) * 2);
+    e.setData('hp', hp).setData('maxHp', hp).setData('mimic', true);
+    this.cameras.main.shake(160, 0.006);
+    sfx('hurt');
+    this.notify('¡Era una trampa!\nVence al Pokémon para quedarte el objeto', { kind: 'danger', icon: 'chest' });
+    this.setDoorsLocked(room, true, true);
+  }
+
+  /** Cada fotograma: el Pokémon raro se aleja de ti y, si se acaba el tiempo, huye. */
+  private updateRunaway(time: number) {
+    const r = this.runaway;
+    if (!r) return;
+    const e = r.sprite;
+    if (!e.active) {
+      r.label.destroy();
+      this.runaway = undefined;
+      return;
+    }
+    const left = Math.max(0, Math.ceil((r.until - time) / 1000));
+    r.label.setText(`¡Huye! ${left} s`).setPosition(e.x, e.y - 50);
+    if (this.ended || this.transitioning) return;
+    if (time >= r.until) {
+      // Se escapa: humo y fuera; la sala queda limpia, sin premio extra
+      const room = this.current;
+      this.runaway = undefined;
+      r.label.destroy();
+      dustBurst(this, e.x, e.y + 20);
+      e.destroy();
+      this.notify(`¡${r.name} ha huido!`, { kind: 'warning', icon: 'clock' });
+      this.eventsDone.add(room.id);
+      this.checkClear();
+      return;
+    }
+    const away = new Phaser.Math.Vector2(e.x - this.player.x, e.y - this.player.y);
+    if (away.lengthSq() === 0) away.set(1, 0);
+    away.normalize();
+    // Contra una pared, se escurre de lado
+    const b = e.body as Body;
+    if (!b.blocked.none) away.add(new Phaser.Math.Vector2(-away.y, away.x).scale(1.2)).normalize();
+    const speed = ((e.getData('speed') as number | undefined) ?? 100) * 1.2;
+    e.setVelocity(away.x * speed, away.y * speed);
+  }
+
+  /** El Pokémon raro o el del cofre trampa caen: premio (el raro, además, tickets). */
+  private eventFoeDefeated(enemy: Sprite) {
+    const room = this.current;
+    this.eventsDone.add(room.id);
+    if (enemy.getData('runaway')) {
+      this.runaway?.label.destroy();
+      this.runaway = undefined;
+      const t = this.giveTickets(runawayTickets(this.floorNum));
+      this.notify(`¡Lo has vencido a tiempo! +${t} tickets\nHa caído un objeto`, { kind: 'reward', icon: 'ticket' });
+    } else this.notify('¡Has vencido a la trampa!\nHa caído un objeto', { kind: 'reward', icon: 'chestOpen' });
+    const p = this.freeSpot(enemy.x, enemy.y);
+    this.time.delayedCall(800, () => !this.ended && this.dropItem(room.id, p.x, p.y));
+  }
+
+  /** Evento resuelto sin pelea (mercader, altar, cofre con premio): la sala queda limpia sin dar tickets. */
+  private finishEvent(room: Room) {
+    this.eventsDone.add(room.id);
+    this.cleared.add(room.id);
+    this.eventSpots = [];
+    this.prompt.setText('');
+    this.drawMap();
+    this.saveNow();
+    // Lo dibujado se va con un fundido
+    const objs = this.eventObjs;
+    this.eventObjs = [];
+    this.tweens.add({ targets: objs, alpha: 0, duration: 500, onComplete: () => objs.forEach((o) => o.destroy()) });
+  }
+
+  private clearEventObjs() {
+    this.eventObjs.forEach((o) => o.destroy());
+    this.eventObjs = [];
+    this.eventSpots = [];
+    this.runaway?.label.destroy();
+    this.runaway = undefined;
   }
 
   /** Tickets ganados con la dificultad (T40): se suman al total y a los de la partida; devuelve cuántos. */
@@ -1125,6 +1383,11 @@ export class GameScene extends Phaser.Scene {
         .sort((a, b) => Math.abs(b.gx - st.gx) + Math.abs(b.gy - st.gy) - (Math.abs(a.gx - st.gx) + Math.abs(a.gy - st.gy)) || a.id - b.id)[0];
       this.minibossRoom = far?.id;
     }
+    // Sala sorpresa (T39): con la semilla del piso (la misma al continuar), nunca la del minijefe ni las de cofre
+    this.roomEvent =
+      (this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)
+        ? pickRoomEvent(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x2545f491), new Set(this.minibossRoom !== undefined ? [this.minibossRoom] : []))
+        : null;
 
     // Al continuar: objetos, estado del jugador y sala donde estabas
     const r = this.resume;
@@ -1493,6 +1756,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       counters: { ...this.counters },
       daily: this.daily ? { ...this.daily } : null,
       difficulty: this.diff,
+      eventsDone: [...this.eventsDone],
+      hpSacrificed: this.hpSacrificed,
     });
   }
 
@@ -1961,6 +2226,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             dustBurst(this, block.x, block.y, 0.9, 7);
           },
         });
+    // Sala sorpresa: se marca al descubrirla, hasta resolverla
+    const ev = this.roomEvent;
+    if (ev && this.visited.has(ev.roomId) && !this.eventsDone.has(ev.roomId)) marks.set(ev.roomId, ROOM_EVENT_COLOR[ev.kind]);
       }
     }
   }
@@ -2348,6 +2616,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else if (x < i.x0 - WALL / 2) exit = 'left';
     else if (x > i.x1 + WALL / 2) exit = 'right';
     if (exit && this.current.doors[exit] !== undefined) this.transition(exit);
+    } else if (this.roomEvent?.roomId === room.id && !this.eventsDone.has(room.id) && !this.cleared.has(room.id)) {
+      this.startEvent(room, this.roomEvent.kind);
   }
 
   // --- Obstáculos (roomLayouts.ts) ---
@@ -2374,6 +2644,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         const cx = x + TILE / 2;
         const cy = y + TILE / 2;
         const sc = TILE / ART_TILE;
+    this.clearEventObjs();
         switch (c) {
           case 'R': {
             // Cada roca va aparte para que una bomba pueda romperla
@@ -3329,6 +3600,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.orientShots();
     updateShots(this.host, this.shots, time, delta);
     updateShots(this.host, this.foeShots, time, delta);
+      hpSacrificed: this.hpSacrificed,
     this.weatherFx?.update(delta, this.player);
     if (!this.ended) this.counters.seconds += delta / 1000;
     this.weatherTick(time);
@@ -3505,6 +3777,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Telescopio: tus disparos giran poco a poco hacia el enemigo más cercano. */
   private steerShots(delta: number) {
     const enemies = (this.enemies.getChildren() as Sprite[]).filter((e) => e.active && (e.body as Body).enable);
+    this.updateRunaway(time);
+
     if (enemies.length === 0) return;
     const maxTurn = this.stats.homing * (delta / 1000);
     for (const c of this.shots.getChildren()) {
@@ -3859,6 +4133,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const name = this.add.text(bx + 22, 30, label, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#f8f8f8' }).setOrigin(0, 0.5);
     const chip = addTypeChip(this, bx + 20 + name.width + 56, 30, typeNameEs(type), typeColor(type), 92, 24);
     const barX = bx + 20 + name.width + 116;
+    if (enemy.getData('runaway') || enemy.getData('mimic')) this.eventFoeDefeated(enemy);
     const bar = addHpBar(this, barX, 23, bx + 860 - barX, 14);
     const objects = [box, name, ...chip, ...bar.objects];
     for (const o of objects) {
@@ -4136,6 +4411,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     return false;
   }
+    // Salas sorpresa (T39): mercader, altar y cofre misterioso
+    const spot = this.eventSpots.find((sp) => Phaser.Math.Distance.Between(px, py, sp.x, sp.y) < NEAR);
+    if (spot) {
+      this.prompt.setText(spot.prompt()).setPosition(spot.x, spot.y - 56);
+      if (act) {
+        spot.use();
+        return padA;
+      }
+      return false;
+    }
 
   // --- Estados (quemar, congelar, paralizar…) ---
 
@@ -4517,6 +4802,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.endedAt = this.time.now;
     this.physics.pause();
     // El jugador celebra o se debilita (la cámara se acerca al caer)
+    // El Pokémon raro solo quiere huir
+    if (enemy.getData('runaway')) return;
     const pb = this.player?.body as Body | null;
     if (this.player?.active) {
       if (won) cheerPlayer(this, this.player);

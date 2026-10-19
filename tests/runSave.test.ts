@@ -48,6 +48,8 @@ function sample(): RunSave {
     counters: { seconds: 125.5, kills: 14, damage: 900, newRecord: false },
     daily: null,
     difficulty: 'hard',
+    eventsDone: [5],
+    hpSacrificed: 12,
   };
 }
 
@@ -195,6 +197,16 @@ test('un guardado v11 se migra a dificultad Normal', () => {
   assert.equal(run.version, RUN_VERSION);
   assert.equal(run.difficulty, 'normal');
   assert.equal(parseRun(JSON.stringify({ ...sample(), difficulty: 'imposible' })), null);
+});
+
+test('un guardado v12 se migra sin salas sorpresa ni altares', () => {
+  const { eventsDone: _e, hpSacrificed: _h, ...v12 } = sample();
+  const run = parseRun(JSON.stringify({ ...v12, version: 12 }));
+  assert.ok(run);
+  assert.equal(run.version, RUN_VERSION);
+  assert.deepEqual(run.eventsDone, []);
+  assert.equal(run.hpSacrificed, 0);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), hpSacrificed: -3 })), null);
 });
 
 test('un piso no válido invalida el guardado', () => {
