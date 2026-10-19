@@ -8,6 +8,8 @@ import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, Saved
 import { dailyFloorSeed, dailyRng } from '../data/daily';
 import { weatherChip, weatherFor, weatherHurts, weatherPowerMul, WEATHER_DESC, WEATHER_LABEL, WEATHER_TICK_MS, type Weather } from '../data/weather';
 import { WeatherFx } from '../ui/weatherFx';
+import { TouchControls, type TouchButton } from '../ui/touchControls';
+import { touchOnlyDevice } from '../data/controls';
 import {
   altarCost,
   canUseAltar,
@@ -86,7 +88,7 @@ import { shotSfx } from '../data/sounds';
 import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
-import { bakeCombatFx, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
+import { bakeCombatFx, bossAura, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
 import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
@@ -405,6 +407,8 @@ export class GameScene extends Phaser.Scene {
   private weatherTickAt = 0;
   /** Tipos del Pokémon del jugador (cambian al evolucionar). */
   private playerTypes: string[] = ['normal'];
+  /** Joysticks y botones táctiles (T35): solo en móvil o tableta. */
+  private touch?: TouchControls;
   /** Sala sorpresa del piso (T39), las ya resueltas y los PS máximos dados en altares (toda la partida). */
   private roomEvent: RoomEvent | null = null;
   private eventsDone = new Set<number>();
@@ -1529,6 +1533,8 @@ export class GameScene extends Phaser.Scene {
     }
     // Minimapa arriba a la derecha
     this.minimap = hud(this.add.graphics());
+    // Controles táctiles (T35), solo en móvil o tableta (en PC nunca)
+    this.touch = touchOnlyDevice() ? new TouchControls(this, (o) => void hud(o)) : undefined;
     this.hurtFlash = hud(this.add.rectangle(GAME_VIEW.x + GAME_VIEW.w / 2, GAME_VIEW.y + GAME_VIEW.h / 2, GAME_VIEW.w, GAME_VIEW.h, 0xff2a2a, 0));
     // Avisos (T37): tarjetas en la franja derecha, bajo el minimapa
     this.toasts?.clear();
@@ -3082,6 +3088,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (ai.phase === 1 && bossPhase(ratio) === 2) {
       ai.phase = 2;
       sfx('enrage');
+      {
+        const bb = b.body as Body | null;
+        const feetY = bb ? bb.bottom : b.y + b.displayHeight / 2;
+        const col = typeColor(((b.getData('btypes') as string[] | undefined) ?? this.bossTypes)[0] ?? this.bossType);
+        phaseShock(this, b.x, feetY, col, 1.3);
+        this.cameras.main.flash(180, 255, 255, 255);
+        bossAura(this, b, col, () => { const bd = b.body as Body | null; return bd ? bd.bottom : b.y + b.displayHeight / 2; });
+        this.tweens.add({ targets: b, scaleX: b.scaleX * 1.18, scaleY: b.scaleY * 1.18, duration: 160, yoyo: true, ease: 'Quad.easeOut' });
+      }
       b.setData('speed', (b.getData('speed') as number) * PHASE2_SPEED);
       this.cameras.main.shake(250, 0.006);
       this.notify(`¡${(b.getData('bname') as string | undefined) ?? this.bossName} se enfurece!`, { kind: 'danger', icon: 'pokeball' });
@@ -3693,6 +3708,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       mx = pad!.leftStick.x;
       my = pad!.leftStick.y;
     }
+    // Joystick táctil izquierdo
+    if (this.touch && this.touch.move.lengthSq() > 0) {
+      mx = this.touch.move.x;
+      my = this.touch.move.y;
+    }
     // Ratón: mantener el clic derecho lleva al personaje hacia el cursor
     const pointer = this.input.activePointer;
     if (mx === 0 && my === 0 && pointer.rightButtonDown() && this.inGameView(pointer)) {
@@ -3735,11 +3755,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Centro Pokémon y tienda: Enter o A cerca del mostrador o de un artículo (A no lanza entonces el poder 1)
     // Bomba: E o RB (el clic va en el icono del HUD)
     const rbNow = hasPad && !!pad!.buttons[5]?.pressed;
-    if (Phaser.Input.Keyboard.JustDown(this.bombKey) || (rbNow && !this.rbPrev)) this.placeBomb();
+    if (Phaser.Input.Keyboard.JustDown(this.bombKey) || (rbNow && !this.rbPrev) || this.touch?.consume('bomb')) this.placeBomb();
     this.rbPrev = rbNow;
     // Objeto activo: Espacio o LB (el clic va en su cuadro)
     const lbNow = hasPad && !!pad!.buttons[4]?.pressed;
-    if (Phaser.Input.Keyboard.JustDown(this.activeKey) || (lbNow && !this.lbPrev)) this.useActive();
+    if (Phaser.Input.Keyboard.JustDown(this.activeKey) || (lbNow && !this.lbPrev) || this.touch?.consume('active')) this.useActive();
     this.lbPrev = lbNow;
     if (this.stats.homing > 0) this.steerShots(delta);
     const ltNow = hasPad && (pad!.buttons[6]?.value ?? 0) > 0.5;
@@ -3750,11 +3770,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     this.triggerPrev = [ltNow, rtNow];
     const padA = hasPad && pad!.A && !this.padPrev[0];
-    const usedA = this.updateInteract(Phaser.Input.Keyboard.JustDown(this.enterKey), padA);
+    const usedA = this.updateInteract(Phaser.Input.Keyboard.JustDown(this.enterKey) || !!this.touch?.consume('use'), padA);
 
     // Poderes: teclas 1-4 o botones A, B, X, Y
     this.abilityKeys.forEach((k, i) => {
-      if (Phaser.Input.Keyboard.JustDown(k)) this.castSlot(i, time);
+      if (Phaser.Input.Keyboard.JustDown(k) || this.touch?.consume(`power${i + 1}` as TouchButton)) this.castSlot(i, time);
     });
     if (hasPad) {
       [pad!.A, pad!.B, pad!.X, pad!.Y].forEach((down, i) => {
@@ -3823,10 +3843,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const ax = (right.isDown ? 1 : 0) - (left.isDown ? 1 : 0);
     const ay = (down.isDown ? 1 : 0) - (up.isDown ? 1 : 0);
     if (ax !== 0 || ay !== 0) return new Phaser.Math.Vector2(ax, ay).normalize();
+    // Joystick táctil derecho (en móvil el dedo en la sala no dispara: lo hace el joystick)
+    if (this.touch) {
+      const a = this.touch.aim;
+      if (a.lengthSq() > 0.04) return a.clone().normalize();
+    }
 
     const pointer = this.input.activePointer;
     // Solo el clic izquierdo dispara (el derecho es para moverse) y no sobre las ranuras de poder
-    if (pointer.leftButtonDown() && !this.overHud && this.inGameView(pointer)) {
+    if (!this.touch && pointer.leftButtonDown() && !this.overHud && this.inGameView(pointer)) {
       // Se recalcula con la cámara actual: worldX se queda viejo si la cámara se mueve
       const p = pointer.positionToCamera(this.cameras.main) as Phaser.Math.Vector2;
       const d = new Phaser.Math.Vector2(p.x - this.player.x, p.y - this.player.y);

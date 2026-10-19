@@ -237,3 +237,42 @@ export function clawMarks(scene: Phaser.Scene, x: number, y: number, color: numb
   scene.tweens.add({ targets: g, scaleX: 1, duration: 70, ease: 'Quad.easeOut' });
   scene.tweens.add({ targets: g, alpha: 0, delay: 160, duration: 220, onComplete: () => g.destroy() });
 }
+
+/** Onda de choque: anillos de color que se expanden (cuando un jefe cambia de fase). */
+export function phaseShock(scene: Phaser.Scene, x: number, y: number, color: number, scale = 1, depth = 7) {
+  for (let i = 0; i < 3; i++) {
+    const ring = scene.add.ellipse(x, y, 40 * scale, 24 * scale).setStrokeStyle(4 - i, i === 0 ? 0xffffff : color, 1).setFillStyle(color, i === 0 ? 0.25 : 0).setDepth(depth);
+    scene.tweens.add({
+      targets: ring, scaleX: 9 + i * 2, scaleY: 9 + i * 2, alpha: 0, duration: 650 + i * 160, delay: i * 130, ease: 'Cubic.easeOut',
+      onComplete: () => ring.destroy(),
+    });
+  }
+  starBurst(scene, x, y - 20 * scale, color, 8, scale * 1.2, depth + 2);
+  dustBurst(scene, x, y + 10 * scale, scale * 1.6, 14, depth);
+}
+
+/**
+ * Aura de furia: un óvalo palpitante del color del jefe bajo sus pies y brasas que suben mientras esté vivo.
+ * Se encarga sola de desaparecer cuando el jefe deja de estar activo.
+ */
+export function bossAura(scene: Phaser.Scene, boss: Phaser.GameObjects.Sprite, color: number, feet: () => number, depth = 3) {
+  const aura = scene.add.ellipse(boss.x, feet(), boss.displayWidth * 1.3, boss.displayWidth * 0.5).setFillStyle(color, 0.28).setStrokeStyle(2, color, 0.9).setDepth(depth);
+  let nextEmber = 0;
+  const tick = (time: number) => {
+    if (!boss.active) {
+      scene.events.off('update', tick);
+      aura.destroy();
+      return;
+    }
+    const pulse = 1 + Math.sin(time / 130) * 0.08;
+    aura.setPosition(boss.x, feet()).setScale(pulse, pulse).setAlpha(0.75 + Math.sin(time / 90) * 0.25);
+    if (time >= nextEmber) {
+      nextEmber = time + 110;
+      const e = scene.add.image(boss.x + (Math.random() - 0.5) * boss.displayWidth * 0.9, feet() - 4, DUST).setTint(color).setScale(1.2).setDepth(depth + 6).setAlpha(0.9);
+      scene.tweens.add({ targets: e, y: e.y - 40 - Math.random() * 40, alpha: 0, scale: 0.3, duration: 650, onComplete: () => e.destroy() });
+    }
+  };
+  scene.events.on('update', tick);
+  scene.events.once('shutdown', () => scene.events.off('update', tick));
+  return aura;
+}
