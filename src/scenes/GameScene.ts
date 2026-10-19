@@ -2490,7 +2490,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private pickItem(sprite: Sprite) {
     if (!sprite.active) return;
     const item = sprite.getData('item') as DroppedItem;
-    if (item.kind === 'move' && this.slots.indexOf(null) === -1) {
+    // Con la ranura ya elegida en la pantalla de cambio se recoge en el acto. Antes también miraba el enfriamiento que
+    // la propia elección acaba de poner (1,2 s): no se recogía, y al seguir encima se volvía a abrir la pantalla
+    if (item.kind === 'move' && this.slots.indexOf(null) === -1 && this.chosenSlot === undefined) {
       // Ranuras llenas: elige cuál sustituir; si lo dejas, el poder se queda en el suelo
       if (this.swapOpen || this.time.now < this.swapCooldownUntil) return;
       if (this.askSlot(item.move, (slot) => { this.chosenSlot = slot; this.pickItem(sprite); }, () => undefined)) return;

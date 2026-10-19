@@ -963,3 +963,14 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - **Fallo encontrado (N23, MenuScene del supervisor)**: una A del mando aún pulsada al aparecer el menú cuenta como
   pulsación nueva y entra en "Jugar". `pad.spec` lo tolera (vuelve con B) y avisa en la consola hasta que se arregle.
 - La skill `comprobar` ahora dice cuándo ejecutar `npm run e2e` y que se añadan solo los archivos propios.
+
+## Arreglo — retraso de ~1 s al coger un poder con las ranuras llenas (pedido por el supervisor)
+- Causa: con las 4 ranuras llenas, `pickItem` abre SlotSwap. Al elegir, `onChoice` pone `swapCooldownUntil = ahora +
+  1200` y en el mismo instante llama a `pickItem` con la ranura elegida (`chosenSlot`), pero `pickItem` miraba ese
+  enfriamiento recién puesto y salía sin recoger. A los ~1,2 s el solape con el objeto volvía a llamar a `pickItem`, que
+  abría **otra vez** la pantalla de cambio. La ranura elegida no llegaba a aplicarse, y `chosenSlot` se quedaba puesto
+  (lo usaba el siguiente poder).
+- Arreglo (GameScene `pickItem`): si ya hay `chosenSlot`, no se vuelve a preguntar ni se mira el enfriamiento.
+- Medido en el navegador: la recogida normal ya era inmediata (~5 ms, un fotograma); con las ranuras llenas ahora se
+  recoge en ~0,4 s desde el Enter (incluye la pulsación) y la pantalla se abre una sola vez.
+- Prueba nueva `tests/e2e/slotswap.spec.ts`.
