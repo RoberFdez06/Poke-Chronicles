@@ -1704,9 +1704,52 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.tweens.add({ targets: s, y: y - 8, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
   }
 
+  /**
+   * Lo recogido salta y vuela en arco hasta su sitio en el HUD (contador, PS, ranuras…), con destello al llegar y
+   * un saltito del contador. Solo visual: el valor ya se ha sumado.
+   */
+  private flyToHud(texture: string, frame: string | number | undefined, wx: number, wy: number, tx: number, ty: number, bump?: Phaser.GameObjects.Text) {
+    const cam = this.cameras.main;
+    const hudCam = this.hudCam;
+    if (!hudCam || !this.textures.exists(texture)) return;
+    const sx = (wx - cam.worldView.x) * cam.zoom + cam.x;
+    const sy = (wy - cam.worldView.y) * cam.zoom + cam.y;
+    const toHud = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
+      this.hudLayer.add(o);
+      o.cameraFilter &= ~hudCam.id;
+      return o;
+    };
+    const img = toHud(this.add.image(sx, sy, texture, frame).setScale(3.4).setDepth(60));
+    const ctrl = { x: (sx + tx) / 2, y: Math.min(sy, ty) - 160 };
+    const t = { v: 0 };
+    // Saltito en el sitio y luego vuela en arco (curva de Bézier)
+    this.tweens.add({ targets: img, scale: 4.2, duration: 110, yoyo: true });
+    this.tweens.add({
+      targets: t, v: 1, duration: 520, delay: 120, ease: 'Sine.easeIn',
+      onUpdate: () => {
+        const u = 1 - t.v;
+        img.setPosition(u * u * sx + 2 * u * t.v * ctrl.x + t.v * t.v * tx, u * u * sy + 2 * u * t.v * ctrl.y + t.v * t.v * ty);
+        img.setScale(3.4 - 1.4 * t.v).setAngle(t.v * 360);
+      },
+      onComplete: () => {
+        img.destroy();
+        const ring = toHud(this.add.circle(tx, ty, 8).setStrokeStyle(4, 0xffd34d, 1));
+        this.tweens.add({ targets: ring, radius: 30, alpha: 0, duration: 260, onComplete: () => ring.destroy() });
+        if (bump?.active) this.tweens.add({ targets: bump, scale: 1.45, duration: 90, yoyo: true, ease: 'Quad.easeOut' });
+      },
+    });
+  }
+
   private pickItem(sprite: Sprite) {
     if (!sprite.active) return;
     const item = sprite.getData('item') as DroppedItem;
+    {
+      const LX = HUD.left.x + HUD.pad;
+      const LW = HUD.left.w - HUD.pad * 2;
+      const [tx, ty] =
+        item.kind === 'move' ? [HUD.right.x + HUD.right.w / 2, this.slotY(0) + 32] : item.kind === 'active' ? [LX + LW / 2, H - 71] : [LX + LW / 2, 345];
+      this.flyToHud(sprite.texture.key, sprite.frame.name, sprite.x, sprite.y, tx, ty);
+    }
     (sprite.getData('label') as Phaser.GameObjects.Text | undefined)?.destroy();
     (sprite.getData('shadow') as Phaser.GameObjects.Ellipse | undefined)?.destroy();
     this.floorItems = this.floorItems.filter((f) => f !== sprite.getData('entry'));
@@ -3116,6 +3159,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.bombs++;
       sfx('coin');
       this.popup(sprite.x, sprite.y - 16, '+1 bomba', 0xc8c8d8);
+    }
+    // Vuela a su contador (o a la barra de PS si es una baya)
+    {
+      const LX = HUD.left.x + HUD.pad;
+      const LW = HUD.left.w - HUD.pad * 2;
+      const target: [number, number, Phaser.GameObjects.Text | undefined] =
+        drop.kind === 'coin' ? [LX + 26, 288, this.coinsHud] : drop.kind === 'key' ? [LX + 94, 288, this.keysHud]
+          : drop.kind === 'bomb' ? [LX + 160, 288, this.bombsHud] : [LX + LW / 2, 186, this.hpText];
+      this.flyToHud(sprite.texture.key, sprite.frame.name, sprite.x, sprite.y, target[0], target[1], target[2]);
     }
     this.floorItems = this.floorItems.filter((f) => f !== sprite.getData('entry'));
     this.tweens.killTweensOf(sprite);
