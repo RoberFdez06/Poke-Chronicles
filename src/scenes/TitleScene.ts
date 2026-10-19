@@ -3,7 +3,8 @@ import { addMenuBackdrop } from '../ui/art/landscape';
 import { addLogo, addSparkles } from '../ui/art/logo';
 import { addIcon } from '../ui/art/icons';
 import { FONT, fadeIn, goTo } from '../ui/theme';
-import { DH, DW, fitDesign } from '../ui/layout';
+import { COVER_H, COVER_W, DCX, DCY, DH, DW, fitDesign } from '../ui/layout';
+import { audioReady, playMenuMusic, restoreMusicVolume, sfx, softMusicIn, unlockAudio } from '../ui/audio';
 import { addRays } from '../ui/art/gachaMachine';
 import { fetchPokemonCard } from '../data/pokeapi';
 import { loadUnlocked } from '../data/save';
@@ -52,15 +53,50 @@ export class TitleScene extends Phaser.Scene {
       })
       .setOrigin(0.5).setDepth(6);
 
+    // El navegador no deja sonar hasta que el jugador hace algo: si aún no puede, un primer "pulsa para empezar"
+    if (audioReady()) this.startIntro(ball, logo, sub, press);
+    else this.gate(() => this.startIntro(ball, logo, sub, press));
+  }
+
+  /** Pantalla previa (solo la primera vez): al pulsar se desbloquea el audio y empieza la intro con sonido. */
+  private gate(go: () => void) {
+    const cover = this.add.rectangle(DCX, DCY, COVER_W + 4, COVER_H + 4, 0x0d1425, 1).setDepth(20).setInteractive();
+    const icon = addIcon(this, DW / 2, DH * 0.42, 'pokeball', Math.round(5 * (DH / 640))).setDepth(21);
+    this.tweens.add({ targets: icon, angle: { from: -8, to: 8 }, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const t = this.add
+      .text(DW / 2, DH * 0.62, 'Pulsa una tecla, haz clic o pulsa un botón del mando', { fontFamily: FONT, fontSize: `${Math.round(22 * (DH / 640))}px`, color: '#f8f8f0' })
+      .setOrigin(0.5).setDepth(21);
+    this.tweens.add({ targets: t, alpha: { from: 1, to: 0.25 }, duration: 700, yoyo: true, repeat: -1 });
+    let done = false;
+    const start = () => {
+      if (done) return;
+      done = true;
+      void unlockAudio().then(() => {
+        [cover, icon, t].forEach((o) => o.destroy());
+        go();
+      });
+    };
+    this.input.keyboard?.once('keydown', start);
+    this.input.once('pointerdown', start);
+    this.input.gamepad?.once('down', start);
+  }
+
+  private startIntro(ball: Phaser.GameObjects.Image, logo: Phaser.GameObjects.Text, sub: Phaser.GameObjects.Text, press: Phaser.GameObjects.Text) {
+    const u = DH / 640;
+    const H = DH;
+    playMenuMusic();
+    softMusicIn(2600);
+    const bounce = [0.18, 0.34, 0.45].map((f) => 700 * f);
+    bounce.forEach((ms) => this.time.delayedCall(ms * 1.6, () => sfx('ballBounce')));
     this.tweens.chain({
       tweens: [
         { targets: ball, y: H * 0.42, duration: 700, ease: 'Bounce.easeOut' },
-        { targets: ball, angle: { from: -14, to: 14 }, duration: 110, yoyo: true, repeat: 2 },
+        { targets: ball, angle: { from: -14, to: 14 }, duration: 110, yoyo: true, repeat: 2, onYoyo: () => sfx('ballShake') },
         {
           targets: ball, scale: ball.scale * 1.25, alpha: 0, duration: 160, angle: 0,
-          onStart: () => this.cameras.main.flash(260, 255, 255, 255),
+          onStart: () => { this.cameras.main.flash(260, 255, 255, 255); sfx('ballOpen'); },
         },
-        { targets: logo, scale: Math.round(5 * u), duration: 420, ease: 'Back.easeOut' },
+        { targets: logo, scale: Math.round(5 * u), duration: 420, ease: 'Back.easeOut', onStart: () => sfx('logo') },
         { targets: sub, alpha: 1, duration: 300 },
       ],
       onComplete: () => this.showReady(logo, press),
@@ -126,6 +162,7 @@ export class TitleScene extends Phaser.Scene {
   private next() {
     if (this.leaving || this.time.now < this.readyAt) return;
     this.leaving = true;
+    restoreMusicVolume(900);
     goTo(this, 'Menu');
   }
 }

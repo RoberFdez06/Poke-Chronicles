@@ -169,3 +169,36 @@ function startLoop() {
     }
   }, 100);
 }
+
+/** ¿Se puede sonar ya? (el navegador exige un gesto del jugador antes de dejar sonar nada) */
+export const audioReady = (): boolean => !!ctx && ctx.state === 'running';
+
+/** Desbloquea el audio con un gesto y avisa cuando ya suena. */
+export async function unlockAudio(): Promise<void> {
+  const c = ensure();
+  if (c && c.state === 'suspended') {
+    try {
+      await c.resume();
+    } catch {
+      // sin permiso: seguirá en silencio
+    }
+  }
+}
+
+/** Música muy baja que sube poco a poco (intro del título); `restoreMusicVolume` la deja a su volumen normal. */
+export function softMusicIn(ms: number, level = 0.4) {
+  const c = ctx;
+  if (!c || !musicGain) return;
+  const full = settings.music * 0.35;
+  musicGain.gain.cancelScheduledValues(c.currentTime);
+  musicGain.gain.setValueAtTime(0.0001, c.currentTime);
+  musicGain.gain.linearRampToValueAtTime(Math.max(0.0001, full * level), c.currentTime + ms / 1000);
+}
+
+export function restoreMusicVolume(ms = 800) {
+  const c = ctx;
+  if (!c || !musicGain) return;
+  musicGain.gain.cancelScheduledValues(c.currentTime);
+  musicGain.gain.setValueAtTime(musicGain.gain.value, c.currentTime);
+  musicGain.gain.linearRampToValueAtTime(Math.max(0.0001, settings.music * 0.35), c.currentTime + ms / 1000);
+}

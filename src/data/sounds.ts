@@ -18,7 +18,7 @@ export const SHOT_TYPES = ['normal', 'fire', 'water', 'electric', 'grass', 'ice'
 export const SFX_NAMES = [
   'shot', 'hit', 'pickup', 'coin', 'door', 'clear', 'hurt', 'buy', 'select', 'heal', 'boom',
   // Nuevos: jefe, evolución, cofres, puertas de Gimnasio, trampilla, crítico y mejoras
-  'roar', 'enrage', 'evolve', 'levelup', 'chest', 'gymOpen', 'gymClose', 'fall', 'crit', 'warn', 'summon', 'faint', 'record',
+  'ballBounce', 'ballShake', 'ballOpen', 'logo', 'roar', 'enrage', 'evolve', 'levelup', 'chest', 'gymOpen', 'gymClose', 'fall', 'crit', 'warn', 'summon', 'faint', 'record',
   ...SHOT_TYPES.map((t) => `shot_${t}` as const),
 ] as const;
 export type SfxName = (typeof SFX_NAMES)[number];
@@ -56,6 +56,28 @@ export const SFX: Readonly<Record<SfxName, readonly Tone[]>> = {
     { freq: 659, dur: 0.12, wave: 'sine', gain: 0.25 },
     { freq: 880, dur: 0.12, wave: 'sine', gain: 0.25, delay: 0.12 },
     { freq: 1319, dur: 0.25, wave: 'sine', gain: 0.25, delay: 0.24 },
+  ],
+  // Intro: la Poké Ball cae y bota, tiembla, se abre y el logo aparece
+  ballBounce: [
+    { freq: 220, slideTo: 110, dur: 0.09, wave: 'triangle', gain: 0.3 },
+    { freq: 1200, slideTo: 800, dur: 0.03, wave: 'square', gain: 0.06 },
+  ],
+  ballShake: [
+    { freq: 520, dur: 0.05, wave: 'square', gain: 0.12 },
+    { freq: 390, dur: 0.07, wave: 'square', gain: 0.1, delay: 0.05 },
+  ],
+  ballOpen: [
+    { freq: 300, slideTo: 1500, dur: 0.18, wave: 'sine', gain: 0.25 },
+    { freq: 90, slideTo: 40, dur: 0.2, wave: 'noise', gain: 0.25 },
+    { freq: 1568, dur: 0.1, wave: 'square', gain: 0.1, delay: 0.14 },
+    { freq: 2093, dur: 0.25, wave: 'sine', gain: 0.12, delay: 0.2 },
+  ],
+  logo: [
+    { freq: 392, dur: 0.12, wave: 'square', gain: 0.14 },
+    { freq: 523, dur: 0.12, wave: 'square', gain: 0.14, delay: 0.1 },
+    { freq: 659, dur: 0.12, wave: 'square', gain: 0.14, delay: 0.2 },
+    { freq: 784, dur: 0.45, wave: 'square', gain: 0.16, delay: 0.3 },
+    { freq: 392, dur: 0.45, wave: 'triangle', gain: 0.2, delay: 0.3 },
   ],
   roar: [
     { freq: 110, slideTo: 55, dur: 0.55, wave: 'sawtooth', gain: 0.3 },

@@ -3,7 +3,7 @@ import { fitDesign, COVER_H, COVER_W, DCX, DCY } from '../ui/layout';
 import { fetchPokemonCard } from '../data/pokeapi';
 import { loadRecords, loadUnlocked } from '../data/save';
 import { MODES, MODE_LABEL } from '../data/modes';
-import { CONTROLS } from '../data/controls';
+import { openControls } from './ControlsScene';
 import { accountInfo } from '../net/cloud';
 import { FONT, drawBox, fadeIn, goTo } from '../ui/theme';
 import { addLandscape, nextLandscape, PIX, WALK_Y, type Landscape } from '../ui/art/landscape';
@@ -60,7 +60,7 @@ export class MenuScene extends Phaser.Scene {
       { label: 'Gacha', action: () => this.openGacha() },
       { label: 'Pokédex', action: () => goTo(this, 'Pokedex') },
       { label: 'Mejoras', action: () => goTo(this, 'Upgrades') },
-      { label: 'Controles', action: () => this.showControls() },
+      { label: 'Controles', action: () => openControls(this) },
       { label: 'Ajustes', action: () => goTo(this, 'Settings') },
     ];
     this.rows = [];
@@ -191,30 +191,6 @@ export class MenuScene extends Phaser.Scene {
   }
 
   // --- Panel de controles ---
-
-  private showControls() {
-    const dim = this.add.rectangle(DCX, DCY, COVER_W + 4, COVER_H + 4, 0x000000, 0.55).setInteractive();
-    dim.on('pointerdown', () => this.closeControls());
-
-    const panel = this.add.graphics();
-    drawBox(panel, 130, 110, 700, 400, { radius: 4 });
-
-    const parts: Phaser.GameObjects.GameObject[] = [dim, panel];
-    parts.push(
-      this.add.text(480, 154, 'Controles', { ...this.rowStyle(34), fontStyle: 'bold' }).setOrigin(0.5).setShadow(2, 2, TEXT_SHADOW, 0),
-    );
-    CONTROLS.forEach(([what, how], k) => {
-      const y = 194 + k * 56;
-      parts.push(
-        this.add.text(170, y, what, { ...this.rowStyle(22), fontStyle: 'bold' }).setShadow(2, 2, TEXT_SHADOW, 0),
-        this.add.text(170, y + 28, how, { fontFamily: FONT, fontSize: '18px', color: '#58607a' }),
-      );
-    });
-    parts.push(
-      this.add.text(480, 482, 'Esc, Enter o clic para cerrar', { fontFamily: FONT, fontSize: '15px', color: '#58607a' }).setOrigin(0.5),
-    );
-    this.overlay = this.add.container(0, 0, parts).setDepth(50);
-  }
 
   private closeControls() {
     this.overlay?.destroy();

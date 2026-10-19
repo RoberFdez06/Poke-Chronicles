@@ -13,6 +13,7 @@ import { loadKeys } from '../data/save';
 import { NavInput, PadButtons, UI } from '../ui/nav';
 import { addBackButton } from '../ui/cards';
 import { drawBox } from '../ui/theme';
+import { controlModesFor, currentInput } from '../ui/inputMode';
 
 export interface ControlsData {
   /** Escena que la abrió (se pausa debajo y se reanuda al cerrar). */
@@ -50,10 +51,13 @@ export class ControlsScene extends Phaser.Scene {
     this.closing = false;
     this.tabs = [];
     this.rows = [];
-    this.modes = visibleModes(touchOnlyDevice());
+    // Solo lo del dispositivo con el que juegas: teclado y ratón juntos en PC, el mando solo, o el táctil solo
+    const family = controlModesFor(currentInput());
+    const all = visibleModes(touchOnlyDevice());
+    this.modes = all.filter((m) => family.includes(m));
+    if (this.modes.length === 0) this.modes = all;
     // Empieza en la pestaña del modo con el que se juega: mando si hay uno conectado, táctil en móvil
-    const pad = this.input.gamepad?.getPad(0);
-    const start: ControlMode = this.modes.includes('touch') ? 'touch' : pad?.connected ? 'gamepad' : 'keyboard';
+    const start: ControlMode = this.modes.includes('touch') ? 'touch' : this.modes.includes('gamepad') ? 'gamepad' : 'keyboard';
     this.tab = Math.max(0, this.modes.indexOf(start));
 
     // Fondo que se traga los clics y panel

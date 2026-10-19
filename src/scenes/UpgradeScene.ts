@@ -10,7 +10,7 @@ import { ARROW, COLORS, drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
 import { addIcon } from '../ui/art/icons';
 
-const ROW = { x: 680, w: 420, h: 88, gap: 14, top: 170 };
+const ROW = { x: 690, w: 440, h: 54, gap: 7, top: 150 };
 const CARD_X = 250;
 const CARD_Y = 340;
 
@@ -64,7 +64,7 @@ export class UpgradeScene extends Phaser.Scene {
     drawBox(this.add.graphics(), 720, 18, 224, 52, { radius: 12 });
     addIcon(this, 746, 44, 'candy', 2);
     this.ticketsText = this.add.text(924, 44, '', { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(1, 0.5);
-    this.message = this.add.text(ROW.x, 560, '', { fontFamily: FONT, fontSize: '18px', color: '#ffffff', align: 'center' }).setOrigin(0.5);
+    this.message = this.add.text(ROW.x, 568, '', { fontFamily: FONT, fontSize: '18px', color: '#ffffff', align: 'center' }).setOrigin(0.5);
     this.add
       .text(480, 612, '◀ ▶: Pokémon · F, Y o "Buscar": elegir con filtros · Arriba/abajo: mejora · Enter, A o clic: comprar · Esc o B: volver', {
         fontFamily: FONT,
@@ -100,10 +100,10 @@ export class UpgradeScene extends Phaser.Scene {
       const y = ROW.top + i * (ROW.h + ROW.gap);
       const bg = this.add.graphics();
       const left = ROW.x - ROW.w / 2;
-      const name = this.add.text(left + 40, y - 22, UPGRADE_LABEL[kind], { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5);
-      const cost = this.add.text(left + ROW.w - 20, y - 22, '', { fontFamily: FONT, fontSize: '18px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(1, 0.5);
-      const desc = this.add.text(left + 40, y + 22, UPGRADE_DESC[kind], { fontFamily: FONT, fontSize: '14px', color: HEX.textSoft }).setOrigin(0, 0.5);
-      const arrow = this.add.text(left + 14, y - 22, ARROW, { fontFamily: FONT, fontSize: '18px', color: HEX.text }).setOrigin(0, 0.5);
+      const name = this.add.text(left + 34, y - 11, UPGRADE_LABEL[kind], { fontFamily: FONT, fontSize: '19px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5);
+      const cost = this.add.text(left + ROW.w - 14, y - 11, '', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(1, 0.5);
+      const desc = this.add.text(left + 34, y + 13, UPGRADE_DESC[kind], { fontFamily: FONT, fontSize: '12px', color: HEX.textSoft }).setOrigin(0, 0.5);
+      const arrow = this.add.text(left + 12, y - 11, ARROW, { fontFamily: FONT, fontSize: '16px', color: HEX.text }).setOrigin(0, 0.5);
       const zone = this.add.zone(ROW.x, y, ROW.w, ROW.h).setInteractive({ useHandCursor: true });
       zone.on('pointerover', () => this.select(i));
       zone.on('pointerdown', () => {
@@ -168,7 +168,7 @@ export class UpgradeScene extends Phaser.Scene {
       drawBox(r.bg, left, r.y - ROW.h / 2, ROW.w, ROW.h, { selected: sel, radius: 14 });
       // Niveles como casillas, al estilo de las barras de los juegos
       for (let k = 0; k < MAX_UPGRADE_LEVEL; k++) {
-        r.bg.fillStyle(k < lv[kind] ? COLORS.hpGreen : COLORS.hpTrack, 1).fillRoundedRect(left + 170 + k * 26, r.y - 30, 20, 16, 4);
+        r.bg.fillStyle(k < lv[kind] ? COLORS.hpGreen : COLORS.hpTrack, 1).fillRoundedRect(left + 150 + k * 22, r.y - 17, 17, 13, 3);
       }
       const cost = upgradeCost(lv[kind]);
       r.texts[1].setText(cost === null ? 'MÁX' : `${cost} caramelos`);

@@ -21,6 +21,8 @@ import { BossIntroScene } from './scenes/BossIntroScene';
 import { FloorIntroScene } from './scenes/FloorIntroScene';
 import { FinalPromptScene } from './scenes/FinalPromptScene';
 import { SlotSwapScene } from './scenes/SlotSwapScene';
+import { PadLegendScene } from './scenes/PadLegendScene';
+import { trackInput } from './ui/inputMode';
 import { COLORS, hex, loadThemeFont } from './ui/theme';
 import { initAudio, playMusic, reloadAudioSettings } from './ui/audio';
 import { initAccount } from './net/cloud';
@@ -71,6 +73,7 @@ void Promise.all([loadThemeFont(), initAccount()]).then(() => {
 });
 
 function startGame() {
+  trackInput();
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
@@ -85,13 +88,15 @@ function startGame() {
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     // La primera escena es la que arranca; añade las nuevas (p. ej. GachaScene) al final
     // PauseScene va la última para dibujarse encima de la partida
-    scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, SummaryScene, HistoryScene, KeysScene, BossIntroScene, FloorIntroScene, FinalPromptScene, SlotSwapScene, ControlsScene, PauseScene, AccountScene],
+    scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, SummaryScene, HistoryScene, KeysScene, BossIntroScene, FloorIntroScene, FinalPromptScene, SlotSwapScene, ControlsScene, PauseScene, AccountScene, PadLegendScene],
   });
   lockEscapeInFullscreen(game);
   // T43: un error no deja el juego colgado: pantalla "Algo ha fallado" con vuelta al menú
   installErrorScreen(game);
   // Para las pruebas de navegador (npm run e2e): saber qué pantalla está activa
   (window as Window & { __POKEISAAC__?: Phaser.Game }).__POKEISAAC__ = game;
+  // Barra con los botones del mando, siempre encima de los menús
+  game.events.once(Phaser.Core.Events.READY, () => game.scene.start('PadLegend'));
 }
 
 /**

@@ -2,7 +2,7 @@
 // caramelos y solo se aplican jugando con ese Pokémon. Lógica pura; el guardado está en save.ts.
 import type { PlayerStats } from './items.ts';
 
-export const UPGRADE_KINDS = ['damage', 'hp', 'speed', 'rate'] as const;
+export const UPGRADE_KINDS = ['damage', 'hp', 'speed', 'rate', 'range', 'crit', 'armor'] as const;
 export type UpgradeKind = (typeof UPGRADE_KINDS)[number];
 
 export const UPGRADE_LABEL: Record<UpgradeKind, string> = {
@@ -10,6 +10,9 @@ export const UPGRADE_LABEL: Record<UpgradeKind, string> = {
   hp: 'PS',
   speed: 'Velocidad',
   rate: 'Cadencia',
+  range: 'Alcance',
+  crit: 'Crítico',
+  armor: 'Defensa',
 };
 
 /** Lo que da cada nivel, para mostrarlo en la pantalla de Mejoras. */
@@ -18,6 +21,9 @@ export const UPGRADE_DESC: Record<UpgradeKind, string> = {
   hp: '+10 PS máximos por nivel',
   speed: '+4 % de velocidad por nivel',
   rate: 'Disparas un 6 % más rápido por nivel',
+  range: 'Tus disparos llegan un 6 % más lejos por nivel',
+  crit: '+2 % de probabilidad de golpe crítico por nivel',
+  armor: 'Recibes un 3 % menos de daño por nivel',
 };
 
 export const MAX_UPGRADE_LEVEL = 5;
@@ -25,7 +31,7 @@ export const MAX_UPGRADE_LEVEL = 5;
 /** Niveles de las 4 mejoras de un Pokémon (0 = sin mejorar). */
 export type UpgradeLevels = Record<UpgradeKind, number>;
 
-export const noUpgrades = (): UpgradeLevels => ({ damage: 0, hp: 0, speed: 0, rate: 0 });
+export const noUpgrades = (): UpgradeLevels => ({ damage: 0, hp: 0, speed: 0, rate: 0, range: 0, crit: 0, armor: 0 });
 
 /** Caramelos que cuesta subir del nivel `level` al siguiente (null si ya está al máximo). */
 export function upgradeCost(level: number): number | null {
@@ -41,6 +47,9 @@ export function applyUpgrades(base: Readonly<PlayerStats>, lv: Readonly<UpgradeL
     maxHp: base.maxHp + 10 * lv.hp,
     speed: base.speed * (1 + 0.04 * lv.speed),
     fireDelay: base.fireDelay * Math.pow(0.94, lv.rate),
+    range: base.range * Math.pow(1.06, lv.range),
+    critChance: Math.min(1, base.critChance + 0.02 * lv.crit),
+    damageTaken: base.damageTaken * Math.pow(0.97, lv.armor),
   };
 }
 
@@ -60,7 +69,10 @@ export function parseUpgrades(raw: string | null): UpgradeBook {
       const id = Number(k);
       if (!Number.isInteger(id) || id <= 0 || !v || typeof v !== 'object') continue;
       const o = v as Record<string, unknown>;
-      out[id] = { damage: level(o.damage), hp: level(o.hp), speed: level(o.speed), rate: level(o.rate) };
+      out[id] = {
+        damage: level(o.damage), hp: level(o.hp), speed: level(o.speed), rate: level(o.rate),
+        range: level(o.range), crit: level(o.crit), armor: level(o.armor),
+      };
     }
   } catch {
     // corrupto: sin mejoras

@@ -28,7 +28,10 @@ test('cada nivel cuesta más y al máximo no se puede subir', () => {
 
 test('las mejoras suben lo suyo y sin mejoras todo queda igual', () => {
   assert.deepEqual(applyUpgrades(BASE_STATS, noUpgrades()), { ...BASE_STATS });
-  const s = applyUpgrades(BASE_STATS, { damage: 5, hp: 2, speed: 1, rate: 3 });
+  const s = applyUpgrades(BASE_STATS, { ...noUpgrades(), damage: 5, hp: 2, speed: 1, rate: 3, range: 2, crit: 3, armor: 5 });
+  assert.ok(s.range > BASE_STATS.range);
+  assert.ok(Math.abs(s.critChance - (BASE_STATS.critChance + 0.06)) < 1e-9);
+  assert.ok(s.damageTaken < BASE_STATS.damageTaken);
   assert.ok(Math.abs(s.damage - BASE_STATS.damage * 1.4) < 1e-9);
   assert.equal(s.maxHp, BASE_STATS.maxHp + 20);
   assert.ok(s.speed > BASE_STATS.speed);
@@ -40,7 +43,7 @@ test('se leen aunque estén corruptas y nunca pasan del máximo', () => {
   assert.deepEqual(parseUpgrades('{'), {});
   assert.deepEqual(parseUpgrades('[1,2]'), {});
   const book = parseUpgrades('{"4": {"damage": 9, "hp": -1, "speed": 2.5, "rate": 2}, "x": {"damage": 1}}');
-  assert.deepEqual(book, { 4: { damage: MAX_UPGRADE_LEVEL, hp: 0, speed: 0, rate: 2 } });
+  assert.deepEqual(book, { 4: { ...noUpgrades(), damage: MAX_UPGRADE_LEVEL, rate: 2 } });
   assert.deepEqual(levelsFor(book, 7), noUpgrades());
 });
 
