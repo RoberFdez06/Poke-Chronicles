@@ -68,7 +68,9 @@ export class MenuScene extends Phaser.Scene {
     this.selected = 0;
     this.overlay = undefined;
     this.toastTimer = undefined;
-    this.padPrev = { up: false, down: false, ok: false, back: false };
+    // N23: como si todo estuviera pulsado al llegar; así una A que sigue apretada desde la pantalla anterior no
+    // cuenta como pulsación nueva (hay que soltarla primero)
+    this.padPrev = { up: true, down: true, ok: true, back: true };
     this.alive = true;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (this.alive = false));
     fadeIn(this);
