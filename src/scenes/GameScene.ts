@@ -4629,7 +4629,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const menuPadNow = !!menuPad && menuPad.connected && (!!menuPad.buttons[8]?.pressed || (!this.ended && !!menuPad.buttons[9]?.pressed));
     if (!this.escKey) return; // create() aún no ha terminado de cargar
     // Red de seguridad: ningún enemigo puede quedar fuera de la sala (empujones, remolinos, embestidas…)
-    if (!this.transitioning && this.current && this.host) {
+    // (al reiniciar la escena, el grupo viejo ya está destruido hasta que create() termina: sin `children`)
+    if (!this.transitioning && !this.ended && this.current && this.host && this.enemies?.children && this.player?.active) {
       const rm = this.host.room();
       for (const c of this.enemies.getChildren()) {
         const e = c as Sprite;
