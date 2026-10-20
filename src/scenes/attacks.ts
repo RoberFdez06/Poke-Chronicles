@@ -8,6 +8,12 @@ import { typeColor } from '../data/types';
 import { typeImpact, typeTrail, projKey } from '../ui/art/typeFx';
 import { dustBurst, hitSpark } from '../ui/art/combatFx';
 
+/** Mezcla dos colores (t = 0 → a, t = 1 → b). */
+function mixColor(a: number, b: number, t: number): number {
+  const ch = (sh: number) => Math.round(((a >> sh) & 255) * (1 - t) + ((b >> sh) & 255) * t);
+  return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
 type Sprite = Phaser.Physics.Arcade.Sprite;
 type Body = Phaser.Physics.Arcade.Body;
 export type Side = 'player' | 'foe';
@@ -428,21 +434,73 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
       const tx = x0 + dir.x * p.dist;
       const ty = y0 + dir.y * p.dist;
       const c = sc.add.container(x0, y0).setDepth(7);
+      // Tornado pixel art (supervisor): embudo de anillos que giran, más ancho arriba, con sombra en el suelo y
+      // escombros dando vueltas. Se redibuja a saltos (como un sprite) para que se vea pixelado y no como líneas.
+      const R = p.radius;
+      const light = mixColor(color, 0xffffff, 0.45);
+      const dark = mixColor(color, 0x000000, 0.35);
+      const ground = sc.add.graphics();
+      ground.fillStyle(0x000000, 0.28).fillEllipse(0, 0, R * 1.5, R * 0.45);
+      ground.lineStyle(4, color, 0.45).strokeEllipse(0, 0, R * 1.7, R * 0.55);
       const g = sc.add.graphics();
-      for (let i = 0; i < 3; i++) {
-        g.lineStyle(6 - i * 1.5, i % 2 ? 0xffffff : color, 0.8 - i * 0.15);
-        g.beginPath();
-        for (let t = 0; t < Math.PI * 3; t += 0.2) {
-          const r = (t / (Math.PI * 3)) * p.radius * (1 - i * 0.15);
-          const px = Math.cos(t + i * 2) * r;
-          const py = Math.sin(t + i * 2) * r * 0.7;
-          if (t === 0) g.moveTo(px, py);
-          else g.lineTo(px, py);
+      c.add([ground, g]);
+      const PX = 6;
+      const LAYERS = 9;
+      let phase = 0;
+      const ring = (k: number) => {
+        const f = k / (LAYERS - 1);
+        const rx = R * (0.16 + 0.6 * f * f + 0.1 * f);
+        return {
+          rx,
+          ry: rx * 0.3,
+          cy: -k * R * 0.13 + Math.sin(phase * 0.7 + k) * 2,
+          cx: Math.sin(phase * 0.45 + k * 0.5) * R * 0.1 * f,
+        };
+      };
+      const snap = (v: number) => Math.round(v / PX) * PX;
+      const draw = () => {
+        if (!c.active) return;
+        g.clear();
+        phase += 0.5;
+        // Cuerpo del embudo: contorno oscuro y relleno translúcido del color del tipo (anillos solapados)
+        for (let k = 0; k < LAYERS; k++) {
+          const r = ring(k);
+          g.fillStyle(0x18202c, 0.35).fillEllipse(r.cx, r.cy, r.rx * 2 + 8, r.ry * 2 + 8);
         }
-        g.strokePath();
-      }
-      c.add(g);
-      sc.tweens.add({ targets: g, angle: 360 * (p.ms / 600), duration: p.ms });
+        for (let k = 0; k < LAYERS; k++) {
+          const r = ring(k);
+          g.fillStyle(k % 2 ? color : dark, 0.6).fillEllipse(r.cx, r.cy, r.rx * 2, r.ry * 2);
+        }
+        // Jirones de viento que giran: detrás oscuros, delante claros con brillo blanco
+        for (const front of [false, true]) {
+          for (let k = 0; k < LAYERS; k++) {
+            const r = ring(k);
+            const step = (PX * 0.9) / r.rx;
+            for (let a = 0; a < Math.PI * 2; a += step) {
+              const sinA = Math.sin(a);
+              if ((sinA > 0) !== front) continue;
+              const band = (((a + phase + k * 0.7) % ((Math.PI * 2) / 3)) + Math.PI * 2) % ((Math.PI * 2) / 3);
+              if (band > 1.5) continue;
+              const x = snap(r.cx + Math.cos(a) * r.rx);
+              const y = snap(r.cy + sinA * r.ry);
+              const col = !front ? dark : band < 0.3 ? 0xffffff : band < 0.9 ? light : color;
+              g.fillStyle(col, 1).fillRect(x - PX / 2, y - PX / 2, PX, PX);
+            }
+          }
+        }
+        // Escombros (hojas, piedras, chispas del color del tipo) dando vueltas
+        for (let d = 0; d < 6; d++) {
+          const a = phase * 1.3 + d * 1.05;
+          const h = -(d % 3) * R * 0.32 - R * 0.15;
+          const rx = R * (0.35 + (d % 3) * 0.18);
+          const x = Math.round((Math.cos(a) * rx) / PX) * PX;
+          const y = Math.round((h + Math.sin(a) * rx * 0.28) / PX) * PX;
+          g.fillStyle(0x18202c, 1).fillRect(x - 4, y - 4, 8, 8);
+          g.fillStyle(d % 2 ? light : color, 1).fillRect(x - 2, y - 2, 4, 4);
+        }
+      };
+      draw();
+      const spin = sc.time.addEvent({ delay: 60, loop: true, callback: () => (c.active ? draw() : spin.remove()) });
       sc.tweens.add({ targets: c, x: tx, y: ty, duration: 550 / slow, ease: 'Cubic.easeOut' });
       c.setScale(0.3);
       sc.tweens.add({ targets: c, scale: 1, duration: 300 });
