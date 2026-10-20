@@ -206,7 +206,7 @@ import {
   PlayerStats,
 } from '../data/items';
 import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
-import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES } from '../level/biomes';
+import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES, pickMixedFoes } from '../level/biomes';
 import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES,
   HEAL_EVERY_MS,
   HEAL_PART,
@@ -863,7 +863,8 @@ export class GameScene extends Phaser.Scene {
     }
     this.bossId = bossId;
     // Enemigos del piso: más fuertes cuanto más hondo; la semilla del piso los fija (no hace falta guardarlos)
-    const foeIds = pickFloorEnemies(onlyBundled(biomeEnemyPool(index, this.level(), this.biome)), this.foeRng(this.level()));
+    // Una especie del tipo del bioma y el resto de cualquier tipo (biomes.ts)
+    const foeIds = pickMixedFoes(index, this.level(), this.biome, this.foeRng(this.level()), onlyBundled);
     const [starter, boss, foeCards] = await Promise.all([
       fetchPokemon(this.formId),
       fetchPokemon(bossId),
@@ -1206,7 +1207,7 @@ export class GameScene extends Phaser.Scene {
       ai.eliteMove = undefined;
       const hp = Math.round((e.getData('maxHp') as number) * RUNAWAY_HP_MUL);
       e.setData('hp', hp).setData('maxHp', hp).setData('runaway', true).setData('elite', false);
-      (e as Sprite & { preFX?: { addGlow: (c: number, o?: number, i?: number, k?: boolean, q?: number, d?: number) => unknown } }).preFX?.addGlow(0x4fc3f7, 5, 0, false, 0.1, 12);
+      this.glowAura(e, 0x4fc3f7);
       sparkle(this, e.x, e.y);
       void cry(Number(k.key.replace('foe-', '')));
       const name = k.name ? k.name.charAt(0).toUpperCase() + k.name.slice(1) : 'Pokémon raro';
@@ -1644,7 +1645,7 @@ export class GameScene extends Phaser.Scene {
   private async reloadFoes(level: number) {
     const index = await loadSpeciesIndex().catch(() => [] as SpeciesFact[]);
     this.biome = biomeFor(this.mode, level);
-    const ids = pickFloorEnemies(biomeEnemyPool(index, level, this.biome), this.foeRng(level));
+    const ids = pickMixedFoes(index, level, this.biome, this.foeRng(level));
     const cards = (await Promise.all(ids.map((id) => fetchPokemonCard(id).catch(() => null)))).filter((c) => c !== null);
     if (cards.length === 0 || !this.scene.isActive()) return;
     await new Promise<void>((resolve) => {
@@ -3595,7 +3596,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       ai.eliteMove = light[Math.floor(Math.random() * Math.min(light.length, 4))];
       ai.eliteAt = this.time.now + Phaser.Math.Between(2200, 3400);
       e.setData('hp', Math.round(hp * 1.5)).setData('maxHp', Math.round(hp * 1.5)).setData('speed', st.speed * 1.12).setData('elite', true);
-      (e as Sprite & { preFX?: { addGlow: (c: number, o?: number, i?: number, k?: boolean, q?: number, d?: number) => unknown } }).preFX?.addGlow(typeColor(kind.type), 4, 0, false, 0.1, 10);
+      this.glowAura(e, typeColor(kind.type));
     }
     return e;
   }
@@ -3604,6 +3605,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * Minijefe del piso: el Pokémon más fuerte del bioma en grande, con mucha vida y dos movimientos de su tipo (con
    * su nombre y aviso). Al caer suelta un objeto y tickets.
    */
+  /**
+   * Brillo de los enemigos especiales (minijefe, élite, Pokémon raro): aura que late a sus pies y chispas que suben.
+   * Antes era un `preFX.addGlow`, que en muchos navegadores dejaba el sprite invisible (solo se veía la sombra).
+   */
+  private glowAura(e: Sprite, color: number) {
+    bossAura(this, e, color, () => {
+      const bd = e.body as Body | null;
+      return bd ? bd.bottom : e.y + e.displayHeight / 2;
+    }, 1.8);
+  }
+
   private spawnMiniboss() {
     if (this.foeKinds.length === 0) return;
     const kind = [...this.foeKinds].sort((a, b) => b.bst - a.bst)[0];
@@ -3618,7 +3630,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     ai.moves = bossStyles(kind.types, id);
     ai.eliteMove = ai.moves[0];
     ai.eliteAt = Number.POSITIVE_INFINITY; // empieza al acabar su intro
-    (e as Sprite & { preFX?: { addGlow: (c: number, o?: number, i?: number, k?: boolean, q?: number, d?: number) => unknown } }).preFX?.addGlow(0xffd34d, 5, 0, false, 0.1, 12);
+    this.glowAura(e, 0xffd34d);
     const name = kind.name ? kind.name.charAt(0).toUpperCase() + kind.name.slice(1) : 'Pokémon';
     this.notify(`¡Minijefe: ${name}!`, { kind: 'danger', icon: 'star' });
     sparkle(this, e.x, e.y);
