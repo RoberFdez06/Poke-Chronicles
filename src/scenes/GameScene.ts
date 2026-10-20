@@ -87,6 +87,9 @@ import {
   TELEGRAPH_MS,
   HELPER_HP_MUL,
   helpersToSummon,
+  reinforceEvery,
+  volleyEvery,
+  volleyShots,
   biomeExtraAttacks,
   bossAttacksFor,
   hazardSpec,
@@ -3830,7 +3833,23 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.cameras.main.flash(200, 255, 80, 80);
       this.notify(`¡${(b.getData('bname') as string | undefined) ?? this.bossName} desata todo su poder!`, { kind: 'danger', icon: 'star' });
     }
-    if (time < (ai.nextAttack ?? 0) || this.ended) return;
+    if (this.ended) return;
+    // Legendarios agresivos (20/10): ráfagas cortas hacia ti entre ataque y ataque…
+    const ph = ai.phase ?? 1;
+    if (time >= ((b.getData('volleyAt') as number | undefined) ?? time + 1200) && time < (ai.nextAttack ?? 0) - 500) {
+      const to = new Phaser.Math.Vector2(this.player.x - b.x, this.player.y - b.y).normalize();
+      castPattern(this.host, 'foe', b, to, { k: 'shot', n: volleyShots(ph), spread: 0.55, speed: 300, size: 1.2 }, Math.max(1, Math.round((b.getData('dmg') as number) * 0.45)), ai.type, 0.6);
+    }
+    if (time >= ((b.getData('volleyAt') as number | undefined) ?? 0)) b.setData('volleyAt', time + volleyEvery(ph));
+    // …y refuerzos por su cuenta cada cierto tiempo
+    const reinforceAt = b.getData('reinforceAt') as number | undefined;
+    if (reinforceAt === undefined) b.setData('reinforceAt', time + reinforceEvery(ph));
+    else if (time >= reinforceAt && time < (ai.nextAttack ?? 0) - TELEGRAPH_MS) {
+      b.setData('reinforceAt', time + reinforceEvery(ph));
+      const helpers = this.enemies.getChildren().filter((c) => c.active && (c as Sprite).getData('helper')).length;
+      if (helpersToSummon(ph, helpers) > 0) this.bossSummon(b, ai);
+    }
+    if (time < (ai.nextAttack ?? 0)) return;
     // La mitad de las veces, uno de sus movimientos de tipo (sin repetir el último)
     const btypes = (b.getData('btypes') as string[] | undefined) ?? this.bossTypes;
     const rage = !!b.getData('rage');

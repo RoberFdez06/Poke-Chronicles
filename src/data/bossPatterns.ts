@@ -37,8 +37,9 @@ export function bossAttacks(types: readonly string[]): BossAttack[] {
 }
 
 /** Ayudantes por invocación (más en la fase 2), cuántos puede haber a la vez y su vida respecto a un enemigo normal. */
-export const summonCount = (phase: 1 | 2): number => (phase === 2 ? 3 : 2);
-export const MAX_HELPERS = 4;
+// 20/10 (Roberto): los legendarios invocan más
+export const summonCount = (phase: 1 | 2): number => (phase === 2 ? 4 : 3);
+export const MAX_HELPERS = 7;
 export const HELPER_HP_MUL = 0.6;
 
 /** Cuántos ayudantes invocar ahora sin pasar del máximo (0 = mejor otro ataque). */
@@ -51,7 +52,13 @@ export const bossPhase = (hpRatio: number): 1 | 2 => (hpRatio < BOSS_PHASE2_AT ?
 /** Aviso antes de cada ataque (ms): lo justo para verlo venir y esquivarlo. */
 export const TELEGRAPH_MS = 750;
 /** Tiempo entre ataques y cosas que cambian en la fase 2. */
-export const attackInterval = (phase: 1 | 2): number => (phase === 2 ? 2100 : 3300);
+// 20/10 (Roberto): los legendarios atacan más a menudo (antes 3300 y 2100)
+export const attackInterval = (phase: 1 | 2): number => (phase === 2 ? 1500 : 2300);
+/** Entre ataque y ataque, ráfagas cortas apuntadas al jugador (ms entre una y otra) y cuántos disparos. */
+export const volleyEvery = (phase: 1 | 2): number => (phase === 2 ? 900 : 1300);
+export const volleyShots = (phase: 1 | 2): number => (phase === 2 ? 5 : 3);
+/** Además, cada cierto tiempo llaman refuerzos por su cuenta (ms). */
+export const reinforceEvery = (phase: 1 | 2): number => (phase === 2 ? 7000 : 10000);
 export const ringCount = (phase: 1 | 2): number => (phase === 2 ? 16 : 10);
 export const rainCount = (phase: 1 | 2): number => (phase === 2 ? 6 : 4);
 export const PHASE2_SPEED = 1.3;

@@ -57,7 +57,7 @@ test('cada jefe tiene al menos dos ataques y una segunda fase', () => {
   assert.deepEqual(bossAttacks(['ghost', 'dark']), ['ring', 'charge', 'summon']);
   assert.deepEqual(bossAttacks(['fire']), ['ring', 'rain']);
   for (const t of ['fire', 'water', 'rock', 'psychic', 'dragon', 'steel', 'ghost', 'grass', 'ice']) assert.ok(bossAttacks([t]).length <= 3, t);
-  assert.equal(helpersToSummon(1, 0), 2);
+  assert.equal(helpersToSummon(1, 0), 3);
   assert.ok(helpersToSummon(2, 0) > helpersToSummon(1, 0));
   assert.equal(helpersToSummon(2, MAX_HELPERS - 1), 1);
   assert.equal(helpersToSummon(1, MAX_HELPERS), 0);
