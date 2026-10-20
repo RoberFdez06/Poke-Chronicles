@@ -70,14 +70,7 @@ test('con mando: se juega, se guarda, se continúa y B vuelve atrás', async ({ 
   await waitScene(page, 'Pause');
   await padPress(page, PAD.DOWN, 4);
   await padPress(page, PAD.A);
-  // N23: MenuScene (del supervisor) toma la A aún pulsada al aparecer como otra pulsación y entra en Huecos. Aquí
-  // pasa porque los fotogramas son lentos sin pantalla; hasta que se arregle, si salta a Huecos se vuelve con B.
-  await expect.poll(() => activeScenes(page), { timeout: 20_000 }).toEqual(expect.arrayContaining([expect.stringMatching(/^(Menu|Slots)$/)]));
-  await page.waitForTimeout(600);
-  if ((await activeScenes(page)).includes('Slots')) {
-    console.log('AVISO N23: la A de "Salir y guardar" llegó al menú y abrió Huecos');
-    await padPress(page, PAD.B);
-  }
+  // N23 (arreglado): la A aún pulsada al llegar al menú ya no cuenta como otra pulsación
   await waitScene(page, 'Menu');
   expect(await runSaved(page, 0)).not.toBeNull();
 

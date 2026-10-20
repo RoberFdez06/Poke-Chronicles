@@ -163,10 +163,26 @@ export function addTypeChip(scene: Phaser.Scene, cx: number, cy: number, label: 
 export const FADE_MS = 220;
 
 /** Entrada de pantalla: fundido desde negro. Llamar al principio de create(). */
+/**
+ * Efectos bajos (N21): con ellos, los cambios de pantalla van sin fundido y el fondo de los menús no se anima.
+ * main.ts conecta aquí la lectura del ajuste (así este módulo no depende del guardado).
+ */
+let lowFxProbe: () => boolean = () => false;
+export function setLowFxProbe(fn: () => boolean) {
+  lowFxProbe = fn;
+}
+export const lowFx = (): boolean => {
+  try {
+    return lowFxProbe();
+  } catch {
+    return false;
+  }
+};
+
 export function fadeIn(scene: Phaser.Scene, ms = FADE_MS) {
   // Los datos de la escena sobreviven a scene.restart: se permite volver a salir
   scene.data?.set('leaving', false);
-  scene.cameras.main.fadeIn(ms, 0, 0, 0);
+  if (!lowFx()) scene.cameras.main.fadeIn(ms, 0, 0, 0);
 }
 
 /**
@@ -177,7 +193,7 @@ export function goTo(scene: Phaser.Scene, key: string, data?: object, ms = FADE_
   const cam = scene.cameras.main;
   if (scene.data?.get('leaving')) return false;
   scene.data?.set('leaving', true);
-  if (scene.scene.isPaused() || !cam) {
+  if (scene.scene.isPaused() || !cam || lowFx()) {
     scene.scene.start(key, data);
     return true;
   }

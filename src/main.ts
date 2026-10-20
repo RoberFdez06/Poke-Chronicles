@@ -23,7 +23,8 @@ import { FinalPromptScene } from './scenes/FinalPromptScene';
 import { SlotSwapScene } from './scenes/SlotSwapScene';
 import { PadLegendScene } from './scenes/PadLegendScene';
 import { trackInput } from './ui/inputMode';
-import { COLORS, hex, loadThemeFont } from './ui/theme';
+import { COLORS, hex, loadThemeFont, setLowFxProbe } from './ui/theme';
+import { loadFx } from './data/save';
 import { initAudio, playMusic, reloadAudioSettings } from './ui/audio';
 import { initAccount } from './net/cloud';
 import { refreshControls } from './data/controls';
@@ -66,6 +67,9 @@ playMusic();
 // La fuente pixel se carga antes de crear el juego (Phaser no espera a las fuentes al dibujar texto). A la vez se
 // decide dónde se guarda (T45): invitado (memoria), cuenta (nube) o pruebas (navegador); luego se releen el
 // volumen y las teclas de ese almacenamiento.
+// Efectos bajos (N21): fundidos y fondos animados de los menús se apagan
+setLowFxProbe(() => loadFx().low);
+
 void Promise.all([loadThemeFont(), initAccount()]).then(() => {
   reloadAudioSettings();
   refreshControls();

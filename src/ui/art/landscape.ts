@@ -4,6 +4,7 @@
 import Phaser from 'phaser';
 import { BAND, COVER_H, COVER_W, DCX, DCY } from '../layout';
 import { mulberry32 } from '../../level/floorGen';
+import { lowFx } from '../theme';
 
 export const PIX = { w: 240, h: 160, scale: 4 } as const;
 /** Altura (en píxeles GBA) por la que caminan los Pokémon del menú. */
@@ -262,6 +263,8 @@ export function addMenuBackdrop(scene: Phaser.Scene, dim = 0.55): Landscape {
   const art = (scene.registry.get('landscapeArt') as LandscapeArt | undefined) ?? LANDSCAPES[0];
   const land = addLandscape(scene, art);
   scene.add.rectangle(DCX, DCY, COVER_W + 4, COVER_H + 4, 0x101828, dim).setDepth(-4);
+  // Con efectos bajos (N21) el paisaje se queda quieto
+  if (lowFx()) return land;
   const tick = (_t: number, delta: number) => land.update(delta);
   scene.events.on(Phaser.Scenes.Events.UPDATE, tick);
   scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => scene.events.off(Phaser.Scenes.Events.UPDATE, tick));
