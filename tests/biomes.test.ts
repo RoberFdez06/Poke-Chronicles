@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { BIOMES, NORMAL_ORDER, biomeBossPool, biomeEnemyPool, biomeFor, MIN_BIOME_POOL } from '../src/level/biomes.ts';
+import { BIOMES, NORMAL_ORDER, biomeBossPool, biomeEnemyPool, biomeFor, MIN_BIOME_POOL, pickMixedFoes } from '../src/level/biomes.ts';
 import { TYPE_COLORS } from '../src/data/types.ts';
 import { enemyBstRange } from '../src/data/enemies.ts';
 import type { SpeciesFact } from '../src/data/gacha.ts';
@@ -59,4 +59,18 @@ test('el jefe intenta ser del tipo del bioma y siempre es legendario o singular'
   const old = index.map(({ types: _t, ...s }) => s);
   assert.ok(biomeEnemyPool(old, 1, BIOMES[0]).length > 0);
   assert.ok(biomeBossPool(old, BIOMES[0]).length > 0);
+});
+
+test('los enemigos del piso mezclan tipos: uno del bioma y el resto de cualquiera', async () => {
+  const { mulberry32 } = await import('../src/level/floorGen.ts');
+  const forest = BIOMES.find((b) => b.id === 'bosque')!;
+  let outside = 0;
+  for (let seed = 1; seed <= 30; seed++) {
+    const ids = pickMixedFoes(index, 1, forest, mulberry32(seed));
+    assert.ok(ids.length >= 3, `semilla ${seed}`);
+    assert.equal(new Set(ids).size, ids.length);
+    assert.ok(byId.get(ids[0])!.types!.some((t) => forest.types.includes(t)), 'la primera es del bioma');
+    outside += ids.filter((id) => !byId.get(id)!.types!.some((t) => forest.types.includes(t))).length;
+  }
+  assert.ok(outside > 30, 'salen muchos de otros tipos');
 });

@@ -345,7 +345,7 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
   Los muros se dibujan con el bloque de pared del bioma y bloquean paso y disparos. Todas conservan puertas y centro
   libres y conectados (lo comprueban los tests de `roomLayouts`).
 
-## [ ] T47 — Salas grandes que ocupan varias casillas del piso (como en Isaac)
+## [x] T47 — Salas grandes que ocupan varias casillas del piso (como en Isaac)
 - Es un cambio profundo: hoy `GameScene` asume una sala = una pantalla (`interior`, `buildRoom`, `checkExit`,
   `transition`, cámara, `spawnEnemies`, minimapa). Plan: en `floorGen.ts` unir 2-4 salas de combate contiguas en un
   grupo (2×1, 1×2, 2×2, L); sala unida = un solo conjunto de enemigos (más y más fuertes), sin puertas internas, la

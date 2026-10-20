@@ -233,11 +233,11 @@ export const TEMPLATES: Readonly<Record<string, readonly string[]>> = {
     '....................',
   ],
   salaEle: [
-    '............XXXXXXXX',
-    '............XXXXXXXX',
-    '............XXXXXXXX',
-    '............XXXXXXXX',
-    '............XXXXXXXX',
+    '.............XXXXXXX',
+    '.............XXXXXXX',
+    '.............XXXXXXX',
+    '....................',
+    '....................',
     '....................',
     '....................',
     '....................',
@@ -247,25 +247,25 @@ export const TEMPLATES: Readonly<Record<string, readonly string[]>> = {
     '....................',
   ],
   salaCruz: [
-    'XXXXXX........XXXXXX',
-    'XXXXXX........XXXXXX',
-    'XXXXXX........XXXXXX',
-    'XXXXXX........XXXXXX',
+    'XXXXXXX......XXXXXXX',
+    'XXXXXXX......XXXXXXX',
+    'XXXXXXX......XXXXXXX',
     '....................',
     '....................',
     '....................',
     '....................',
-    'XXXXXX........XXXXXX',
-    'XXXXXX........XXXXXX',
-    'XXXXXX........XXXXXX',
-    'XXXXXX........XXXXXX',
+    '....................',
+    '....................',
+    'XXXXXXX......XXXXXXX',
+    'XXXXXXX......XXXXXXX',
+    'XXXXXXX......XXXXXXX',
   ],
   salaT: [
     'XXXXXXX......XXXXXXX',
     'XXXXXXX......XXXXXXX',
     'XXXXXXX......XXXXXXX',
-    'XXXXXXX......XXXXXXX',
-    'XXXXXXX......XXXXXXX',
+    '....................',
+    '....................',
     '....................',
     '....................',
     '....................',
@@ -275,39 +275,39 @@ export const TEMPLATES: Readonly<Record<string, readonly string[]>> = {
     '....................',
   ],
   salaZ: [
-    '............XXXXXXXX',
-    '............XXXXXXXX',
-    '............XXXXXXXX',
-    '............XXXXXXXX',
+    '.............XXXXXXX',
+    '.............XXXXXXX',
+    '.............XXXXXXX',
     '....................',
     '....................',
     '....................',
     '....................',
-    'XXXXXXXX............',
-    'XXXXXXXX............',
-    'XXXXXXXX............',
-    'XXXXXXXX............',
+    '....................',
+    '....................',
+    'XXXXXXX.............',
+    'XXXXXXX.............',
+    'XXXXXXX.............',
   ],
   salaOctogono: [
     'XXXXXX........XXXXXX',
     'XXXX............XXXX',
     'XX................XX',
-    'X..................X',
     '....................',
     '....................',
     '....................',
     '....................',
-    'X..................X',
+    '....................',
+    '....................',
     'XX................XX',
     'XXXX............XXXX',
     'XXXXXX........XXXXXX',
   ],
   salaEleRocas: [
-    '............XXXXXXXX',
-    '............XXXXXXXX',
-    '..BB........XXXXXXXX',
-    '..BB........XXXXXXXX',
-    '............XXXXXXXX',
+    '.............XXXXXXX',
+    '.............XXXXXXX',
+    '..BB.........XXXXXXX',
+    '..BB................',
+    '....................',
     '....................',
     '....................',
     '....RR......RR......',
@@ -328,14 +328,18 @@ export const emptyGrid = (): Grid => Array.from({ length: ROWS }, () => Array<Ce
 export const EMPTY_CHANCE = 0.2;
 
 /**
- * Diseño de una sala: solo las de combate llevan obstáculos (inicio, objeto, jefe, Centro y tienda van
+ * Diseño de una sala (`big`: casilla de una sala grande, sin recortes): solo las de combate llevan obstáculos (inicio, objeto, jefe, Centro y tienda van
  * vacías). Sale siempre igual con la misma semilla de piso y sala, y a veces en espejo.
  */
-export function layoutFor(floorSeed: number, roomId: number, kind: RoomKind): Grid {
+/** Plantillas sin muros 'X' (las casillas de una sala grande no se recortan: se unen con la de al lado). */
+export const OPEN_TEMPLATE_NAMES = TEMPLATE_NAMES.filter((n) => !TEMPLATES[n].some((r) => r.includes('X')));
+
+export function layoutFor(floorSeed: number, roomId: number, kind: RoomKind, big = false): Grid {
   if (kind !== 'combat') return emptyGrid();
   const rng = mulberry32((floorSeed ^ Math.imul(roomId + 1, 0x9e3779b1)) >>> 0);
   if (rng() < EMPTY_CHANCE) return emptyGrid();
-  let g = parseTemplate(TEMPLATES[TEMPLATE_NAMES[Math.floor(rng() * TEMPLATE_NAMES.length)]]);
+  const names = big ? OPEN_TEMPLATE_NAMES : TEMPLATE_NAMES;
+  let g = parseTemplate(TEMPLATES[names[Math.floor(rng() * names.length)]]);
   if (rng() < 0.5) g = g.map((row) => [...row].reverse());
   if (rng() < 0.5) g = [...g].reverse();
   return g;

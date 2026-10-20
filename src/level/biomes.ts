@@ -2,7 +2,7 @@
 // Lógica pura, sin Phaser ni red, para poder testearla.
 // Con extensión .ts para que los tests (node --test) puedan importarlo sin bundler
 import { classifyRarity, type SpeciesFact } from '../data/gacha.ts';
-import { enemyBstRange, enemyPool } from '../data/enemies.ts';
+import { enemyBstRange, enemyPool, pickFloorEnemies, SPECIES_PER_FLOOR } from '../data/enemies.ts';
 import { bossPool } from './progression.ts';
 import type { GameMode } from '../data/modes.ts';
 
@@ -139,4 +139,23 @@ export function biomeBossPool(index: readonly SpeciesFact[], biome: Biome): numb
   const ids = new Set(all);
   const typed = index.filter((s) => ids.has(s.id) && hasBiomeType(s, biome)).map((s) => s.id);
   return typed.length > 0 ? typed : all;
+}
+
+/**
+ * Especies del piso (20/10, pedido por Roberto): una del tipo del bioma, para que se note dónde estás, y el resto de
+ * cualquier tipo de la fuerza del piso. Así un inicial de Agua no se encuentra un bosque lleno de Plantas.
+ * `keep` filtra las que se pueden usar (p. ej. las que vienen con el juego sin conexión).
+ */
+export function pickMixedFoes(
+  index: readonly SpeciesFact[],
+  floor: number,
+  biome: Biome,
+  rng: () => number,
+  keep: (ids: number[]) => number[] = (ids) => ids,
+  n = SPECIES_PER_FLOOR,
+): number[] {
+  const typed = pickFloorEnemies(keep(biomeEnemyPool(index, floor, biome)), rng, 1);
+  const rest = keep(enemyPool(index, floor)).filter((id) => !typed.includes(id));
+  const others = rest.length > 0 ? pickFloorEnemies(rest, rng, n - typed.length) : [];
+  return [...typed, ...others];
 }

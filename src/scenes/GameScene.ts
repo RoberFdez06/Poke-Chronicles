@@ -72,7 +72,8 @@ import { emptyCounters, type RunCounters, type RunRecord } from '../data/runHist
 import { ToastStack, type ToastOptions } from '../ui/toast';
 import { reportError } from '../ui/errorScreen';
 import { keyCode } from '../ui/keys';
-import type { Action } from '../data/keybinds';
+import { keyLabel, type Action } from '../data/keybinds';
+import { currentInput } from '../ui/inputMode';
 import { ACHIEVEMENTS, lockedItems, rewardText, type MissionEvent } from '../data/missions';
 import {
   attackInterval,
@@ -205,8 +206,8 @@ import {
   MovePower,
   PlayerStats,
 } from '../data/items';
-import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, Dir, Floor, Room } from '../level/floorGen';
-import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES } from '../level/biomes';
+import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
+import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES, pickMixedFoes } from '../level/biomes';
 import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES,
   HEAL_EVERY_MS,
   HEAL_PART,
@@ -532,6 +533,8 @@ export class GameScene extends Phaser.Scene {
   private chosenSlot?: number;
   private swapOpen = false;
   private swapCooldownUntil = 0;
+  /** Tras coger un activo, 1 s sin poder coger otro (si no, el que sueltas y el nuevo se intercambian sin parar). */
+  private activeSwapUntil = 0;
   private movePool: MovePower[] = [];
   private tearType = 'normal';
   private nextTear = 0;
@@ -621,6 +624,11 @@ export class GameScene extends Phaser.Scene {
   private slotShown: string[] = [];
   /** Nombre del tipo de cada poder (Volador y Veneno se confundían solo por el color). */
   private slotTypes: Phaser.GameObjects.Text[] = [];
+  /** Botón con el que se lanza cada poder (tecla o botón del mando, según con qué juegues). */
+  private slotBadges: Phaser.GameObjects.Text[] = [];
+  /** Botón de la bomba, la poción y el objeto activo (tecla o botón del mando), junto a cada uno en el HUD. */
+  private actionBadges: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; x: number; y: number; pad: string; action: 'active' | 'bomb' | 'potion' }[] = [];
+  private badgeShown = '';
   private banner!: Phaser.GameObjects.Text;
   private toasts?: ToastStack;
   /** Quita el aviso de "sin conexión" al salir de la escena. */
@@ -703,6 +711,9 @@ export class GameScene extends Phaser.Scene {
     this.slotBoxes = [];
     this.slotShown = [];
     this.slotTypes = [];
+    this.slotBadges = [];
+    this.actionBadges = [];
+    this.badgeShown = '';
     this.floorItems = [];
     this.doorMap.clear();
     this.visited.clear();
@@ -815,6 +826,7 @@ export class GameScene extends Phaser.Scene {
         roomCount: r?.roomCount ?? roomCountFor(this.floorNum, this.rng(RNG.rooms)),
         special: this.layout >= 2,
         extra: this.layout >= 3,
+        big: this.layout >= 4,
       });
     }
     this.weather =
@@ -862,7 +874,8 @@ export class GameScene extends Phaser.Scene {
     }
     this.bossId = bossId;
     // Enemigos del piso: más fuertes cuanto más hondo; la semilla del piso los fija (no hace falta guardarlos)
-    const foeIds = pickFloorEnemies(onlyBundled(biomeEnemyPool(index, this.level(), this.biome)), this.foeRng(this.level()));
+    // Una especie del tipo del bioma y el resto de cualquier tipo (biomes.ts)
+    const foeIds = pickMixedFoes(index, this.level(), this.biome, this.foeRng(this.level()), onlyBundled);
     const [starter, boss, foeCards] = await Promise.all([
       fetchPokemon(this.formId),
       fetchPokemon(bossId),
@@ -1205,7 +1218,7 @@ export class GameScene extends Phaser.Scene {
       ai.eliteMove = undefined;
       const hp = Math.round((e.getData('maxHp') as number) * RUNAWAY_HP_MUL);
       e.setData('hp', hp).setData('maxHp', hp).setData('runaway', true).setData('elite', false);
-      (e as Sprite & { preFX?: { addGlow: (c: number, o?: number, i?: number, k?: boolean, q?: number, d?: number) => unknown } }).preFX?.addGlow(0x4fc3f7, 5, 0, false, 0.1, 12);
+      this.glowAura(e, 0x4fc3f7);
       sparkle(this, e.x, e.y);
       void cry(Number(k.key.replace('foe-', '')));
       const name = k.name ? k.name.charAt(0).toUpperCase() + k.name.slice(1) : 'Pokémon raro';
@@ -1478,8 +1491,9 @@ export class GameScene extends Phaser.Scene {
    */
   private showRooms(ids: number[]) {
     const cam = this.cameras.main.id;
+    const all = new Set(ids.flatMap((id) => this.groupIds(this.floor.rooms[id])));
     for (const [id, objs] of this.roomObjs) {
-      const show = ids.includes(id);
+      const show = all.has(id);
       for (const o of objs) {
         if (!o.active) continue;
         if (show) o.cameraFilter &= ~cam;
@@ -1642,7 +1656,7 @@ export class GameScene extends Phaser.Scene {
   private async reloadFoes(level: number) {
     const index = await loadSpeciesIndex().catch(() => [] as SpeciesFact[]);
     this.biome = biomeFor(this.mode, level);
-    const ids = pickFloorEnemies(biomeEnemyPool(index, level, this.biome), this.foeRng(level));
+    const ids = pickMixedFoes(index, level, this.biome, this.foeRng(level));
     const cards = (await Promise.all(ids.map((id) => fetchPokemonCard(id).catch(() => null)))).filter((c) => c !== null);
     if (cards.length === 0 || !this.scene.isActive()) return;
     await new Promise<void>((resolve) => {
@@ -1759,14 +1773,14 @@ export class GameScene extends Phaser.Scene {
     if ((this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)) {
       const st = this.floor.rooms[this.floor.startId];
       const far = this.floor.rooms
-        .filter((rm) => rm.kind === 'combat')
+        .filter((rm) => rm.kind === 'combat' && rm.group === undefined)
         .sort((a, b) => Math.abs(b.gx - st.gx) + Math.abs(b.gy - st.gy) - (Math.abs(a.gx - st.gx) + Math.abs(a.gy - st.gy)) || a.id - b.id)[0];
       this.minibossRoom = far?.id;
     }
     // Sala sorpresa (T39): con la semilla del piso (la misma al continuar), nunca la del minijefe ni las de cofre
     this.roomEvent =
       (this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)
-        ? pickRoomEvent(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x2545f491), new Set(this.minibossRoom !== undefined ? [this.minibossRoom] : []))
+        ? pickRoomEvent(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x2545f491), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]))
         : null;
 
     // Al continuar: objetos, estado del jugador y sala donde estabas
@@ -1903,6 +1917,12 @@ export class GameScene extends Phaser.Scene {
       shown: '',
     };
     const activeBtn = over(hud(this.add.zone(LX + LW / 2, H - 71, LW, 110).setInteractive({ useHandCursor: true })));
+    // Con qué se usa cada cosa (se redibuja al cambiar de teclado a mando): bomba, poción y objeto activo
+    const badge = (x: number, y: number, pad: string, action: 'active' | 'bomb' | 'potion') =>
+      this.actionBadges.push({ g: hud(this.add.graphics()), t: txt(x, y, 11, '#1d2848', true).setOrigin(0.5), x, y, pad, action });
+    badge(LX + HUD_COUNT_X.bomb + 6, 316, 'RB', 'bomb');
+    badge(LX + HUD_COUNT_X.potion + 6, 316, 'L3', 'potion');
+    badge(LX + LW - 36, H - HUD.pad - 110 + 18, 'LB', 'active');
     activeBtn.on('pointerdown', () => this.useActive());
     // Poderes: cuatro cuadros abajo a la derecha (clic para lanzar)
     for (let i = 0; i < SLOT_COUNT; i++) {
@@ -1912,7 +1932,8 @@ export class GameScene extends Phaser.Scene {
         txt(RX + RW - 52, y + 2, 12, '#ffffff', true).setOrigin(0.5).setShadow(1, 1, '#00000088', 0),
       );
       this.slotShown.push('');
-      this.hud.push(txt(RX + 32, y + 34, 18, '#f8f8f8', true).setOrigin(0, 0.5));
+      this.slotBadges.push(txt(RX + 30, y + 34, 13, '#ffffff', true).setOrigin(0.5).setShadow(1, 1, '#00000088', 0));
+      this.hud.push(txt(RX + 50, y + 34, 18, '#f8f8f8', true).setOrigin(0, 0.5));
       const zone = over(hud(this.add.zone(RX + RW / 2, y + 32, RW, 64).setInteractive({ useHandCursor: true })));
       zone.on('pointerdown', () => !this.ended && !this.transitioning && this.castSlot(i, this.time.now));
     }
@@ -2237,6 +2258,95 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
   }
 
+  // --- Salas grandes (varias salas del piso unidas en una, sin pared entre ellas) ---
+
+  /** Salas que forman la misma sala grande que `room` (solo ella misma si no es grande). */
+  private groupIds(room: Room): number[] {
+    return room.group === undefined ? [room.id] : this.floor.groups?.[room.group] ?? [room.id];
+  }
+
+  /** ¿La puerta `d` de `room` da a otra parte de su misma sala grande? */
+  private mergedSide(room: Room, d: Dir): boolean {
+    const to = room.doors[d];
+    return to !== undefined && sameGroup(room, this.floor.rooms[to]);
+  }
+
+  /**
+   * Lados unidos de la casilla (sala grande) y esquinas interiores de las salas en L, para el decorado: en una
+   * esquina en L, la pared que bordea el hueco la pinta la casilla que la tiene al lado (roomDecor.ts).
+   */
+  private decorOpen(room: Room) {
+    const m = (d: Dir) => this.mergedSide(room, d);
+    const nb = (d: Dir) => this.floor.rooms[room.doors[d]!];
+    const left = m('left');
+    const up = m('up');
+    return {
+      left,
+      right: m('right'),
+      up,
+      down: m('down'),
+      topLeft: left && !up && this.mergedSide(nb('left'), 'up'),
+      bottomLeft: left && !m('down') && this.mergedSide(nb('left'), 'down'),
+      rightUp: up && !m('right') && this.mergedSide(nb('up'), 'right'),
+      leftUp: up && !left && this.mergedSide(nb('up'), 'left'),
+    };
+  }
+
+  /** Zona de juego de la sala actual: el rectángulo que contiene toda su sala grande (o ella sola). */
+  private arena() {
+    const cells = this.groupIds(this.current).map((id) => this.interior(this.floor.rooms[id]));
+    const x0 = Math.min(...cells.map((c) => c.x0));
+    const y0 = Math.min(...cells.map((c) => c.y0));
+    const x1 = Math.max(...cells.map((c) => c.x1));
+    const y1 = Math.max(...cells.map((c) => c.y1));
+    return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+  }
+
+  /** La sala (casilla del piso) que hay en (x, y): dentro de una sala grande, la que toque; si no, la actual. */
+  private cellRoom(x: number, y: number): Room {
+    if (this.current.group === undefined) return this.current;
+    const gx = Math.floor(x / VIEW.w);
+    const gy = Math.floor(y / VIEW.h);
+    for (const id of this.groupIds(this.current)) {
+      const r = this.floor.rooms[id];
+      if (r.gx === gx && r.gy === gy) return r;
+    }
+    return this.current;
+  }
+
+  /** Dentro de una sala grande, la sala actual pasa a ser la casilla donde está el jugador (sin volver a empezar). */
+  private followCell() {
+    if (this.current.group === undefined) return;
+    const here = this.cellRoom(this.player.x, this.player.y);
+    if (here.id === this.current.id) return;
+    this.current = here;
+    this.visited.add(here.id);
+    this.flow = undefined;
+    this.drawMap();
+  }
+
+  /** Cámara: fija en la sala, o siguiendo al jugador dentro de los límites de la sala grande. */
+  private setRoomCamera(room: Room) {
+    const cam = this.cameras.main;
+    if (room.group === undefined) {
+      cam.stopFollow();
+      cam.removeBounds();
+      return;
+    }
+    const cells = this.groupIds(room).map((id) => this.floor.rooms[id]);
+    const x0 = Math.min(...cells.map((r) => r.gx)) * VIEW.w;
+    const y0 = Math.min(...cells.map((r) => r.gy)) * VIEW.h;
+    const x1 = (Math.max(...cells.map((r) => r.gx)) + 1) * VIEW.w;
+    const y1 = (Math.max(...cells.map((r) => r.gy)) + 1) * VIEW.h;
+    cam.setBounds(x0, y0, x1 - x0, y1 - y0);
+    cam.startFollow(this.player, true, 0.12, 0.12);
+  }
+
+  /** Cierra o abre las puertas de toda la sala grande. */
+  private setGroupDoorsLocked(room: Room, locked: boolean, animate = false) {
+    for (const id of this.groupIds(room)) this.setDoorsLocked(this.floor.rooms[id], locked, animate);
+  }
+
   /** Hueco de la puerta a través de la pared. */
   private doorRect(room: Room, d: Dir): Rect {
     const i = this.interior(room);
@@ -2264,7 +2374,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.add.tileSprite(i.x0 - WALL, i.y0 - WALL, ROOM.w + WALL * 2, ROOM.h + WALL * 2, this.tiles.wall).setOrigin(0).setTileScale(ts).setDepth(0);
     this.add.tileSprite(i.x0, i.y0, ROOM.w, ROOM.h, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0);
     // Paisaje alrededor, manchas, detalles y sombras del bioma (supervisor)
-    decorateRoom(this, this.biome, { x: room.gx * VIEW.w, y: room.gy * VIEW.h, w: VIEW.w, h: VIEW.h }, i, WALL, this.floorSeed * 31 + room.id, ts * 2.4);
+    decorateRoom(this, this.biome, { x: room.gx * VIEW.w, y: room.gy * VIEW.h, w: VIEW.w, h: VIEW.h }, i, WALL, this.floorSeed * 31 + room.id, ts * 2.4, this.decorOpen(room));
     if (!plain) {
       // Salas especiales: alfombra de su color (Centro rosa, tienda verde, objeto dorado…) sobre el suelo del bioma
       const rug = this.add.graphics().setDepth(0.2);
@@ -2286,6 +2396,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     for (const d of DIRS) {
       const to = room.doors[d];
       if (to === undefined) continue;
+      // Hacia otra parte de su sala grande no hay puerta ni pared
+      if (this.mergedSide(room, d)) continue;
       // Puerta oculta: parece pared (con una grieta de pista) hasta que una bomba la abre
       if (this.isHiddenDoor(room.id, d)) {
         this.buildSecretWall(room, d);
@@ -2308,10 +2420,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.addWall(x, i.y0, WALL, i.cy - DOOR / 2 - i.y0);
       this.addWall(x, i.cy + DOOR / 2, WALL, i.y1 - i.cy - DOOR / 2);
     };
-    hSide(i.y0 - WALL, has('up'));
-    hSide(i.y1, has('down'));
-    vSide(i.x0 - WALL, has('left'));
-    vSide(i.x1, has('right'));
+    if (!this.mergedSide(room, 'up')) hSide(i.y0 - WALL, has('up'));
+    if (!this.mergedSide(room, 'down')) hSide(i.y1, has('down'));
+    if (!this.mergedSide(room, 'left')) vSide(i.x0 - WALL, has('left'));
+    if (!this.mergedSide(room, 'right')) vSide(i.x1, has('right'));
+    this.buildJoin(room);
     this.buildObstacles(room);
 
     this.setDoorsLocked(room, false);
@@ -2324,6 +2437,47 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       for (const dx of [-60, 60]) this.spawnLoot(room.id, i.cx + dx, i.cy + 70, { kind: 'coin', value: 5 });
     }
     if (this.floor.chestRooms?.includes(room.id)) this.buildChest(room);
+  }
+
+  /**
+   * Une esta sala con su vecina de la misma sala grande por la derecha y por abajo: suelo continuo entre las dos y
+   * pared (con su cuerpo físico) en los bordes que quedan al descubierto.
+   */
+  private buildJoin(room: Room) {
+    const a = this.interior(room);
+    const ts = TILE / ART_TILE;
+    // Sala en L: la casilla que falta para completar el rectángulo se rellena con el paisaje de fuera (si no, se
+    // veía el fondo azul oscuro al mover la cámara). Lo pinta la primera casilla del grupo.
+    const ids = this.groupIds(room);
+    if (ids.length > 2 && ids[0] === room.id && this.textures.exists(`outside-${this.biome.id}`)) {
+      const cells = ids.map((id) => this.floor.rooms[id]);
+      const gxs = cells.map((c) => c.gx);
+      const gys = cells.map((c) => c.gy);
+      for (let gx = Math.min(...gxs); gx <= Math.max(...gxs); gx++) {
+        for (let gy = Math.min(...gys); gy <= Math.max(...gys); gy++) {
+          if (cells.some((c) => c.gx === gx && c.gy === gy)) continue;
+          const sc = ts * 2.4;
+          this.add.tileSprite(gx * VIEW.w, gy * VIEW.h, VIEW.w, VIEW.h, `outside-${this.biome.id}`).setOrigin(0).setTileScale(sc).setDepth(-1.5);
+        }
+      }
+    }
+    const wallTile = (x: number, y: number, w: number, h: number) => {
+      // Por debajo del relieve de roomDecor (0.31), que pinta su canto y su sombra también sobre esta unión
+      this.add.tileSprite(x, y, w, h, this.tiles.wall).setOrigin(0).setTileScale(ts).setDepth(0.25);
+      this.addWall(x, y, w, h);
+    };
+    if (this.mergedSide(room, 'right')) {
+      const b = this.interior(this.floor.rooms[room.doors.right!]);
+      this.add.tileSprite(a.x1, a.y0, b.x0 - a.x1, a.y1 - a.y0, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0.02);
+      wallTile(a.x1 + WALL, a.y0 - WALL, b.x0 - a.x1 - WALL * 2, WALL);
+      wallTile(a.x1 + WALL, a.y1, b.x0 - a.x1 - WALL * 2, WALL);
+    }
+    if (this.mergedSide(room, 'down')) {
+      const b = this.interior(this.floor.rooms[room.doors.down!]);
+      this.add.tileSprite(a.x0, a.y1, a.x1 - a.x0, b.y0 - a.y1, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0.02);
+      wallTile(a.x0 - WALL, a.y1, WALL, b.y0 - a.y1);
+      wallTile(a.x1, a.y1, WALL, b.y0 - a.y1);
+    }
   }
 
   /** Suelo de la sala (el del bioma en las normales, el suyo en las especiales). */
@@ -2820,6 +2974,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private pickItem(sprite: Sprite) {
     if (!sprite.active) return;
     const item = sprite.getData('item') as DroppedItem;
+    if (item.kind === 'active' && this.time.now < this.activeSwapUntil) return;
     // Con la ranura ya elegida en la pantalla de cambio se recoge en el acto. Antes también miraba el enfriamiento que
     // la propia elección acaba de poner (1,2 s): no se recogía, y al seguir encima se volvía a abrir la pantalla
     if (item.kind === 'move' && this.slots.indexOf(null) === -1 && this.chosenSlot === undefined) {
@@ -2940,7 +3095,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const before = new Set(this.synergies);
     if (item.kind === 'active') {
       // Como en Isaac: si ya llevabas uno, se queda en el suelo
-      if (this.active && this.player) this.spawnPickup(this.current.id, this.player.x + 70, this.player.y, { kind: 'active', id: this.active.id });
+      // (dentro de la sala: al lado contrario si estás pegado a una pared)
+      if (this.active && this.player) {
+        const rm = this.host.room();
+        const side = this.player.x + 70 > rm.x1 - 40 ? -70 : 70;
+        const dx = Phaser.Math.Clamp(this.player.x + side, rm.x0 + 40, rm.x1 - 40);
+        const dy = Phaser.Math.Clamp(this.player.y, rm.y0 + 50, rm.y1 - 40);
+        this.spawnPickup(this.current.id, dx, dy, { kind: 'active', id: this.active.id });
+      }
+      this.activeSwapUntil = this.time.now + 1000;
       const a = activeById(item.id);
       this.active = { id: item.id, charge: a?.charge ?? 1 };
       this.notify(`${a?.name ?? item.id}\n${a?.description ?? ''}\nEspacio, LB o clic en su cuadro`, { kind: 'item', icon: 'pokeball' });
@@ -3097,6 +3260,27 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Cuadro del objeto activo abajo a la izquierda: color, nombre corto y carga por casillas. */
+  private paintActionBadges() {
+    const device = currentInput();
+    if (this.badgeShown === device) return;
+    this.badgeShown = device;
+    const keys = loadKeys();
+    for (const b of this.actionBadges) {
+      b.g.clear();
+      if (device === 'touch') {
+        b.t.setVisible(false);
+        continue;
+      }
+      const pad = device === 'gamepad';
+      const label = pad ? b.pad : keyLabel(keys[b.action]);
+      const w = Math.max(22, 10 + label.length * 7);
+      b.g.fillStyle(0x101828, 1).fillRoundedRect(b.x - w / 2 - 2, b.y - 10, w + 4, 20, 6);
+      b.g.fillStyle(pad ? 0x4a5468 : 0xe8e8f0, 1).fillRoundedRect(b.x - w / 2, b.y - 8, w, 16, 5);
+      if (!pad) b.g.fillStyle(0xb8bcc8, 1).fillRect(b.x - w / 2 + 2, b.y + 5, w - 4, 2);
+      b.t.setText(label).setColor(pad ? '#ffffff' : '#1d2848').setPosition(b.x, b.y - 1).setVisible(true);
+    }
+  }
+
   private paintActive() {
     const h = this.activeHud;
     if (!h) return;
@@ -3156,6 +3340,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private enterRoom(room: Room) {
     this.current = room;
     this.showRooms([room.id]);
+    this.setRoomCamera(room);
     this.shieldLeft = this.stats.shieldPerRoom;
     this.visited.add(room.id);
     // Tutorial: la primera vez que pasa cada cosa
@@ -3181,10 +3366,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.spawnMiniboss();
         this.spawnEnemies(1);
       } else {
-        const n = Phaser.Math.Between(...this.difficulty.enemies);
+        // Una sala grande lleva más enemigos (algo menos por casilla)
+        const cells = this.groupIds(room).length;
+        const n = Math.round(Phaser.Math.Between(...this.difficulty.enemies) * (cells > 1 ? cells * 0.75 : 1));
         this.spawnEnemies(n);
       }
-      this.setDoorsLocked(room, true, true);
+      this.setGroupDoorsLocked(room, true, true);
       sfx('door');
     }
 
@@ -3271,6 +3458,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     (this.player.body as Body).reset(x, y);
 
     this.showRooms([this.current.id, next.id]);
+    this.cameras.main.stopFollow();
+    this.cameras.main.removeBounds();
     this.cameras.main.pan(n.cx, n.cy, 300, 'Sine.easeInOut', true, (_cam: unknown, progress: number) => {
       if (progress < 1) return;
       this.transitioning = false;
@@ -3279,6 +3468,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   private checkExit() {
+    this.followCell();
     const i = this.interior(this.current);
     const { x, y } = this.player;
     let exit: Dir | null = null;
@@ -3286,7 +3476,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else if (y > i.y1 + WALL / 2) exit = 'down';
     else if (x < i.x0 - WALL / 2) exit = 'left';
     else if (x > i.x1 + WALL / 2) exit = 'right';
-    if (exit && this.current.doors[exit] !== undefined) this.transition(exit);
+    if (exit && this.current.doors[exit] !== undefined && !this.mergedSide(this.current, exit)) this.transition(exit);
   }
 
   // --- Obstáculos (roomLayouts.ts) ---
@@ -3303,7 +3493,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Dibuja y crea los cuerpos de los obstáculos de la sala. */
   private buildObstacles(room: Room) {
-    const grid = layoutFor(this.floorSeed, room.id, room.kind);
+    const grid = layoutFor(this.floorSeed, room.id, room.kind, this.groupIds(room).length > 1);
     this.grids.set(room.id, grid);
     const i = this.interior(room);
     grid.forEach((row, ty) =>
@@ -3376,15 +3566,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Casilla de la sala actual en (x, y) del mundo. */
-  private tileOf(x: number, y: number): [number, number] {
-    const i = this.interior(this.current);
+  private tileOf(x: number, y: number, room: Room = this.cellRoom(x, y)): [number, number] {
+    const i = this.interior(room);
     return [Math.floor((x - i.x0) / TILE), Math.floor((y - i.y0) / TILE)];
   }
 
   private cellAt(x: number, y: number): Cell | undefined {
-    const grid = this.current && this.grids.get(this.current.id);
+    const room = this.current && this.cellRoom(x, y);
+    const grid = room && this.grids.get(room.id);
     if (!grid) return undefined;
-    const [tx, ty] = this.tileOf(x, y);
+    const [tx, ty] = this.tileOf(x, y, room);
     return grid[ty]?.[tx];
   }
 
@@ -3397,9 +3588,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** El punto libre más cercano a (x, y) en la sala actual (centro de su casilla si estaba ocupado). */
   private freeSpot(x: number, y: number) {
     if (this.freeAt(x, y)) return { x, y };
-    const grid = this.grids.get(this.current.id)!;
-    const [tx, ty] = nearestWalkable(grid, ...this.tileOf(x, y));
-    const i = this.interior(this.current);
+    const room = this.cellRoom(x, y);
+    const grid = this.grids.get(room.id)!;
+    const [tx, ty] = nearestWalkable(grid, ...this.tileOf(x, y, room));
+    const i = this.interior(room);
     return { x: i.x0 + tx * TILE + TILE / 2, y: i.y0 + ty * TILE + TILE / 2 };
   }
 
@@ -3419,7 +3611,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Dirección para acercarse al jugador rodeando obstáculos; sin campo de flujo, en línea recta. */
   private flowDir(e: Sprite, toPlayer: Phaser.Math.Vector2): Phaser.Math.Vector2 {
     const f = this.flow;
-    if (!f || f.roomId !== this.current.id) return toPlayer.clone();
+    if (!f || f.roomId !== this.current.id || this.cellRoom(e.x, e.y).id !== this.current.id) return toPlayer.clone();
     const [tx, ty] = this.tileOf(e.x, e.y);
     const here = f.dist[ty]?.[tx];
     // Cerca del jugador, o fuera del mapa de casillas, va directo
@@ -3436,10 +3628,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   // --- Enemigos ---
 
   private randomSpotInRoom(margin: number) {
-    const i = this.interior(this.current);
+    let i = this.interior(this.current);
     let x = i.cx;
     let y = i.cy;
+    const cells = this.groupIds(this.current);
     for (let tries = 0; tries < 50; tries++) {
+      // En una sala grande, cada intento cae en una de sus casillas al azar
+      i = this.interior(this.floor.rooms[cells[Math.floor(Math.random() * cells.length)]]);
       x = Phaser.Math.Between(i.x0 + margin, i.x1 - margin);
       y = Phaser.Math.Between(i.y0 + margin, i.y1 - margin);
       if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) >= 220 && this.freeAt(x, y)) break;
@@ -3485,7 +3680,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       ai.eliteMove = light[Math.floor(Math.random() * Math.min(light.length, 4))];
       ai.eliteAt = this.time.now + Phaser.Math.Between(2200, 3400);
       e.setData('hp', Math.round(hp * 1.5)).setData('maxHp', Math.round(hp * 1.5)).setData('speed', st.speed * 1.12).setData('elite', true);
-      (e as Sprite & { preFX?: { addGlow: (c: number, o?: number, i?: number, k?: boolean, q?: number, d?: number) => unknown } }).preFX?.addGlow(typeColor(kind.type), 4, 0, false, 0.1, 10);
+      this.glowAura(e, typeColor(kind.type));
     }
     return e;
   }
@@ -3494,6 +3689,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * Minijefe del piso: el Pokémon más fuerte del bioma en grande, con mucha vida y dos movimientos de su tipo (con
    * su nombre y aviso). Al caer suelta un objeto y tickets.
    */
+  /**
+   * Brillo de los enemigos especiales (minijefe, élite, Pokémon raro): aura que late a sus pies y chispas que suben.
+   * Antes era un `preFX.addGlow`, que en muchos navegadores dejaba el sprite invisible (solo se veía la sombra).
+   */
+  private glowAura(e: Sprite, color: number) {
+    bossAura(this, e, color, () => {
+      const bd = e.body as Body | null;
+      return bd ? bd.bottom : e.y + e.displayHeight / 2;
+    }, 1.8);
+  }
+
   private spawnMiniboss() {
     if (this.foeKinds.length === 0) return;
     const kind = [...this.foeKinds].sort((a, b) => b.bst - a.bst)[0];
@@ -3508,7 +3714,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     ai.moves = bossStyles(kind.types, id);
     ai.eliteMove = ai.moves[0];
     ai.eliteAt = Number.POSITIVE_INFINITY; // empieza al acabar su intro
-    (e as Sprite & { preFX?: { addGlow: (c: number, o?: number, i?: number, k?: boolean, q?: number, d?: number) => unknown } }).preFX?.addGlow(0xffd34d, 5, 0, false, 0.1, 12);
+    this.glowAura(e, 0xffd34d);
     const name = kind.name ? kind.name.charAt(0).toUpperCase() + kind.name.slice(1) : 'Pokémon';
     this.notify(`¡Minijefe: ${name}!`, { kind: 'danger', icon: 'star' });
     sparkle(this, e.x, e.y);
@@ -3777,7 +3983,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const own = this.summonKinds.filter((k) => k.types.includes(ai.type));
     const kinds = own.length ? own : this.summonKinds.length ? this.summonKinds : this.foeKinds;
     if (n === 0 || kinds.length === 0) return this.bossRing(b, ai);
-    const i = this.interior(this.current);
+    const i = this.arena();
     const color = typeColor(ai.type);
     const spots = Array.from({ length: n }, (_, k) => {
       const a = (k / n) * Math.PI * 2 + Math.random();
@@ -3844,7 +4050,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Lluvia: círculos de aviso en el suelo (uno donde estás); al caer, quien esté dentro recibe daño. */
   private bossRain(b: Sprite, ai: EnemyAI) {
-    const i = this.interior(this.current);
+    const i = this.arena();
     const R = 56;
     const spots = Array.from({ length: rainCount(ai.phase ?? 1) }, (_, k) =>
       k === 0
@@ -4372,7 +4578,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Sitio de la sala cerca del jugador (pero no encima) donde aparece quien salta. */
   private hopSpot(minDist: number) {
-    const i = this.interior(this.current);
+    const i = this.arena();
     const m = 50;
     for (let tries = 0; tries < 30; tries++) {
       const a = Math.random() * Math.PI * 2;
@@ -4705,6 +4911,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       bb.bar.set(hp / Math.max(1, max));
     }
     this.paintActive();
+    this.paintActionBadges();
     if (this.shieldRing) this.shieldRing.setPosition(this.player.x, this.player.y).setVisible(this.shieldLeft > 0);
     this.coinsHud.setText(String(this.coins));
     this.keysHud.setText(String(this.keys));
@@ -4874,7 +5081,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       enemies: () => this.enemies.getChildren() as Sprite[],
       player: () => this.player,
       aim: () => this.aim.clone().normalize(),
-      room: () => this.interior(this.current),
+      room: () => this.arena(),
       dash: (dir, speed, ms) => {
         this.player.setVelocity(dir.x * speed, dir.y * speed);
         this.playerKnockUntil = this.time.now + ms;
@@ -5191,7 +5398,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Suelta botín dentro de la sala actual. */
   private dropLoot(x: number, y: number, drop: LootDrop) {
-    const i = this.interior(this.current);
+    const i = this.arena();
     const p = this.freeSpot(Phaser.Math.Clamp(x, i.x0 + 30, i.x1 - 30), Phaser.Math.Clamp(y, i.y0 + 30, i.y1 - 30));
     this.spawnLoot(this.current.id, p.x, p.y, drop);
   }
@@ -5612,13 +5819,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.time.delayedCall(1000, () => this.spawnChallengeWave(room.id));
       return;
     }
-    this.cleared.add(room.id);
+    for (const id of this.groupIds(room)) this.cleared.add(id);
     this.chargeActive();
     this.mission({ kind: 'room' });
     this.tip('pause');
     if (room.kind === 'boss') this.mission({ kind: 'boss' });
     sfx('clear');
-    this.setDoorsLocked(room, false, true);
+    this.setGroupDoorsLocked(room, false, true);
     // Onda de "sala limpia" que sale del jugador y recorre la sala
     for (const [delay, color] of [[0, 0xffffff], [120, 0xffd34d]] as const) {
       const wave = this.add.circle(this.player.x, this.player.y, 20).setStrokeStyle(10, color, 0.85).setDepth(7);
@@ -5734,7 +5941,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Ranura de poder: cuadro con una franja del color del tipo; apagada mientras recarga. */
   private paintSlot(i: number, m: MovePower | null, ready: boolean) {
-    const key = m ? `${m.id}:${m.name}:${ready}` : 'vacía';
+    const device = currentInput();
+    const key = (m ? `${m.id}:${m.name}:${ready}` : 'vacía') + ':' + device;
     if (this.slotShown[i] === key) return;
     this.slotShown[i] = key;
     const g = this.slotBoxes[i].clear();
@@ -5749,9 +5957,34 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       g.fillStyle(typeColor(m.type), 1).fillRoundedRect(x + w - 96, y - 7, 88, 18, 9);
     }
     this.slotTypes[i].setText(m ? typeNameEs(m.type).toUpperCase() : '');
-    const text = this.hud[i];
-    if (!m) text.setText(`${i + 1}  —`).setAlpha(0.6);
-    else text.setText(`${i + 1}  ${shorten(pretty(m.name), 13)}`).setAlpha(ready ? 1 : 0.4);
+    // Botón para lanzarlo: A B X Y con sus colores en el mando, la tecla configurada con teclado o ratón
+    const badge = this.slotBadges[i];
+    const bx = x + 22;
+    let textX = x + 42;
+    const by = y + 34;
+    if (device === 'gamepad') {
+      const PAD = [['A', 0x3cb043], ['B', 0xd83a3a], ['X', 0x2f6fd8], ['Y', 0xe0b020]] as const;
+      g.fillStyle(0x101828, 1).fillCircle(bx, by, 14);
+      g.fillStyle(PAD[i][1], 1).fillCircle(bx, by, 12);
+      g.fillStyle(0xffffff, 0.35).fillCircle(bx - 3, by - 4, 4);
+      badge.setText(PAD[i][0]).setFontSize(15).setVisible(true);
+    } else if (device === 'touch') {
+      badge.setVisible(false);
+      textX = x + 14;
+    } else {
+      const label = keyLabel(loadKeys()[`power${i + 1}` as 'power1']);
+      const kw = Math.max(26, 12 + label.length * 9);
+      g.fillStyle(0x101828, 1).fillRoundedRect(bx - kw / 2 - 2, by - 14, kw + 4, 28, 6);
+      g.fillStyle(0xe8e8f0, 1).fillRoundedRect(bx - kw / 2, by - 12, kw, 24, 5);
+      g.fillStyle(0xb8bcc8, 1).fillRect(bx - kw / 2 + 2, by + 7, kw - 4, 3);
+      badge.setText(label).setFontSize(label.length > 2 ? 11 : 14).setColor('#1d2848').setShadow(0, 0, '#00000000', 0).setVisible(true);
+      textX = Math.max(textX, bx + kw / 2 + 8);
+    }
+    if (device === 'gamepad') badge.setColor('#ffffff').setShadow(1, 1, '#00000088', 0);
+    badge.setPosition(bx, by).setAlpha(m && !ready ? 0.5 : 1);
+    const text = this.hud[i].setX(textX);
+    if (!m) text.setText('—').setAlpha(0.6);
+    else text.setText(shorten(pretty(m.name), 13)).setAlpha(ready ? 1 : 0.4);
     g.setAlpha(m ? 1 : 0.6);
   }
 

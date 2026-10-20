@@ -44,7 +44,7 @@ export type SavedDrop =
  * Diseño del piso: 1 = sin Centro ni tienda (partidas de antes de v4), 2 = con ellos, 3 = además sala secreta,
  * sala de desafío y cofres.
  */
-export const FLOOR_LAYOUT = 3;
+export const FLOOR_LAYOUT = 4;
 
 export interface FloorItemSave {
   roomId: number;
@@ -260,7 +260,7 @@ export function parseRun(raw: string | null): RunSave | null {
     Array.isArray(d.floorItems) &&
     d.floorItems.every((f) => !!f && isInt(f.roomId) && typeof f.x === 'number' && typeof f.y === 'number' && isDrop(f.drop)) &&
     isInt(d.earned) && isInt(d.coins) && d.coins >= 0 && typeof d.centerUsed === 'boolean' &&
-    Array.isArray(d.shop) && d.shop.every(isShopSlot) && [1, 2, 3].includes(d.layout) &&
+    Array.isArray(d.shop) && d.shop.every(isShopSlot) && [1, 2, 3, 4].includes(d.layout) &&
     isInt(d.keys) && d.keys >= 0 && isInt(d.bombs) && d.bombs >= 0 && isIntArray(d.openedChests) &&
     Array.isArray(d.revealedDoors) && d.revealedDoors.every((k) => typeof k === 'string') &&
     (d.active === null || (!!d.active && typeof d.active.id === 'string' && isInt(d.active.charge) && d.active.charge >= 0)) &&

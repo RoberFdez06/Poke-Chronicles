@@ -144,3 +144,43 @@ test('diseño 3: sala secreta con puertas ocultas, sala de desafío y cofres', (
   }
   assert.ok(multi > SEEDS.length, 'casi siempre toca a dos salas o más');
 });
+
+test('salas grandes: grupos de 2 o 3 salas de combate contiguas, sin tocar el resto del piso', async () => {
+  const { addBigRooms, DIRS, DIR_DELTA } = await import('../src/level/floorGen.ts');
+  let withGroups = 0;
+  for (let seed = 1; seed <= 200; seed++) {
+    const base = generateFloor({ seed, roomCount: 12, special: true, extra: true });
+    const big = generateFloor({ seed, roomCount: 12, special: true, extra: true, big: true });
+    assert.deepEqual(addBigRooms(base), big);
+    assert.equal(big.rooms.length, base.rooms.length);
+    big.rooms.forEach((r, i) => {
+      assert.equal(r.kind, base.rooms[i].kind);
+      assert.deepEqual(r.doors, base.rooms[i].doors);
+    });
+    const seen = new Set<number>();
+    for (const g of big.groups ?? []) {
+      withGroups++;
+      assert.ok(g.length >= 2 && g.length <= 3, `tamaño ${g.length}`);
+      for (const id of g) {
+        assert.ok(!seen.has(id), 'grupos disjuntos');
+        seen.add(id);
+        assert.equal(big.rooms[id].kind, 'combat');
+        assert.equal(big.rooms[id].group, big.groups!.indexOf(g));
+      }
+      // Contiguas: todas se alcanzan desde la primera por puertas entre miembros
+      const reach = new Set([g[0]]);
+      for (let k = 0; k < g.length; k++) for (const id of [...reach]) for (const d of DIRS) {
+        const n = big.rooms[id].doors[d];
+        if (n !== undefined && g.includes(n)) reach.add(n);
+      }
+      assert.equal(reach.size, g.length, 'contiguas');
+      // Y están pegadas en la cuadrícula
+      for (const id of g) {
+        const r = big.rooms[id];
+        const touching = DIRS.some((d) => g.some((o) => o !== id && big.rooms[o].gx === r.gx + DIR_DELTA[d].dx && big.rooms[o].gy === r.gy + DIR_DELTA[d].dy));
+        assert.ok(touching);
+      }
+    }
+  }
+  assert.ok(withGroups > 100, `suficientes grupos (${withGroups})`);
+});
