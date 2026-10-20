@@ -79,8 +79,13 @@ function drawOutside(g: G, b: BiomeLook, kind: Outside) {
     case 'lava': {
       fill(kind === 'lava' ? 0x3a1410 : shade(w, -0.3));
       if (kind === 'lava') {
-        g.fillStyle(0xe0402a, 1).fillRect(0, 14, 32, 4).fillRect(14, 0, 4, 32);
-        g.fillStyle(0xffa030, 1).fillRect(0, 15, 32, 2).fillRect(15, 0, 2, 32);
+        // Charcas de lava entre las rocas (no una rejilla de líneas rectas)
+        for (const [x, y, r] of [[16, 16, 5], [0, 0, 4], [32, 0, 4], [0, 32, 4], [32, 32, 4], [3, 17, 2], [18, 2, 2]] as const) {
+          g.fillStyle(0x7a1a0a, 1).fillCircle(x, y, r + 1);
+          g.fillStyle(0xe0402a, 1).fillCircle(x, y, r);
+          g.fillStyle(0xffa030, 1).fillCircle(x - 1, y - 1, Math.max(1, r - 2));
+          if (r > 3) g.fillStyle(0xffe08a, 1).fillRect(x - 2, y - 2, 2, 2);
+        }
       }
       for (const [x, y, r] of [[7, 7, 7], [24, 6, 6], [8, 25, 6], [25, 24, 8]] as const) blob(x, y, r, b.colors.rock, b.colors.rockTop);
       break;
