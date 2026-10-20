@@ -1024,3 +1024,18 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - e2e `tests/e2e/bossextra.spec.ts`: el jefe tiene sus 2 extra; espiral dispara; la zona de peligro y el láser hacen
   daño; onda y minijefe sin errores (capturas 36-39).
 - Ojo para pruebas: con fotogramas lentos, el tiempo de Phaser va más despacio que el real; esperar con margen.
+
+## T51 — Más enemigos y comportamientos
+- `src/data/enemies.ts`: `EXTRA_BEHAVIORS` (orbitShooter, mine, shielded, healer) aparte de `BEHAVIORS` (los de tipo),
+  así el test de "cada tipo tiene un comportamiento" no cambia; `EnemyBehavior` es la unión. Constantes de cada uno,
+  `hitFromFront` y `turnToward` (escudado), y `enemyStats` con su vida y velocidad (escudado ×1,1 de vida; mina ×0,6).
+- `src/data/bossPatterns.ts`: `biomeExtraBehaviors` (2 por tipo de bioma, todos salen en algún bioma),
+  `twistChance` (0 en el piso 1, +9 % por piso hasta 35 %) y `twistBehaviors` (no toca a los que disparan, así sigue la
+  regla de uno de cada tres; como mucho 1 curandero y 2 minas por sala).
+- `balance.ts`: la simulación también usa los comportamientos nuevos con esa probabilidad; `balance.test.ts` sigue en
+  rango (264 tests en verde).
+- GameScene: `spawnEnemies` aplica `twistBehaviors`; los 4 casos en `updateEnemy` (el escudado dibuja su escudo y lo
+  borra al desaparecer; la mina estalla con `hurtPlayer` y `killEnemy`); `hitEnemy` reduce a un 15 % lo que le llega de
+  frente al escudado ("¡Bloqueado!"). El bucle de enemigos comprueba que siga activo tras su IA (la mina se va sola).
+- Tests: `tests/bossPatterns.test.ts` (+3) y e2e `tests/e2e/behaviors.spec.ts` (escudo de frente/espalda, curación,
+  mina que estalla y tirador que dispara; captura 40).

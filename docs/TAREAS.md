@@ -378,7 +378,7 @@ No toques los ficheros del supervisor (arte, menús, `attacks.ts`, `movePatterns
   y **zona de peligro** en el suelo que explota. Cada bioma elige 2 extra según su tipo (fuego → onda, agua → lluvia grande, etc.)
   con la lógica en `bossPatterns.ts` y tests. Sube la dificultad con el piso sin pasar de lo esquivable.
 
-## [ ] T51 — Más enemigos y comportamientos
+## [x] T51 — Más enemigos y comportamientos
 - En `enemies.ts` añade 4 comportamientos nuevos (por ejemplo: **tirador en círculo**, **mina que se arma**, **escudado** que solo
   recibe daño por la espalda, **curandero** que cura a otros). Reparte por bioma y por piso en `bossPatterns.ts`/mezcla de sala
   y comprueba que `balance.test.ts` sigue en rango.

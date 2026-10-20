@@ -3,7 +3,7 @@
 import { BOSS_TICKETS, ROOM_TICKETS } from './save.ts';
 import { BERRIES, centerHeal, CLEAR_DROP_CHANCE, LOOT_CHANCE, POTIONS, roomClearCoins, SHOP_PRICES } from './loot.ts';
 import { BASE_STATS } from './items.ts';
-import { BEHAVIORS, enemyBstRange, enemyStats } from './enemies.ts';
+import { BEHAVIORS, EXTRA_BEHAVIORS, enemyBstRange, enemyStats } from './enemies.ts';
 import { AVERAGE_STATS, bossStats } from './pokeStats.ts';
 import { bossTicketsFor, difficultyFor, FLOOR_COUNT, minibossTicketsFor, roomCountFor, roomTicketsFor } from '../level/progression.ts';
 import { FINALE_BONUS } from './finale.ts';
@@ -160,7 +160,8 @@ export function simulateRuns(runs: number, seed = 1, p: SimParams = SIM_DEFAULTS
         let t = 0;
         let dmg = 0;
         for (let k = 0; k < n; k++) {
-          const behavior = BEHAVIORS[Math.floor(rng() * BEHAVIORS.length)];
+          // T51: también los comportamientos nuevos (como mucho un 35 % de la sala desde el piso 5)
+          const behavior = f >= 2 && rng() < Math.min(0.35, (f - 1) * 0.09) ? EXTRA_BEHAVIORS[Math.floor(rng() * EXTRA_BEHAVIORS.length)] : BEHAVIORS[Math.floor(rng() * BEHAVIORS.length)];
           const e = enemyStats(between(blo, bhi), behavior, d);
           const dt = e.hp / dps;
           t += dt;

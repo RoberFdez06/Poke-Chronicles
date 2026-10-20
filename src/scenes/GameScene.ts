@@ -97,6 +97,7 @@ import {
   spiralSpec,
   BOSS_ATTACK_LABEL,
   type ExtraAttack,
+  twistBehaviors,
 } from '../data/bossPatterns';
 import {
   ACTIVE_DROP_CHANCE,
@@ -201,7 +202,20 @@ import {
 } from '../data/items';
 import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, Dir, Floor, Room } from '../level/floorGen';
 import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES } from '../level/biomes';
-import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES } from '../data/enemies';
+import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES,
+  HEAL_EVERY_MS,
+  HEAL_PART,
+  HEAL_RANGE,
+  MINE_ARM_DIST,
+  MINE_FUSE_MS,
+  MINE_RADIUS,
+  ORBIT_RADIUS,
+  ORBIT_SHOT_MS,
+  SHIELD_FRONT_MUL,
+  SHIELD_TURN,
+  hitFromFront,
+  turnToward,
+} from '../data/enemies';
 import { drawMinimap } from './minimap';
 
 // Cada sala ocupa una pantalla del mundo; ROOM es su interior relativo a la celda
@@ -318,6 +332,8 @@ interface EnemyAI {
   nextAttack?: number;
   lastAttack?: BossAttack;
   phase?: 1 | 2;
+  /** T51: hacia dónde mira el escudado (rad). */
+  facing?: number;
 }
 
 /** Velocidad de los proyectiles enemigos (px/s) y cuánto duran. */
@@ -3349,7 +3365,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Varios enemigos del piso; al menos uno de cada tres dispara, sea del tipo que sea (T32). */
   private spawnEnemies(n: number) {
     const kinds = Array.from({ length: n }, () => Phaser.Utils.Array.GetRandom(this.foeKinds) as FoeKind);
-    const behaviors = mixBehaviors(kinds.map((k) => k.behavior));
+    // T51: algunos pasan a los comportamientos nuevos del bioma (más cuanto más hondo)
+    const behaviors = twistBehaviors(mixBehaviors(kinds.map((k) => k.behavior)), this.level(), this.biome.types, Math.random);
     kinds.forEach((k, i) => this.spawnEnemy(k, behaviors[i]));
   }
 
@@ -4137,6 +4154,94 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         break;
       }
 
+      case 'orbitShooter': {
+        // Te rodea a distancia fija (corrige hacia dentro o hacia fuera) y dispara cada poco
+        const radial = dist > ORBIT_RADIUS + 40 ? 0.8 : dist < ORBIT_RADIUS - 40 ? -0.8 : 0;
+        const tangent = new Phaser.Math.Vector2(-toPlayer.y * ai.side, toPlayer.x * ai.side);
+        walk(tangent.add(toPlayer.clone().scale(radial)).normalize());
+        this.face(e, toPlayer);
+        if (time >= ai.until) {
+          this.fireFoeShot(e, toPlayer.clone(), ai.type);
+          ai.until = time + ORBIT_SHOT_MS + Phaser.Math.Between(0, 400);
+          if (Math.random() < 0.2) ai.side = -ai.side;
+        }
+        break;
+      }
+
+      case 'mine': {
+        // Se acerca despacio; cerca de ti se arma (parpadea en rojo) y estalla
+        if (ai.state === 'windup') {
+          e.setVelocity(0, 0);
+          const blink = Math.floor((ai.until - time) / 120) % 2 === 0;
+          if (blink) e.setTintFill(0xff3d00);
+          else e.clearTint();
+          if (time >= ai.until) {
+            const r = MINE_RADIUS;
+            const fx = this.add.circle(e.x, e.y, r, 0xff7043, 0.6).setDepth(12);
+            this.tweens.add({ targets: fx, alpha: 0, scale: 1.25, duration: 300, onComplete: () => fx.destroy() });
+            sfx('boom');
+            this.cameras.main.shake(140, 0.005);
+            if (inBlast(e.x, e.y, this.player.x, this.player.y, r)) this.hurtPlayer(e);
+            e.setData('mineBlown', true);
+            this.killEnemy(e);
+          }
+          break;
+        }
+        walk(toward);
+        this.face(e, toPlayer);
+        if (dist < MINE_ARM_DIST) {
+          ai.state = 'windup';
+          ai.until = time + MINE_FUSE_MS;
+          const ring = this.add.circle(e.x, e.y, MINE_RADIUS).setStrokeStyle(3, 0xff3d00, 0.8).setDepth(3);
+          this.tweens.add({ targets: ring, alpha: 0.2, duration: MINE_FUSE_MS, onComplete: () => ring.destroy() });
+        }
+        break;
+      }
+
+      case 'shielded': {
+        // Avanza hacia ti girando despacio: hay que rodearlo para darle por la espalda
+        const target = Math.atan2(toPlayer.y, toPlayer.x);
+        ai.facing = turnToward(ai.facing ?? target, target, SHIELD_TURN * (this.game.loop.delta / 1000));
+        const f = new Phaser.Math.Vector2(Math.cos(ai.facing), Math.sin(ai.facing));
+        if (dist > 70) walk(f);
+        else e.setVelocity(0, 0);
+        this.face(e, f);
+        let g = e.getData('shieldGfx') as Phaser.GameObjects.Graphics | undefined;
+        if (!g) {
+          g = this.add.graphics().setDepth(5);
+          e.setData('shieldGfx', g);
+          e.once(Phaser.GameObjects.Events.DESTROY, () => g!.destroy());
+        }
+        const size = (e.getData('size') as number | undefined) ?? 60;
+        g.clear().lineStyle(8, 0xcfd8dc, 0.95).beginPath().arc(e.x, e.y, size * 0.62, ai.facing - 1.0, ai.facing + 1.0).strokePath();
+        g.lineStyle(3, 0x37474f, 1).beginPath().arc(e.x, e.y, size * 0.62 + 5, ai.facing - 1.0, ai.facing + 1.0).strokePath();
+        break;
+      }
+
+      case 'healer': {
+        // Guarda las distancias y cada poco cura a los enemigos de alrededor (anillo verde)
+        if (dist < 260) walk(toPlayer.clone().negate());
+        else if (dist > 420) walk(toward);
+        else walk(new Phaser.Math.Vector2(-toPlayer.y * ai.side, toPlayer.x * ai.side));
+        this.face(e, toPlayer);
+        if (time >= ai.until) {
+          ai.until = time + HEAL_EVERY_MS;
+          const ring = this.add.circle(e.x, e.y, 20).setStrokeStyle(4, 0x66bb6a, 0.9).setDepth(4);
+          this.tweens.add({ targets: ring, radius: HEAL_RANGE, alpha: 0, duration: 500, onComplete: () => ring.destroy() });
+          for (const c of this.enemies.getChildren()) {
+            const o = c as Sprite;
+            if (o === e || !o.active || Phaser.Math.Distance.Between(e.x, e.y, o.x, o.y) > HEAL_RANGE) continue;
+            const max = (o.getData('maxHp') as number | undefined) ?? 0;
+            const hp = o.getData('hp') as number;
+            if (!(max > 0) || hp >= max) continue;
+            const add = Math.max(1, Math.round(max * HEAL_PART));
+            o.setData('hp', Math.min(max, hp + add));
+            this.popup(o.x, o.y - 40, `+${add}`, 0x66bb6a);
+          }
+        }
+        break;
+      }
+
       case 'swoop': {
         // Pasadas en picado: se lanza en curva pasando junto a ti y se aleja para coger carrerilla
         if (ai.state === 'dash') {
@@ -4441,6 +4546,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const e = c as Sprite;
       if (!e.active || this.tickEnemyStatus(e, time)) return;
       this.updateEnemy(e, time);
+      // T51: la mina puede estallar (y desaparecer) en su propio turno
+      if (!e.active) return;
       const eai = e.getData('ai') as EnemyAI | undefined;
       if (eai?.boss) this.updateBossAttacks(e, time);
       else if (eai?.eliteMove && time >= (eai.eliteAt ?? 0)) {
@@ -4746,6 +4853,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!enemy.active) return undefined;
     // Dragón: los poderes hacen más daño; Lluvia y Sol cambian Agua y Fuego (T38)
     let dmg = base * (status ? hitDamageMul(status) : 1) * weatherPowerMul(this.weather, status);
+    // T51: el escudado solo se lleva el golpe entero por la espalda
+    const shAi = enemy.getData('ai') as EnemyAI | undefined;
+    if (shAi?.behavior === 'shielded' && hitFromFront(shAi.facing ?? 0, sx - enemy.x, sy - enemy.y)) {
+      dmg *= SHIELD_FRONT_MUL;
+      if (this.fxBudget.take(this.time.now)) this.popup(enemy.x, enemy.y - 44, '¡Bloqueado!', 0xb0bec5);
+    }
     // Eficacia de tipos (como en Pokémon): súper eficaz, no muy eficaz o casi sin efecto
     const defTypes = this.foeTypesOf(enemy);
     dmg *= damageMul(status, defTypes);

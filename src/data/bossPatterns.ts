@@ -1,6 +1,6 @@
 // Ataques de los jefes (con aviso previo) y su segunda fase, y la mezcla de enemigos de cada sala.
 // Lógica pura, sin Phaser ni red, para poder testearla.
-import type { EnemyBehavior } from './enemies.ts';
+import { EXTRA_BEHAVIORS, type EnemyBehavior } from './enemies.ts';
 
 /**
  * Ráfaga en círculo, embestida en línea recta, lluvia de proyectiles sobre el suelo e invocar ayudantes; T50: espiral
@@ -213,4 +213,63 @@ export function shockwaveHits(cx: number, cy: number, r: number, gapAt: number, 
   let diff = Math.abs(a - gapAt) % (Math.PI * 2);
   if (diff > Math.PI) diff = Math.PI * 2 - diff;
   return diff > gap / 2;
+}
+
+// --- T51: comportamientos nuevos en la mezcla de cada sala, según el bioma y el piso ---
+
+type ExtraBehavior = (typeof EXTRA_BEHAVIORS)[number];
+
+/** Los 2 comportamientos nuevos que prefiere cada tipo de bioma (el primero que tenga entrada manda). */
+const BIOME_EXTRA_BEHAVIORS: Record<string, [ExtraBehavior, ExtraBehavior]> = {
+  grass: ['healer', 'mine'],
+  bug: ['mine', 'healer'],
+  rock: ['shielded', 'mine'],
+  ground: ['mine', 'shielded'],
+  water: ['orbitShooter', 'healer'],
+  fire: ['mine', 'orbitShooter'],
+  ghost: ['orbitShooter', 'healer'],
+  psychic: ['healer', 'orbitShooter'],
+  electric: ['orbitShooter', 'shielded'],
+  steel: ['shielded', 'orbitShooter'],
+  ice: ['shielded', 'healer'],
+  poison: ['mine', 'healer'],
+  dragon: ['shielded', 'orbitShooter'],
+  fairy: ['healer', 'orbitShooter'],
+  dark: ['orbitShooter', 'mine'],
+  normal: ['shielded', 'healer'],
+};
+
+export function biomeExtraBehaviors(biomeTypes: readonly string[]): [ExtraBehavior, ExtraBehavior] {
+  for (const t of biomeTypes) if (BIOME_EXTRA_BEHAVIORS[t]) return BIOME_EXTRA_BEHAVIORS[t];
+  return BIOME_EXTRA_BEHAVIORS.normal;
+}
+
+/** Parte de los enemigos de una sala que cambian a un comportamiento nuevo: 0 en el piso 1, sube hasta el 35 %. */
+export const twistChance = (floor: number): number => Math.min(0.35, Math.max(0, (Math.floor(floor) - 1) * 0.09));
+/** Como mucho, por sala: un curandero y dos minas. */
+export const MAX_HEALERS = 1;
+export const MAX_MINES = 2;
+
+/**
+ * Cambia algunos enemigos de la sala a los comportamientos nuevos del bioma (T51), sin tocar a los que disparan (así
+ * `mixBehaviors` sigue garantizando uno de cada tres) y sin pasar de un curandero y dos minas.
+ */
+export function twistBehaviors(list: readonly EnemyBehavior[], floor: number, biomeTypes: readonly string[], rng: () => number): EnemyBehavior[] {
+  const [a, b] = biomeExtraBehaviors(biomeTypes);
+  const chance = twistChance(floor);
+  let healers = 0;
+  let mines = 0;
+  return list.map((beh) => {
+    if (beh === 'shoot' || rng() >= chance) return beh;
+    const pick = rng() < 0.6 ? a : b;
+    if (pick === 'healer') {
+      if (healers >= MAX_HEALERS || list.length < 2) return beh;
+      healers++;
+    }
+    if (pick === 'mine') {
+      if (mines >= MAX_MINES) return beh;
+      mines++;
+    }
+    return pick;
+  });
 }

@@ -76,3 +76,52 @@ test('el láser y la onda tocan donde deben', () => {
   // El hueco funciona aunque cruce el ángulo ±π
   assert.ok(!shockwaveHits(0, 0, 100, Math.PI, gap, -100, 1));
 });
+
+// --- T51 ---
+import { MAX_HEALERS, MAX_MINES, biomeExtraBehaviors, mixBehaviors, twistBehaviors, twistChance } from '../src/data/bossPatterns.ts';
+import { EXTRA_BEHAVIORS, EXTRA_BEHAVIOR_LABEL, enemyStats, hitFromFront, turnToward } from '../src/data/enemies.ts';
+import { difficultyFor } from '../src/level/progression.ts';
+import { mulberry32 } from '../src/level/floorGen.ts';
+
+test('T51: cuatro comportamientos nuevos con nombre, repartidos por bioma', () => {
+  assert.equal(EXTRA_BEHAVIORS.length, 4);
+  for (const b of EXTRA_BEHAVIORS) assert.ok(EXTRA_BEHAVIOR_LABEL[b]);
+  for (const b of BIOMES) {
+    const [x, y] = biomeExtraBehaviors(b.types);
+    assert.notEqual(x, y, b.id);
+  }
+  const all = new Set(BIOMES.flatMap((b) => biomeExtraBehaviors(b.types)));
+  for (const b of EXTRA_BEHAVIORS) assert.ok(all.has(b), `${b} sale en algún bioma`);
+});
+
+test('T51: más cuanto más hondo, nunca en el piso 1, sin tocar a los que disparan y con topes', () => {
+  assert.equal(twistChance(1), 0);
+  assert.ok(twistChance(3) > twistChance(2));
+  assert.ok(twistChance(20) <= 0.35);
+  const rng = mulberry32(8);
+  const room = ['chase', 'charge', 'shoot', 'hop', 'chase', 'chase', 'circle', 'charge'] as const;
+  assert.deepEqual(twistBehaviors(room, 1, ['grass'], rng), [...room]);
+  let changed = 0;
+  for (let i = 0; i < 300; i++) {
+    const out = twistBehaviors(mixBehaviors([...room]), 6, ['grass', 'bug'], rng);
+    assert.ok(out.filter((b) => b === 'healer').length <= MAX_HEALERS);
+    assert.ok(out.filter((b) => b === 'mine').length <= MAX_MINES);
+    assert.ok(out.filter((b) => b === 'shoot').length >= Math.ceil(out.length / 3));
+    changed += out.filter((b) => (EXTRA_BEHAVIORS as readonly string[]).includes(b)).length;
+    for (const b of out) if ((EXTRA_BEHAVIORS as readonly string[]).includes(b)) assert.ok(['healer', 'mine'].includes(b));
+  }
+  assert.ok(changed > 100, `${changed}`);
+});
+
+test('T51: escudado (golpes de frente), giro limitado y estadísticas', () => {
+  // Mira a la derecha (0 rad): de frente bloquea, por la espalda no
+  assert.ok(hitFromFront(0, 30, 5));
+  assert.ok(!hitFromFront(0, -30, 5));
+  assert.ok(!hitFromFront(Math.PI, 30, 0));
+  assert.ok(Math.abs(turnToward(0, Math.PI / 2, 0.1) - 0.1) < 1e-9);
+  assert.ok(Math.abs(turnToward(3, -3, 1) - (3 + (2 * Math.PI - 6))) < 1e-9);
+  const d = difficultyFor(3);
+  assert.ok(enemyStats(400, 'shielded', d).hp > enemyStats(400, 'shoot', d).hp);
+  assert.ok(enemyStats(400, 'mine', d).hp < enemyStats(400, 'chase', d).hp);
+  for (const b of EXTRA_BEHAVIORS) assert.ok(enemyStats(400, b, d).speed > 0, b);
+});

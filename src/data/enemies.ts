@@ -9,7 +9,50 @@ import type { FloorDifficulty } from '../level/progression.ts';
  * rodearte y lanzarse, excavar y salir debajo, enjambre a bandazos, emboscar camuflado y pasadas en picado.
  */
 export const BEHAVIORS = ['chase', 'charge', 'shoot', 'hop', 'circle', 'burrow', 'swarm', 'ambush', 'swoop'] as const;
-export type EnemyBehavior = (typeof BEHAVIORS)[number];
+/**
+ * T51: comportamientos que no van por tipo sino por sala (ver bossPatterns.ts `twistBehaviors`): tirador en círculo
+ * (te rodea a distancia y dispara), mina (se acerca, se arma y estalla), escudado (solo le hace daño lo que le da por
+ * la espalda; gira despacio) y curandero (se queda lejos y cura a los demás).
+ */
+export const EXTRA_BEHAVIORS = ['orbitShooter', 'mine', 'shielded', 'healer'] as const;
+export type EnemyBehavior = (typeof BEHAVIORS)[number] | (typeof EXTRA_BEHAVIORS)[number];
+
+export const EXTRA_BEHAVIOR_LABEL: Record<(typeof EXTRA_BEHAVIORS)[number], string> = {
+  orbitShooter: 'Tirador',
+  mine: 'Mina',
+  shielded: 'Escudado',
+  healer: 'Curandero',
+};
+
+/** Escudado: daño que pasa por delante, y lo que gira hacia ti (rad/s). */
+export const SHIELD_FRONT_MUL = 0.15;
+export const SHIELD_TURN = 1.4;
+/** ¿El golpe llega por delante? `facing` es hacia dónde mira; (hx, hy), de dónde viene el golpe respecto a él. */
+export function hitFromFront(facing: number, hx: number, hy: number): boolean {
+  if (hx === 0 && hy === 0) return true;
+  let d = Math.abs(Math.atan2(hy, hx) - facing) % (Math.PI * 2);
+  if (d > Math.PI) d = Math.PI * 2 - d;
+  return d < Math.PI / 2;
+}
+/** Gira `facing` hacia `target` como mucho `max` rad. */
+export function turnToward(facing: number, target: number, max: number): number {
+  let d = (target - facing) % (Math.PI * 2);
+  if (d > Math.PI) d -= Math.PI * 2;
+  if (d < -Math.PI) d += Math.PI * 2;
+  return facing + Math.max(-max, Math.min(max, d));
+}
+
+/** Curandero: cada cuánto cura, a qué distancia y cuánto (parte de la vida máxima de cada uno). */
+export const HEAL_EVERY_MS = 2600;
+export const HEAL_RANGE = 280;
+export const HEAL_PART = 0.12;
+/** Mina: distancia a la que se arma, cuánto tarda en estallar y su radio. */
+export const MINE_ARM_DIST = 100;
+export const MINE_FUSE_MS = 900;
+export const MINE_RADIUS = 105;
+/** Tirador en círculo: distancia a la que te rodea y cada cuánto dispara. */
+export const ORBIT_RADIUS = 240;
+export const ORBIT_SHOT_MS = 1500;
 
 /** Comportamiento según el tipo principal del Pokémon. */
 export const BEHAVIOR_BY_TYPE: Readonly<Record<string, EnemyBehavior>> = {
@@ -108,8 +151,15 @@ export interface EnemyStats {
 export function enemyStats(bst: number, behavior: EnemyBehavior, d: FloorDifficulty): EnemyStats {
   const k = Math.max(0.6, bst / 260);
   // Los que disparan o saltan son más frágiles; los que embisten, más duros pero más lentos
-  const hpMul = behavior === 'charge' ? 1.2 : behavior === 'chase' ? 1 : 0.8;
-  const speedMul = behavior === 'chase' ? 1 : behavior === 'charge' ? 0.7 : behavior === 'shoot' ? 0.75 : 0.5;
+  // T51: el escudado aguanta algo más; la mina es frágil (estalla sola)
+  const hpMul = behavior === 'charge' ? 1.2 : behavior === 'chase' ? 1 : behavior === 'shielded' ? 1.1 : behavior === 'mine' ? 0.6 : 0.8;
+  const speedMul =
+    behavior === 'chase' ? 1
+    : behavior === 'charge' ? 0.7
+    : behavior === 'shoot' ? 0.75
+    : behavior === 'orbitShooter' ? 0.95
+    : behavior === 'mine' || behavior === 'shielded' || behavior === 'healer' ? 0.6
+    : 0.5;
   return {
     // T32: base de 70 PS (antes 60)
     hp: Math.round(70 * k * hpMul * d.hp),

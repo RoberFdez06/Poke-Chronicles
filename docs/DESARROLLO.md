@@ -259,6 +259,12 @@ además **invocan ayudantes** (círculos de su color donde saldrán; como mucho 
 rojo, va más rápido y ataca más a menudo y con más proyectiles. En cada sala, al menos uno de cada tres enemigos
 dispara. `node scripts/simulate.ts` saca los números del equilibrio.
 
+**Enemigos nuevos (T51)**: desde el piso 2, algunos enemigos de cada sala (hasta un 35 %, más cuanto más hondo;
+nunca los que disparan) pasan a uno de los 2 comportamientos nuevos del bioma (`twistBehaviors` en bossPatterns.ts):
+**tirador** (te rodea a distancia y dispara), **mina** (se acerca, se arma parpadeando en rojo y estalla; como mucho 2),
+**escudado** (su escudo para casi todo lo que le llega de frente y gira despacio: hay que rodearlo) y **curandero** (se
+queda lejos y cura a los de alrededor con un anillo verde; como mucho 1 por sala).
+
 **Ataques extra por bioma (T50)**: cada jefe suma 2 de estos según el tipo del bioma (`biomeExtraAttacks`: fuego →
 onda y zonas, eléctrico → láser y espiral…), y el minijefe usa a veces uno de ellos. Todos avisan antes y se ponen más
 duros con el piso, con topes para que se puedan esquivar (`spiralSpec`, `shockwaveSpec`, `laserSpec`, `hazardSpec`):
