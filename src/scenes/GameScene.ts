@@ -533,6 +533,8 @@ export class GameScene extends Phaser.Scene {
   private chosenSlot?: number;
   private swapOpen = false;
   private swapCooldownUntil = 0;
+  /** Tras coger un activo, 1 s sin poder coger otro (si no, el que sueltas y el nuevo se intercambian sin parar). */
+  private activeSwapUntil = 0;
   private movePool: MovePower[] = [];
   private tearType = 'normal';
   private nextTear = 0;
@@ -2972,6 +2974,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private pickItem(sprite: Sprite) {
     if (!sprite.active) return;
     const item = sprite.getData('item') as DroppedItem;
+    if (item.kind === 'active' && this.time.now < this.activeSwapUntil) return;
     // Con la ranura ya elegida en la pantalla de cambio se recoge en el acto. Antes también miraba el enfriamiento que
     // la propia elección acaba de poner (1,2 s): no se recogía, y al seguir encima se volvía a abrir la pantalla
     if (item.kind === 'move' && this.slots.indexOf(null) === -1 && this.chosenSlot === undefined) {
@@ -3092,7 +3095,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const before = new Set(this.synergies);
     if (item.kind === 'active') {
       // Como en Isaac: si ya llevabas uno, se queda en el suelo
-      if (this.active && this.player) this.spawnPickup(this.current.id, this.player.x + 70, this.player.y, { kind: 'active', id: this.active.id });
+      // (dentro de la sala: al lado contrario si estás pegado a una pared)
+      if (this.active && this.player) {
+        const rm = this.host.room();
+        const side = this.player.x + 70 > rm.x1 - 40 ? -70 : 70;
+        const dx = Phaser.Math.Clamp(this.player.x + side, rm.x0 + 40, rm.x1 - 40);
+        const dy = Phaser.Math.Clamp(this.player.y, rm.y0 + 50, rm.y1 - 40);
+        this.spawnPickup(this.current.id, dx, dy, { kind: 'active', id: this.active.id });
+      }
+      this.activeSwapUntil = this.time.now + 1000;
       const a = activeById(item.id);
       this.active = { id: item.id, charge: a?.charge ?? 1 };
       this.notify(`${a?.name ?? item.id}\n${a?.description ?? ''}\nEspacio, LB o clic en su cuadro`, { kind: 'item', icon: 'pokeball' });
