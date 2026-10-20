@@ -372,7 +372,7 @@ No toques los ficheros del supervisor (arte, menús, `attacks.ts`, `movePatterns
   Más consumibles de suelo: poción, bomba y llave con su icono en el HUD. Las teclas entran en `keybinds.ts` y en la
   pantalla de controles. Pide al supervisor los iconos si no puedes dibujarlos con las formas existentes de `itemIcons.ts`.
 
-## [ ] T50 — Más patrones de jefe y mini-jefes
+## [x] T50 — Más patrones de jefe y mini-jefes
 - Hoy hay 4 ataques de jefe (`bossPatterns.ts`: ráfaga, embestida, lluvia, invocación). Añade 4 más con aviso previo: **espiral**
   de proyectiles, **onda expansiva** (anillo que hay que saltar/esquivar entrando en el hueco), **láser giratorio**
   y **zona de peligro** en el suelo que explota. Cada bioma elige 2 extra según su tipo (fuego → onda, agua → lluvia grande, etc.)

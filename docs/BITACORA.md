@@ -1010,3 +1010,17 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - Tests: activos (synergies), pociones (loot), tecla (keybinds), guardado v14→v15. e2e `tests/e2e/actives.spec.ts`
   (poción con C, cada activo nuevo y el teletransporte desde otra sala), sin errores.
 - Iconos: los activos nuevos salen con la Poké Ball; pedidos al supervisor en N24.
+
+## T50 — Más patrones de jefe y minijefes
+- `src/data/bossPatterns.ts`: 4 ataques nuevos (`spiral`, `shockwave`, `laser`, `hazard`) con nombre en español.
+  `biomeExtraAttacks(tipos del bioma)` da 2 por tipo (tabla `TYPE_EXTRA`) y `bossAttacksFor(tipos del jefe, tipos del
+  bioma)` los suma a los de siempre (`bossAttacks` no cambia, así sus tests siguen igual). Parámetros por piso y fase:
+  `spiralSpec`, `shockwaveSpec`, `laserSpec`, `hazardSpec`, con topes de "esquivable" (espiral ≥ 90 ms entre disparos
+  y ≤ 4 brazos; hueco de la onda ≥ 50° y ≤ 340 px/s; láser ≤ 75°/s y ≤ 3 rayos; aviso de las zonas ≥ 0,9 s).
+  `laserHits` y `shockwaveHits` deciden si te tocan. Tests en `tests/bossPatterns.test.ts` (4).
+- GameScene: `bossExtra(jefe, ia, ataque, fase)` los dibuja (Graphics) y hace daño con `hurtPlayer` del jefe; devuelve
+  cuánto duran para que el siguiente ataque espere. El jefe y el trío usan `bossAttacksFor`. El minijefe, un 35 % de
+  las veces, usa uno de los 2 extra del bioma en lugar de su movimiento.
+- e2e `tests/e2e/bossextra.spec.ts`: el jefe tiene sus 2 extra; espiral dispara; la zona de peligro y el láser hacen
+  daño; onda y minijefe sin errores (capturas 36-39).
+- Ojo para pruebas: con fotogramas lentos, el tiempo de Phaser va más despacio que el real; esperar con margen.

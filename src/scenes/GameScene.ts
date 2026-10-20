@@ -87,6 +87,16 @@ import {
   TELEGRAPH_MS,
   HELPER_HP_MUL,
   helpersToSummon,
+  biomeExtraAttacks,
+  bossAttacksFor,
+  hazardSpec,
+  laserHits,
+  laserSpec,
+  shockwaveHits,
+  shockwaveSpec,
+  spiralSpec,
+  BOSS_ATTACK_LABEL,
+  type ExtraAttack,
 } from '../data/bossPatterns';
 import {
   ACTIVE_DROP_CHANCE,
@@ -3426,7 +3436,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       b.setData('hp', hp).setData('maxHp', hp).setData('speed', ms.speed * (trio ? 0.9 : 0.8)).setData('dmg', ms.damage);
       b.setData('bname', m.name).setData('btypes', m.types).setData('finale', true);
       const ai = this.newAI(behaviorFor([m.types[0]]), m.types[0], true);
-      ai.attacks = [...new Set([...bossAttacks(m.types), 'summon' as const])];
+      ai.attacks = [...new Set([...bossAttacksFor(m.types, this.biome.types), 'summon' as const])];
       ai.moves = bossStyles(m.types, m.id);
       ai.nextAttack = Number.POSITIVE_INFINITY; // los activa la intro al acabar
       ai.phase = 1;
@@ -3481,7 +3491,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // El jefe también se comporta según su tipo
     const ai = this.newAI(behaviorFor([this.bossType]), this.bossType, true);
     // Todos los legendarios invocan ayudantes de su tipo
-    ai.attacks = [...new Set([...bossAttacks(this.bossTypes), 'summon' as const])];
+    // T50: más los 2 ataques extra del bioma
+    ai.attacks = [...new Set([...bossAttacksFor(this.bossTypes, this.biome.types), 'summon' as const])];
     // Movimientos de su tipo (Lanzallamas, Hidrobomba, Terremoto…) además de sus ataques de jefe
     ai.moves = bossStyles(this.bossTypes, this.bossId);
     ai.nextAttack = this.time.now + 2200;
@@ -3632,7 +3643,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (attack === 'ring') this.bossRing(b, ai);
     else if (attack === 'charge') this.bossCharge(b, ai, time);
     else if (attack === 'summon') this.bossSummon(b, ai);
-    else this.bossRain(b, ai);
+    else if (attack === 'rain') this.bossRain(b, ai);
+    else {
+      // T50: los ataques extra duran más; el siguiente espera a que acaben
+      const ms = this.bossExtra(b, ai, attack, ai.phase ?? 1);
+      ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + TELEGRAPH_MS + ms + 600);
+    }
   }
 
   /** Invocación: círculos del color del jefe donde van a salir sus ayudantes (si ya hay muchos, hace una ráfaga). */
@@ -3738,6 +3754,131 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         if (b.active && inBlast(p.x, p.y, this.player.x, this.player.y, R)) this.hurtPlayer(b);
       }
     });
+  }
+
+  // --- T50: espiral, onda expansiva, láser giratorio y zona de peligro (bossPatterns.ts) ---
+
+  /** Lanza un ataque extra (con aviso) y devuelve cuánto dura después del aviso (ms). */
+  private bossExtra(b: Sprite, ai: EnemyAI, attack: ExtraAttack, phase: 1 | 2): number {
+    const color = typeColor(ai.type);
+    this.popup(b.x, b.y - (b.displayHeight / 2 + 20), BOSS_ATTACK_LABEL[attack], color);
+    b.setData('flashUntil', this.time.now + TELEGRAPH_MS).setTintFill(0xffffff);
+    const lvl = this.level();
+    if (attack === 'spiral') {
+      const sp = spiralSpec(lvl, phase);
+      const warn = this.add.circle(b.x, b.y, 20).setStrokeStyle(4, color, 0.9).setDepth(5);
+      this.tweens.add({ targets: warn, radius: 90, angle: 360, alpha: 0.2, duration: TELEGRAPH_MS, onComplete: () => warn.destroy() });
+      const base = Math.random() * Math.PI * 2;
+      this.time.delayedCall(TELEGRAPH_MS, () => {
+        let i = 0;
+        const ev = this.time.addEvent({
+          delay: sp.everyMs, repeat: sp.shots - 1,
+          callback: () => {
+            if (!b.active || this.ended) return ev.remove();
+            for (let k = 0; k < sp.arms; k++) {
+              const a = base + (k / sp.arms) * Math.PI * 2 + i * sp.turn;
+              this.fireFoeShot(b, new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), ai.type);
+            }
+            i++;
+          },
+        });
+      });
+      return sp.shots * sp.everyMs;
+    }
+    if (attack === 'shockwave') {
+      const sw = shockwaveSpec(lvl, phase);
+      // Aviso: el suelo tiembla y se marca por dónde estará el hueco de la primera onda
+      const gapAt0 = Math.random() * Math.PI * 2;
+      const mark = this.add.graphics().setDepth(4);
+      mark.lineStyle(6, 0xffffff, 0.8).beginPath().arc(b.x, b.y, 70, gapAt0 - sw.gap / 2, gapAt0 + sw.gap / 2).strokePath();
+      this.tweens.add({ targets: mark, alpha: 0.2, yoyo: true, repeat: 2, duration: TELEGRAPH_MS / 6, onComplete: () => mark.destroy() });
+      this.cameras.main.shake(TELEGRAPH_MS, 0.002);
+      for (let w = 0; w < sw.waves; w++) {
+        // Cada onda con el hueco en otro sitio (giro de 90-150°)
+        const gapAt = gapAt0 + w * (Math.PI / 2 + Math.random() * (Math.PI / 3));
+        this.time.delayedCall(TELEGRAPH_MS + w * sw.everyMs, () => {
+          if (!b.active || this.ended) return;
+          const cx = b.x;
+          const cy = b.y;
+          const g = this.add.graphics().setDepth(5);
+          const st = { r: 30 };
+          this.tweens.add({
+            targets: st, r: sw.maxRadius, duration: ((sw.maxRadius - 30) / sw.speed) * 1000,
+            onUpdate: () => {
+              g.clear().lineStyle(16, color, 0.85).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
+              g.lineStyle(4, 0xffffff, 0.7).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
+              if (b.active && !this.ended && shockwaveHits(cx, cy, st.r, gapAt, sw.gap, this.player.x, this.player.y)) this.hurtPlayer(b);
+            },
+            onComplete: () => g.destroy(),
+          });
+        });
+      }
+      return (sw.waves - 1) * sw.everyMs + (sw.maxRadius / sw.speed) * 1000;
+    }
+    if (attack === 'laser') {
+      const ls = laserSpec(lvl, phase);
+      const start = Math.atan2(this.player.y - b.y, this.player.x - b.x) + Math.PI / 2;
+      const dirSign = Math.random() < 0.5 ? 1 : -1;
+      const angles = (t: number) => Array.from({ length: ls.beams }, (_, k) => start + (k / ls.beams) * Math.PI * 2 + dirSign * ls.turnSpeed * t);
+      // Aviso: líneas finas donde saldrán los rayos; el jefe se queda quieto mientras dispara
+      const warn = this.add.graphics().setDepth(4);
+      for (const a of angles(0)) warn.lineStyle(3, color, 0.6).lineBetween(b.x, b.y, b.x + Math.cos(a) * ls.length, b.y + Math.sin(a) * ls.length);
+      this.tweens.add({ targets: warn, alpha: 0.15, yoyo: true, repeat: 2, duration: TELEGRAPH_MS / 6, onComplete: () => warn.destroy() });
+      ai.knockUntil = this.time.now + TELEGRAPH_MS + ls.durationMs;
+      b.setVelocity(0, 0);
+      this.time.delayedCall(TELEGRAPH_MS, () => {
+        if (!b.active || this.ended) return;
+        const g = this.add.graphics().setDepth(5);
+        const st = { t: 0 };
+        this.tweens.add({
+          targets: st, t: ls.durationMs / 1000, duration: ls.durationMs,
+          onUpdate: () => {
+            if (!b.active || this.ended) return void g.clear();
+            b.setVelocity(0, 0);
+            g.clear();
+            for (const a of angles(st.t)) {
+              const x2 = b.x + Math.cos(a) * ls.length;
+              const y2 = b.y + Math.sin(a) * ls.length;
+              g.lineStyle(26, color, 0.35).lineBetween(b.x, b.y, x2, y2);
+              g.lineStyle(10, 0xffffff, 0.9).lineBetween(b.x, b.y, x2, y2);
+              if (laserHits(b.x, b.y, a, ls.length, this.player.x, this.player.y)) this.hurtPlayer(b);
+            }
+          },
+          onComplete: () => g.destroy(),
+        });
+      });
+      return ls.durationMs;
+    }
+    // Zona de peligro: círculos en el suelo (uno donde estás) que estallan tras el aviso
+    const hz = hazardSpec(lvl, phase);
+    const i = this.interior(this.current);
+    const R = hz.radius;
+    const spots = Array.from({ length: hz.zones }, (_, k) =>
+      k === 0 && hz.onPlayer
+        ? { x: this.player.x, y: this.player.y }
+        : { x: Phaser.Math.Between(i.x0 + R, i.x1 - R), y: Phaser.Math.Between(i.y0 + R, i.y1 - R) },
+    );
+    const marks = spots.map((sp) => {
+      const c = this.add.circle(sp.x, sp.y, R, color, 0.12).setStrokeStyle(4, 0xff3d00, 0.85).setDepth(3);
+      this.tweens.add({ targets: c, fillAlpha: 0.45, duration: TELEGRAPH_MS + hz.warnMs });
+      const inner = this.add.circle(sp.x, sp.y, 4, 0xff3d00, 0.5).setDepth(3);
+      this.tweens.add({ targets: inner, radius: R, duration: TELEGRAPH_MS + hz.warnMs, ease: 'Quad.easeIn' });
+      return [c, inner];
+    });
+    this.time.delayedCall(TELEGRAPH_MS + hz.warnMs, () => {
+      marks.flat().forEach((m) => {
+        this.tweens.killTweensOf(m);
+        m.destroy();
+      });
+      if (this.ended) return;
+      this.cameras.main.shake(140, 0.005);
+      for (const sp of spots) {
+        const fx = this.add.circle(sp.x, sp.y, R, 0xff7043, 0.75).setDepth(12);
+        this.tweens.add({ targets: fx, alpha: 0, scale: 1.25, duration: 280, onComplete: () => fx.destroy() });
+        if (b.active && inBlast(sp.x, sp.y, this.player.x, this.player.y, R)) this.hurtPlayer(b);
+      }
+    });
+    return hz.warnMs;
   }
 
   /** Estado inicial de la IA; deja un respiro al entrar antes de embestir, disparar o saltar. */
@@ -4305,6 +4446,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       else if (eai?.eliteMove && time >= (eai.eliteAt ?? 0)) {
         // Minijefe: alterna sus movimientos (con nombre y algo más de aviso); élite: su ataque extra
         const mini = !!e.getData('miniboss');
+        // T50: el minijefe a veces usa uno de los ataques extra del bioma (más corto: fase 1)
+        if (mini && Math.random() < 0.35) {
+          const extra = biomeExtraAttacks(this.biome.types)[Math.random() < 0.5 ? 0 : 1];
+          const ms = this.bossExtra(e, eai, extra, 1);
+          eai.eliteAt = time + 2600 + ms;
+          this.paintEnemy(e, time);
+          this.drawEnemyBar(e);
+          return;
+        }
         const mv = mini && eai.moves?.length ? eai.moves[Math.floor(Math.random() * eai.moves.length)] : eai.eliteMove;
         eai.eliteAt = time + (mini ? 2600 : Math.max(2200, 4400 - this.level() * 220));
         this.foeMove(e, mv, eai.type, Math.round((e.getData('dmg') as number) * (mini ? 0.7 : 0.6)), mini ? 650 : 450, mini);

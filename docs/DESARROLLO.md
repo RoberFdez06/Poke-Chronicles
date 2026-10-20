@@ -259,6 +259,16 @@ además **invocan ayudantes** (círculos de su color donde saldrán; como mucho 
 rojo, va más rápido y ataca más a menudo y con más proyectiles. En cada sala, al menos uno de cada tres enemigos
 dispara. `node scripts/simulate.ts` saca los números del equilibrio.
 
+**Ataques extra por bioma (T50)**: cada jefe suma 2 de estos según el tipo del bioma (`biomeExtraAttacks`: fuego →
+onda y zonas, eléctrico → láser y espiral…), y el minijefe usa a veces uno de ellos. Todos avisan antes y se ponen más
+duros con el piso, con topes para que se puedan esquivar (`spiralSpec`, `shockwaveSpec`, `laserSpec`, `hazardSpec`):
+- **Espiral**: 2-4 brazos de proyectiles que giran (nunca más seguidos que cada 90 ms).
+- **Onda expansiva**: 1-3 anillos que crecen desde el jefe con un **hueco** (nunca menos de 50°) por el que pasar; se
+  marca dónde estará el primero y cada onda lo tiene en otro sitio.
+- **Láser giratorio**: 1-3 rayos que giran despacio (como mucho 75°/s) mientras el jefe se queda quieto; antes se ven
+  líneas finas donde saldrán.
+- **Zona de peligro**: 3-7 círculos (uno donde estás) que se llenan y estallan (aviso de al menos 0,9 s).
+
 ## Biomas
 
 Cada piso tiene un bioma (`src/level/biomes.ts`): Bosque, Cueva, Mar, Volcán, Torre fantasma, Ciudad, Montaña nevada,
