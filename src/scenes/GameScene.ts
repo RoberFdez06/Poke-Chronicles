@@ -72,7 +72,8 @@ import { emptyCounters, type RunCounters, type RunRecord } from '../data/runHist
 import { ToastStack, type ToastOptions } from '../ui/toast';
 import { reportError } from '../ui/errorScreen';
 import { keyCode } from '../ui/keys';
-import type { Action } from '../data/keybinds';
+import { keyLabel, type Action } from '../data/keybinds';
+import { currentInput } from '../ui/inputMode';
 import { ACHIEVEMENTS, lockedItems, rewardText, type MissionEvent } from '../data/missions';
 import {
   attackInterval,
@@ -621,6 +622,8 @@ export class GameScene extends Phaser.Scene {
   private slotShown: string[] = [];
   /** Nombre del tipo de cada poder (Volador y Veneno se confundían solo por el color). */
   private slotTypes: Phaser.GameObjects.Text[] = [];
+  /** Botón con el que se lanza cada poder (tecla o botón del mando, según con qué juegues). */
+  private slotBadges: Phaser.GameObjects.Text[] = [];
   private banner!: Phaser.GameObjects.Text;
   private toasts?: ToastStack;
   /** Quita el aviso de "sin conexión" al salir de la escena. */
@@ -703,6 +706,7 @@ export class GameScene extends Phaser.Scene {
     this.slotBoxes = [];
     this.slotShown = [];
     this.slotTypes = [];
+    this.slotBadges = [];
     this.floorItems = [];
     this.doorMap.clear();
     this.visited.clear();
@@ -1915,7 +1919,8 @@ export class GameScene extends Phaser.Scene {
         txt(RX + RW - 52, y + 2, 12, '#ffffff', true).setOrigin(0.5).setShadow(1, 1, '#00000088', 0),
       );
       this.slotShown.push('');
-      this.hud.push(txt(RX + 32, y + 34, 18, '#f8f8f8', true).setOrigin(0, 0.5));
+      this.slotBadges.push(txt(RX + 30, y + 34, 13, '#ffffff', true).setOrigin(0.5).setShadow(1, 1, '#00000088', 0));
+      this.hud.push(txt(RX + 50, y + 34, 18, '#f8f8f8', true).setOrigin(0, 0.5));
       const zone = over(hud(this.add.zone(RX + RW / 2, y + 32, RW, 64).setInteractive({ useHandCursor: true })));
       zone.on('pointerdown', () => !this.ended && !this.transitioning && this.castSlot(i, this.time.now));
     }
@@ -5856,7 +5861,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Ranura de poder: cuadro con una franja del color del tipo; apagada mientras recarga. */
   private paintSlot(i: number, m: MovePower | null, ready: boolean) {
-    const key = m ? `${m.id}:${m.name}:${ready}` : 'vacía';
+    const device = currentInput();
+    const key = (m ? `${m.id}:${m.name}:${ready}` : 'vacía') + ':' + device;
     if (this.slotShown[i] === key) return;
     this.slotShown[i] = key;
     const g = this.slotBoxes[i].clear();
@@ -5871,9 +5877,34 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       g.fillStyle(typeColor(m.type), 1).fillRoundedRect(x + w - 96, y - 7, 88, 18, 9);
     }
     this.slotTypes[i].setText(m ? typeNameEs(m.type).toUpperCase() : '');
-    const text = this.hud[i];
-    if (!m) text.setText(`${i + 1}  —`).setAlpha(0.6);
-    else text.setText(`${i + 1}  ${shorten(pretty(m.name), 13)}`).setAlpha(ready ? 1 : 0.4);
+    // Botón para lanzarlo: A B X Y con sus colores en el mando, la tecla configurada con teclado o ratón
+    const badge = this.slotBadges[i];
+    const bx = x + 22;
+    let textX = x + 42;
+    const by = y + 34;
+    if (device === 'gamepad') {
+      const PAD = [['A', 0x3cb043], ['B', 0xd83a3a], ['X', 0x2f6fd8], ['Y', 0xe0b020]] as const;
+      g.fillStyle(0x101828, 1).fillCircle(bx, by, 14);
+      g.fillStyle(PAD[i][1], 1).fillCircle(bx, by, 12);
+      g.fillStyle(0xffffff, 0.35).fillCircle(bx - 3, by - 4, 4);
+      badge.setText(PAD[i][0]).setFontSize(15).setVisible(true);
+    } else if (device === 'touch') {
+      badge.setVisible(false);
+      textX = x + 14;
+    } else {
+      const label = keyLabel(loadKeys()[`power${i + 1}` as 'power1']);
+      const kw = Math.max(26, 12 + label.length * 9);
+      g.fillStyle(0x101828, 1).fillRoundedRect(bx - kw / 2 - 2, by - 14, kw + 4, 28, 6);
+      g.fillStyle(0xe8e8f0, 1).fillRoundedRect(bx - kw / 2, by - 12, kw, 24, 5);
+      g.fillStyle(0xb8bcc8, 1).fillRect(bx - kw / 2 + 2, by + 7, kw - 4, 3);
+      badge.setText(label).setFontSize(label.length > 2 ? 11 : 14).setColor('#1d2848').setShadow(0, 0, '#00000000', 0).setVisible(true);
+      textX = Math.max(textX, bx + kw / 2 + 8);
+    }
+    if (device === 'gamepad') badge.setColor('#ffffff').setShadow(1, 1, '#00000088', 0);
+    badge.setPosition(bx, by).setAlpha(m && !ready ? 0.5 : 1);
+    const text = this.hud[i].setX(textX);
+    if (!m) text.setText('—').setAlpha(0.6);
+    else text.setText(shorten(pretty(m.name), 13)).setAlpha(ready ? 1 : 0.4);
     g.setAlpha(m ? 1 : 0.6);
   }
 
