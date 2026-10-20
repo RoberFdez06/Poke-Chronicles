@@ -119,3 +119,18 @@ test('las oleadas del desafío crecen', () => {
   assert.ok(challengeWaveSize(4, 1) > challengeWaveSize(1, 1));
   assert.ok(challengeWaveSize(99, 99) <= 9);
 });
+
+test('T49: pociones en el suelo: caen a veces y se llevan como mucho tres', async () => {
+  const { rollEnemyLoot, canCarryPotion, MAX_POTIONS, CARRIED_POTION_HEAL, LOOT_CHANCE } = await import('../src/data/loot.ts');
+  const { mulberry32 } = await import('../src/level/floorGen.ts');
+  const rng = mulberry32(21);
+  let n = 0;
+  const runs = 20000;
+  for (let i = 0; i < runs; i++) if (rollEnemyLoot(rng).some((d) => d.kind === 'potion')) n++;
+  assert.ok(Math.abs(n / runs - LOOT_CHANCE.potion) < 0.004, `${n / runs}`);
+  assert.ok(rollEnemyLoot(rng, true).every((d) => d.kind !== 'potion'));
+  assert.equal(MAX_POTIONS, 3);
+  assert.ok(canCarryPotion(MAX_POTIONS - 1));
+  assert.ok(!canCarryPotion(MAX_POTIONS));
+  assert.ok(CARRIED_POTION_HEAL > 0);
+});

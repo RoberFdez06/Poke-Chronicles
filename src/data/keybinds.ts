@@ -5,7 +5,7 @@ export const ACTIONS = [
   'up', 'down', 'left', 'right',
   'shootUp', 'shootDown', 'shootLeft', 'shootRight',
   'power1', 'power2', 'power3', 'power4',
-  'active', 'bomb', 'pause', 'accept', 'back',
+  'active', 'bomb', 'potion', 'pause', 'accept', 'back',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 export type KeyMap = Record<Action, string>;
@@ -25,6 +25,7 @@ export const ACTION_LABEL: Readonly<Record<Action, string>> = {
   power4: 'Poder 4',
   active: 'Objeto activo',
   bomb: 'Bomba',
+  potion: 'Usar poción',
   pause: 'Pausa',
   accept: 'Aceptar / usar',
   back: 'Volver',
@@ -34,7 +35,7 @@ export const DEFAULT_KEYS: Readonly<KeyMap> = {
   up: 'W', down: 'S', left: 'A', right: 'D',
   shootUp: 'UP', shootDown: 'DOWN', shootLeft: 'LEFT', shootRight: 'RIGHT',
   power1: 'ONE', power2: 'TWO', power3: 'THREE', power4: 'FOUR',
-  active: 'SPACE', bomb: 'E', pause: 'P', accept: 'ENTER', back: 'ESC',
+  active: 'SPACE', bomb: 'E', potion: 'C', pause: 'P', accept: 'ENTER', back: 'ESC',
 };
 
 /** Nombres de tecla válidos: letras, números, flechas, F1-F12, teclado numérico y las especiales de Phaser. */
@@ -99,6 +100,6 @@ export function controlsFor(k: KeyMap): [string, string][] {
     ['Disparar', `${L('shootUp')} ${L('shootLeft')} ${L('shootDown')} ${L('shootRight')} (dos a la vez, en diagonal) · clic izquierdo · stick derecho`],
     ['Poderes · Objeto activo', `Poderes: ${L('power1')} ${L('power2')} ${L('power3')} ${L('power4')} · clic en la ranura · A B X Y    Activo: ${L('active')} · clic en su cuadro · LB`],
     ['Pausa', `${L('pause')} o ${L('back')} · botón ❚❚ de arriba a la izquierda · Start`],
-    ['Usar · Bomba', `Usar (Centro, tienda, cofre): ${L('accept')} · clic · A    Bomba: ${L('bomb')} · clic en la bomba del HUD · RB`],
+    ['Usar · Bomba · Poción', `Usar: ${L('accept')} · clic · A    Bomba: ${L('bomb')} · clic en la bomba del HUD · RB    Poción: ${L('potion')} · clic en la poción del HUD · stick izq. (pulsar)`],
   ];
 }

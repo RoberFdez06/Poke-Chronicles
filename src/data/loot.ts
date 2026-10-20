@@ -2,7 +2,7 @@
 // Las monedas solo valen dentro de la partida (en la tienda) y se pierden al acabarla; los tickets
 // (save.ts) son otra cosa y se gastan fuera, en el gacha.
 // Lógica pura, sin Phaser ni red, para poder testearla.
-import { PASSIVE_ITEMS, type MovePower, type PassiveItem } from './items.ts';
+import { PASSIVE_ITEMS, takeMoveByRarity, type MovePower, type PassiveItem, passivePrice } from './items.ts';
 
 export type BerryId = 'aranja' | 'zidra';
 export type PotionId = 'pocion' | 'superpocion';
@@ -35,7 +35,7 @@ export const centerHeal = (maxHp: number): number => Math.round(maxHp / 2);
 // --- Botín de los enemigos ---
 
 /** Lo que cae al suelo y se recoge al pisarlo. */
-export type LootDrop = { kind: 'coin'; value: number } | { kind: 'berry'; id: BerryId } | { kind: 'key' } | { kind: 'bomb' };
+export type LootDrop = { kind: 'coin'; value: number } | { kind: 'berry'; id: BerryId } | { kind: 'key' } | { kind: 'bomb' } | { kind: 'potion' };
 
 export const LOOT_CHANCE = {
   // T32: bastante menos (antes 35 % de monedas, 10 % + 3 % de bayas y 5 % de llaves y bombas).
@@ -47,7 +47,15 @@ export const LOOT_CHANCE = {
   zidra: 0.004,
   key: 0.03,
   bomb: 0.03,
+  /** T49: poción que se guarda (como las bombas) y se usa cuando quieras. */
+  potion: 0.012,
 } as const;
+
+/** Pociones que puedes llevar a la vez y lo que cura cada una (T49). */
+export const MAX_POTIONS = 3;
+export const CARRIED_POTION_HEAL = 30;
+/** ¿Se puede coger otra poción? (si no, se queda en el suelo) */
+export const canCarryPotion = (potions: number): boolean => potions < MAX_POTIONS;
 
 /** Botín de un enemigo al caer. El jefe siempre suelta una Baya Zidra y un puñado de monedas. */
 export function rollEnemyLoot(rng: () => number, boss = false): LootDrop[] {
@@ -59,6 +67,7 @@ export function rollEnemyLoot(rng: () => number, boss = false): LootDrop[] {
   else if (b < LOOT_CHANCE.zidra + LOOT_CHANCE.aranja) out.push({ kind: 'berry', id: 'aranja' });
   if (rng() < LOOT_CHANCE.key) out.push({ kind: 'key' });
   if (rng() < LOOT_CHANCE.bomb) out.push({ kind: 'bomb' });
+  if (rng() < LOOT_CHANCE.potion) out.push({ kind: 'potion' });
   return out;
 }
 
@@ -132,11 +141,11 @@ export function rollShop(
   movePool: MovePower[],
   /** Pasivos que pueden salir (sin los bloqueados por logros). */
   pool: readonly PassiveItem[] = PASSIVE_ITEMS,
+  floor = 1,
 ): ShopSlot[] {
   let goods: ShopGoods;
   if (movePool.length > 0 && rng() < 0.5) {
-    const [move] = movePool.splice(Math.floor(rng() * movePool.length), 1);
-    goods = { kind: 'move', move };
+    goods = { kind: 'move', move: takeMoveByRarity(rng, movePool, floor) };
   } else {
     const fresh = pool.filter((i) => !ownedPassives.has(i.id));
     const list = fresh.length > 0 ? fresh : pool;
@@ -145,7 +154,8 @@ export function rollShop(
   return [
     { goods: { kind: 'potion', id: 'pocion' }, price: SHOP_PRICES.pocion, sold: false },
     { goods: { kind: 'potion', id: 'superpocion' }, price: SHOP_PRICES.superpocion, sold: false },
-    { goods, price: SHOP_PRICES.item, sold: false },
+    // T52: los pasivos cuestan según su rareza; los poderes, lo de siempre
+    { goods, price: goods.kind === 'passive' ? passivePrice(goods.id) : SHOP_PRICES.item, sold: false },
   ];
 }
 

@@ -23,8 +23,10 @@ export const RUN_SLOTS = 3;
  * v11: desafío diario (los v10 no lo eran).
  * v12: dificultad (los v11 eran todos Normal).
  * v13: salas sorpresa ya resueltas en el piso y PS máximos dados en altares (los v12 no tenían).
+ * v14: huevo misterioso, ayudante y cansancio de la fuente (T48; los v13 no tenían).
+ * v15: pociones que llevas y pociones en el suelo (T49; los v14 no tenían).
  */
-export const RUN_VERSION = 13;
+export const RUN_VERSION = 15;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -35,6 +37,7 @@ export type SavedDrop =
   | { kind: 'berry'; id: keyof typeof BERRIES }
   | { kind: 'key' }
   | { kind: 'bomb' }
+  | { kind: 'potion' }
   | { kind: 'active'; id: string };
 
 /**
@@ -107,6 +110,13 @@ export interface RunSave {
   eventsDone: number[];
   /** PS máximos dados en altares en toda la partida (se restan de los máximos). */
   hpSacrificed: number;
+  /** T48: salas que le quedan al huevo para eclosionar (0 = no llevas), ayudante (id de especie, 0 = ninguno) y salas
+   *  que te quedan de cansancio por beber gratis en la fuente. */
+  eggLeft: number;
+  allyId: number;
+  tiredRooms: number;
+  /** T49: pociones que llevas (se usan con su tecla). */
+  potions: number;
 }
 
 export interface DailyRun {
@@ -129,7 +139,7 @@ function isDrop(d: unknown): d is SavedDrop {
   if (o.kind === 'passive') return typeof o.id === 'string';
   if (o.kind === 'coin') return isInt(o.value) && o.value > 0;
   if (o.kind === 'berry') return o.id in BERRIES;
-  if (o.kind === 'key' || o.kind === 'bomb') return true;
+  if (o.kind === 'key' || o.kind === 'bomb' || o.kind === 'potion') return true;
   if (o.kind === 'active') return typeof o.id === 'string';
   return o.kind === 'move' && isMove(o.move);
 }
@@ -204,6 +214,16 @@ function migrateV12(d: RunSave): RunSave {
   return { ...d, version: 13, eventsDone: [], hpSacrificed: 0 };
 }
 
+/** v13 no tenía huevo, ayudante ni cansancio. */
+function migrateV13(d: RunSave): RunSave {
+  return { ...d, version: 14, eggLeft: 0, allyId: 0, tiredRooms: 0 };
+}
+
+/** v14 no tenía pociones. */
+function migrateV14(d: RunSave): RunSave {
+  return { ...d, version: 15, potions: 0 };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -226,6 +246,8 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 10) d = migrateV10(d);
   if (d.version === 11) d = migrateV11(d);
   if (d.version === 12) d = migrateV12(d);
+  if (d.version === 13) d = migrateV13(d);
+  if (d.version === 14) d = migrateV14(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
@@ -244,7 +266,8 @@ export function parseRun(raw: string | null): RunSave | null {
     (d.active === null || (!!d.active && typeof d.active.id === 'string' && isInt(d.active.charge) && d.active.charge >= 0)) &&
     typeof d.healed === 'boolean' && isCounters(d.counters) &&
     (d.daily === null || (!!d.daily && isInt(d.daily.day) && typeof d.daily.counts === 'boolean')) &&
-    isDifficulty(d.difficulty) && isIntArray(d.eventsDone) && isInt(d.hpSacrificed) && d.hpSacrificed >= 0;
+    isDifficulty(d.difficulty) && isIntArray(d.eventsDone) && isInt(d.hpSacrificed) && d.hpSacrificed >= 0 &&
+    isInt(d.eggLeft) && d.eggLeft >= 0 && isInt(d.allyId) && d.allyId >= 0 && isInt(d.tiredRooms) && d.tiredRooms >= 0 && isInt(d.potions) && d.potions >= 0;
   return ok ? d : null;
 }
 

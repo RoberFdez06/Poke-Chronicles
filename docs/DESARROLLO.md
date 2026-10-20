@@ -22,6 +22,7 @@ Abre la URL que muestra Vite (normalmente http://localhost:5173).
 | Usar (Centro Pokémon, tienda, cofre) | Enter cerca, o pisarlo | Clic en el mostrador, el artículo o el cofre | A cerca, o pisarlo |
 | Soltar bomba | E | Clic en la bomba del HUD | RB |
 | Objeto activo | Espacio | Clic en su cuadro (abajo a la izquierda) | LB |
+| Beber poción | C | Clic en la poción del HUD | Pulsar el stick izquierdo (L3) |
 | Ver el resumen (al morir o ganar) | R | Clic | Start |
 | Consejo del tutorial: cerrar / no más consejos | T / N | "Vale" / "No más consejos" | RT / LT |
 | Menús | Flechas o W A S D, Enter / espacio, Esc para volver | Pasar el cursor, clic y botón "Volver" | Stick o cruceta, A para elegir, B para volver |
@@ -258,6 +259,22 @@ además **invocan ayudantes** (círculos de su color donde saldrán; como mucho 
 rojo, va más rápido y ataca más a menudo y con más proyectiles. En cada sala, al menos uno de cada tres enemigos
 dispara. `node scripts/simulate.ts` saca los números del equilibrio.
 
+**Enemigos nuevos (T51)**: desde el piso 2, algunos enemigos de cada sala (hasta un 35 %, más cuanto más hondo;
+nunca los que disparan) pasan a uno de los 2 comportamientos nuevos del bioma (`twistBehaviors` en bossPatterns.ts):
+**tirador** (te rodea a distancia y dispara), **mina** (se acerca, se arma parpadeando en rojo y estalla; como mucho 2),
+**escudado** (su escudo para casi todo lo que le llega de frente y gira despacio: hay que rodearlo) y **curandero** (se
+queda lejos y cura a los de alrededor con un anillo verde; como mucho 1 por sala).
+
+**Ataques extra por bioma (T50)**: cada jefe suma 2 de estos según el tipo del bioma (`biomeExtraAttacks`: fuego →
+onda y zonas, eléctrico → láser y espiral…), y el minijefe usa a veces uno de ellos. Todos avisan antes y se ponen más
+duros con el piso, con topes para que se puedan esquivar (`spiralSpec`, `shockwaveSpec`, `laserSpec`, `hazardSpec`):
+- **Espiral**: 2-4 brazos de proyectiles que giran (nunca más seguidos que cada 90 ms).
+- **Onda expansiva**: 1-3 anillos que crecen desde el jefe con un **hueco** (nunca menos de 50°) por el que pasar; se
+  marca dónde estará el primero y cada onda lo tiene en otro sitio.
+- **Láser giratorio**: 1-3 rayos que giran despacio (como mucho 75°/s) mientras el jefe se queda quieto; antes se ven
+  líneas finas donde saldrán.
+- **Zona de peligro**: 3-7 círculos (uno donde estás) que se llenan y estallan (aviso de al menos 0,9 s).
+
 ## Biomas
 
 Cada piso tiene un bioma (`src/level/biomes.ts`): Bosque, Cueva, Mar, Volcán, Torre fantasma, Ciudad, Montaña nevada,
@@ -294,6 +311,14 @@ color al descubrirla, hasta resolverla.
 - **Mercader ambulante** (turquesa): tres objetos o poderes por 8, 14 y 22 monedas; compras uno y se marcha.
 - **Altar** (morado): das un 15 % de tus PS máximos (para el resto de la partida) a cambio de un objeto.
 - **Cofre misterioso** (dorado): se abre sin llave; a veces es una trampa y sale un Pokémon fuerte que suelta el objeto.
+- **Entrenador rival** (rojo, T48): 3 oleadas cortas seguidas; al ganar, otros tantos tickets como da la sala (el doble).
+- **Fuente curativa** (azul claro): cura la mitad de los PS pagando monedas (6 + 2 × piso) o gratis, pero vas un 20 % más
+  lento las 2 salas siguientes ("Cansado" en el HUD).
+- **Sala del tiempo** (ámbar, desde el piso 3): 20 s de reloj; si limpias antes, cae un objeto; si no, entran más enemigos.
+- **Huevo misterioso** (rosa): lo coges y eclosiona tras 2 salas limpias ("Huevo (n)" en el HUD): un 60 % sale un
+  ayudante (un Pokémon del piso que te sigue y ataca al enemigo más cercano; se guarda y pasa de piso) y si no, un objeto.
+- Cada evento tiene su peso según el piso (`eventWeights`): arriba más huevos, fuentes y mercaderes; abajo, más rivales
+  y salas del tiempo. Al entrar, el aviso dice el premio y el riesgo.
 
 Se usan con Enter / A / clic cerca (como el cofre o la tienda).
 
@@ -374,8 +399,17 @@ que elegiste.
   (Polvo Brillo), más alcance por enemigo vivo (Pokéradar), monedas dobles (Moneda Amuleto) y un potenciador por
   tipo (Carbón, Agua Mística, Imán…: +25 % a los poderes de su tipo). Se acumulan.
 - **Objetos activos** (una ranura aparte, se usan con Espacio, LB o clic y se recargan limpiando salas): Poké Flauta
-  (aturde a todos), Repelente (los enemigos huyen), Pokéblock (cura 35 PS) y Ataque X (+50 % de daño 8 s). Si coges
-  otro, el que llevabas se queda en el suelo.
+  (aturde a todos), Repelente (los enemigos huyen 5 s), Pokéblock (cura 35 PS) y Ataque X (+50 % de daño 8 s); T49:
+  Poción (cura 40 PS), Caramelo Raro (daño ×2 5 s), Teletransporte (a la sala de inicio; no en la del jefe ni en arenas),
+  Bomba Cebo (gran explosión que solo daña a los enemigos) y Silbato (inmune 2 s). Si coges otro, el que llevabas se
+  queda en el suelo.
+- **Pociones** (T49): a veces cae una poción; llevas hasta 3 (contador morado del HUD) y cada una cura 30 PS con C, L3,
+  clic en el contador o el botón táctil "Poción".
+- **Pasivos nuevos (T52)**: Mineral Evolutivo, Cinta Experto, Gafas Especiales, Roca del Rey, Polvo Veloz, Baya Lichi,
+  Seguro Debilidad, Bola Luminosa, Cuerda Huida, Hierba Mental, Púa Tóxica y Piedra Lunar. Cada pasivo tiene **rareza**
+  (`PASSIVE_RARITY`: común, raro, épico o legendario; los no listados, raros): los raros salen menos al sortear un objeto
+  (pesos 4/3/2/1) y en la tienda cuestan según la rareza (11/15/21/28 monedas). Sinergias nuevas: Especialista, Golpe
+  real, Relámpago, Luz de luna, Erizo y Superviviente.
 - **Sinergias** (`src/data/synergies.ts`): ciertas combinaciones dan un efecto extra y avisan con "¡Sinergia!", por
   ejemplo Carbón + un poder de Fuego (quemaduras el doble de fuertes), dos objetos "Elegido", Lente Zoom + Periscopio
   o Concha Campana + Restos. Se ven en la pausa.

@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
 import { fitDesign } from '../ui/layout';
-import { loadMissions } from '../data/save';
+import { loadMedals, loadMissions } from '../data/save';
 import { dayNumber } from '../data/gacha';
 import { ACHIEVEMENTS, dailyMissions, isAchieved, rewardText, type Reward } from '../data/missions';
+import { MEDALS } from '../data/medals';
 import { passiveById } from '../data/items';
 import { addBackButton } from '../ui/cards';
 import { NavInput } from '../ui/nav';
@@ -62,31 +63,49 @@ export class MissionsScene extends Phaser.Scene {
       this.add.text(830, y, `+${m.reward.tickets}`, { fontFamily: FONT, fontSize: '18px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(0, 0.5);
     });
 
+    // --- Medallas de gimnasio ---
+    const have = loadMedals();
+    this.add.text(40, 308, `Medallas ${have.length}/${MEDALS.length}`, { fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: HEX.gold })
+      .setOrigin(0, 0.5).setStroke('#2b3a67', 6);
+    MEDALS.forEach((m, k) => {
+      const x = 270 + k * 80;
+      const got = have.includes(m.id);
+      const g = this.add.graphics();
+      g.fillStyle(0x000000, 0.25).fillCircle(x, 311, 21);
+      g.fillStyle(got ? m.color : 0x55596b, 1).fillCircle(x, 308, 20);
+      g.lineStyle(3, got ? 0xffffff : 0x3a3d4c, 1).strokeCircle(x, 308, 20);
+      g.lineStyle(2, got ? 0x000000 : 0x3a3d4c, got ? 0.25 : 1).strokeCircle(x, 308, 13);
+      this.add.text(x, 308, got ? m.glyph : '?', { fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: got ? '#ffffff' : '#8a8ea0' })
+        .setOrigin(0.5).setStroke(got ? '#00000066' : '#00000000', 3);
+      this.add.text(x, 336, got ? m.name.replace('Medalla ', '') : '???', { fontFamily: FONT, fontSize: '12px', color: got ? '#ffffff' : '#9aa0b4' })
+        .setOrigin(0.5);
+    });
+
     // --- Logros (3 × 3) ---
-    this.add.text(480, 306, 'Logros', { fontFamily: FONT, fontSize: '26px', fontStyle: 'bold', color: HEX.gold })
+    this.add.text(480, 360, 'Logros', { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: HEX.gold })
       .setOrigin(0.5).setStroke('#2b3a67', 8);
     const cw = 284;
-    const ch = 82;
+    const ch = 72;
     ACHIEVEMENTS.forEach((a, k) => {
       const x = 40 + (k % 3) * (cw + 14);
-      const y = 330 + Math.floor(k / 3) * (ch + 8);
+      const y = 380 + Math.floor(k / 3) * (ch + 6);
       const n = Math.min(a.goal, state.achievements[a.id] ?? 0);
       const done = isAchieved(state, a.id);
       drawBox(this.add.graphics(), x, y, cw, ch, { radius: 12, fill: done ? COLORS.goldSoft : COLORS.panel });
-      this.add.text(x + 16, y + 18, `${done ? '★ ' : ''}${a.name}`, { fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: HEX.text })
+      this.add.text(x + 16, y + 16, `${done ? '★ ' : ''}${a.name}`, { fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: HEX.text })
         .setOrigin(0, 0.5);
-      this.add.text(x + 16, y + 40, a.text, { fontFamily: FONT, fontSize: '14px', color: HEX.textSoft }).setOrigin(0, 0.5);
-      this.add.text(x + 16, y + 62, rewardText(a.reward, itemNames(a.reward)), {
+      this.add.text(x + 16, y + 36, a.text, { fontFamily: FONT, fontSize: '14px', color: HEX.textSoft }).setOrigin(0, 0.5);
+      this.add.text(x + 16, y + 56, rewardText(a.reward, itemNames(a.reward)), {
         fontFamily: FONT, fontSize: '12px', color: '#b8860b', wordWrap: { width: cw - 32 },
       }).setOrigin(0, 0.5);
       if (a.goal > 1 && !done) {
-        this.bar(x + cw - 76, y + 40, 60, n / a.goal);
-        this.add.text(x + cw - 16, y + 18, `${n}/${a.goal}`, { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(1, 0.5);
+        this.bar(x + cw - 76, y + 36, 60, n / a.goal);
+        this.add.text(x + cw - 16, y + 16, `${n}/${a.goal}`, { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(1, 0.5);
       }
     });
 
     this.add
-      .text(480, 612, 'Se cumplen jugando y el premio se da solo · Esc, B o "Volver" para salir', {
+      .text(480, 626, 'Se cumplen jugando y el premio se da solo · Esc, B o "Volver" para salir', {
         fontFamily: FONT, fontSize: '14px', color: '#ffffff',
       })
       .setOrigin(0.5).setAlpha(0.7);

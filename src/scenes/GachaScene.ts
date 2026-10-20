@@ -9,6 +9,7 @@ import { loadHistory, pushHistory, type HistoryEntry } from '../data/gachaHistor
 import { loadSpeciesIndex } from '../data/speciesIndex';
 import { addShiny, addTickets, loadShinies, loadTickets, loadUnlocked, spendTickets, unlockPokemon } from '../data/save';
 import { rollShiny, SHINY_ODDS } from '../data/shiny';
+import { takeKonamiShiny } from '../data/easterEggs';
 import { sparkle } from '../ui/sparkle';
 import { typeColor, typeNameEs } from '../data/types';
 import { cry, sfx } from '../ui/audio';
@@ -264,8 +265,9 @@ export class GachaScene extends Phaser.Scene {
   /** Resuelve y guarda la tirada antes de animarla: así cerrar la página a medias no la pierde. */
   private resolve(results: PullResult[]): Reveal[] {
     const shinies = new Set(loadShinies());
-    const out: Reveal[] = results.map((res) => {
-      const shiny = rollShiny(Math.random, SHINY_ODDS.gacha);
+    const out: Reveal[] = results.map((res, k) => {
+      // Easter egg: el código Konami de la pantalla de título hace shiny la primera de la próxima tirada
+      const shiny = (k === 0 && takeKonamiShiny()) || rollShiny(Math.random, SHINY_ODDS.gacha);
       const duplicate = shiny ? shinies.has(res.speciesId) : res.duplicate;
       let note: string;
       if (duplicate) {

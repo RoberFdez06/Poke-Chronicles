@@ -15,9 +15,15 @@ export interface ActiveItem {
 
 export const ACTIVE_ITEMS: readonly ActiveItem[] = [
   { id: 'poke-flauta', name: 'Poké Flauta', description: 'Aturde a todos los enemigos de la sala 2,5 s.', charge: 3, color: 0x7ab8f0 },
-  { id: 'repelente', name: 'Repelente', description: 'Los enemigos huyen de ti durante 4 s.', charge: 2, color: 0xb070e0 },
+  { id: 'repelente', name: 'Repelente', description: 'Los enemigos huyen de ti durante 5 s.', charge: 2, color: 0xb070e0 },
   { id: 'pokeblock', name: 'Pokéblock', description: 'Recuperas 35 PS.', charge: 3, color: 0xf06090 },
   { id: 'ataque-x', name: 'Ataque X', description: 'Haces un 50 % más de daño durante 8 s.', charge: 2, color: 0xf07a3a },
+  // T49
+  { id: 'pocion-activa', name: 'Poción', description: 'Recuperas 40 PS.', charge: 2, color: 0x9b59d0 },
+  { id: 'caramelo-raro-activo', name: 'Caramelo Raro', description: 'Haces el doble de daño durante 5 s.', charge: 3, color: 0x4fc3f7 },
+  { id: 'teletransporte', name: 'Teletransporte', description: 'Vuelves a la sala de inicio del piso.', charge: 2, color: 0xe1bee7 },
+  { id: 'bomba-cebo', name: 'Bomba Cebo', description: 'Gran explosión a tu alrededor que no te hace daño.', charge: 3, color: 0xff7043 },
+  { id: 'silbato', name: 'Silbato', description: 'Eres inmune a todo durante 2 s.', charge: 2, color: 0xfff176 },
 ];
 
 export const ACTIVE_IDS = ACTIVE_ITEMS.map((a) => a.id);
@@ -27,7 +33,21 @@ export const activeById = (id: string): ActiveItem | undefined => ACTIVE_ITEMS.f
 export const ACTIVE_DROP_CHANCE = 0.15;
 
 /** Efectos de los activos. */
-export const ACTIVE_EFFECT = { stunMs: 2500, fearMs: 4000, heal: 35, buffMs: 8000, buffMul: 1.5 } as const;
+export const ACTIVE_EFFECT = {
+  stunMs: 2500,
+  fearMs: 5000,
+  heal: 35,
+  buffMs: 8000,
+  buffMul: 1.5,
+  // T49
+  potionHeal: 40,
+  candyMs: 5000,
+  candyMul: 2,
+  /** Bomba Cebo: radio y daño respecto a una bomba normal. */
+  baitRadiusMul: 1.6,
+  baitDamageMul: 2,
+  whistleMs: 2000,
+} as const;
 
 /** Carga tras limpiar una sala (sin pasar del máximo). */
 export const chargeAfterClear = (charge: number, max: number): number => Math.min(max, charge + 1);
@@ -74,6 +94,19 @@ export const SYNERGIES: readonly Synergy[] = [
     all: ['telescopio', 'lupa'], apply: (s) => void (s.homing += 2.5) },
   { id: 'tormenta', name: 'Tormenta', description: 'Doble Equipo + Cola Gemela: un disparo extra más.',
     all: ['doble-equipo', 'cola-gemela'], apply: (s) => void (s.extraShots += 1) },
+  // T52
+  { id: 'especialista', name: 'Especialista', description: 'Cinta Experto + Gafas Especiales: poderes un 25 % más fuertes.',
+    all: ['cinta-experto', 'gafas-especiales'], apply: (s) => void (s.powerMul *= 1.25) },
+  { id: 'golpe-real', name: 'Golpe real', description: 'Roca del Rey + Garra Afilada: +10 % de crítico.',
+    all: ['roca-del-rey', 'garra-afilada'], apply: (s) => void (s.critChance = Math.min(1, s.critChance + 0.1)) },
+  { id: 'relampago', name: 'Relámpago', description: 'Polvo Veloz + Pañuelo Elegido: disparas un 15 % más rápido.',
+    all: ['polvo-veloz', 'panuelo-elegido'], apply: (s) => void (s.fireDelay *= 0.85) },
+  { id: 'luz-de-luna', name: 'Luz de luna', description: 'Piedra Lunar + Bola Luminosa: atraviesan un enemigo más y persiguen mejor.',
+    all: ['piedra-lunar', 'bola-luminosa'], apply: (s) => void ((s.pierce += 1), (s.homing += 1)) },
+  { id: 'erizo', name: 'Erizo', description: 'Púa Tóxica + Casco Dentado: +50 % de daño a quien te toca y veneno más fuerte.',
+    all: ['pua-toxica', 'casco-dentado'], apply: (s) => void ((s.thorns *= 1.5), boostStatus(s, 'poison', 1.5)) },
+  { id: 'superviviente', name: 'Superviviente', description: 'Mineral Evolutivo + Hierba Mental: un 15 % menos de daño y otro escudo.',
+    all: ['mineral-evolutivo', 'hierba-mental'], apply: (s) => void ((s.damageTaken *= 0.85), (s.shieldPerRoom += 1)) },
 ];
 
 export function synergyActive(syn: Synergy, passives: readonly string[], powerTypes: readonly string[]): boolean {

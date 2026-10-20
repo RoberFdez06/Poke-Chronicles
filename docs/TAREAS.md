@@ -351,3 +351,38 @@ El supervisor ha dibujado arte pixel listo para usar (no lo cambies, solo úsalo
   grupo (2×1, 1×2, 2×2, L); sala unida = un solo conjunto de enemigos (más y más fuertes), sin puertas internas, la
   cámara sigue al jugador dentro del grupo y el minimapa dibuja la forma real. Jefe, tienda, objeto e inicio siguen
   simples. Tests de lógica pura (sin solapes, puertas conectadas) y probar continuar partida.
+
+# Tanda 7 (pedida por Roberto el 20/10: frenético, que enganche)
+
+Reglas de siempre: español, teclado/ratón/mando cada uno por separado, avisos nunca en el centro, los invitados no guardan,
+tickets/monedas/caramelos separados. Cada tarea con tests de lógica pura (`node --test`) y `tsc` + `npm test` en verde.
+No toques los ficheros del supervisor (arte, menús, `attacks.ts`, `movePatterns.ts`, `finale.ts`, etc.). Esta tanda va en `main`.
+
+## [x] T48 — Más eventos de sala
+- En `src/level/roomEvents.ts` (hoy: Pokémon raro, mercader, altar, cofre trampa) añade 4 eventos nuevos con su etiqueta,
+  color de minimapa, premio y riesgo: (1) **Entrenador rival**: combate de oleadas cortas con premio doble de tickets;
+  (2) **Fuente curativa**: cura a medias y cuesta monedas o una mejora temporal; (3) **Sala del tiempo**: 20 s de reloj,
+  si limpias antes sale un objeto, si no, entran más enemigos; (4) **Huevo misterioso**: lo llevas y eclosiona tras 2 salas
+  limpiadas en un ayudante o un objeto. Probabilidades por piso en la lógica pura y probadas.
+
+## [x] T49 — Objetos activos y consumibles
+- Hoy casi todo son pasivos. Añade en `items.ts` un hueco de **objeto activo** (se usa con una tecla/botón del mando y se
+  recarga limpiando salas, como en Isaac) con 6 activos: Poción (cura), Repelente (aleja enemigos 5 s), Caramelo Raro
+  (daño ×2 5 s), Teletransporte (a la sala de inicio), Bomba Cebo (explosión en área), Silbato (inmunidad 2 s).
+  Más consumibles de suelo: poción, bomba y llave con su icono en el HUD. Las teclas entran en `keybinds.ts` y en la
+  pantalla de controles. Pide al supervisor los iconos si no puedes dibujarlos con las formas existentes de `itemIcons.ts`.
+
+## [x] T50 — Más patrones de jefe y mini-jefes
+- Hoy hay 4 ataques de jefe (`bossPatterns.ts`: ráfaga, embestida, lluvia, invocación). Añade 4 más con aviso previo: **espiral**
+  de proyectiles, **onda expansiva** (anillo que hay que saltar/esquivar entrando en el hueco), **láser giratorio**
+  y **zona de peligro** en el suelo que explota. Cada bioma elige 2 extra según su tipo (fuego → onda, agua → lluvia grande, etc.)
+  con la lógica en `bossPatterns.ts` y tests. Sube la dificultad con el piso sin pasar de lo esquivable.
+
+## [x] T51 — Más enemigos y comportamientos
+- En `enemies.ts` añade 4 comportamientos nuevos (por ejemplo: **tirador en círculo**, **mina que se arma**, **escudado** que solo
+  recibe daño por la espalda, **curandero** que cura a otros). Reparte por bioma y por piso en `bossPatterns.ts`/mezcla de sala
+  y comprueba que `balance.test.ts` sigue en rango.
+
+## [x] T52 — Más sinergias y objetos pasivos
+- Otros 12 pasivos y 6 sinergias nuevas en `items.ts`/`synergies.ts` con precio y rareza; los tests de `items.test.ts` y
+  `synergies.test.ts` deben seguir pasando y cubrir los nuevos.

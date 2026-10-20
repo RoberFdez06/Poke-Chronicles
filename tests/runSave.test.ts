@@ -50,6 +50,10 @@ function sample(): RunSave {
     difficulty: 'hard',
     eventsDone: [5],
     hpSacrificed: 12,
+    eggLeft: 1,
+    allyId: 16,
+    tiredRooms: 0,
+    potions: 2,
   };
 }
 
@@ -221,4 +225,24 @@ test('huecos fuera de rango no hacen nada', () => {
   assert.equal(loadRun(7, st), null);
   assert.equal(st.data.size, 0);
   assert.equal(runKey(0), 'pokeisaac.run.0');
+});
+
+test('un guardado v13 se migra sin huevo, ayudante ni cansancio (T48)', () => {
+  const { eggLeft: _e, allyId: _a, tiredRooms: _t, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 13 }));
+  assert.ok(run);
+  assert.equal(run.version, RUN_VERSION);
+  assert.deepEqual([run.eggLeft, run.allyId, run.tiredRooms], [0, 0, 0]);
+  assert.deepEqual([parseRun(JSON.stringify(sample()))?.eggLeft, parseRun(JSON.stringify(sample()))?.allyId], [1, 16]);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), eggLeft: -1 })), null);
+});
+
+test('un guardado v14 se migra sin pociones (T49) y las pociones del suelo se guardan', () => {
+  const { potions: _p, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 14 }));
+  assert.ok(run);
+  assert.equal(run.potions, 0);
+  const withPotion = parseRun(JSON.stringify({ ...sample(), floorItems: [{ roomId: 1, x: 5, y: 6, drop: { kind: 'potion' } }] }));
+  assert.deepEqual(withPotion?.floorItems[0].drop, { kind: 'potion' });
+  assert.equal(parseRun(JSON.stringify({ ...sample(), potions: -1 })), null);
 });

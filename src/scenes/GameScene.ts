@@ -1,9 +1,9 @@
 import Phaser from 'phaser';
-import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetchAttackMovesForTypes, fetchMoveInfo, fetchNextEvolutions, fetchPokemon, fetchPokemonCard, pickSprites } from '../data/pokeapi';
-import { pickEvolution, shouldEvolve } from '../data/evolution';
+import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetchAttackMovesForTypes, fetchMoveInfo, fetchEvolutionsLeft, fetchNextEvolutions, fetchPokemon, fetchPokemonCard, pickSprites } from '../data/pokeapi';
+import { evolveFloors, pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
-import { addCandies, addTickets, CANDY_PER_TICKET } from '../data/save';
+import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal } from '../data/save';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
 import { dailyFloorSeed, dailyRng } from '../data/daily';
 import { damageMul, effectOf, EFFECT_COLOR, EFFECT_LABEL } from '../data/typeChart';
@@ -25,6 +25,22 @@ import {
   ROOM_EVENT_LABEL,
   RUNAWAY_HP_MUL,
   RUNAWAY_SECONDS,
+  EGG_ROOMS,
+  FOUNTAIN_TIRED_ROOMS,
+  FOUNTAIN_TIRED_SPEED,
+  HELPER_ATTACK_MS,
+  HELPER_DAMAGE_MUL,
+  RIVAL_WAVES,
+  ROOM_EVENT_DESC,
+  TIME_TRIAL_SECONDS,
+  eggHatch,
+  eggTick,
+  fountainHeal,
+  fountainPrice,
+  rivalBonus,
+  rivalWaveSize,
+  timeTrialExtra,
+  timeTrialSize,
 } from '../level/roomEvents';
 import { applyDifficulty, scaleHeal, scaleTickets, withDifficulty, type Difficulty } from '../data/difficulty';
 import { loadSpeciesIndex } from '../data/speciesIndex';
@@ -71,6 +87,17 @@ import {
   TELEGRAPH_MS,
   HELPER_HP_MUL,
   helpersToSummon,
+  biomeExtraAttacks,
+  bossAttacksFor,
+  hazardSpec,
+  laserHits,
+  laserSpec,
+  shockwaveHits,
+  shockwaveSpec,
+  spiralSpec,
+  BOSS_ATTACK_LABEL,
+  type ExtraAttack,
+  twistBehaviors,
 } from '../data/bossPatterns';
 import {
   ACTIVE_DROP_CHANCE,
@@ -95,6 +122,9 @@ import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
 import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
 import { decorateRoom } from '../ui/art/roomDecor';
+import { drawGlitchFigure, drawTruck, glitchFlash } from '../ui/art/easterArt';
+import { evolveMagikarp, MAGIKARP, MAGIKARP_PRICE, MEW_CHANCE, OAK_LINE, secretVariant, sellsMagikarp } from '../data/easterEggs';
+import { drawPits, drawShapedWalls } from '../ui/art/roomShape';
 import { FINALE_BONUS, GIANT_HP_MUL, GIANT_RAGE_AT, GIANT_SIZE, isFinalFloor, isFinaleGate, pickFinale, TRIO_HP_MUL, type Finale } from '../data/finale';
 import type { FinalChoice } from './FinalPromptScene';
 import { castPattern, setMotion, updateShots, type AttackHost, type ShootOpts, type Side } from './attacks';
@@ -123,6 +153,8 @@ import {
   rollEnemyLoot,
   rollShop,
   CLEAR_DROP_CHANCE,
+  CARRIED_POTION_HEAL,
+  canCarryPotion,
   roomClearCoins,
   rollChest,
   inBlast,
@@ -135,6 +167,8 @@ import {
   LootDrop,
   ShopSlot,
 } from '../data/loot';
+import { comboAlive, comboBreak, comboHit, milestoneReward, newCombo, type ComboState } from '../data/combo';
+import { ComboHud } from '../ui/art/comboHud';
 import { addHpBar, addTypeChip, drawBox, fadeIn, FONT, goTo, HEX, hpColor, shorten } from '../ui/theme';
 import {
   applyStatus,
@@ -161,13 +195,29 @@ import {
   passiveById,
   rollItem,
   toMovePower,
+  moveRarity,
+  MOVE_RARITY_COLOR,
+  MOVE_RARITY_LABEL,
   DroppedItem,
   MovePower,
   PlayerStats,
 } from '../data/items';
 import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
 import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES } from '../level/biomes';
-import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES } from '../data/enemies';
+import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES,
+  HEAL_EVERY_MS,
+  HEAL_PART,
+  HEAL_RANGE,
+  MINE_ARM_DIST,
+  MINE_FUSE_MS,
+  MINE_RADIUS,
+  ORBIT_RADIUS,
+  ORBIT_SHOT_MS,
+  SHIELD_FRONT_MUL,
+  SHIELD_TURN,
+  hitFromFront,
+  turnToward,
+} from '../data/enemies';
 import { drawMinimap } from './minimap';
 
 // Cada sala ocupa una pantalla del mundo; ROOM es su interior relativo a la celda
@@ -213,6 +263,8 @@ const SHOP_GREEN = 0x2ecc71;
 /** Distancia para usar el mostrador o un artículo con Enter / A, y para usarlo al pisarlo. */
 const NEAR = 120;
 const TOUCH = 46;
+/** T49: posición (desde el borde izquierdo de la franja) de los contadores de monedas, llaves, bombas y pociones. */
+const HUD_COUNT_X = { coin: 18, key: 70, bomb: 122, potion: 174 } as const;
 /** Posiciones de los 3 artículos de la tienda respecto al centro de la sala. */
 const SHOP_OFFSETS = [-200, 0, 200];
 
@@ -226,7 +278,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions'
 >;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
@@ -282,6 +334,8 @@ interface EnemyAI {
   nextAttack?: number;
   lastAttack?: BossAttack;
   phase?: 1 | 2;
+  /** T51: hacia dónde mira el escudado (rad). */
+  facing?: number;
 }
 
 /** Velocidad de los proyectiles enemigos (px/s) y cuánto duran. */
@@ -405,6 +459,8 @@ export class GameScene extends Phaser.Scene {
   private diff: Difficulty = 'normal';
   /** Clima del piso (T38) y su efecto visual; la arena y el granizo hacen daño cada WEATHER_TICK_MS. */
   private weather: Weather | null = null;
+  private combo: ComboState = newCombo();
+  private comboHud?: ComboHud;
   private weatherFx?: WeatherFx;
   private weatherTickAt = 0;
   /** Tipos del Pokémon del jugador (cambian al evolucionar). */
@@ -423,6 +479,13 @@ export class GameScene extends Phaser.Scene {
   private roomEvent: RoomEvent | null = null;
   private eventsDone = new Set<number>();
   private hpSacrificed = 0;
+  /** T48: oleada del entrenador rival (0 = no hay), sala del tiempo en marcha, huevo, ayudante y cansancio. */
+  private rivalWave = 0;
+  private timeTrial?: { roomId: number; until: number; failed: boolean; label: Phaser.GameObjects.Text };
+  private eggLeft = 0;
+  private allyId = 0;
+  private ally?: { sprite: Sprite; type: string; nextAt: number };
+  private tiredRooms = 0;
   /** Lo dibujado del evento de la sala actual y los sitios donde se usa con Enter / A / clic. */
   private eventObjs: Phaser.GameObjects.GameObject[] = [];
   private eventSpots: { x: number; y: number; prompt: () => string; use: () => void }[] = [];
@@ -499,6 +562,13 @@ export class GameScene extends Phaser.Scene {
   private bombs = START_BOMBS;
   private bombKey!: Key;
   private rbPrev = false;
+  /** T49: pociones que llevas, su tecla, el stick izquierdo pulsado (L3) del fotograma anterior y su contador. */
+  private potions = 0;
+  private potionKey!: Key;
+  private l3Prev = false;
+  private potionsHud?: Phaser.GameObjects.Text;
+  /** Multiplicador de daño mientras dura Ataque X o el Caramelo Raro. */
+  private buffMul = 1;
   /** Cofres de este piso: sala → posición y dibujo. */
   private chests = new Map<number, { x: number; y: number; img: Phaser.GameObjects.Image }>();
   private openedChests = new Set<number>();
@@ -659,7 +729,16 @@ export class GameScene extends Phaser.Scene {
       // Bajas al piso siguiente con tus objetos, poderes y PS
       this.floorNum = c.floor;
       this.bossHistory = [...c.bossHistory];
-      this.passives = [...c.passives];
+      // Easter egg: Magikarp evoluciona en Gyarados al bajar de piso
+      const karp = evolveMagikarp(c.passives);
+      this.passives = karp.passives;
+      if (karp.evolved) {
+        this.time.delayedCall(2800, () => {
+          if (this.ended) return;
+          sfx('evolve');
+          this.notify('¿Eh? ¡Magikarp está evolucionando!\n¡Tu Magikarp ha evolucionado en Gyarados!', { kind: 'reward', icon: 'star' });
+        });
+      }
       this.stats = this.calcStats();
       // Se recorta a los PS máximos en boot(), cuando ya se conocen las estadísticas del Pokémon
       this.hp = c.hp;
@@ -706,6 +785,14 @@ export class GameScene extends Phaser.Scene {
     this.eventObjs = [];
     this.eventSpots = [];
     this.runaway = undefined;
+    this.rivalWave = 0;
+    this.timeTrial = undefined;
+    this.ally = undefined;
+    this.eggLeft = r?.eggLeft ?? this.carry?.eggLeft ?? 0;
+    this.allyId = r?.allyId ?? this.carry?.allyId ?? 0;
+    this.tiredRooms = r?.tiredRooms ?? this.carry?.tiredRooms ?? 0;
+    this.potions = r?.potions ?? this.carry?.potions ?? 0;
+    this.buffMul = 1;
     if (r) {
       this.floorNum = r.floor;
       this.bossHistory = [...r.bossHistory];
@@ -809,6 +896,14 @@ export class GameScene extends Phaser.Scene {
     this.playerKey = `starter-${starter.id}${this.shiny ? '-s' : ''}`;
     this.bossKey = `boss-${boss.id}`;
     await poolReady;
+    // Partida nueva: empiezas con un ataque especial al azar del tipo de tu Pokémon (de los más comunes)
+    if (!r && !this.carry && this.slots.every((m: MovePower | null) => !m) && this.movePool.length > 0) {
+      const easy = this.movePool.filter((m) => moveRarity(m.power) !== 'epic' && moveRarity(m.power) !== 'legendary');
+      const list = easy.length > 0 ? easy : this.movePool;
+      const first = list[Math.floor(Math.random() * list.length)];
+      this.movePool.splice(this.movePool.indexOf(first), 1);
+      (this.slots as (MovePower | null)[])[0] = first;
+    }
 
     this.load.crossOrigin = 'anonymous';
     // Cada hoja: clave y sprites (los enemigos también en shiny, por si sale uno)
@@ -1024,12 +1119,14 @@ export class GameScene extends Phaser.Scene {
     this.ability?.apply?.(stats);
     // Altares (T39): los PS máximos dados se pierden para el resto de la partida
     if (this.hpSacrificed > 0) stats.maxHp = Math.max(1, stats.maxHp - this.hpSacrificed);
+    // Fuente curativa (T48): beber gratis cansa unas salas
+    if (this.tiredRooms > 0) stats.speed *= FOUNTAIN_TIRED_SPEED;
     return stats;
   }
 
   /** Multiplicador de daño de Ataque X mientras dura. */
   private dmgMul(): number {
-    return this.time.now < this.buffUntil ? ACTIVE_EFFECT.buffMul : 1;
+    return this.time.now < this.buffUntil ? this.buffMul : 1;
   }
 
   /**
@@ -1083,7 +1180,7 @@ export class GameScene extends Phaser.Scene {
     const i = this.interior(room);
     // Mismo azar cada vez que entras en esta sala (y en el desafío diario, el de todos)
     const rng = mulberry32((this.floorSeed ^ Math.imul(room.id + 1, 0x9e3779b1)) >>> 0);
-    this.notify(`¡Sala sorpresa!\n${ROOM_EVENT_LABEL[kind]}`, { kind: 'info', icon: 'star' });
+    this.notify(`¡Sala sorpresa! ${ROOM_EVENT_LABEL[kind]}\n${ROOM_EVENT_DESC[kind]}`, { kind: 'info', icon: 'star' });
     const keep = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
       this.eventObjs.push(o);
       return o;
@@ -1119,11 +1216,14 @@ export class GameScene extends Phaser.Scene {
 
     if (kind === 'merchant') {
       // Puesto con tres artículos; los poderes se copian para no gastar la bolsa si no compras
-      const stock = merchantStock(rng, new Set(this.passives), [...this.movePool], this.passivePool());
+      const stock = merchantStock(rng, new Set(this.passives), [...this.movePool], this.passivePool(), this.floorNum);
+      // Easter egg: a veces vende un Magikarp «por solo 5 monedas»
+      const karp = sellsMagikarp(rng(), this.passives);
+      if (karp) stock[0] = { goods: { kind: 'passive', id: MAGIKARP }, price: MAGIKARP_PRICE, sold: false };
       const g = keep(this.add.graphics().setDepth(2));
       g.fillStyle(0x6b4423, 1).fillRect(i.cx - 200, i.cy - 120, 400, 26);
       for (let k = 0; k < 5; k++) g.fillStyle(k % 2 ? 0xf4f1e6 : 0x1abc9c, 1).fillTriangle(i.cx - 200 + k * 80, i.cy - 120, i.cx - 120 + k * 80, i.cy - 120, i.cx - 160 + k * 80, i.cy - 156);
-      label(i.cx, i.cy - 176, 'Mercader ambulante: elige uno y se marcha', 16, '#ffe9a8');
+      label(i.cx, i.cy - 176, karp ? '«¡Un Magikarp por solo 5 monedas! ¡Una ganga!»' : 'Mercader ambulante: elige uno y se marcha', 16, '#ffe9a8');
       stock.forEach((slot, k) => {
         const x = i.cx + (k - 1) * 150;
         const y = i.cy + 10;
@@ -1158,6 +1258,72 @@ export class GameScene extends Phaser.Scene {
           canUseAltar(this.stats.maxHp) ? `Enter / A / clic: dar ${altarCost(this.stats.maxHp)} PS máximos por un objeto` : 'Tienes muy pocos PS máximos para el altar',
         use,
       });
+      return;
+    }
+
+    if (kind === 'rival') {
+      // Entrenador rival: oleadas cortas seguidas; al ganar, el doble de tickets de la sala (ver checkClear)
+      this.rivalWave = 1;
+      label(i.cx, i.y0 + 40, '¡Entrenador rival!', 22, '#ff8a80');
+      this.setDoorsLocked(room, true, true);
+      sfx('door');
+      this.notify(`¡Combate contra el rival!\nOleada 1/${RIVAL_WAVES}`, { kind: 'danger', icon: 'sword' });
+      this.time.delayedCall(700, () => !this.ended && this.current.id === room.id && this.spawnEnemies(rivalWaveSize(this.floorNum, 1)));
+      return;
+    }
+
+    if (kind === 'timeTrial') {
+      // Sala del tiempo: enemigos y un reloj; si se acaba, entran más (ver updateTimeTrial y checkClear)
+      this.setDoorsLocked(room, true, true);
+      sfx('door');
+      const clock = label(i.cx, i.y0 + 40, '', 26, '#ffd34d');
+      this.timeTrial = { roomId: room.id, until: this.time.now + TIME_TRIAL_SECONDS * 1000, failed: false, label: clock };
+      this.spawnEnemies(timeTrialSize(this.floorNum));
+      return;
+    }
+
+    if (kind === 'fountain') {
+      // Fuente curativa: pagar monedas o beber gratis y cansarse unas salas
+      const g = keep(this.add.graphics().setDepth(2));
+      g.fillStyle(0x6e7686, 1).fillCircle(i.cx, i.cy, 62);
+      g.fillStyle(0x9aa3b4, 1).fillCircle(i.cx, i.cy, 54);
+      g.fillStyle(0x64b5f6, 0.95).fillCircle(i.cx, i.cy, 44);
+      g.fillStyle(0xbbdefb, 0.9).fillCircle(i.cx - 12, i.cy - 12, 10);
+      const drops = keep(this.add.graphics().setDepth(3));
+      this.tweens.addCounter({ from: 0, to: 1, duration: 900, repeat: -1, onUpdate: (tw) => {
+        const v = tw.getValue() ?? 0;
+        drops.clear().fillStyle(0xe3f2fd, 1 - v);
+        for (let k = 0; k < 3; k++) drops.fillRect(i.cx - 20 + k * 20, i.cy - 30 - v * 30, 4, 4);
+      } });
+      const price = fountainPrice(this.floorNum);
+      const amount = () => fountainHeal(this.stats.maxHp);
+      const pay = () => this.useFountain(room, true, price);
+      const free = () => this.useFountain(room, false, price);
+      for (const [x, text, use] of [[i.cx - 150, `Pagar ${price} monedas`, pay], [i.cx + 150, 'Beber gratis (cansa)', free]] as const) {
+        const z = keep(this.add.zone(x, i.cy + 70, 170, 50));
+        clickable(z, use);
+        label(x, i.cy + 70, text, 15, '#bbdefb');
+      }
+      label(i.cx, i.cy - 84, 'Fuente curativa', 18, '#e3f2fd');
+      this.eventSpots.push(
+        { x: i.cx - 150, y: i.cy + 70, prompt: () => `Enter / A / clic: curar ${amount()} PS por ${price} monedas (tienes ${this.coins})`, use: pay },
+        { x: i.cx + 150, y: i.cy + 70, prompt: () => `Enter / A / clic: curar ${amount()} PS gratis, pero irás más lento ${FOUNTAIN_TIRED_ROOMS} salas`, use: free },
+      );
+      return;
+    }
+
+    if (kind === 'egg') {
+      // Huevo misterioso: se lleva y eclosiona tras unas salas limpiadas
+      const g = keep(this.add.graphics().setDepth(3));
+      g.fillStyle(0x101828, 1).fillEllipse(i.cx, i.cy, 52, 66);
+      g.fillStyle(0xfdf6e3, 1).fillEllipse(i.cx, i.cy, 46, 60);
+      g.fillStyle(0x7cb342, 1).fillCircle(i.cx - 8, i.cy - 10, 6).fillCircle(i.cx + 10, i.cy + 8, 5).fillCircle(i.cx - 4, i.cy + 18, 4);
+      this.tweens.add({ targets: g, angle: { from: -3, to: 3 }, duration: 300, yoyo: true, repeat: -1, repeatDelay: 900 });
+      label(i.cx, i.cy + 56, 'Huevo misterioso', 15, '#f8bbd0');
+      const take = () => this.takeEgg(room);
+      const z = keep(this.add.zone(i.cx, i.cy, 70, 80));
+      clickable(z, take);
+      this.eventSpots.push({ x: i.cx, y: i.cy, prompt: () => (this.eggLeft > 0 ? 'Ya llevas un huevo' : 'Enter / A / clic: coger el huevo'), use: take });
       return;
     }
 
@@ -1318,6 +1484,122 @@ export class GameScene extends Phaser.Scene {
         if (show) o.cameraFilter &= ~cam;
         else o.cameraFilter |= cam;
       }
+    }
+  }
+
+  // --- Eventos de la T48: fuente, huevo, sala del tiempo y ayudante ---
+
+  private useFountain(room: Room, paid: boolean, price: number) {
+    if (this.ended || this.transitioning || this.eventsDone.has(room.id)) return;
+    if (!canHeal(this.hp, this.stats.maxHp)) return this.notify('Ya tienes todos los PS', { kind: 'warning', icon: 'heart' });
+    if (paid && this.coins < price) return this.notify(`Te faltan monedas (${this.coins}/${price})`, { kind: 'warning', icon: 'coin' });
+    if (paid) this.coins -= price;
+    const amount = scaleHeal(fountainHeal(this.stats.maxHp), this.diff);
+    this.hp = healed(this.hp, this.stats.maxHp, amount);
+    sfx('heal');
+    this.popup(this.player.x, this.player.y - 50, `+${amount} PS`, 0x64b5f6);
+    if (!paid) {
+      this.tiredRooms = FOUNTAIN_TIRED_ROOMS;
+      this.stats = this.calcStats();
+    }
+    this.notify(paid ? `¡Fuente curativa! +${amount} PS` : `¡Fuente curativa! +${amount} PS\nCansado: más lento ${FOUNTAIN_TIRED_ROOMS} salas`, { kind: 'heal', icon: 'heart' });
+    this.finishEvent(room);
+  }
+
+  private takeEgg(room: Room) {
+    if (this.ended || this.transitioning || this.eventsDone.has(room.id)) return;
+    if (this.eggLeft > 0) return this.notify('Ya llevas un huevo', { kind: 'warning', icon: 'star' });
+    this.eggLeft = EGG_ROOMS;
+    sfx('pickup');
+    this.notify(`¡Huevo misterioso!\nEclosiona tras ${EGG_ROOMS} salas limpias`, { kind: 'item', icon: 'star' });
+    this.finishEvent(room);
+  }
+
+  /** Al limpiar una sala: el huevo cuenta y, si toca, eclosiona; el cansancio de la fuente se pasa. */
+  private onRoomClearedT48() {
+    if (this.tiredRooms > 0) {
+      this.tiredRooms--;
+      if (this.tiredRooms === 0) {
+        this.stats = this.calcStats();
+        this.notify('Ya no estás cansado', { kind: 'info', icon: 'heart' });
+      }
+    }
+    if (this.eggLeft <= 0) return;
+    this.eggLeft = eggTick(this.eggLeft);
+    if (this.eggLeft > 0) return void this.notify(`El huevo se mueve…\nFalta ${this.eggLeft} sala${this.eggLeft === 1 ? '' : 's'}`, { kind: 'info', icon: 'star' });
+    const rng = mulberry32((this.floorSeed ^ (this.current.id * 7919 + 13)) >>> 0);
+    sparkle(this, this.player.x, this.player.y);
+    if (eggHatch(rng) === 'helper' && this.foeKinds.length > 0) {
+      const k = this.foeKinds[Math.floor(rng() * this.foeKinds.length)];
+      this.allyId = Number(k.key.replace('foe-', ''));
+      this.spawnAlly();
+      const name = k.name ? k.name.charAt(0).toUpperCase() + k.name.slice(1) : 'Un Pokémon';
+      this.notify(`¡El huevo ha eclosionado!\n${name} te ayuda a pelear`, { kind: 'reward', icon: 'star' });
+    } else {
+      const p = this.freeSpot(this.player.x + 60, this.player.y);
+      this.dropItem(this.current.id, p.x, p.y);
+      this.notify('¡El huevo ha eclosionado!\nHabía un objeto dentro', { kind: 'reward', icon: 'star' });
+    }
+  }
+
+  /** Ayudante del huevo: sigue al jugador y ataca al enemigo más cercano. Se crea si su dibujo está cargado. */
+  private spawnAlly() {
+    this.ally?.sprite.destroy();
+    this.ally = undefined;
+    const key = `foe-${this.allyId}`;
+    if (!this.allyId || !this.textures.exists(`${key}-front`) || !this.player) return;
+    const sprite = this.add.sprite(this.player.x - 50, this.player.y + 20, `${key}-front`).setDisplaySize(44, 44).setDepth(4) as Sprite;
+    const type = this.foeKinds.find((k) => k.key === key)?.type ?? 'normal';
+    this.ally = { sprite, type, nextAt: this.time.now + HELPER_ATTACK_MS };
+  }
+
+  private updateAlly(time: number, delta: number) {
+    const a = this.ally;
+    if (!a || !this.player) return;
+    const s = a.sprite;
+    // Va detrás del jugador, un poco a un lado
+    const tx = this.player.x - 50;
+    const ty = this.player.y + 20;
+    const f = Math.min(1, (delta / 1000) * 6);
+    s.setPosition(s.x + (tx - s.x) * f, s.y + (ty - s.y) * f + Math.sin(time / 180) * 0.6);
+    if (this.ended || this.transitioning || time < a.nextAt) return;
+    a.nextAt = time + HELPER_ATTACK_MS;
+    let best: Sprite | undefined;
+    let bestD = 520;
+    for (const c of this.enemies.getChildren()) {
+      const e = c as Sprite;
+      if (!e.active || e.getData('runaway')) continue;
+      const d = Phaser.Math.Distance.Between(s.x, s.y, e.x, e.y);
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    }
+    if (!best) return;
+    const target = best;
+    const color = typeColor(a.type);
+    const ball = this.add.circle(s.x, s.y, 7, color).setStrokeStyle(2, 0xffffff, 0.9).setDepth(6);
+    s.setFlipX(target.x > s.x);
+    this.tweens.add({
+      targets: ball, x: target.x, y: target.y, duration: Math.max(120, bestD * 0.9),
+      onComplete: () => {
+        ball.destroy();
+        if (target.active && !this.ended) this.hitEnemy(target, Math.max(1, this.stats.damage * HELPER_DAMAGE_MUL), a.type, target.x, target.y, color);
+      },
+    });
+  }
+
+  /** Sala del tiempo: cuenta atrás; si se acaba con enemigos vivos, entran más. */
+  private updateTimeTrial(time: number) {
+    const t = this.timeTrial;
+    if (!t || this.current?.id !== t.roomId) return;
+    const left = Math.max(0, Math.ceil((t.until - time) / 1000));
+    t.label.setText(t.failed ? '¡Tiempo!' : `⏱ ${left} s`).setColor(left <= 5 || t.failed ? '#ff6e6e' : '#ffd34d');
+    if (!t.failed && time >= t.until && !this.ended && !this.transitioning) {
+      t.failed = true;
+      this.cameras.main.shake(160, 0.005);
+      this.notify('¡Se acabó el tiempo!\nEntran más enemigos', { kind: 'danger', icon: 'clock' });
+      this.spawnEnemies(timeTrialExtra(this.floorNum));
     }
   }
 
@@ -1537,6 +1819,7 @@ export class GameScene extends Phaser.Scene {
     this.restartKey = kb.addKey(K.R);
     this.enterKey = key('accept');
     this.bombKey = key('bomb');
+    this.potionKey = key('potion');
     this.activeKey = key('active');
     this.escKey = key('back');
     this.pauseKey = key('pause');
@@ -1594,11 +1877,20 @@ export class GameScene extends Phaser.Scene {
       hud(this.add.image(x, 288, iconKey).setScale(2));
       return txt(x + 16, 288, 20, '#f8f8f8', true).setOrigin(0, 0.5);
     };
-    this.coinsHud = count(iconKey('coin'), LX + 26);
-    this.keysHud = count(iconKey('key'), LX + 94);
-    this.bombsHud = count(iconKey('bomb'), LX + 160);
-    const bombBtn = over(hud(this.add.zone(LX + 172, 288, 64, 52).setInteractive({ useHandCursor: true })));
+    {
+      // Esquina superior izquierda de la sala, en coordenadas reales de pantalla
+      const k = GAME_VIEW.w / VIEW.w;
+      this.comboHud = new ComboHud(this, GAME_VIEW.x + (ROOM.x + 22) * k, GAME_VIEW.y + (ROOM.y + 36) * k, FONT, hud);
+    }
+    // T49: cuatro contadores (monedas, llaves, bombas y pociones); clic en la bomba o en la poción para usarlas
+    this.coinsHud = count(iconKey('coin'), LX + HUD_COUNT_X.coin);
+    this.keysHud = count(iconKey('key'), LX + HUD_COUNT_X.key);
+    this.bombsHud = count(iconKey('bomb'), LX + HUD_COUNT_X.bomb);
+    this.potionsHud = count(iconKey('potion'), LX + HUD_COUNT_X.potion);
+    const bombBtn = over(hud(this.add.zone(LX + HUD_COUNT_X.bomb + 10, 288, 50, 52).setInteractive({ useHandCursor: true })));
     bombBtn.on('pointerdown', () => this.placeBomb());
+    const potionBtn = over(hud(this.add.zone(LX + HUD_COUNT_X.potion + 10, 288, 50, 52).setInteractive({ useHandCursor: true })));
+    potionBtn.on('pointerdown', () => this.drinkPotion());
     // Objetos pasivos
     this.invText = hud(
       this.add.text(LX, 334, '', { fontFamily: FONT, fontSize: '15px', color: '#ffffff', wordWrap: { width: LW }, lineSpacing: 4 }),
@@ -1655,7 +1947,7 @@ export class GameScene extends Phaser.Scene {
 
     // Tienda: al continuar, lo que quedaba; si no, artículos nuevos para este piso
     if (this.floor.shopId !== undefined) {
-      if (this.shop.length === 0) this.shop = rollShop(this.rng(RNG.shop), new Set(this.passives), this.movePool, this.passivePool());
+      if (this.shop.length === 0) this.shop = rollShop(this.rng(RNG.shop), new Set(this.passives), this.movePool, this.passivePool(), this.floorNum);
       this.buildShop(this.floor.rooms[this.floor.shopId]);
     }
     this.prompt = this.add
@@ -1688,6 +1980,7 @@ export class GameScene extends Phaser.Scene {
       this.notify(`${head}
 ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
+    if (this.allyId) this.spawnAlly();
     if (this.weather) {
       this.weatherFx = new WeatherFx(this, this.weather, 20, this.fxBudget.low);
       const w = this.weather;
@@ -1709,6 +2002,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.evolving || this.ended) return;
     this.evolving = true;
     try {
+      // Las líneas de tres formas evolucionan en los pisos 2 y 4; las de dos, una vez en el piso 3 (evolution.ts)
+      const left = await fetchEvolutionsLeft(this.starterId).catch(() => 2);
+      if (!evolveFloors(this.mode, left).includes(this.floorNum)) return;
       const next = pickEvolution(await fetchNextEvolutions(this.formId), Math.random);
       if (next === null) return;
       const data = await fetchPokemon(next);
@@ -1815,7 +2111,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.centerUsed = r.centerUsed;
     this.shop = r.shop.map((s) => ({ ...s }));
     for (const f of r.floorItems) {
-      if (f.drop.kind === 'coin' || f.drop.kind === 'berry' || f.drop.kind === 'key' || f.drop.kind === 'bomb') {
+      if (f.drop.kind === 'coin' || f.drop.kind === 'berry' || f.drop.kind === 'key' || f.drop.kind === 'bomb' || f.drop.kind === 'potion') {
         this.spawnLoot(f.roomId, f.x, f.y, f.drop);
         continue;
       }
@@ -1864,6 +2160,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       difficulty: this.diff,
       eventsDone: [...this.eventsDone],
       hpSacrificed: this.hpSacrificed,
+      eggLeft: this.eggLeft,
+      allyId: this.allyId,
+      tiredRooms: this.tiredRooms,
+      potions: this.potions,
     });
   }
 
@@ -2265,7 +2565,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.secretWalls.delete(k);
       this.drawDoor(rm, dir, this.add.graphics().setDepth(0), this.floorColorOf(rm));
       const block = this.doorMap.get(k);
-      if (block) {
+      // Si la sala está cerrada por un combate (u otro evento), la puerta nueva nace cerrada también: no se puede
+      // huir a la sala secreta con enemigos vivos. Se abre con las demás al limpiar la sala.
+      const roomLocked = DIRS.some((dd) => {
+        const b = this.doorMap.get(doorKey(rm.id, dd));
+        return !!b && b !== block && (b.body as Phaser.Physics.Arcade.StaticBody).enable;
+      });
+      if (block && roomLocked) {
+        block.setVisible(true);
+        (block.getData('bars') as Phaser.GameObjects.Container | undefined)?.setVisible(true);
+        (block.body as Phaser.Physics.Arcade.StaticBody).enable = true;
+      } else if (block) {
         block.setVisible(false);
         (block.getData('bars') as Phaser.GameObjects.Graphics | undefined)?.setVisible(false);
         (block.body as Phaser.Physics.Arcade.StaticBody).enable = false;
@@ -2346,7 +2656,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Bomba a tus pies: E, RB o clic en la bomba del HUD. */
   private placeBomb() {
-    if (this.ended || this.transitioning || this.bombs <= 0 || !this.player?.active) return;
+    if (this.ended || this.transitioning || !this.player?.active) return;
+    if (this.bombs <= 0) return this.notify(`${OAK_LINE}\nNo te quedan bombas`, { kind: 'warning', icon: 'bomb' });
     this.bombs--;
     const x = this.player.x;
     const y = this.player.y + 10;
@@ -2499,7 +2810,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Deja en el suelo un objeto al azar: un pasivo propio o un poder (movimiento de PokeAPI). */
   private dropItem(roomId: number, x: number, y: number) {
-    this.spawnPickup(roomId, x, y, rollItem(this.rng(RNG.items), new Set(this.passives), this.movePool, ACTIVE_DROP_CHANCE, ACTIVE_IDS, this.passivePool()));
+    this.spawnPickup(roomId, x, y, rollItem(this.rng(RNG.items), new Set(this.passives), this.movePool, ACTIVE_DROP_CHANCE, ACTIVE_IDS, this.passivePool(), this.floorNum));
   }
 
   private spawnPickup(roomId: number, x: number, y: number, item: DroppedItem) {
@@ -2522,6 +2833,19 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       .setDepth(3);
     s.setData('label', label);
     s.setData('shadow', shadow);
+    // Rareza del poder: nombre en su color y, en los épicos y legendarios, un halo que late
+    if (item.kind === 'move') {
+      const rar = moveRarity(item.move.power);
+      if (rar !== 'common') {
+        const rc = MOVE_RARITY_COLOR[rar];
+        label.setText(`${name}\n${MOVE_RARITY_LABEL[rar]}`).setColor('#' + rc.toString(16).padStart(6, '0')).setY(y - 48).setAlign('center');
+        if (rar === 'epic' || rar === 'legendary') {
+          const halo = this.add.circle(x, y, 30, rc, 0.28).setDepth(1.5).setStrokeStyle(3, rc, 0.9);
+          this.tweens.add({ targets: halo, scale: 1.5, alpha: 0.05, duration: rar === 'legendary' ? 650 : 900, repeat: -1 });
+          s.setData('halo', halo);
+        }
+      }
+    }
     this.tweens.add({ targets: s, y: y - 8, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
   }
 
@@ -2605,6 +2929,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     (sprite.getData('label') as Phaser.GameObjects.Text | undefined)?.destroy();
     (sprite.getData('shadow') as Phaser.GameObjects.Ellipse | undefined)?.destroy();
+    const halo = sprite.getData('halo') as Phaser.GameObjects.Arc | undefined;
+    if (halo) {
+      this.tweens.killTweensOf(halo);
+      halo.destroy();
+    }
     this.floorItems = this.floorItems.filter((f) => f !== sprite.getData('entry'));
     this.tweens.killTweensOf(sprite);
     sprite.destroy();
@@ -2743,8 +3072,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const a = activeById(this.active.id);
     if (!a) return;
     if (!isCharged(this.active.charge, a.charge)) {
-      this.notify(`${a.name}: aún no está cargado (${this.active.charge}/${a.charge})\nSe carga limpiando salas`, { kind: 'warning', icon: 'pokeball' });
+      this.notify(`${OAK_LINE}\n${a.name}: aún no está cargado (${this.active.charge}/${a.charge}), se carga limpiando salas`, { kind: 'warning', icon: 'pokeball' });
       return;
+    }
+    if (a.id === 'teletransporte') {
+      const why = this.teleportBlocked();
+      if (why) return this.notify(`${a.name}: ${why}`, { kind: 'warning', icon: 'pokeball' });
     }
     this.active.charge = 0;
     const now = this.time.now;
@@ -2764,10 +3097,89 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.popup(this.player.x, this.player.y - 50, `+${ACTIVE_EFFECT.heal} PS`, a.color);
     } else if (a.id === 'ataque-x') {
       this.buffUntil = now + ACTIVE_EFFECT.buffMs;
+      this.buffMul = ACTIVE_EFFECT.buffMul;
       this.popup(this.player.x, this.player.y - 50, '¡Ataque X!', a.color);
+    } else if (a.id === 'pocion-activa') {
+      const amount = scaleHeal(ACTIVE_EFFECT.potionHeal, this.diff);
+      this.hp = Math.min(this.stats.maxHp, this.hp + amount);
+      this.popup(this.player.x, this.player.y - 50, `+${amount} PS`, a.color);
+    } else if (a.id === 'caramelo-raro-activo') {
+      this.buffUntil = now + ACTIVE_EFFECT.candyMs;
+      this.buffMul = ACTIVE_EFFECT.candyMul;
+      this.popup(this.player.x, this.player.y - 50, '¡Daño ×2!', a.color);
+    } else if (a.id === 'bomba-cebo') {
+      this.baitBlast(this.player.x, this.player.y);
+    } else if (a.id === 'silbato') {
+      this.invulnUntil = Math.max(this.invulnUntil, now + ACTIVE_EFFECT.whistleMs);
+      this.player.setTint(a.color);
+      this.time.delayedCall(ACTIVE_EFFECT.whistleMs, () => this.player?.active && this.player.clearTint());
+      this.popup(this.player.x, this.player.y - 50, '¡Inmune!', a.color);
+    } else if (a.id === 'teletransporte') {
+      this.teleportToStart();
     }
     this.notify(a.name, { kind: 'info', icon: 'pokeball' });
     this.saveNow();
+  }
+
+  // --- T49: poción, Bomba Cebo y Teletransporte ---
+
+  /** Bebe una de las pociones que llevas (tecla, L3, clic en el HUD o botón táctil). */
+  private drinkPotion() {
+    if (this.ended || this.transitioning || !this.player?.active) return;
+    if (this.potions <= 0) return this.notify(`${OAK_LINE}\nNo llevas pociones`, { kind: 'warning', icon: 'potion' });
+    if (!canHeal(this.hp, this.stats.maxHp)) return this.notify('Ya tienes todos los PS', { kind: 'warning', icon: 'potion' });
+    this.potions--;
+    const amount = scaleHeal(CARRIED_POTION_HEAL, this.diff);
+    this.hp = healed(this.hp, this.stats.maxHp, amount);
+    sfx('heal');
+    this.popup(this.player.x, this.player.y - 50, `Poción +${amount} PS`, 0xc39bd3);
+    this.saveNow();
+  }
+
+  /** Bomba Cebo: gran explosión a tu alrededor que solo daña a los enemigos. */
+  private baitBlast(x: number, y: number) {
+    const R = BOMB.radius * ACTIVE_EFFECT.baitRadiusMul;
+    const dmg = BOMB.damage * ACTIVE_EFFECT.baitDamageMul;
+    sfx('boom');
+    this.cameras.main.shake(220, 0.008);
+    for (const [delay, color] of [[0, 0xffb347], [90, 0xff7043]] as const) {
+      const fx = this.add.circle(x, y, 30, color, 0.5).setDepth(12);
+      this.tweens.add({ targets: fx, radius: R, alpha: 0, duration: 360, delay, ease: 'Cubic.easeOut', onComplete: () => fx.destroy() });
+    }
+    for (const c of [...this.enemies.getChildren()]) {
+      const e = c as Sprite;
+      if (!e.active || !inBlast(x, y, e.x, e.y, R + (e.getData('size') as number) / 3)) continue;
+      this.hitEnemy(e, dmg, 'fire', e.x, e.y, 0xff7043);
+    }
+  }
+
+  /** Por qué no se puede usar el Teletransporte aquí (o null si sí). */
+  private teleportBlocked(): string | null {
+    if (this.floor.rooms.length <= 1) return 'aquí no hay a dónde ir';
+    if (this.current.kind === 'boss') return 'no funciona contra el jefe';
+    if (this.current.id === this.floor.startId) return 'ya estás en la sala de inicio';
+    return null;
+  }
+
+  /** Vuelve a la sala de inicio del piso. Si la sala actual no estaba limpia, sus enemigos te esperarán al volver. */
+  private teleportToStart() {
+    const from = this.current;
+    const start = this.floor.rooms[this.floor.startId];
+    this.clearEventObjs();
+    this.rivalWave = 0;
+    this.timeTrial?.label.destroy();
+    this.timeTrial = undefined;
+    this.enemies.clear(true, true);
+    this.shots.clear(true, true);
+    this.foeShots.clear(true, true);
+    if (!this.cleared.has(from.id)) this.setDoorsLocked(from, false);
+    sparkle(this, this.player.x, this.player.y);
+    const n = this.interior(start);
+    (this.player.body as Body).reset(n.cx, n.cy);
+    this.cameras.main.centerOn(n.cx, n.cy);
+    this.cameras.main.flash(250, 225, 190, 231);
+    this.enterRoom(start);
+    sparkle(this, n.cx, n.cy);
   }
 
   /** Limpiar una sala recarga el objeto activo. */
@@ -2872,8 +3284,60 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       sfx('door');
     }
 
+    if (room.kind === 'secret') this.enterSecret(room);
+
     this.drawMap();
     this.saveNow();
+  }
+
+  /** Easter eggs de las salas secretas (easterEggs.ts): MissingNo. duplica el objeto; el camión esconde algo. */
+  private enterSecret(room: Room) {
+    const v = secretVariant(this.floorSeed, room.id);
+    if (v === 'normal') return;
+    this.clearEventObjs();
+    const i = this.interior(room);
+    if (v === 'missingno') {
+      this.eventObjs.push(drawGlitchFigure(this, i.x0 + 120, i.y0 + 150));
+      this.eventObjs.push(this.add.text(i.x0 + 120, i.y0 + 170, 'MissingNo.', { fontFamily: FONT, fontSize: '16px', color: '#ffffff' }).setOrigin(0.5).setStroke('#18202c', 4).setDepth(3));
+      if (this.eventsDone.has(room.id)) return;
+      this.eventsDone.add(room.id);
+      glitchFlash(this, i.cx, i.cy, ROOM.w, ROOM.h);
+      sfx('boom');
+      // Copia el objeto de la sala (como el famoso truco del sexto objeto)
+      const original = this.floorItems.find((f) => f.roomId === room.id);
+      const copy = original ? this.fromSaved(original.drop) : null;
+      if (copy) this.spawnPickup(room.id, i.cx + 110, i.cy, copy);
+      else this.dropItem(room.id, i.cx + 110, i.cy);
+      this.notify('¡¿MissingNo.?!\nEl objeto de la sala se ha duplicado', { kind: 'reward', icon: 'star' });
+      return;
+    }
+    // El camión: ¿hay un Mew debajo?
+    const tx = i.x0 + 170;
+    const ty = i.y0 + 130;
+    this.eventObjs.push(drawTruck(this, tx, ty));
+    if (this.eventsDone.has(room.id)) return;
+    const look = () => {
+      if (this.eventsDone.has(room.id) || this.current?.id !== room.id) return;
+      this.eventsDone.add(room.id);
+      const roll = mulberry32((this.floorSeed ^ Math.imul(room.id + 3, 0x27d4eb2f)) >>> 0)();
+      if (roll < MEW_CHANCE) {
+        sfx('evolve');
+        this.dropItem(room.id, tx, ty + 70);
+        this.notify('¡Había un Mew debajo del camión!\nSe ha ido volando, pero te ha dejado un regalo', { kind: 'reward', icon: 'star' });
+      } else {
+        sfx('pickup');
+        for (const dx of [-40, 0, 40]) this.spawnLoot(room.id, tx + dx, ty + 60, { kind: 'coin', value: 2 });
+        this.notify('Debajo del camión no hay ningún Mew...\nPero sí unas monedas', { kind: 'info', icon: 'coin' });
+      }
+      this.saveNow();
+    };
+    this.eventSpots.push({ x: tx, y: ty + 30, prompt: () => (this.eventsDone.has(room.id) ? '' : 'Enter / A / clic: mirar debajo del camión'), use: look });
+    // Con el ratón: clic en el camión
+    const z = this.add.zone(tx, ty - 30, 170, 90).setInteractive({ useHandCursor: true });
+    z.on('pointerover', () => (this.overHud = true));
+    z.on('pointerout', () => (this.overHud = false));
+    z.on('pointerdown', look);
+    this.eventObjs.push(z);
   }
 
   private spawnChallengeWave(roomId: number) {
@@ -2951,16 +3415,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         switch (c) {
           case 'R': {
             // Cada roca va aparte para que una bomba pueda romperla
-            const rock = this.add.image(cx, cy, this.tiles.rock).setScale(sc).setDepth(1);
+            // Un poco de desorden (posición y espejo) para que un grupo de rocas no parezca una cuadrícula
+            const jit = ((tx * 73856093) ^ (ty * 19349663) ^ room.id) >>> 0;
+            const rock = this.add.image(cx + ((jit % 5) - 2), cy + (((jit >> 3) % 5) - 2), this.tiles.rock).setScale(sc).setDepth(1).setFlipX((jit & 64) !== 0);
             this.rocks.set(`${room.id}:${tx},${ty}`, [rock, this.addWall(x, y, TILE, TILE)]);
             break;
           }
           case 'X': {
-            // Muro que da forma a la sala (en L, cruz, T…): mismo bloque que la pared
-            this.add.tileSprite(x, y, TILE, TILE, this.tiles.wall).setOrigin(0).setTileScale(sc).setDepth(1);
-            const edge = this.add.graphics().setDepth(1.1);
-            edge.fillStyle(0xffffff, 0.14).fillRect(x, y, TILE, 3);
-            edge.fillStyle(0x000000, 0.28).fillRect(x, y + TILE - 4, TILE, 4);
+            // Muro que da forma a la sala (en L, cruz, T…): se dibuja entero en drawShapedWalls
             this.addWall(x, y, TILE, TILE);
             break;
           }
@@ -2970,7 +3432,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             this.addWall(x, y, TILE, TILE);
             break;
           case 'H': {
-            this.add.image(cx, cy, this.tiles.hole).setScale(sc).setDepth(0.6);
+            // El foso se dibuja entero en drawPits
             const hole = this.add.rectangle(cx, cy, TILE - 6, TILE - 6).setVisible(false);
             this.holes.add(hole);
             break;
@@ -2987,6 +3449,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         }
       }),
     );
+    // Muros y fosos unidos (supervisor): se dibujan por zonas, no casilla a casilla
+    const sc = TILE / ART_TILE;
+    if (grid.some((row) => row.includes('X'))) {
+      drawShapedWalls(this, grid, i, TILE, WALL, this.biome, this.tiles.wall, sc, { x: room.gx * VIEW.w, y: room.gy * VIEW.h }, sc * 2.4);
+    }
+    if (grid.some((row) => row.includes('H'))) drawPits(this, grid, i, TILE, this.biome);
   }
 
   /** Un disparo rompe un poco la hierba alta: con dos golpes desaparece y deja pasar. */
@@ -3086,7 +3554,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Varios enemigos del piso; al menos uno de cada tres dispara, sea del tipo que sea (T32). */
   private spawnEnemies(n: number) {
     const kinds = Array.from({ length: n }, () => Phaser.Utils.Array.GetRandom(this.foeKinds) as FoeKind);
-    const behaviors = mixBehaviors(kinds.map((k) => k.behavior));
+    // T51: algunos pasan a los comportamientos nuevos del bioma (más cuanto más hondo)
+    const behaviors = twistBehaviors(mixBehaviors(kinds.map((k) => k.behavior)), this.level(), this.biome.types, Math.random);
     kinds.forEach((k, i) => this.spawnEnemy(k, behaviors[i]));
   }
 
@@ -3173,7 +3642,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       b.setData('hp', hp).setData('maxHp', hp).setData('speed', ms.speed * (trio ? 0.9 : 0.8)).setData('dmg', ms.damage);
       b.setData('bname', m.name).setData('btypes', m.types).setData('finale', true);
       const ai = this.newAI(behaviorFor([m.types[0]]), m.types[0], true);
-      ai.attacks = [...new Set([...bossAttacks(m.types), 'summon' as const])];
+      ai.attacks = [...new Set([...bossAttacksFor(m.types, this.biome.types), 'summon' as const])];
       ai.moves = bossStyles(m.types, m.id);
       ai.nextAttack = Number.POSITIVE_INFINITY; // los activa la intro al acabar
       ai.phase = 1;
@@ -3228,7 +3697,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // El jefe también se comporta según su tipo
     const ai = this.newAI(behaviorFor([this.bossType]), this.bossType, true);
     // Todos los legendarios invocan ayudantes de su tipo
-    ai.attacks = [...new Set([...bossAttacks(this.bossTypes), 'summon' as const])];
+    // T50: más los 2 ataques extra del bioma
+    ai.attacks = [...new Set([...bossAttacksFor(this.bossTypes, this.biome.types), 'summon' as const])];
     // Movimientos de su tipo (Lanzallamas, Hidrobomba, Terremoto…) además de sus ataques de jefe
     ai.moves = bossStyles(this.bossTypes, this.bossId);
     ai.nextAttack = this.time.now + 2200;
@@ -3379,7 +3849,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (attack === 'ring') this.bossRing(b, ai);
     else if (attack === 'charge') this.bossCharge(b, ai, time);
     else if (attack === 'summon') this.bossSummon(b, ai);
-    else this.bossRain(b, ai);
+    else if (attack === 'rain') this.bossRain(b, ai);
+    else {
+      // T50: los ataques extra duran más; el siguiente espera a que acaben
+      const ms = this.bossExtra(b, ai, attack, ai.phase ?? 1);
+      ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + TELEGRAPH_MS + ms + 600);
+    }
   }
 
   /** Invocación: círculos del color del jefe donde van a salir sus ayudantes (si ya hay muchos, hace una ráfaga). */
@@ -3485,6 +3960,131 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         if (b.active && inBlast(p.x, p.y, this.player.x, this.player.y, R)) this.hurtPlayer(b);
       }
     });
+  }
+
+  // --- T50: espiral, onda expansiva, láser giratorio y zona de peligro (bossPatterns.ts) ---
+
+  /** Lanza un ataque extra (con aviso) y devuelve cuánto dura después del aviso (ms). */
+  private bossExtra(b: Sprite, ai: EnemyAI, attack: ExtraAttack, phase: 1 | 2): number {
+    const color = typeColor(ai.type);
+    this.popup(b.x, b.y - (b.displayHeight / 2 + 20), BOSS_ATTACK_LABEL[attack], color);
+    b.setData('flashUntil', this.time.now + TELEGRAPH_MS).setTintFill(0xffffff);
+    const lvl = this.level();
+    if (attack === 'spiral') {
+      const sp = spiralSpec(lvl, phase);
+      const warn = this.add.circle(b.x, b.y, 20).setStrokeStyle(4, color, 0.9).setDepth(5);
+      this.tweens.add({ targets: warn, radius: 90, angle: 360, alpha: 0.2, duration: TELEGRAPH_MS, onComplete: () => warn.destroy() });
+      const base = Math.random() * Math.PI * 2;
+      this.time.delayedCall(TELEGRAPH_MS, () => {
+        let i = 0;
+        const ev = this.time.addEvent({
+          delay: sp.everyMs, repeat: sp.shots - 1,
+          callback: () => {
+            if (!b.active || this.ended) return ev.remove();
+            for (let k = 0; k < sp.arms; k++) {
+              const a = base + (k / sp.arms) * Math.PI * 2 + i * sp.turn;
+              this.fireFoeShot(b, new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), ai.type);
+            }
+            i++;
+          },
+        });
+      });
+      return sp.shots * sp.everyMs;
+    }
+    if (attack === 'shockwave') {
+      const sw = shockwaveSpec(lvl, phase);
+      // Aviso: el suelo tiembla y se marca por dónde estará el hueco de la primera onda
+      const gapAt0 = Math.random() * Math.PI * 2;
+      const mark = this.add.graphics().setDepth(4);
+      mark.lineStyle(6, 0xffffff, 0.8).beginPath().arc(b.x, b.y, 70, gapAt0 - sw.gap / 2, gapAt0 + sw.gap / 2).strokePath();
+      this.tweens.add({ targets: mark, alpha: 0.2, yoyo: true, repeat: 2, duration: TELEGRAPH_MS / 6, onComplete: () => mark.destroy() });
+      this.cameras.main.shake(TELEGRAPH_MS, 0.002);
+      for (let w = 0; w < sw.waves; w++) {
+        // Cada onda con el hueco en otro sitio (giro de 90-150°)
+        const gapAt = gapAt0 + w * (Math.PI / 2 + Math.random() * (Math.PI / 3));
+        this.time.delayedCall(TELEGRAPH_MS + w * sw.everyMs, () => {
+          if (!b.active || this.ended) return;
+          const cx = b.x;
+          const cy = b.y;
+          const g = this.add.graphics().setDepth(5);
+          const st = { r: 30 };
+          this.tweens.add({
+            targets: st, r: sw.maxRadius, duration: ((sw.maxRadius - 30) / sw.speed) * 1000,
+            onUpdate: () => {
+              g.clear().lineStyle(16, color, 0.85).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
+              g.lineStyle(4, 0xffffff, 0.7).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
+              if (b.active && !this.ended && shockwaveHits(cx, cy, st.r, gapAt, sw.gap, this.player.x, this.player.y)) this.hurtPlayer(b);
+            },
+            onComplete: () => g.destroy(),
+          });
+        });
+      }
+      return (sw.waves - 1) * sw.everyMs + (sw.maxRadius / sw.speed) * 1000;
+    }
+    if (attack === 'laser') {
+      const ls = laserSpec(lvl, phase);
+      const start = Math.atan2(this.player.y - b.y, this.player.x - b.x) + Math.PI / 2;
+      const dirSign = Math.random() < 0.5 ? 1 : -1;
+      const angles = (t: number) => Array.from({ length: ls.beams }, (_, k) => start + (k / ls.beams) * Math.PI * 2 + dirSign * ls.turnSpeed * t);
+      // Aviso: líneas finas donde saldrán los rayos; el jefe se queda quieto mientras dispara
+      const warn = this.add.graphics().setDepth(4);
+      for (const a of angles(0)) warn.lineStyle(3, color, 0.6).lineBetween(b.x, b.y, b.x + Math.cos(a) * ls.length, b.y + Math.sin(a) * ls.length);
+      this.tweens.add({ targets: warn, alpha: 0.15, yoyo: true, repeat: 2, duration: TELEGRAPH_MS / 6, onComplete: () => warn.destroy() });
+      ai.knockUntil = this.time.now + TELEGRAPH_MS + ls.durationMs;
+      b.setVelocity(0, 0);
+      this.time.delayedCall(TELEGRAPH_MS, () => {
+        if (!b.active || this.ended) return;
+        const g = this.add.graphics().setDepth(5);
+        const st = { t: 0 };
+        this.tweens.add({
+          targets: st, t: ls.durationMs / 1000, duration: ls.durationMs,
+          onUpdate: () => {
+            if (!b.active || this.ended) return void g.clear();
+            b.setVelocity(0, 0);
+            g.clear();
+            for (const a of angles(st.t)) {
+              const x2 = b.x + Math.cos(a) * ls.length;
+              const y2 = b.y + Math.sin(a) * ls.length;
+              g.lineStyle(26, color, 0.35).lineBetween(b.x, b.y, x2, y2);
+              g.lineStyle(10, 0xffffff, 0.9).lineBetween(b.x, b.y, x2, y2);
+              if (laserHits(b.x, b.y, a, ls.length, this.player.x, this.player.y)) this.hurtPlayer(b);
+            }
+          },
+          onComplete: () => g.destroy(),
+        });
+      });
+      return ls.durationMs;
+    }
+    // Zona de peligro: círculos en el suelo (uno donde estás) que estallan tras el aviso
+    const hz = hazardSpec(lvl, phase);
+    const i = this.interior(this.current);
+    const R = hz.radius;
+    const spots = Array.from({ length: hz.zones }, (_, k) =>
+      k === 0 && hz.onPlayer
+        ? { x: this.player.x, y: this.player.y }
+        : { x: Phaser.Math.Between(i.x0 + R, i.x1 - R), y: Phaser.Math.Between(i.y0 + R, i.y1 - R) },
+    );
+    const marks = spots.map((sp) => {
+      const c = this.add.circle(sp.x, sp.y, R, color, 0.12).setStrokeStyle(4, 0xff3d00, 0.85).setDepth(3);
+      this.tweens.add({ targets: c, fillAlpha: 0.45, duration: TELEGRAPH_MS + hz.warnMs });
+      const inner = this.add.circle(sp.x, sp.y, 4, 0xff3d00, 0.5).setDepth(3);
+      this.tweens.add({ targets: inner, radius: R, duration: TELEGRAPH_MS + hz.warnMs, ease: 'Quad.easeIn' });
+      return [c, inner];
+    });
+    this.time.delayedCall(TELEGRAPH_MS + hz.warnMs, () => {
+      marks.flat().forEach((m) => {
+        this.tweens.killTweensOf(m);
+        m.destroy();
+      });
+      if (this.ended) return;
+      this.cameras.main.shake(140, 0.005);
+      for (const sp of spots) {
+        const fx = this.add.circle(sp.x, sp.y, R, 0xff7043, 0.75).setDepth(12);
+        this.tweens.add({ targets: fx, alpha: 0, scale: 1.25, duration: 280, onComplete: () => fx.destroy() });
+        if (b.active && inBlast(sp.x, sp.y, this.player.x, this.player.y, R)) this.hurtPlayer(b);
+      }
+    });
+    return hz.warnMs;
   }
 
   /** Estado inicial de la IA; deja un respiro al entrar antes de embestir, disparar o saltar. */
@@ -3743,6 +4343,94 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         break;
       }
 
+      case 'orbitShooter': {
+        // Te rodea a distancia fija (corrige hacia dentro o hacia fuera) y dispara cada poco
+        const radial = dist > ORBIT_RADIUS + 40 ? 0.8 : dist < ORBIT_RADIUS - 40 ? -0.8 : 0;
+        const tangent = new Phaser.Math.Vector2(-toPlayer.y * ai.side, toPlayer.x * ai.side);
+        walk(tangent.add(toPlayer.clone().scale(radial)).normalize());
+        this.face(e, toPlayer);
+        if (time >= ai.until) {
+          this.fireFoeShot(e, toPlayer.clone(), ai.type);
+          ai.until = time + ORBIT_SHOT_MS + Phaser.Math.Between(0, 400);
+          if (Math.random() < 0.2) ai.side = -ai.side;
+        }
+        break;
+      }
+
+      case 'mine': {
+        // Se acerca despacio; cerca de ti se arma (parpadea en rojo) y estalla
+        if (ai.state === 'windup') {
+          e.setVelocity(0, 0);
+          const blink = Math.floor((ai.until - time) / 120) % 2 === 0;
+          if (blink) e.setTintFill(0xff3d00);
+          else e.clearTint();
+          if (time >= ai.until) {
+            const r = MINE_RADIUS;
+            const fx = this.add.circle(e.x, e.y, r, 0xff7043, 0.6).setDepth(12);
+            this.tweens.add({ targets: fx, alpha: 0, scale: 1.25, duration: 300, onComplete: () => fx.destroy() });
+            sfx('boom');
+            this.cameras.main.shake(140, 0.005);
+            if (inBlast(e.x, e.y, this.player.x, this.player.y, r)) this.hurtPlayer(e);
+            e.setData('mineBlown', true);
+            this.killEnemy(e);
+          }
+          break;
+        }
+        walk(toward);
+        this.face(e, toPlayer);
+        if (dist < MINE_ARM_DIST) {
+          ai.state = 'windup';
+          ai.until = time + MINE_FUSE_MS;
+          const ring = this.add.circle(e.x, e.y, MINE_RADIUS).setStrokeStyle(3, 0xff3d00, 0.8).setDepth(3);
+          this.tweens.add({ targets: ring, alpha: 0.2, duration: MINE_FUSE_MS, onComplete: () => ring.destroy() });
+        }
+        break;
+      }
+
+      case 'shielded': {
+        // Avanza hacia ti girando despacio: hay que rodearlo para darle por la espalda
+        const target = Math.atan2(toPlayer.y, toPlayer.x);
+        ai.facing = turnToward(ai.facing ?? target, target, SHIELD_TURN * (this.game.loop.delta / 1000));
+        const f = new Phaser.Math.Vector2(Math.cos(ai.facing), Math.sin(ai.facing));
+        if (dist > 70) walk(f);
+        else e.setVelocity(0, 0);
+        this.face(e, f);
+        let g = e.getData('shieldGfx') as Phaser.GameObjects.Graphics | undefined;
+        if (!g) {
+          g = this.add.graphics().setDepth(5);
+          e.setData('shieldGfx', g);
+          e.once(Phaser.GameObjects.Events.DESTROY, () => g!.destroy());
+        }
+        const size = (e.getData('size') as number | undefined) ?? 60;
+        g.clear().lineStyle(8, 0xcfd8dc, 0.95).beginPath().arc(e.x, e.y, size * 0.62, ai.facing - 1.0, ai.facing + 1.0).strokePath();
+        g.lineStyle(3, 0x37474f, 1).beginPath().arc(e.x, e.y, size * 0.62 + 5, ai.facing - 1.0, ai.facing + 1.0).strokePath();
+        break;
+      }
+
+      case 'healer': {
+        // Guarda las distancias y cada poco cura a los enemigos de alrededor (anillo verde)
+        if (dist < 260) walk(toPlayer.clone().negate());
+        else if (dist > 420) walk(toward);
+        else walk(new Phaser.Math.Vector2(-toPlayer.y * ai.side, toPlayer.x * ai.side));
+        this.face(e, toPlayer);
+        if (time >= ai.until) {
+          ai.until = time + HEAL_EVERY_MS;
+          const ring = this.add.circle(e.x, e.y, 20).setStrokeStyle(4, 0x66bb6a, 0.9).setDepth(4);
+          this.tweens.add({ targets: ring, radius: HEAL_RANGE, alpha: 0, duration: 500, onComplete: () => ring.destroy() });
+          for (const c of this.enemies.getChildren()) {
+            const o = c as Sprite;
+            if (o === e || !o.active || Phaser.Math.Distance.Between(e.x, e.y, o.x, o.y) > HEAL_RANGE) continue;
+            const max = (o.getData('maxHp') as number | undefined) ?? 0;
+            const hp = o.getData('hp') as number;
+            if (!(max > 0) || hp >= max) continue;
+            const add = Math.max(1, Math.round(max * HEAL_PART));
+            o.setData('hp', Math.min(max, hp + add));
+            this.popup(o.x, o.y - 40, `+${add}`, 0x66bb6a);
+          }
+        }
+        break;
+      }
+
       case 'swoop': {
         // Pasadas en picado: se lanza en curva pasando junto a ti y se aleja para coger carrerilla
         if (ai.state === 'dash') {
@@ -3870,6 +4558,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       healed: this.healedRun,
       counters: { ...this.counters },
       hpSacrificed: this.hpSacrificed,
+      eggLeft: this.eggLeft,
+      allyId: this.allyId,
+      tiredRooms: this.tiredRooms,
+      potions: this.potions,
     };
     // Caída por la trampilla: se coloca encima, gira encogiéndose hacia el agujero y la cámara se acerca
     const p = this.player;
@@ -4006,6 +4698,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Bomba: E o RB (el clic va en el icono del HUD)
     const rbNow = hasPad && !!pad!.buttons[5]?.pressed;
     if (Phaser.Input.Keyboard.JustDown(this.bombKey) || (rbNow && !this.rbPrev) || this.touch?.consume('bomb')) this.placeBomb();
+    // Poción (T49): su tecla, pulsar el stick izquierdo (L3) o el botón táctil (el clic va en el HUD)
+    const l3Now = hasPad && !!pad!.buttons[10]?.pressed;
+    if (Phaser.Input.Keyboard.JustDown(this.potionKey) || (l3Now && !this.l3Prev) || this.touch?.consume('potion')) this.drinkPotion();
+    this.l3Prev = l3Now;
     this.rbPrev = rbNow;
     // Objeto activo: Espacio o LB (el clic va en su cuadro)
     const lbNow = hasPad && !!pad!.buttons[4]?.pressed;
@@ -4039,11 +4735,22 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const e = c as Sprite;
       if (!e.active || this.tickEnemyStatus(e, time)) return;
       this.updateEnemy(e, time);
+      // T51: la mina puede estallar (y desaparecer) en su propio turno
+      if (!e.active) return;
       const eai = e.getData('ai') as EnemyAI | undefined;
       if (eai?.boss) this.updateBossAttacks(e, time);
       else if (eai?.eliteMove && time >= (eai.eliteAt ?? 0)) {
         // Minijefe: alterna sus movimientos (con nombre y algo más de aviso); élite: su ataque extra
         const mini = !!e.getData('miniboss');
+        // T50: el minijefe a veces usa uno de los ataques extra del bioma (más corto: fase 1)
+        if (mini && Math.random() < 0.35) {
+          const extra = biomeExtraAttacks(this.biome.types)[Math.random() < 0.5 ? 0 : 1];
+          const ms = this.bossExtra(e, eai, extra, 1);
+          eai.eliteAt = time + 2600 + ms;
+          this.paintEnemy(e, time);
+          this.drawEnemyBar(e);
+          return;
+        }
         const mv = mini && eai.moves?.length ? eai.moves[Math.floor(Math.random() * eai.moves.length)] : eai.eliteMove;
         eai.eliteAt = time + (mini ? 2600 : Math.max(2200, 4400 - this.level() * 220));
         this.foeMove(e, mv, eai.type, Math.round((e.getData('dmg') as number) * (mini ? 0.7 : 0.6)), mini ? 650 : 450, mini);
@@ -4053,6 +4760,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     });
 
     this.updateRunaway(time);
+    this.updateTimeTrial(time);
+    this.updateAlly(time, delta);
 
     // HUD
     if (this.fpsText && time - ((this.fpsText.getData('at') as number | undefined) ?? 0) > 500) {
@@ -4060,7 +4769,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     const foes = this.enemies.countActive(true);
     this.nameText.setText(this.starterName.charAt(0).toUpperCase() + this.starterName.slice(1));
-    this.progressHud.setText(`${progressText(this.mode, this.floorNum)}${this.weather ? ` · ${WEATHER_LABEL[this.weather]}` : ''}${foes ? ` · ${foes} enem.` : ''}`);
+    this.progressHud.setText(`${progressText(this.mode, this.floorNum)}${this.weather ? ` · ${WEATHER_LABEL[this.weather]}` : ''}${this.eggLeft > 0 ? ` · Huevo (${this.eggLeft})` : ''}${this.tiredRooms > 0 ? ' · Cansado' : ''}${foes ? ` · ${foes} enem.` : ''}`);
     this.hpText.setText(`${Math.max(0, Math.ceil(this.hp))}/${this.stats.maxHp}`);
     this.hpBar.set(this.hp / this.stats.maxHp);
     const bb = this.bossBar;
@@ -4076,8 +4785,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.coinsHud.setText(String(this.coins));
     this.keysHud.setText(String(this.keys));
     this.bombsHud.setText(String(this.bombs));
+    this.potionsHud?.setText(String(this.potions));
     this.slots.forEach((m, i) => this.paintSlot(i, m, !m || time >= this.slotReady[i]));
 
+    if (this.combo.count > 0 && !comboAlive(this.combo, time)) this.comboLose();
+    this.comboHud?.update(this.combo, time);
     this.checkTrapdoor();
     if (!this.transitioning) this.checkExit();
   }
@@ -4330,6 +5042,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!enemy.active) return undefined;
     // Dragón: los poderes hacen más daño; Lluvia y Sol cambian Agua y Fuego (T38)
     let dmg = base * (status ? hitDamageMul(status) : 1) * weatherPowerMul(this.weather, status);
+    // T51: el escudado solo se lleva el golpe entero por la espalda
+    const shAi = enemy.getData('ai') as EnemyAI | undefined;
+    if (shAi?.behavior === 'shielded' && hitFromFront(shAi.facing ?? 0, sx - enemy.x, sy - enemy.y)) {
+      dmg *= SHIELD_FRONT_MUL;
+      if (this.fxBudget.take(this.time.now)) this.popup(enemy.x, enemy.y - 44, '¡Bloqueado!', 0xb0bec5);
+    }
     // Eficacia de tipos (como en Pokémon): súper eficaz, no muy eficaz o casi sin efecto
     const defTypes = this.foeTypesOf(enemy);
     dmg *= damageMul(status, defTypes);
@@ -4394,9 +5112,30 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.counters.damage += Math.max(0, Math.min(dmg, e.getData('hp') as number));
   }
 
+  /** Combo de bajas: suma, avisa en los hitos y da un pequeño premio. */
+  private comboKill(enemy: Sprite) {
+    if (enemy.getData('helper')) return;
+    const milestone = comboHit(this.combo, this.time.now);
+    if (this.combo.count >= 3) sfx('crit');
+    if (milestone === null) return;
+    const r = milestoneReward(milestone);
+    this.hp = Math.min(this.stats.maxHp, this.hp + r.heal);
+    this.popup(this.player.x, this.player.y - 70, `¡Combo x${milestone}! +${r.heal} PS`, 0xffd34d);
+    this.cameras.main.shake(120, 0.004);
+    sfx('levelup');
+    if (this.floor.shopId !== undefined) for (let k = 0; k < r.coins; k++) this.dropLoot(enemy.x + (k - r.coins / 2) * 16, enemy.y, { kind: 'coin', value: 1 });
+  }
+
+  /** Se rompe el combo (te han hecho daño). */
+  private comboLose() {
+    const was = comboBreak(this.combo);
+    this.comboHud?.broke(was);
+  }
+
   private killEnemy(enemy: Sprite) {
     const boss = !!(enemy.getData('ai') as EnemyAI | undefined)?.boss;
     this.counters.kills++;
+    this.comboKill(enemy);
     this.mission({ kind: 'defeat', types: boss ? this.bossTypes : ((enemy.getData('types') as string[] | undefined) ?? []) });
     // Monedas solo donde hay tienda en la que gastarlas; bayas siempre
     const hasShop = this.floor.shopId !== undefined;
@@ -4565,6 +5304,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.keys++;
       sfx('coin');
       this.popup(sprite.x, sprite.y - 16, '+1 llave', 0xffd34d);
+    } else if (drop.kind === 'potion') {
+      // Como mucho MAX_POTIONS: si no caben, se queda en el suelo
+      if (!canCarryPotion(this.potions)) return;
+      this.potions++;
+      sfx('coin');
+      this.popup(sprite.x, sprite.y - 16, '+1 poción', 0xc39bd3);
     } else {
       this.bombs++;
       sfx('coin');
@@ -4575,8 +5320,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const LX = HUD.left.x + HUD.pad;
       const LW = HUD.left.w - HUD.pad * 2;
       const target: [number, number, Phaser.GameObjects.Text | undefined] =
-        drop.kind === 'coin' ? [LX + 26, 288, this.coinsHud] : drop.kind === 'key' ? [LX + 94, 288, this.keysHud]
-          : drop.kind === 'bomb' ? [LX + 160, 288, this.bombsHud] : [LX + LW / 2, 186, this.hpText];
+        drop.kind === 'coin' ? [LX + HUD_COUNT_X.coin, 288, this.coinsHud] : drop.kind === 'key' ? [LX + HUD_COUNT_X.key, 288, this.keysHud]
+          : drop.kind === 'bomb' ? [LX + HUD_COUNT_X.bomb, 288, this.bombsHud]
+          : drop.kind === 'potion' ? [LX + HUD_COUNT_X.potion, 288, this.potionsHud] : [LX + LW / 2, 186, this.hpText];
       this.flyToHud(sprite.texture.key, sprite.frame.name, sprite.x, sprite.y, target[0], target[1], target[2]);
     }
     this.floorItems = this.floorItems.filter((f) => f !== sprite.getData('entry'));
@@ -4929,6 +5675,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       return;
     }
     if (this.cleared.has(room.id) || this.enemies.countActive(true) > 0) return;
+    if (this.rivalWave > 0 && this.roomEvent?.roomId === room.id && this.rivalWave < RIVAL_WAVES) {
+      this.rivalWave++;
+      const w = this.rivalWave;
+      this.notify(`El rival saca otro Pokémon\nOleada ${w}/${RIVAL_WAVES}`, { kind: 'danger', icon: 'sword' });
+      this.time.delayedCall(900, () => !this.ended && this.current.id === room.id && this.spawnEnemies(rivalWaveSize(this.floorNum, w)));
+      return;
+    }
     if (room.kind === 'challenge' && this.challengeWave > 0 && this.challengeWave < CHALLENGE_WAVES) {
       this.challengeWave++;
       this.notify(`Oleada ${this.challengeWave}/${CHALLENGE_WAVES}`, { kind: 'danger', icon: 'heart' });
@@ -4953,11 +5706,41 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // En Rush de jefes no hay salas que den tickets, así que cada jefe da algo menos que en un piso
     const bossReward = bossTicketsFor(this.mode === 'bossrush' ? Math.ceil(this.floorNum / 2) : this.floorNum);
     const reward = this.giveTickets(room.kind === 'boss' ? bossReward : roomTicketsFor(this.floorNum));
+    // T48: premio del rival y de la sala del tiempo; huevo y cansancio
+    if (this.rivalWave > 0 && this.roomEvent?.roomId === room.id) {
+      this.rivalWave = 0;
+      this.eventsDone.add(room.id);
+      const bonus = this.giveTickets(rivalBonus(reward));
+      this.notify(`¡Has vencido al rival!\n+${bonus} tickets extra`, { kind: 'reward', icon: 'ticket' });
+    }
+    const tt = this.timeTrial;
+    if (tt && tt.roomId === room.id) {
+      tt.label.destroy();
+      this.timeTrial = undefined;
+      this.eventsDone.add(room.id);
+      if (!tt.failed) {
+        const i = this.interior(room);
+        this.dropItem(room.id, i.cx, i.cy);
+        this.notify('¡A tiempo!\nHa caído un objeto', { kind: 'reward', icon: 'clock' });
+      } else this.notify('Sala del tiempo superada', { kind: 'info', icon: 'clock' });
+    }
+    this.onRoomClearedT48();
 
     if (room.kind === 'boss') {
       // Récord: pisos completados (Normal, Infinito) o jefes vencidos (Rush)
       const record = submitRecord(this.mode, this.floorNum, undefined, this.diff);
       if (record) this.counters.newRecord = true;
+      // Medalla del bioma (solo la primera vez que se vence a su jefe; los invitados no guardan)
+      const medal = earnMedal(this.biome.id);
+      if (medal.gained) {
+        this.giveTickets(medal.tickets);
+        this.notify(
+          medal.complete
+            ? `¡${medal.gained.name}! ¡Las 9 medallas!\n+${medal.tickets} tickets`
+            : `¡${medal.gained.name} conseguida!\n+${medal.tickets} tickets`,
+          { kind: 'reward', icon: 'star' },
+        );
+      }
       if (isFinalFloor(this.mode, this.floorNum)) {
         // Reto final superado
         this.mission({ kind: 'win' });
@@ -5124,6 +5907,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     this.invulnUntil = now + 900;
     sfx('hurt');
+    this.comboLose();
     // Casco Dentado: quien te toca se hace daño
     if (ai && this.stats.thorns > 0 && enemy.active) {
       this.countDamage(enemy, this.stats.thorns);

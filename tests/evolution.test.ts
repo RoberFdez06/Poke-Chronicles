@@ -1,7 +1,7 @@
 // Ejecutar con `npm test`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { EVOLVE_AT, nextEvolutionIds, pickEvolution, shouldEvolve, type ChainLink } from '../src/data/evolution.ts';
+import { EVOLVE_AT, evolutionsLeft, evolveFloors, nextEvolutionIds, pickEvolution, shouldEvolve, type ChainLink } from '../src/data/evolution.ts';
 import { MODES } from '../src/data/modes.ts';
 
 const sp = (id: number, evolves_to: ChainLink[] = []): ChainLink => ({
@@ -35,6 +35,19 @@ test('cada modo evoluciona dos veces, en orden', () => {
     assert.ok(!shouldEvolve(m, 1));
   }
   assert.ok(shouldEvolve('normal', 2) && shouldEvolve('normal', 4));
-  assert.ok(!shouldEvolve('normal', 3));
+  assert.ok(!shouldEvolve('normal', 5));
   assert.ok(shouldEvolve('waves', 6));
+});
+
+test('las líneas de dos formas evolucionan una vez, en el piso 3; las de tres, en el 2 y el 4', () => {
+  const pikachu = sp(25, [sp(26)]);
+  assert.equal(evolutionsLeft(charmander, 4), 2);
+  assert.equal(evolutionsLeft(charmander, 5), 1);
+  assert.equal(evolutionsLeft(pikachu, 25), 1);
+  assert.equal(evolutionsLeft(eevee, 133), 1);
+  assert.equal(evolutionsLeft(pikachu, 26), 0);
+  assert.deepEqual(evolveFloors('normal', 2), [2, 4]);
+  assert.deepEqual(evolveFloors('normal', 1), [3]);
+  assert.deepEqual(evolveFloors('normal', 0), []);
+  assert.ok(shouldEvolve('normal', 3));
 });

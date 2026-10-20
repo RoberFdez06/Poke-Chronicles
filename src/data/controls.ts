@@ -19,7 +19,7 @@ export type ControlMode = (typeof CONTROL_MODES)[number];
 export const CONTROL_MODE_LABEL: Record<ControlMode, string> = { keyboard: 'Teclado', mouse: 'Ratón', gamepad: 'Mando', touch: 'Táctil' };
 
 /** Todo lo que se puede hacer, en el orden en que sale en cada sección. */
-export const CONTROL_ACTIONS = ['move', 'shoot', 'powers', 'active', 'bomb', 'use', 'pause', 'menus', 'back'] as const;
+export const CONTROL_ACTIONS = ['move', 'shoot', 'powers', 'active', 'bomb', 'potion', 'use', 'pause', 'menus', 'back'] as const;
 export type ControlAction = (typeof CONTROL_ACTIONS)[number];
 
 export const CONTROL_ACTION_LABEL: Record<ControlAction, string> = {
@@ -28,6 +28,7 @@ export const CONTROL_ACTION_LABEL: Record<ControlAction, string> = {
   powers: 'Poderes',
   active: 'Objeto activo',
   bomb: 'Bomba',
+  potion: 'Poción',
   use: 'Usar (Centro, tienda, cofre)',
   pause: 'Pausa',
   menus: 'Menús: elegir y aceptar',
@@ -44,6 +45,7 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       powers: `${L('power1')} ${L('power2')} ${L('power3')} ${L('power4')}`,
       active: L('active'),
       bomb: L('bomb'),
+      potion: L('potion'),
       use: `${L('accept')} cerca`,
       pause: `${L('pause')} o ${L('back')}`,
       menus: `Flechas para elegir · ${L('accept')} o Espacio para aceptar`,
@@ -55,6 +57,7 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       powers: 'Clic en la ranura del poder',
       active: 'Clic en su cuadro del HUD',
       bomb: 'Clic en la bomba del HUD',
+      potion: 'Clic en la poción del HUD',
       use: 'Clic en el mostrador, el artículo o el cofre',
       pause: 'Botón ❚❚ de arriba a la izquierda',
       menus: 'Pasa el ratón por encima y haz clic',
@@ -66,6 +69,7 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       powers: 'A B X Y',
       active: 'LB',
       bomb: 'RB',
+      potion: 'Pulsar el stick izquierdo (L3)',
       use: 'A cerca',
       pause: 'Start (o Select)',
       menus: 'Cruceta o stick para elegir · A para aceptar',
@@ -77,6 +81,7 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       powers: 'Botones 1 2 3 4 (encima del joystick derecho)',
       active: 'Botón del objeto activo (encima del joystick izquierdo)',
       bomb: 'Botón de la bomba (encima del joystick izquierdo)',
+      potion: 'Botón de la poción (encima del joystick izquierdo)',
       use: 'Botón "Usar" cerca',
       pause: 'Botón ❚❚ de arriba a la izquierda',
       menus: 'Toca la opción',

@@ -82,7 +82,7 @@ export class ControlsScene extends Phaser.Scene {
     const keys = loadKeys();
     const sections = controlSections(keys);
     CONTROL_ACTIONS.forEach((a, k) => {
-      const y = 190 + k * 42;
+      const y = 186 + k * 38;
       this.add.text(100, y, CONTROL_ACTION_LABEL[a], { fontFamily: UI.FONT, fontSize: '19px', fontStyle: 'bold', color: '#2b3a67' });
       this.rows.push(this.add.text(400, y, '', { fontFamily: UI.FONT, fontSize: '18px', color: '#4a5578', wordWrap: { width: 470 } }).setData('a', a));
     });

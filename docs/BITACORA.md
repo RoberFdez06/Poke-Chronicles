@@ -974,3 +974,84 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - Medido en el navegador: la recogida normal ya era inmediata (~5 ms, un fotograma); con las ranuras llenas ahora se
   recoge en ~0,4 s desde el Enter (incluye la pulsación) y la pantalla se abre una sola vez.
 - Prueba nueva `tests/e2e/slotswap.spec.ts`.
+
+## T48 — Más eventos de sala
+- `src/level/roomEvents.ts`: 4 eventos nuevos con nombre, color de minimapa y `ROOM_EVENT_DESC` (premio y riesgo):
+  entrenador rival (`RIVAL_WAVES` 3, `rivalWaveSize`, `rivalBonus` = otros tantos tickets como la sala), fuente curativa
+  (`fountainHeal` 50 %, `fountainPrice` 6 + 2×piso, o gratis con `FOUNTAIN_TIRED_ROOMS` 2 salas a ×0,8 de velocidad),
+  sala del tiempo (`TIME_TRIAL_SECONDS` 20, `timeTrialSize`/`timeTrialExtra`) y huevo misterioso (`EGG_ROOMS` 2,
+  `eggHatch` 60 % ayudante / 40 % objeto). Probabilidades por piso con `eventWeights` + `pickEventKind` (la sala del
+  tiempo desde el piso 3; más rivales y menos huevos al bajar). Tests en `tests/roomEvents.test.ts` (7).
+- **RUN_VERSION 14**: `eggLeft`, `allyId` y `tiredRooms` (también en `FloorCarry`: el huevo, el ayudante y el
+  cansancio pasan de piso). Los v13 se migran a 0.
+- GameScene: los eventos nuevos en `startEvent`; oleadas del rival y premios del rival y de la sala del tiempo en
+  `checkClear`; `onRoomClearedT48` (cuenta del huevo, eclosión, fin del cansancio); `updateTimeTrial` (reloj arriba de
+  la sala, rojo en los últimos 5 s) y `updateAlly` (el ayudante sigue al jugador y cada 1,1 s lanza una bola de su tipo
+  al enemigo más cercano, 60 % de tu daño). El cansancio entra en `calcStats`. HUD: "Huevo (n)" y "Cansado".
+- Fuente y huevo se usan con Enter / A / clic cerca (dos sitios en la fuente: pagar y beber gratis).
+- e2e `tests/e2e/events.spec.ts`: fuente (sin monedas avisa; gratis cura y cansa), huevo y ayudante, reloj que se acaba
+  y rival con sus 3 oleadas y el premio; sin errores en consola (capturas 30-33).
+- Ojo para pruebas: los enemigos recién creados no cuentan en `countActive(true)` durante su entrada.
+- En GameScene solo he subido mis trozos; los del supervisor (muros y fosos con `roomShape`) siguen sin commit.
+
+## T49 — Objetos activos y consumibles
+- Ya había ranura de objeto activo (Espacio / LB / clic, se recarga limpiando salas) con 4 activos. Añado 5 en
+  `ACTIVE_ITEMS` (synergies.ts) para tener los 6 pedidos: Poción (`pocion-activa`, 40 PS), Repelente (ya existía; ahora
+  5 s), Caramelo Raro (daño ×2 5 s), Teletransporte (a la sala de inicio; no gasta la carga en la sala del jefe, en las
+  arenas ni si ya estás en la de inicio; si la sala no estaba limpia, sus enemigos te esperan al volver), Bomba Cebo
+  (radio ×1,6 y daño ×2 de una bomba, sin dañarte) y Silbato (inmune 2 s). Valores en `ACTIVE_EFFECT`.
+  `dmgMul` usa ahora `buffMul` (1,5 de Ataque X o 2 del Caramelo Raro).
+- Consumible de suelo nuevo: **poción** (`LootDrop` 'potion', 1,2 % por enemigo; `MAX_POTIONS` 3; `CARRIED_POTION_HEAL`
+  30). Bombas y llaves ya existían. HUD: cuarto contador (icono `potion`) y los cuatro se reparten con `HUD_COUNT_X`.
+- Acción nueva **"Usar poción"** en `keybinds.ts` (tecla C por defecto, detrás de Bomba: caben 18 en la pantalla de
+  teclas), en los textos de controles y en `controlSections` (ratón: clic en la poción; mando: L3; táctil: botón
+  "Poción"). ControlsScene: filas algo más juntas para que quepan 10.
+- **RUN_VERSION 15**: `potions` (y pociones en el suelo); también en `FloorCarry`.
+- Tests: activos (synergies), pociones (loot), tecla (keybinds), guardado v14→v15. e2e `tests/e2e/actives.spec.ts`
+  (poción con C, cada activo nuevo y el teletransporte desde otra sala), sin errores.
+- Iconos: los activos nuevos salen con la Poké Ball; pedidos al supervisor en N24.
+
+## T50 — Más patrones de jefe y minijefes
+- `src/data/bossPatterns.ts`: 4 ataques nuevos (`spiral`, `shockwave`, `laser`, `hazard`) con nombre en español.
+  `biomeExtraAttacks(tipos del bioma)` da 2 por tipo (tabla `TYPE_EXTRA`) y `bossAttacksFor(tipos del jefe, tipos del
+  bioma)` los suma a los de siempre (`bossAttacks` no cambia, así sus tests siguen igual). Parámetros por piso y fase:
+  `spiralSpec`, `shockwaveSpec`, `laserSpec`, `hazardSpec`, con topes de "esquivable" (espiral ≥ 90 ms entre disparos
+  y ≤ 4 brazos; hueco de la onda ≥ 50° y ≤ 340 px/s; láser ≤ 75°/s y ≤ 3 rayos; aviso de las zonas ≥ 0,9 s).
+  `laserHits` y `shockwaveHits` deciden si te tocan. Tests en `tests/bossPatterns.test.ts` (4).
+- GameScene: `bossExtra(jefe, ia, ataque, fase)` los dibuja (Graphics) y hace daño con `hurtPlayer` del jefe; devuelve
+  cuánto duran para que el siguiente ataque espere. El jefe y el trío usan `bossAttacksFor`. El minijefe, un 35 % de
+  las veces, usa uno de los 2 extra del bioma en lugar de su movimiento.
+- e2e `tests/e2e/bossextra.spec.ts`: el jefe tiene sus 2 extra; espiral dispara; la zona de peligro y el láser hacen
+  daño; onda y minijefe sin errores (capturas 36-39).
+- Ojo para pruebas: con fotogramas lentos, el tiempo de Phaser va más despacio que el real; esperar con margen.
+
+## T51 — Más enemigos y comportamientos
+- `src/data/enemies.ts`: `EXTRA_BEHAVIORS` (orbitShooter, mine, shielded, healer) aparte de `BEHAVIORS` (los de tipo),
+  así el test de "cada tipo tiene un comportamiento" no cambia; `EnemyBehavior` es la unión. Constantes de cada uno,
+  `hitFromFront` y `turnToward` (escudado), y `enemyStats` con su vida y velocidad (escudado ×1,1 de vida; mina ×0,6).
+- `src/data/bossPatterns.ts`: `biomeExtraBehaviors` (2 por tipo de bioma, todos salen en algún bioma),
+  `twistChance` (0 en el piso 1, +9 % por piso hasta 35 %) y `twistBehaviors` (no toca a los que disparan, así sigue la
+  regla de uno de cada tres; como mucho 1 curandero y 2 minas por sala).
+- `balance.ts`: la simulación también usa los comportamientos nuevos con esa probabilidad; `balance.test.ts` sigue en
+  rango (264 tests en verde).
+- GameScene: `spawnEnemies` aplica `twistBehaviors`; los 4 casos en `updateEnemy` (el escudado dibuja su escudo y lo
+  borra al desaparecer; la mina estalla con `hurtPlayer` y `killEnemy`); `hitEnemy` reduce a un 15 % lo que le llega de
+  frente al escudado ("¡Bloqueado!"). El bucle de enemigos comprueba que siga activo tras su IA (la mina se va sola).
+- Tests: `tests/bossPatterns.test.ts` (+3) y e2e `tests/e2e/behaviors.spec.ts` (escudo de frente/espalda, curación,
+  mina que estalla y tirador que dispara; captura 40).
+
+## T52 — Más sinergias y objetos pasivos
+- `src/data/items.ts`: 12 pasivos nuevos basados en objetos de los juegos (Mineral Evolutivo, Cinta Experto, Gafas
+  Especiales, Roca del Rey, Polvo Veloz, Baya Lichi, Seguro Debilidad, Bola Luminosa, Cuerda Huida, Hierba Mental, Púa
+  Tóxica y Piedra Lunar), varios con ventaja y precio como los de la Tanda 6.
+- **Rareza y precio** de todos los pasivos: `PASSIVE_RARITY` (los no listados son raros), `passiveRarity`,
+  `PASSIVE_PRICE`/`passivePrice` (11/15/21/28 monedas) y `PASSIVE_WEIGHT` (4/3/2/1). `pickPassive` sortea con esos pesos
+  (una tirada de `rng`, así todo sigue siendo determinista) y lo usa `rollItem`. La tienda cobra los pasivos por su
+  rareza (`rollShop`); los poderes siguen costando lo de siempre.
+- `src/data/synergies.ts`: 6 sinergias nuevas con los objetos nuevos (Especialista, Golpe real, Relámpago, Luz de
+  luna, Erizo y Superviviente).
+- Arreglo: el activo Caramelo Raro de la T49 tenía el mismo id que el pasivo "Caramelo Raro"; ahora es
+  `caramelo-raro-activo` (los guardados con el id viejo en la ranura activa lo pierden: es de hoy y aún no se ha
+  publicado).
+- Tests: items (+2), synergies (+1) y e2e `actives.spec.ts` (coger los 12 pasivos y activar sinergias sin errores).
+  267 tests en verde. Iconos pedidos al supervisor (N25).

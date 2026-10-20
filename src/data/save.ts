@@ -8,6 +8,8 @@ import { activeStorage, type StorageLike } from './storage.ts';
 import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } from './modes.ts';
 import { applyMissionEvent, parseMissions, type Completed, type MissionEvent, type MissionState } from './missions.ts';
 import { dayNumber } from './gacha.ts';
+import { awardMedal, parseMedals, type MedalAward } from './medals.ts';
+import { KONAMI_KEY } from './easterEggs.ts';
 import { recordsKeyFor, type Difficulty } from './difficulty.ts';
 import { parseFx, type FxSettings } from './fxSettings.ts';
 import { emptyDaily, parseDaily, startDaily, withDailyResult, type DailyState } from './daily.ts';
@@ -183,6 +185,31 @@ export function spendTickets(amount: number, storage: StorageLike | null = brows
   if (!Number.isInteger(amount) || amount < 0 || have < amount) return false;
   saveTickets(have - amount, storage);
   return true;
+}
+
+// --- Medallas de gimnasio (ver medals.ts) ---
+
+export const MEDALS_KEY = 'pokeisaac.medals';
+
+export function loadMedals(storage: StorageLike | null = browserStorage()): string[] {
+  try {
+    return parseMedals(storage?.getItem(MEDALS_KEY) ?? null);
+  } catch {
+    return [];
+  }
+}
+
+/** Anota la medalla del bioma si es nueva y suma sus tickets. */
+export function earnMedal(biomeId: string, storage: StorageLike | null = browserStorage()): MedalAward {
+  const award = awardMedal(loadMedals(storage), biomeId);
+  if (award.gained) {
+    try {
+      storage?.setItem(MEDALS_KEY, JSON.stringify(award.medals));
+    } catch {
+      // sin almacenamiento: no se guarda
+    }
+  }
+  return award;
 }
 
 // --- Récords de cada modo (ver modes.ts) ---
@@ -449,6 +476,8 @@ export const PROGRESS_KEYS: readonly string[] = [
   UPGRADES_KEY,
   SHINIES_KEY,
   MISSIONS_KEY,
+  MEDALS_KEY,
+  KONAMI_KEY,
   TUTORIAL_KEY,
   HISTORY_KEY,
   'pokeisaac.run.0',

@@ -8,6 +8,8 @@ import { audioReady, playMenuMusic, restoreMusicVolume, sfx, softMusicIn, unlock
 import { addRays } from '../ui/art/gachaMachine';
 import { fetchPokemonCard } from '../data/pokeapi';
 import { loadUnlocked } from '../data/save';
+import { armKonami, KONAMI, konamiStep } from '../data/easterEggs';
+import { dayNumber } from '../data/gacha';
 
 /** Pokémon que pueden cruzar la pantalla de título (además de los tuyos). */
 const PARADE = [1, 4, 7, 25, 133, 152, 155, 158, 252, 255, 258, 387, 390, 393, 495, 498, 501, 650, 653, 656, 722, 725, 728];
@@ -104,9 +106,23 @@ export class TitleScene extends Phaser.Scene {
 
     // Cualquier entrada lleva al menú (o salta la animación)
     this.readyAt = this.time.now + 250; // ignora la tecla que abrió la página
-    this.input.keyboard?.on('keydown', () => this.next());
+    // Easter egg: ↑ ↑ ↓ ↓ ← → ← → B A (teclado o mando) antes de entrar
+    this.konami = 0;
+    this.konamiDone = false;
+    const KEYS: Record<string, string> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', KeyB: 'b', KeyA: 'a' };
+    const PAD: Record<number, string> = { 12: 'up', 13: 'down', 14: 'left', 15: 'right', 1: 'b', 0: 'a' };
+    const input = (k: string | undefined) => {
+      if (this.konamiDone) return;
+      const before = this.konami;
+      this.konami = k ? konamiStep(this.konami, k) : 0;
+      if (this.konami === KONAMI.length) return this.onKonami();
+      // Mientras se teclea la secuencia, las flechas y la B no hacen pasar
+      if (this.konami > 0 && (this.konami > before || k !== 'a')) return;
+      this.next();
+    };
+    this.input.keyboard?.on('keydown', (e: KeyboardEvent) => input(KEYS[e.code]));
     this.input.on('pointerdown', () => this.next());
-    this.input.gamepad?.on('down', () => this.next());
+    this.input.gamepad?.on('down', (_pad: unknown, button: { index: number }) => input(PAD[button.index]));
   }
 
   private showReady(logo: Phaser.GameObjects.Text, press: Phaser.GameObjects.Text) {
@@ -157,6 +173,25 @@ export class TitleScene extends Phaser.Scene {
           onComplete: () => img.active && this.tweens.add({ targets: img, y, angle: right ? 360 : -360, duration: 220, ease: 'Quad.easeIn' }) });
       });
     }
+  }
+
+  private konami = 0;
+  private konamiDone = false;
+
+  /** Código Konami completado: la próxima tirada del gacha sale shiny (una vez al día). */
+  private onKonami() {
+    this.konamiDone = true;
+    const ok = armKonami(dayNumber());
+    sfx(ok ? 'logo' : 'select');
+    if (ok) this.cameras.main.flash(400, 255, 236, 140);
+    const u = DH / 640;
+    const t = this.add
+      .text(DW / 2, DH * 0.86, ok ? '¡Código secreto! Tu próxima tirada del gacha será shiny ★' : 'El código secreto ya se ha usado hoy', {
+        fontFamily: FONT, fontSize: `${Math.round(20 * u)}px`, fontStyle: 'bold', color: ok ? '#ffe066' : '#f8f8f0',
+      })
+      .setOrigin(0.5).setDepth(30).setStroke('#2b3a67', 6);
+    this.tweens.add({ targets: t, scale: { from: 0.6, to: 1 }, duration: 260, ease: 'Back.easeOut' });
+    this.time.delayedCall(1800, () => this.next());
   }
 
   private next() {
