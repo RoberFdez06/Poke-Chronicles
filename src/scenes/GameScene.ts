@@ -2904,7 +2904,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.scene.resume();
         this.input.keyboard?.resetKeys();
         this.swapOpen = false;
-        this.swapCooldownUntil = this.time.now + 1200;
+        // Hora real del juego: el reloj de la escena estaba parado mientras elegías, así que `this.time.now` es la
+        // de cuando se abrió la pantalla y el enfriamiento ya habría pasado al volver (se reabría al momento)
+        this.swapCooldownUntil = this.game.loop.time + 1200;
         if (slot >= 0) then(slot);
         else cancel();
       },
