@@ -624,6 +624,9 @@ export class GameScene extends Phaser.Scene {
   private slotTypes: Phaser.GameObjects.Text[] = [];
   /** Botón con el que se lanza cada poder (tecla o botón del mando, según con qué juegues). */
   private slotBadges: Phaser.GameObjects.Text[] = [];
+  /** Botón de la bomba, la poción y el objeto activo (tecla o botón del mando), junto a cada uno en el HUD. */
+  private actionBadges: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; x: number; y: number; pad: string; action: 'active' | 'bomb' | 'potion' }[] = [];
+  private badgeShown = '';
   private banner!: Phaser.GameObjects.Text;
   private toasts?: ToastStack;
   /** Quita el aviso de "sin conexión" al salir de la escena. */
@@ -707,6 +710,8 @@ export class GameScene extends Phaser.Scene {
     this.slotShown = [];
     this.slotTypes = [];
     this.slotBadges = [];
+    this.actionBadges = [];
+    this.badgeShown = '';
     this.floorItems = [];
     this.doorMap.clear();
     this.visited.clear();
@@ -1910,6 +1915,12 @@ export class GameScene extends Phaser.Scene {
       shown: '',
     };
     const activeBtn = over(hud(this.add.zone(LX + LW / 2, H - 71, LW, 110).setInteractive({ useHandCursor: true })));
+    // Con qué se usa cada cosa (se redibuja al cambiar de teclado a mando): bomba, poción y objeto activo
+    const badge = (x: number, y: number, pad: string, action: 'active' | 'bomb' | 'potion') =>
+      this.actionBadges.push({ g: hud(this.add.graphics()), t: txt(x, y, 11, '#1d2848', true).setOrigin(0.5), x, y, pad, action });
+    badge(LX + HUD_COUNT_X.bomb + 6, 316, 'RB', 'bomb');
+    badge(LX + HUD_COUNT_X.potion + 6, 316, 'L3', 'potion');
+    badge(LX + LW - 36, H - HUD.pad - 110 + 18, 'LB', 'active');
     activeBtn.on('pointerdown', () => this.useActive());
     // Poderes: cuatro cuadros abajo a la derecha (clic para lanzar)
     for (let i = 0; i < SLOT_COUNT; i++) {
@@ -3202,6 +3213,27 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Cuadro del objeto activo abajo a la izquierda: color, nombre corto y carga por casillas. */
+  private paintActionBadges() {
+    const device = currentInput();
+    if (this.badgeShown === device) return;
+    this.badgeShown = device;
+    const keys = loadKeys();
+    for (const b of this.actionBadges) {
+      b.g.clear();
+      if (device === 'touch') {
+        b.t.setVisible(false);
+        continue;
+      }
+      const pad = device === 'gamepad';
+      const label = pad ? b.pad : keyLabel(keys[b.action]);
+      const w = Math.max(22, 10 + label.length * 7);
+      b.g.fillStyle(0x101828, 1).fillRoundedRect(b.x - w / 2 - 2, b.y - 10, w + 4, 20, 6);
+      b.g.fillStyle(pad ? 0x4a5468 : 0xe8e8f0, 1).fillRoundedRect(b.x - w / 2, b.y - 8, w, 16, 5);
+      if (!pad) b.g.fillStyle(0xb8bcc8, 1).fillRect(b.x - w / 2 + 2, b.y + 5, w - 4, 2);
+      b.t.setText(label).setColor(pad ? '#ffffff' : '#1d2848').setPosition(b.x, b.y - 1).setVisible(true);
+    }
+  }
+
   private paintActive() {
     const h = this.activeHud;
     if (!h) return;
@@ -4832,6 +4864,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       bb.bar.set(hp / Math.max(1, max));
     }
     this.paintActive();
+    this.paintActionBadges();
     if (this.shieldRing) this.shieldRing.setPosition(this.player.x, this.player.y).setVisible(this.shieldLeft > 0);
     this.coinsHud.setText(String(this.coins));
     this.keysHud.setText(String(this.keys));
