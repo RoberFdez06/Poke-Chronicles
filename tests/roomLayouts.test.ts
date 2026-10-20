@@ -95,3 +95,11 @@ test('las casillas de una sala grande no llevan muros X', () => {
     assert.ok(g.every((r) => !r.includes('X')));
   }
 });
+
+test('los muros X dejan dos casillas de margen junto a cada puerta (el marco no queda pegado al recorte)', () => {
+  for (const [name, rows] of Object.entries(TEMPLATES)) {
+    const g = parseTemplate(rows);
+    for (const x of [0, COLS - 1]) for (let y = 3; y <= 8; y++) assert.notEqual(g[y][x], 'X', `${name} (${x},${y})`);
+    for (const y of [0, ROWS - 1]) for (let x = 7; x <= 12; x++) assert.notEqual(g[y][x], 'X', `${name} (${x},${y})`);
+  }
+});
