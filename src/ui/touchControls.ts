@@ -1,11 +1,11 @@
 // Controles táctiles de la partida (T35): solo en móvil o tableta (ver data/controls.ts `touchOnlyDevice`).
 // Joystick a la izquierda (moverse), joystick a la derecha (disparar hacia donde lo empujes) y botones de poderes
-// 1-4, objeto activo, bomba y "Usar". La pausa es el botón ❚❚ del HUD (tocar = clic). Coordenadas reales de
+// 1-4, objeto activo, bomba, poción (T49) y "Usar". La pausa es el botón ❚❚ del HUD (tocar = clic). Coordenadas reales de
 // pantalla (las del HUD), con varios dedos a la vez.
 import Phaser from 'phaser';
 import { H, HUD, W } from './layout';
 
-export type TouchButton = 'power1' | 'power2' | 'power3' | 'power4' | 'active' | 'bomb' | 'use';
+export type TouchButton = 'power1' | 'power2' | 'power3' | 'power4' | 'active' | 'bomb' | 'potion' | 'use';
 
 const R = 86; // radio del joystick
 const KNOB = 38;
@@ -77,6 +77,7 @@ export class TouchControls {
     btn('active', lx - 64, ly, 'Activo', 0x8e44ad);
     btn('bomb', lx, ly - 30, 'Bomba', 0x555555);
     btn('use', lx + 64, ly, 'Usar', 0x2e9e5b);
+    btn('potion', lx, ly + 34, 'Poción', 0x9b59d0);
 
     scene.input.on('pointerdown', this.onDown, this);
     scene.input.on('pointermove', this.onMove, this);

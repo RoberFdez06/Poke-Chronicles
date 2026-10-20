@@ -52,3 +52,13 @@ test('se guardan aparte del progreso (como el volumen)', () => {
   assert.equal(loadKeys(st).bomb, 'Q');
   assert.equal(PROGRESS_KEYS.includes(KEYS_KEY), false);
 });
+
+test('T49: usar poción tiene su tecla (C) y sale en los controles', async () => {
+  const { DEFAULT_KEYS, ACTIONS, ACTION_LABEL, controlsFor } = await import('../src/data/keybinds.ts');
+  assert.ok(ACTIONS.includes('potion'));
+  assert.equal(DEFAULT_KEYS.potion, 'C');
+  assert.equal(ACTION_LABEL.potion, 'Usar poción');
+  assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([, how]) => how.includes('Poción: C')));
+  // Caben en la pantalla de teclas (2 columnas de 9)
+  assert.ok(ACTIONS.length <= 18);
+});

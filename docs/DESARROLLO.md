@@ -22,6 +22,7 @@ Abre la URL que muestra Vite (normalmente http://localhost:5173).
 | Usar (Centro Pokémon, tienda, cofre) | Enter cerca, o pisarlo | Clic en el mostrador, el artículo o el cofre | A cerca, o pisarlo |
 | Soltar bomba | E | Clic en la bomba del HUD | RB |
 | Objeto activo | Espacio | Clic en su cuadro (abajo a la izquierda) | LB |
+| Beber poción | C | Clic en la poción del HUD | Pulsar el stick izquierdo (L3) |
 | Ver el resumen (al morir o ganar) | R | Clic | Start |
 | Consejo del tutorial: cerrar / no más consejos | T / N | "Vale" / "No más consejos" | RT / LT |
 | Menús | Flechas o W A S D, Enter / espacio, Esc para volver | Pasar el cursor, clic y botón "Volver" | Stick o cruceta, A para elegir, B para volver |
@@ -382,8 +383,12 @@ que elegiste.
   (Polvo Brillo), más alcance por enemigo vivo (Pokéradar), monedas dobles (Moneda Amuleto) y un potenciador por
   tipo (Carbón, Agua Mística, Imán…: +25 % a los poderes de su tipo). Se acumulan.
 - **Objetos activos** (una ranura aparte, se usan con Espacio, LB o clic y se recargan limpiando salas): Poké Flauta
-  (aturde a todos), Repelente (los enemigos huyen), Pokéblock (cura 35 PS) y Ataque X (+50 % de daño 8 s). Si coges
-  otro, el que llevabas se queda en el suelo.
+  (aturde a todos), Repelente (los enemigos huyen 5 s), Pokéblock (cura 35 PS) y Ataque X (+50 % de daño 8 s); T49:
+  Poción (cura 40 PS), Caramelo Raro (daño ×2 5 s), Teletransporte (a la sala de inicio; no en la del jefe ni en arenas),
+  Bomba Cebo (gran explosión que solo daña a los enemigos) y Silbato (inmune 2 s). Si coges otro, el que llevabas se
+  queda en el suelo.
+- **Pociones** (T49): a veces cae una poción; llevas hasta 3 (contador morado del HUD) y cada una cura 30 PS con C, L3,
+  clic en el contador o el botón táctil "Poción".
 - **Sinergias** (`src/data/synergies.ts`): ciertas combinaciones dan un efecto extra y avisan con "¡Sinergia!", por
   ejemplo Carbón + un poder de Fuego (quemaduras el doble de fuertes), dos objetos "Elegido", Lente Zoom + Periscopio
   o Concha Campana + Restos. Se ven en la pausa.

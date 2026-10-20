@@ -993,3 +993,20 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   y rival con sus 3 oleadas y el premio; sin errores en consola (capturas 30-33).
 - Ojo para pruebas: los enemigos recién creados no cuentan en `countActive(true)` durante su entrada.
 - En GameScene solo he subido mis trozos; los del supervisor (muros y fosos con `roomShape`) siguen sin commit.
+
+## T49 — Objetos activos y consumibles
+- Ya había ranura de objeto activo (Espacio / LB / clic, se recarga limpiando salas) con 4 activos. Añado 5 en
+  `ACTIVE_ITEMS` (synergies.ts) para tener los 6 pedidos: Poción (`pocion-activa`, 40 PS), Repelente (ya existía; ahora
+  5 s), Caramelo Raro (daño ×2 5 s), Teletransporte (a la sala de inicio; no gasta la carga en la sala del jefe, en las
+  arenas ni si ya estás en la de inicio; si la sala no estaba limpia, sus enemigos te esperan al volver), Bomba Cebo
+  (radio ×1,6 y daño ×2 de una bomba, sin dañarte) y Silbato (inmune 2 s). Valores en `ACTIVE_EFFECT`.
+  `dmgMul` usa ahora `buffMul` (1,5 de Ataque X o 2 del Caramelo Raro).
+- Consumible de suelo nuevo: **poción** (`LootDrop` 'potion', 1,2 % por enemigo; `MAX_POTIONS` 3; `CARRIED_POTION_HEAL`
+  30). Bombas y llaves ya existían. HUD: cuarto contador (icono `potion`) y los cuatro se reparten con `HUD_COUNT_X`.
+- Acción nueva **"Usar poción"** en `keybinds.ts` (tecla C por defecto, detrás de Bomba: caben 18 en la pantalla de
+  teclas), en los textos de controles y en `controlSections` (ratón: clic en la poción; mando: L3; táctil: botón
+  "Poción"). ControlsScene: filas algo más juntas para que quepan 10.
+- **RUN_VERSION 15**: `potions` (y pociones en el suelo); también en `FloorCarry`.
+- Tests: activos (synergies), pociones (loot), tecla (keybinds), guardado v14→v15. e2e `tests/e2e/actives.spec.ts`
+  (poción con C, cada activo nuevo y el teletransporte desde otra sala), sin errores.
+- Iconos: los activos nuevos salen con la Poké Ball; pedidos al supervisor en N24.

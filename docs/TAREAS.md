@@ -365,7 +365,7 @@ No toques los ficheros del supervisor (arte, menús, `attacks.ts`, `movePatterns
   si limpias antes sale un objeto, si no, entran más enemigos; (4) **Huevo misterioso**: lo llevas y eclosiona tras 2 salas
   limpiadas en un ayudante o un objeto. Probabilidades por piso en la lógica pura y probadas.
 
-## [ ] T49 — Objetos activos y consumibles
+## [x] T49 — Objetos activos y consumibles
 - Hoy casi todo son pasivos. Añade en `items.ts` un hueco de **objeto activo** (se usa con una tecla/botón del mando y se
   recarga limpiando salas, como en Isaac) con 6 activos: Poción (cura), Repelente (aleja enemigos 5 s), Caramelo Raro
   (daño ×2 5 s), Teletransporte (a la sala de inicio), Bomba Cebo (explosión en área), Silbato (inmunidad 2 s).

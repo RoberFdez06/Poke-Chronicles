@@ -69,3 +69,15 @@ test('a veces cae un objeto activo', () => {
   assert.ok(n > 100 && n < 200, `${n}`);
   assert.notEqual(rollItem(rng, new Set(), [], 0, ['pokeblock']).kind, 'active');
 });
+
+test('T49: los seis activos pedidos existen, con su carga y en español', () => {
+  const want = ['pocion-activa', 'repelente', 'caramelo-raro', 'teletransporte', 'bomba-cebo', 'silbato'];
+  for (const id of want) {
+    const a = activeById(id);
+    assert.ok(a, id);
+    assert.ok(a!.charge >= 1 && a!.charge <= 4, id);
+    assert.ok(a!.name && a!.description, id);
+  }
+  assert.equal(activeById('caramelo-raro')!.name, 'Caramelo Raro');
+  assert.equal(new Set(ACTIVE_ITEMS.map((a) => a.id)).size, ACTIVE_ITEMS.length);
+});

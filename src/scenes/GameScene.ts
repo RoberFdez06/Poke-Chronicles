@@ -139,6 +139,8 @@ import {
   rollEnemyLoot,
   rollShop,
   CLEAR_DROP_CHANCE,
+  CARRIED_POTION_HEAL,
+  canCarryPotion,
   roomClearCoins,
   rollChest,
   inBlast,
@@ -234,6 +236,8 @@ const SHOP_GREEN = 0x2ecc71;
 /** Distancia para usar el mostrador o un artículo con Enter / A, y para usarlo al pisarlo. */
 const NEAR = 120;
 const TOUCH = 46;
+/** T49: posición (desde el borde izquierdo de la franja) de los contadores de monedas, llaves, bombas y pociones. */
+const HUD_COUNT_X = { coin: 18, key: 70, bomb: 122, potion: 174 } as const;
 /** Posiciones de los 3 artículos de la tienda respecto al centro de la sala. */
 const SHOP_OFFSETS = [-200, 0, 200];
 
@@ -247,7 +251,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions'
 >;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
@@ -529,6 +533,13 @@ export class GameScene extends Phaser.Scene {
   private bombs = START_BOMBS;
   private bombKey!: Key;
   private rbPrev = false;
+  /** T49: pociones que llevas, su tecla, el stick izquierdo pulsado (L3) del fotograma anterior y su contador. */
+  private potions = 0;
+  private potionKey!: Key;
+  private l3Prev = false;
+  private potionsHud?: Phaser.GameObjects.Text;
+  /** Multiplicador de daño mientras dura Ataque X o el Caramelo Raro. */
+  private buffMul = 1;
   /** Cofres de este piso: sala → posición y dibujo. */
   private chests = new Map<number, { x: number; y: number; img: Phaser.GameObjects.Image }>();
   private openedChests = new Set<number>();
@@ -742,6 +753,8 @@ export class GameScene extends Phaser.Scene {
     this.eggLeft = r?.eggLeft ?? this.carry?.eggLeft ?? 0;
     this.allyId = r?.allyId ?? this.carry?.allyId ?? 0;
     this.tiredRooms = r?.tiredRooms ?? this.carry?.tiredRooms ?? 0;
+    this.potions = r?.potions ?? this.carry?.potions ?? 0;
+    this.buffMul = 1;
     if (r) {
       this.floorNum = r.floor;
       this.bossHistory = [...r.bossHistory];
@@ -1074,7 +1087,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Multiplicador de daño de Ataque X mientras dura. */
   private dmgMul(): number {
-    return this.time.now < this.buffUntil ? ACTIVE_EFFECT.buffMul : 1;
+    return this.time.now < this.buffUntil ? this.buffMul : 1;
   }
 
   /**
@@ -1763,6 +1776,7 @@ export class GameScene extends Phaser.Scene {
     this.restartKey = kb.addKey(K.R);
     this.enterKey = key('accept');
     this.bombKey = key('bomb');
+    this.potionKey = key('potion');
     this.activeKey = key('active');
     this.escKey = key('back');
     this.pauseKey = key('pause');
@@ -1825,11 +1839,15 @@ export class GameScene extends Phaser.Scene {
       const k = GAME_VIEW.w / VIEW.w;
       this.comboHud = new ComboHud(this, GAME_VIEW.x + (ROOM.x + 22) * k, GAME_VIEW.y + (ROOM.y + 36) * k, FONT, hud);
     }
-    this.coinsHud = count(iconKey('coin'), LX + 26);
-    this.keysHud = count(iconKey('key'), LX + 94);
-    this.bombsHud = count(iconKey('bomb'), LX + 160);
-    const bombBtn = over(hud(this.add.zone(LX + 172, 288, 64, 52).setInteractive({ useHandCursor: true })));
+    // T49: cuatro contadores (monedas, llaves, bombas y pociones); clic en la bomba o en la poción para usarlas
+    this.coinsHud = count(iconKey('coin'), LX + HUD_COUNT_X.coin);
+    this.keysHud = count(iconKey('key'), LX + HUD_COUNT_X.key);
+    this.bombsHud = count(iconKey('bomb'), LX + HUD_COUNT_X.bomb);
+    this.potionsHud = count(iconKey('potion'), LX + HUD_COUNT_X.potion);
+    const bombBtn = over(hud(this.add.zone(LX + HUD_COUNT_X.bomb + 10, 288, 50, 52).setInteractive({ useHandCursor: true })));
     bombBtn.on('pointerdown', () => this.placeBomb());
+    const potionBtn = over(hud(this.add.zone(LX + HUD_COUNT_X.potion + 10, 288, 50, 52).setInteractive({ useHandCursor: true })));
+    potionBtn.on('pointerdown', () => this.drinkPotion());
     // Objetos pasivos
     this.invText = hud(
       this.add.text(LX, 334, '', { fontFamily: FONT, fontSize: '15px', color: '#ffffff', wordWrap: { width: LW }, lineSpacing: 4 }),
@@ -2047,7 +2065,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.centerUsed = r.centerUsed;
     this.shop = r.shop.map((s) => ({ ...s }));
     for (const f of r.floorItems) {
-      if (f.drop.kind === 'coin' || f.drop.kind === 'berry' || f.drop.kind === 'key' || f.drop.kind === 'bomb') {
+      if (f.drop.kind === 'coin' || f.drop.kind === 'berry' || f.drop.kind === 'key' || f.drop.kind === 'bomb' || f.drop.kind === 'potion') {
         this.spawnLoot(f.roomId, f.x, f.y, f.drop);
         continue;
       }
@@ -2099,6 +2117,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       eggLeft: this.eggLeft,
       allyId: this.allyId,
       tiredRooms: this.tiredRooms,
+      potions: this.potions,
     });
   }
 
@@ -2903,6 +2922,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.notify(`${a.name}: aún no está cargado (${this.active.charge}/${a.charge})\nSe carga limpiando salas`, { kind: 'warning', icon: 'pokeball' });
       return;
     }
+    if (a.id === 'teletransporte') {
+      const why = this.teleportBlocked();
+      if (why) return this.notify(`${a.name}: ${why}`, { kind: 'warning', icon: 'pokeball' });
+    }
     this.active.charge = 0;
     const now = this.time.now;
     sfx('heal');
@@ -2921,10 +2944,89 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.popup(this.player.x, this.player.y - 50, `+${ACTIVE_EFFECT.heal} PS`, a.color);
     } else if (a.id === 'ataque-x') {
       this.buffUntil = now + ACTIVE_EFFECT.buffMs;
+      this.buffMul = ACTIVE_EFFECT.buffMul;
       this.popup(this.player.x, this.player.y - 50, '¡Ataque X!', a.color);
+    } else if (a.id === 'pocion-activa') {
+      const amount = scaleHeal(ACTIVE_EFFECT.potionHeal, this.diff);
+      this.hp = Math.min(this.stats.maxHp, this.hp + amount);
+      this.popup(this.player.x, this.player.y - 50, `+${amount} PS`, a.color);
+    } else if (a.id === 'caramelo-raro') {
+      this.buffUntil = now + ACTIVE_EFFECT.candyMs;
+      this.buffMul = ACTIVE_EFFECT.candyMul;
+      this.popup(this.player.x, this.player.y - 50, '¡Daño ×2!', a.color);
+    } else if (a.id === 'bomba-cebo') {
+      this.baitBlast(this.player.x, this.player.y);
+    } else if (a.id === 'silbato') {
+      this.invulnUntil = Math.max(this.invulnUntil, now + ACTIVE_EFFECT.whistleMs);
+      this.player.setTint(a.color);
+      this.time.delayedCall(ACTIVE_EFFECT.whistleMs, () => this.player?.active && this.player.clearTint());
+      this.popup(this.player.x, this.player.y - 50, '¡Inmune!', a.color);
+    } else if (a.id === 'teletransporte') {
+      this.teleportToStart();
     }
     this.notify(a.name, { kind: 'info', icon: 'pokeball' });
     this.saveNow();
+  }
+
+  // --- T49: poción, Bomba Cebo y Teletransporte ---
+
+  /** Bebe una de las pociones que llevas (tecla, L3, clic en el HUD o botón táctil). */
+  private drinkPotion() {
+    if (this.ended || this.transitioning || !this.player?.active) return;
+    if (this.potions <= 0) return this.notify('No llevas pociones', { kind: 'warning', icon: 'potion' });
+    if (!canHeal(this.hp, this.stats.maxHp)) return this.notify('Ya tienes todos los PS', { kind: 'warning', icon: 'potion' });
+    this.potions--;
+    const amount = scaleHeal(CARRIED_POTION_HEAL, this.diff);
+    this.hp = healed(this.hp, this.stats.maxHp, amount);
+    sfx('heal');
+    this.popup(this.player.x, this.player.y - 50, `Poción +${amount} PS`, 0xc39bd3);
+    this.saveNow();
+  }
+
+  /** Bomba Cebo: gran explosión a tu alrededor que solo daña a los enemigos. */
+  private baitBlast(x: number, y: number) {
+    const R = BOMB.radius * ACTIVE_EFFECT.baitRadiusMul;
+    const dmg = BOMB.damage * ACTIVE_EFFECT.baitDamageMul;
+    sfx('boom');
+    this.cameras.main.shake(220, 0.008);
+    for (const [delay, color] of [[0, 0xffb347], [90, 0xff7043]] as const) {
+      const fx = this.add.circle(x, y, 30, color, 0.5).setDepth(12);
+      this.tweens.add({ targets: fx, radius: R, alpha: 0, duration: 360, delay, ease: 'Cubic.easeOut', onComplete: () => fx.destroy() });
+    }
+    for (const c of [...this.enemies.getChildren()]) {
+      const e = c as Sprite;
+      if (!e.active || !inBlast(x, y, e.x, e.y, R + (e.getData('size') as number) / 3)) continue;
+      this.hitEnemy(e, dmg, 'fire', e.x, e.y, 0xff7043);
+    }
+  }
+
+  /** Por qué no se puede usar el Teletransporte aquí (o null si sí). */
+  private teleportBlocked(): string | null {
+    if (this.floor.rooms.length <= 1) return 'aquí no hay a dónde ir';
+    if (this.current.kind === 'boss') return 'no funciona contra el jefe';
+    if (this.current.id === this.floor.startId) return 'ya estás en la sala de inicio';
+    return null;
+  }
+
+  /** Vuelve a la sala de inicio del piso. Si la sala actual no estaba limpia, sus enemigos te esperarán al volver. */
+  private teleportToStart() {
+    const from = this.current;
+    const start = this.floor.rooms[this.floor.startId];
+    this.clearEventObjs();
+    this.rivalWave = 0;
+    this.timeTrial?.label.destroy();
+    this.timeTrial = undefined;
+    this.enemies.clear(true, true);
+    this.shots.clear(true, true);
+    this.foeShots.clear(true, true);
+    if (!this.cleared.has(from.id)) this.setDoorsLocked(from, false);
+    sparkle(this, this.player.x, this.player.y);
+    const n = this.interior(start);
+    (this.player.body as Body).reset(n.cx, n.cy);
+    this.cameras.main.centerOn(n.cx, n.cy);
+    this.cameras.main.flash(250, 225, 190, 231);
+    this.enterRoom(start);
+    sparkle(this, n.cx, n.cy);
   }
 
   /** Limpiar una sala recarga el objeto activo. */
@@ -4019,6 +4121,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       eggLeft: this.eggLeft,
       allyId: this.allyId,
       tiredRooms: this.tiredRooms,
+      potions: this.potions,
     };
     // Caída por la trampilla: se coloca encima, gira encogiéndose hacia el agujero y la cámara se acerca
     const p = this.player;
@@ -4155,6 +4258,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Bomba: E o RB (el clic va en el icono del HUD)
     const rbNow = hasPad && !!pad!.buttons[5]?.pressed;
     if (Phaser.Input.Keyboard.JustDown(this.bombKey) || (rbNow && !this.rbPrev) || this.touch?.consume('bomb')) this.placeBomb();
+    // Poción (T49): su tecla, pulsar el stick izquierdo (L3) o el botón táctil (el clic va en el HUD)
+    const l3Now = hasPad && !!pad!.buttons[10]?.pressed;
+    if (Phaser.Input.Keyboard.JustDown(this.potionKey) || (l3Now && !this.l3Prev) || this.touch?.consume('potion')) this.drinkPotion();
+    this.l3Prev = l3Now;
     this.rbPrev = rbNow;
     // Objeto activo: Espacio o LB (el clic va en su cuadro)
     const lbNow = hasPad && !!pad!.buttons[4]?.pressed;
@@ -4227,6 +4334,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.coinsHud.setText(String(this.coins));
     this.keysHud.setText(String(this.keys));
     this.bombsHud.setText(String(this.bombs));
+    this.potionsHud?.setText(String(this.potions));
     this.slots.forEach((m, i) => this.paintSlot(i, m, !m || time >= this.slotReady[i]));
 
     if (this.combo.count > 0 && !comboAlive(this.combo, time)) this.comboLose();
@@ -4739,6 +4847,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.keys++;
       sfx('coin');
       this.popup(sprite.x, sprite.y - 16, '+1 llave', 0xffd34d);
+    } else if (drop.kind === 'potion') {
+      // Como mucho MAX_POTIONS: si no caben, se queda en el suelo
+      if (!canCarryPotion(this.potions)) return;
+      this.potions++;
+      sfx('coin');
+      this.popup(sprite.x, sprite.y - 16, '+1 poción', 0xc39bd3);
     } else {
       this.bombs++;
       sfx('coin');
@@ -4749,8 +4863,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const LX = HUD.left.x + HUD.pad;
       const LW = HUD.left.w - HUD.pad * 2;
       const target: [number, number, Phaser.GameObjects.Text | undefined] =
-        drop.kind === 'coin' ? [LX + 26, 288, this.coinsHud] : drop.kind === 'key' ? [LX + 94, 288, this.keysHud]
-          : drop.kind === 'bomb' ? [LX + 160, 288, this.bombsHud] : [LX + LW / 2, 186, this.hpText];
+        drop.kind === 'coin' ? [LX + HUD_COUNT_X.coin, 288, this.coinsHud] : drop.kind === 'key' ? [LX + HUD_COUNT_X.key, 288, this.keysHud]
+          : drop.kind === 'bomb' ? [LX + HUD_COUNT_X.bomb, 288, this.bombsHud]
+          : drop.kind === 'potion' ? [LX + HUD_COUNT_X.potion, 288, this.potionsHud] : [LX + LW / 2, 186, this.hpText];
       this.flyToHud(sprite.texture.key, sprite.frame.name, sprite.x, sprite.y, target[0], target[1], target[2]);
     }
     this.floorItems = this.floorItems.filter((f) => f !== sprite.getData('entry'));
