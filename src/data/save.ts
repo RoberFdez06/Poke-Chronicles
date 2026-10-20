@@ -9,6 +9,7 @@ import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } f
 import { applyMissionEvent, parseMissions, type Completed, type MissionEvent, type MissionState } from './missions.ts';
 import { dayNumber } from './gacha.ts';
 import { awardMedal, parseMedals, type MedalAward } from './medals.ts';
+import { KONAMI_KEY } from './easterEggs.ts';
 import { recordsKeyFor, type Difficulty } from './difficulty.ts';
 import { parseFx, type FxSettings } from './fxSettings.ts';
 import { emptyDaily, parseDaily, startDaily, withDailyResult, type DailyState } from './daily.ts';
@@ -476,6 +477,7 @@ export const PROGRESS_KEYS: readonly string[] = [
   SHINIES_KEY,
   MISSIONS_KEY,
   MEDALS_KEY,
+  KONAMI_KEY,
   TUTORIAL_KEY,
   HISTORY_KEY,
   'pokeisaac.run.0',

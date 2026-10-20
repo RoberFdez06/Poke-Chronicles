@@ -10,7 +10,7 @@ import { MenuList, NavInput } from '../ui/nav';
 import { drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
 import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
-import { PASSIVE_ITEMS } from '../data/items';
+import { HIDDEN_ITEMS, PASSIVE_ITEMS } from '../data/items';
 import { sfx } from '../ui/audio';
 
 export interface SummaryData {
@@ -112,7 +112,7 @@ export class SummaryScene extends Phaser.Scene {
     r.items.slice(0, 22).forEach((label, i) => {
       const m = / x(\d+)$/.exec(label);
       const name = label.replace(/ x\d+$/, '');
-      const id = PASSIVE_ITEMS.find((p) => p.name === name)?.id;
+      const id = [...PASSIVE_ITEMS, ...HIDDEN_ITEMS].find((p) => p.name === name)?.id;
       const x = 80 + (i % 11) * 46;
       const y = 496 + Math.floor(i / 11) * 40;
       const key = id ? itemIconKey(id) : iconKey('bag');

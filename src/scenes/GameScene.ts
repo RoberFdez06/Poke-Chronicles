@@ -122,6 +122,8 @@ import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
 import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
 import { decorateRoom } from '../ui/art/roomDecor';
+import { drawGlitchFigure, drawTruck, glitchFlash } from '../ui/art/easterArt';
+import { evolveMagikarp, MAGIKARP, MAGIKARP_PRICE, MEW_CHANCE, OAK_LINE, secretVariant, sellsMagikarp } from '../data/easterEggs';
 import { drawPits, drawShapedWalls } from '../ui/art/roomShape';
 import { FINALE_BONUS, GIANT_HP_MUL, GIANT_RAGE_AT, GIANT_SIZE, isFinalFloor, isFinaleGate, pickFinale, TRIO_HP_MUL, type Finale } from '../data/finale';
 import type { FinalChoice } from './FinalPromptScene';
@@ -727,7 +729,16 @@ export class GameScene extends Phaser.Scene {
       // Bajas al piso siguiente con tus objetos, poderes y PS
       this.floorNum = c.floor;
       this.bossHistory = [...c.bossHistory];
-      this.passives = [...c.passives];
+      // Easter egg: Magikarp evoluciona en Gyarados al bajar de piso
+      const karp = evolveMagikarp(c.passives);
+      this.passives = karp.passives;
+      if (karp.evolved) {
+        this.time.delayedCall(2800, () => {
+          if (this.ended) return;
+          sfx('evolve');
+          this.notify('¿Eh? ¡Magikarp está evolucionando!\n¡Tu Magikarp ha evolucionado en Gyarados!', { kind: 'reward', icon: 'star' });
+        });
+      }
       this.stats = this.calcStats();
       // Se recorta a los PS máximos en boot(), cuando ya se conocen las estadísticas del Pokémon
       this.hp = c.hp;
@@ -1205,10 +1216,13 @@ export class GameScene extends Phaser.Scene {
     if (kind === 'merchant') {
       // Puesto con tres artículos; los poderes se copian para no gastar la bolsa si no compras
       const stock = merchantStock(rng, new Set(this.passives), [...this.movePool], this.passivePool(), this.floorNum);
+      // Easter egg: a veces vende un Magikarp «por solo 5 monedas»
+      const karp = sellsMagikarp(rng(), this.passives);
+      if (karp) stock[0] = { goods: { kind: 'passive', id: MAGIKARP }, price: MAGIKARP_PRICE, sold: false };
       const g = keep(this.add.graphics().setDepth(2));
       g.fillStyle(0x6b4423, 1).fillRect(i.cx - 200, i.cy - 120, 400, 26);
       for (let k = 0; k < 5; k++) g.fillStyle(k % 2 ? 0xf4f1e6 : 0x1abc9c, 1).fillTriangle(i.cx - 200 + k * 80, i.cy - 120, i.cx - 120 + k * 80, i.cy - 120, i.cx - 160 + k * 80, i.cy - 156);
-      label(i.cx, i.cy - 176, 'Mercader ambulante: elige uno y se marcha', 16, '#ffe9a8');
+      label(i.cx, i.cy - 176, karp ? '«¡Un Magikarp por solo 5 monedas! ¡Una ganga!»' : 'Mercader ambulante: elige uno y se marcha', 16, '#ffe9a8');
       stock.forEach((slot, k) => {
         const x = i.cx + (k - 1) * 150;
         const y = i.cy + 10;
@@ -2544,7 +2558,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Bomba a tus pies: E, RB o clic en la bomba del HUD. */
   private placeBomb() {
-    if (this.ended || this.transitioning || this.bombs <= 0 || !this.player?.active) return;
+    if (this.ended || this.transitioning || !this.player?.active) return;
+    if (this.bombs <= 0) return this.notify(`${OAK_LINE}\nNo te quedan bombas`, { kind: 'warning', icon: 'bomb' });
     this.bombs--;
     const x = this.player.x;
     const y = this.player.y + 10;
@@ -2959,7 +2974,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const a = activeById(this.active.id);
     if (!a) return;
     if (!isCharged(this.active.charge, a.charge)) {
-      this.notify(`${a.name}: aún no está cargado (${this.active.charge}/${a.charge})\nSe carga limpiando salas`, { kind: 'warning', icon: 'pokeball' });
+      this.notify(`${OAK_LINE}\n${a.name}: aún no está cargado (${this.active.charge}/${a.charge}), se carga limpiando salas`, { kind: 'warning', icon: 'pokeball' });
       return;
     }
     if (a.id === 'teletransporte') {
@@ -3013,7 +3028,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Bebe una de las pociones que llevas (tecla, L3, clic en el HUD o botón táctil). */
   private drinkPotion() {
     if (this.ended || this.transitioning || !this.player?.active) return;
-    if (this.potions <= 0) return this.notify('No llevas pociones', { kind: 'warning', icon: 'potion' });
+    if (this.potions <= 0) return this.notify(`${OAK_LINE}\nNo llevas pociones`, { kind: 'warning', icon: 'potion' });
     if (!canHeal(this.hp, this.stats.maxHp)) return this.notify('Ya tienes todos los PS', { kind: 'warning', icon: 'potion' });
     this.potions--;
     const amount = scaleHeal(CARRIED_POTION_HEAL, this.diff);
@@ -3168,8 +3183,60 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       sfx('door');
     }
 
+    if (room.kind === 'secret') this.enterSecret(room);
+
     this.drawMap();
     this.saveNow();
+  }
+
+  /** Easter eggs de las salas secretas (easterEggs.ts): MissingNo. duplica el objeto; el camión esconde algo. */
+  private enterSecret(room: Room) {
+    const v = secretVariant(this.floorSeed, room.id);
+    if (v === 'normal') return;
+    this.clearEventObjs();
+    const i = this.interior(room);
+    if (v === 'missingno') {
+      this.eventObjs.push(drawGlitchFigure(this, i.x0 + 120, i.y0 + 150));
+      this.eventObjs.push(this.add.text(i.x0 + 120, i.y0 + 170, 'MissingNo.', { fontFamily: FONT, fontSize: '16px', color: '#ffffff' }).setOrigin(0.5).setStroke('#18202c', 4).setDepth(3));
+      if (this.eventsDone.has(room.id)) return;
+      this.eventsDone.add(room.id);
+      glitchFlash(this, i.cx, i.cy, ROOM.w, ROOM.h);
+      sfx('boom');
+      // Copia el objeto de la sala (como el famoso truco del sexto objeto)
+      const original = this.floorItems.find((f) => f.roomId === room.id);
+      const copy = original ? this.fromSaved(original.drop) : null;
+      if (copy) this.spawnPickup(room.id, i.cx + 110, i.cy, copy);
+      else this.dropItem(room.id, i.cx + 110, i.cy);
+      this.notify('¡¿MissingNo.?!\nEl objeto de la sala se ha duplicado', { kind: 'reward', icon: 'star' });
+      return;
+    }
+    // El camión: ¿hay un Mew debajo?
+    const tx = i.x0 + 170;
+    const ty = i.y0 + 130;
+    this.eventObjs.push(drawTruck(this, tx, ty));
+    if (this.eventsDone.has(room.id)) return;
+    const look = () => {
+      if (this.eventsDone.has(room.id) || this.current?.id !== room.id) return;
+      this.eventsDone.add(room.id);
+      const roll = mulberry32((this.floorSeed ^ Math.imul(room.id + 3, 0x27d4eb2f)) >>> 0)();
+      if (roll < MEW_CHANCE) {
+        sfx('evolve');
+        this.dropItem(room.id, tx, ty + 70);
+        this.notify('¡Había un Mew debajo del camión!\nSe ha ido volando, pero te ha dejado un regalo', { kind: 'reward', icon: 'star' });
+      } else {
+        sfx('pickup');
+        for (const dx of [-40, 0, 40]) this.spawnLoot(room.id, tx + dx, ty + 60, { kind: 'coin', value: 2 });
+        this.notify('Debajo del camión no hay ningún Mew...\nPero sí unas monedas', { kind: 'info', icon: 'coin' });
+      }
+      this.saveNow();
+    };
+    this.eventSpots.push({ x: tx, y: ty + 30, prompt: () => (this.eventsDone.has(room.id) ? '' : 'Enter / A / clic: mirar debajo del camión'), use: look });
+    // Con el ratón: clic en el camión
+    const z = this.add.zone(tx, ty - 30, 170, 90).setInteractive({ useHandCursor: true });
+    z.on('pointerover', () => (this.overHud = true));
+    z.on('pointerout', () => (this.overHud = false));
+    z.on('pointerdown', look);
+    this.eventObjs.push(z);
   }
 
   private spawnChallengeWave(roomId: number) {

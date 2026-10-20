@@ -163,8 +163,33 @@ export const PASSIVE_ITEMS: readonly PassiveItem[] = [
   },
 ];
 
+/**
+ * Objetos escondidos (easter eggs, ver easterEggs.ts): no salen al azar. Magikarp lo vende a veces el mercader y
+ * no hace nada; al bajar de piso evoluciona en Gyarados, que es de los mejores objetos del juego.
+ */
+export const HIDDEN_ITEMS: readonly PassiveItem[] = [
+  {
+    id: 'magikarp',
+    name: 'Magikarp',
+    description: 'Salpica. No hace nada... de momento.',
+    color: 0xf08a3a,
+    apply: () => undefined,
+  },
+  {
+    id: 'gyarados',
+    name: 'Gyarados',
+    description: '+40 % de daño, +25 PS máximos y +10 % de velocidad. ¡La paciencia tiene premio!',
+    color: 0x3a7ad8,
+    apply: (s) => {
+      s.damage *= 1.4;
+      s.maxHp += 25;
+      s.speed *= 1.1;
+    },
+  },
+];
+
 export function passiveById(id: string): PassiveItem | undefined {
-  return PASSIVE_ITEMS.find((i) => i.id === id);
+  return PASSIVE_ITEMS.find((i) => i.id === id) ?? HIDDEN_ITEMS.find((i) => i.id === id);
 }
 
 /** Nombres de tipo en español (copia mínima para no depender de types.ts en las descripciones). */

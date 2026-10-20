@@ -2,7 +2,7 @@
 // garra, pluma, piedra, cinta, pañuelo, hierba, concha, casco, chaleco, radar, imán, cuchara…) en su color, en vez
 // de la bolsa genérica. Plantillas de 16x16: P color del objeto, p más oscuro, L más claro, W blanco, k contorno.
 import Phaser from 'phaser';
-import { PASSIVE_ITEMS } from '../../data/items';
+import { HIDDEN_ITEMS, PASSIVE_ITEMS } from '../../data/items';
 import { ACTIVE_ITEMS } from '../../data/synergies';
 import { iconKey, bakeIcons } from './icons';
 
@@ -36,6 +36,8 @@ const T: Record<string, string[]> = {
   flute: ['', '..............kk', '............kkLk', '..........kkLPk', '........kkLPPk', '......kkLPkPk', '....kkLPPPPk', '..kkLPkPPkk', '.kLPPPPkk', 'kLPPkkk', 'kPkk', '.k'],
   block: ['', '...kkkkkkkkk', '..kLLLLLLLLPk', '.kLWLLLLLLPPk', '.kkkkkkkkkPPk', '.kPPPPPPPkPPk', '.kPPLPPPPkPPk', '.kPPPPPPPkPk', '.kPPPPPPPkk', '.kkkkkkkkk'],
   bottle: ['......kkkk', '......kWWk', '.....kkkkkk', '......kLLk', '.....kLLPPk', '....kLWPPPPk', '....kLWPPPPk', '....kLPWWPPk', '....kLPPWPPk', '....kLPWWPPk', '....kLPPPPPk', '....kPPPPPpk', '.....kkkkkk'],
+  fish: ['', '..........kk', '.........kWLk', '.kk....kkLLPk', 'kWLkkkkLLPPPk', 'kLPkWLLPPPPPkk', '.kPkkkPPPPPPLk', '.kPkWkPPPPPPPk', '.kPkkkPPPPPPpk', 'kLPkPPPPPPPpk', 'kpPkkppppppk', '.kk..kkpPpkk', '.......kpk', '........k'],
+  serpent: ['....kk..kk', '...kWLkkLLk', '..kLWkLLPPLk', '..kLPPPPkPPk', '..kPPPkkWkPk', '...kPPPPPPkk', '....kkPPPPk', '.......kPPk', '..kk...kPPk', '.kLLk.kPPk', 'kLPPkkPPk', 'kPPPPPPk', '.kpppkk', '..kkk'],
   candy: ['', '', '.kk........kk', 'kLLk.kkkk.kLLk', 'kPLkkLLPPkkLPk', '.kPkLWLPPPkPk', '..kkLLPPPPkk', '.kPkPPPPPpkPk', 'kPLkkPPppkkLPk', 'kLLk.kkkk.kLLk', '.kk........kk'],
   crown: ['', '', 'k...k...k...k', 'kk.kWk.kWk.kk', 'kPkkPkkkPkkPk', 'kPPPPPPPPPPPk', 'kPLPPPWPPPLPk', 'kPPPPPPPPPPPk', 'kpPPPPPPPPPpk', 'kkkkkkkkkkkkk'],
   rope: ['', '....kkkkkk', '..kkLLLLLLkk', '.kLPkkkkkkPLk', 'kLPk.kkkk.kPLk', 'kPk.kLLLLk.kPk', 'kPk.kPkkPk.kPk', 'kPk.kPkkPk.kPk', 'kpk..kkkk.kPpk', '.kpk......kpk', '..kkpppppppk', '....kkkkkkkk.kk', '...........kPk', '............kk'],
@@ -64,6 +66,7 @@ const SHAPE: Record<string, string> = {
   'mineral-evolutivo': 'crystal', 'cinta-experto': 'band', 'gafas-especiales': 'glasses', 'roca-del-rey': 'crown',
   'polvo-veloz': 'powder', 'baya-lichi': 'apple', 'seguro-debilidad': 'tag', 'bola-luminosa': 'ball', 'cuerda-huida': 'rope',
   'hierba-mental': 'herb', 'pua-toxica': 'spike', 'piedra-lunar': 'moon',
+  magikarp: 'fish', gyarados: 'serpent',
 };
 
 const shade = (c: number, f: number) => {
@@ -76,7 +79,7 @@ export const itemIconKey = (id: string) => (id === 'baya-aranja' ? iconKey('aran
 /** Crea (una vez) las texturas de los iconos de todos los objetos. */
 export function bakeItemIcons(scene: Phaser.Scene) {
   bakeIcons(scene);
-  const all: { id: string; color: number }[] = [...PASSIVE_ITEMS, ...ACTIVE_ITEMS];
+  const all: { id: string; color: number }[] = [...PASSIVE_ITEMS, ...HIDDEN_ITEMS, ...ACTIVE_ITEMS];
   for (const { id, color } of all) {
     const key = itemIconKey(id);
     if (scene.textures.exists(key)) continue;
