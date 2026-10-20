@@ -47,7 +47,7 @@ test('activos nuevos y pociones', async ({ page }) => {
   await game(page, 'g.hp = 20;');
   await use('pocion-activa');
   expect((await game(page, 'return g.hp')) as number).toBeGreaterThan(20);
-  await use('caramelo-raro');
+  await use('caramelo-raro-activo');
   expect(await game(page, 'return g.dmgMul()')).toBe(2);
   await use('silbato');
   expect((await game(page, 'return g.invulnUntil - g.time.now')) as number).toBeGreaterThan(1000);
@@ -66,6 +66,20 @@ test('activos nuevos y pociones', async ({ page }) => {
   await use('teletransporte');
   await expect.poll(() => game(page, 'return g.current.id === g.floor.startId'), { timeout: 3000 }).toBe(true);
   await page.screenshot({ path: 'test-results/screens/35-activos.png' });
+
+  // T52: coger los doce pasivos nuevos (y los que activan sus sinergias) no da errores
+  const ids = [
+    'mineral-evolutivo', 'cinta-experto', 'gafas-especiales', 'roca-del-rey', 'polvo-veloz', 'baya-lichi', 'seguro-debilidad',
+    'bola-luminosa', 'cuerda-huida', 'hierba-mental', 'pua-toxica', 'piedra-lunar', 'garra-afilada', 'casco-dentado', 'panuelo-elegido',
+  ];
+  const got = (await game(
+    page,
+    `const ids = ${JSON.stringify(ids)}; const pool = g.passivePool(); let n = 0;
+     for (const id of ids) { const item = pool.find((i) => i.id === id); if (item) { g.gainItem({ kind: 'passive', item }); n++; } }
+     return [n, g.synergies.length];`,
+  )) as [number, number];
+  expect(got[0]).toBe(ids.length);
+  expect(got[1]).toBeGreaterThanOrEqual(5);
 
   expect(errors, errors.join('\n')).toEqual([]);
 });

@@ -2977,7 +2977,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const amount = scaleHeal(ACTIVE_EFFECT.potionHeal, this.diff);
       this.hp = Math.min(this.stats.maxHp, this.hp + amount);
       this.popup(this.player.x, this.player.y - 50, `+${amount} PS`, a.color);
-    } else if (a.id === 'caramelo-raro') {
+    } else if (a.id === 'caramelo-raro-activo') {
       this.buffUntil = now + ACTIVE_EFFECT.candyMs;
       this.buffMul = ACTIVE_EFFECT.candyMul;
       this.popup(this.player.x, this.player.y - 50, '¡Daño ×2!', a.color);

@@ -383,6 +383,6 @@ No toques los ficheros del supervisor (arte, menús, `attacks.ts`, `movePatterns
   recibe daño por la espalda, **curandero** que cura a otros). Reparte por bioma y por piso en `bossPatterns.ts`/mezcla de sala
   y comprueba que `balance.test.ts` sigue en rango.
 
-## [ ] T52 — Más sinergias y objetos pasivos
+## [x] T52 — Más sinergias y objetos pasivos
 - Otros 12 pasivos y 6 sinergias nuevas en `items.ts`/`synergies.ts` con precio y rareza; los tests de `items.test.ts` y
   `synergies.test.ts` deben seguir pasando y cubrir los nuevos.

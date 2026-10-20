@@ -405,6 +405,11 @@ que elegiste.
   queda en el suelo.
 - **Pociones** (T49): a veces cae una poción; llevas hasta 3 (contador morado del HUD) y cada una cura 30 PS con C, L3,
   clic en el contador o el botón táctil "Poción".
+- **Pasivos nuevos (T52)**: Mineral Evolutivo, Cinta Experto, Gafas Especiales, Roca del Rey, Polvo Veloz, Baya Lichi,
+  Seguro Debilidad, Bola Luminosa, Cuerda Huida, Hierba Mental, Púa Tóxica y Piedra Lunar. Cada pasivo tiene **rareza**
+  (`PASSIVE_RARITY`: común, raro, épico o legendario; los no listados, raros): los raros salen menos al sortear un objeto
+  (pesos 4/3/2/1) y en la tienda cuestan según la rareza (11/15/21/28 monedas). Sinergias nuevas: Especialista, Golpe
+  real, Relámpago, Luz de luna, Erizo y Superviviente.
 - **Sinergias** (`src/data/synergies.ts`): ciertas combinaciones dan un efecto extra y avisan con "¡Sinergia!", por
   ejemplo Carbón + un poder de Fuego (quemaduras el doble de fuertes), dos objetos "Elegido", Lente Zoom + Periscopio
   o Concha Campana + Restos. Se ven en la pausa.

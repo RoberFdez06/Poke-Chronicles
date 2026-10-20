@@ -2,7 +2,7 @@
 // Las monedas solo valen dentro de la partida (en la tienda) y se pierden al acabarla; los tickets
 // (save.ts) son otra cosa y se gastan fuera, en el gacha.
 // Lógica pura, sin Phaser ni red, para poder testearla.
-import { PASSIVE_ITEMS, takeMoveByRarity, type MovePower, type PassiveItem } from './items.ts';
+import { PASSIVE_ITEMS, takeMoveByRarity, type MovePower, type PassiveItem, passivePrice } from './items.ts';
 
 export type BerryId = 'aranja' | 'zidra';
 export type PotionId = 'pocion' | 'superpocion';
@@ -154,7 +154,8 @@ export function rollShop(
   return [
     { goods: { kind: 'potion', id: 'pocion' }, price: SHOP_PRICES.pocion, sold: false },
     { goods: { kind: 'potion', id: 'superpocion' }, price: SHOP_PRICES.superpocion, sold: false },
-    { goods, price: SHOP_PRICES.item, sold: false },
+    // T52: los pasivos cuestan según su rareza; los poderes, lo de siempre
+    { goods, price: goods.kind === 'passive' ? passivePrice(goods.id) : SHOP_PRICES.item, sold: false },
   ];
 }
 

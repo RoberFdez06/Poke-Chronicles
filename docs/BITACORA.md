@@ -1039,3 +1039,19 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   frente al escudado ("¡Bloqueado!"). El bucle de enemigos comprueba que siga activo tras su IA (la mina se va sola).
 - Tests: `tests/bossPatterns.test.ts` (+3) y e2e `tests/e2e/behaviors.spec.ts` (escudo de frente/espalda, curación,
   mina que estalla y tirador que dispara; captura 40).
+
+## T52 — Más sinergias y objetos pasivos
+- `src/data/items.ts`: 12 pasivos nuevos basados en objetos de los juegos (Mineral Evolutivo, Cinta Experto, Gafas
+  Especiales, Roca del Rey, Polvo Veloz, Baya Lichi, Seguro Debilidad, Bola Luminosa, Cuerda Huida, Hierba Mental, Púa
+  Tóxica y Piedra Lunar), varios con ventaja y precio como los de la Tanda 6.
+- **Rareza y precio** de todos los pasivos: `PASSIVE_RARITY` (los no listados son raros), `passiveRarity`,
+  `PASSIVE_PRICE`/`passivePrice` (11/15/21/28 monedas) y `PASSIVE_WEIGHT` (4/3/2/1). `pickPassive` sortea con esos pesos
+  (una tirada de `rng`, así todo sigue siendo determinista) y lo usa `rollItem`. La tienda cobra los pasivos por su
+  rareza (`rollShop`); los poderes siguen costando lo de siempre.
+- `src/data/synergies.ts`: 6 sinergias nuevas con los objetos nuevos (Especialista, Golpe real, Relámpago, Luz de
+  luna, Erizo y Superviviente).
+- Arreglo: el activo Caramelo Raro de la T49 tenía el mismo id que el pasivo "Caramelo Raro"; ahora es
+  `caramelo-raro-activo` (los guardados con el id viejo en la ranura activa lo pierden: es de hoy y aún no se ha
+  publicado).
+- Tests: items (+2), synergies (+1) y e2e `actives.spec.ts` (coger los 12 pasivos y activar sinergias sin errores).
+  267 tests en verde. Iconos pedidos al supervisor (N25).

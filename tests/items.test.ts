@@ -132,3 +132,39 @@ test('rollItem es determinista con la misma semilla', () => {
   assert.deepEqual(run(), run());
   assert.ok(passiveById('lupa'));
 });
+
+// --- T52 ---
+import { PASSIVE_PRICE, PASSIVE_WEIGHT, passivePrice, passiveRarity, pickPassive } from '../src/data/items.ts';
+
+const T52_ITEMS = [
+  'mineral-evolutivo', 'cinta-experto', 'gafas-especiales', 'roca-del-rey', 'polvo-veloz', 'baya-lichi',
+  'seguro-debilidad', 'bola-luminosa', 'cuerda-huida', 'hierba-mental', 'pua-toxica', 'piedra-lunar',
+];
+
+test('T52: doce pasivos nuevos, en español, que cambian algo y con rareza y precio', () => {
+  for (const id of T52_ITEMS) {
+    const it = PASSIVE_ITEMS.find((i) => i.id === id);
+    assert.ok(it, id);
+    assert.ok(it!.name && it!.description, id);
+    assert.notDeepEqual(computeStats([id]), computeStats([]), id);
+    assert.ok(passivePrice(id) > 0, id);
+  }
+  assert.equal(new Set(PASSIVE_ITEMS.map((i) => i.name)).size, PASSIVE_ITEMS.length);
+  // Más raro = más caro y sale menos
+  assert.ok(PASSIVE_PRICE.common < PASSIVE_PRICE.rare && PASSIVE_PRICE.rare < PASSIVE_PRICE.epic && PASSIVE_PRICE.epic < PASSIVE_PRICE.legendary);
+  assert.ok(PASSIVE_WEIGHT.common > PASSIVE_WEIGHT.legendary);
+  assert.equal(passiveRarity('no-existe'), 'rare');
+  // La Púa Tóxica no toca las estadísticas base
+  computeStats(['pua-toxica']);
+  assert.equal(computeStats([]).statusBoost.poison, undefined);
+});
+
+test('T52: el sorteo de pasivos sigue los pesos de rareza', () => {
+  const list = PASSIVE_ITEMS.filter((i) => ['baya-aranja', 'cola-gemela'].includes(i.id));
+  assert.equal(passiveRarity('baya-aranja'), 'common');
+  assert.equal(passiveRarity('cola-gemela'), 'legendary');
+  const rng = mulberry32(3);
+  let common = 0;
+  for (let k = 0; k < 5000; k++) if (pickPassive(rng, list).id === 'baya-aranja') common++;
+  assert.ok(Math.abs(common / 5000 - 0.8) < 0.03, `${common / 5000}`);
+});

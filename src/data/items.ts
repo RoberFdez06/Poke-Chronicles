@@ -255,6 +255,31 @@ const SPECIAL_ITEMS: PassiveItem[] = [
     apply: (s) => void ((s.damage *= 1.2), (s.fireDelay *= 1.05)) },
   { id: 'reloj-arena', name: 'Reloj de Arena', description: 'Disparas un 15 % más rápido, pero con un 10 % menos de alcance.', color: 0xe8c878,
     apply: (s) => void ((s.fireDelay *= 0.85), (s.range *= 0.9)) },
+  // T52: doce objetos más (con su rareza y precio en PASSIVE_RARITY)
+  { id: 'mineral-evolutivo', name: 'Mineral Evolutivo', description: 'Recibes un 15 % menos de daño y tienes 10 PS máximos más.', color: 0xb388ff,
+    apply: (s) => void ((s.damageTaken *= 0.85), (s.maxHp += 10)) },
+  { id: 'cinta-experto', name: 'Cinta Experto', description: 'Tus poderes hacen un 15 % más de daño y +5 % de crítico.', color: 0xe57373,
+    apply: (s) => void ((s.powerMul *= 1.15), (s.critChance = Math.min(1, s.critChance + 0.05))) },
+  { id: 'gafas-especiales', name: 'Gafas Especiales', description: 'Tus poderes hacen un 25 % más de daño, pero recibes un 10 % más.', color: 0x7986cb,
+    apply: (s) => void ((s.powerMul *= 1.25), (s.damageTaken *= 1.1)) },
+  { id: 'roca-del-rey', name: 'Roca del Rey', description: '+8 % de crítico y críticos más fuertes.', color: 0xc9a13a,
+    apply: (s) => void ((s.critChance = Math.min(1, s.critChance + 0.08)), (s.critMul += 0.25)) },
+  { id: 'polvo-veloz', name: 'Polvo Veloz', description: 'Vas un 15 % más rápido y disparas un 5 % antes.', color: 0xffe082,
+    apply: (s) => void ((s.speed *= 1.15), (s.fireDelay *= 0.95)) },
+  { id: 'baya-lichi', name: 'Baya Lichi', description: '+12 % de daño y 5 PS máximos más.', color: 0xef9a9a,
+    apply: (s) => void ((s.damage *= 1.12), (s.maxHp += 5)) },
+  { id: 'seguro-debilidad', name: 'Seguro Debilidad', description: '+20 % de daño, pero recibes un 5 % más.', color: 0xba68c8,
+    apply: (s) => void ((s.damage *= 1.2), (s.damageTaken *= 1.05)) },
+  { id: 'bola-luminosa', name: 'Bola Luminosa', description: 'Disparos un 20 % más grandes que rebotan una vez más.', color: 0xfff59d,
+    apply: (s) => void ((s.shotScale *= 1.2), (s.bounces += 1)) },
+  { id: 'cuerda-huida', name: 'Cuerda Huida', description: 'Un 10 % de esquivar y vas un 5 % más rápido.', color: 0xa1887f,
+    apply: (s) => void ((s.dodge = Math.min(0.5, s.dodge + 0.1)), (s.speed *= 1.05)) },
+  { id: 'hierba-mental', name: 'Hierba Mental', description: 'Un escudo más en cada sala, pero 5 PS máximos menos.', color: 0x81c784,
+    apply: (s) => void ((s.shieldPerRoom += 1), (s.maxHp -= 5)) },
+  { id: 'pua-toxica', name: 'Púa Tóxica', description: 'Quien te toca recibe 20 de daño y tu veneno es un 30 % más fuerte.', color: 0x9c27b0,
+    apply: (s) => void ((s.thorns += 20), (s.statusBoost.poison = (s.statusBoost.poison ?? 1) * 1.3)) },
+  { id: 'piedra-lunar', name: 'Piedra Lunar', description: 'Tus disparos giran un poco hacia los enemigos y llegan un 10 % más lejos.', color: 0xcfd8dc,
+    apply: (s) => void ((s.homing += 1.2), (s.range *= 1.1)) },
   ...TYPE_BOOSTERS.map(([id, name, type, color]) => ({
     id,
     name,
@@ -383,6 +408,35 @@ export const MOVE_ITEM_CHANCE = 0.5;
  * Elige qué aparece en el suelo. Un poder se saca (y se quita) de `movePool`;
  * los pasivos evitan repetirse hasta que se tienen todos.
  */
+// --- Rareza y precio de los pasivos (T52) ---
+
+/** Rareza de cada pasivo (los que no están, raros). Más rara = sale menos y cuesta más en la tienda. */
+export const PASSIVE_RARITY: Readonly<Record<string, MoveRarity>> = {
+  'baya-aranja': 'common', 'pluma-ligera': 'common', 'piedra-dura': 'common', 'baya-meloc': 'common', 'baya-lichi': 'common',
+  'polvo-veloz': 'common', 'cuerda-huida': 'common', 'reloj-arena': 'common',
+  'cinta-elegida': 'epic', 'gafas-elegidas': 'epic', 'panuelo-elegido': 'epic', 'banda-focus': 'epic', 'telescopio': 'epic',
+  'doble-equipo': 'epic', 'concha-campana': 'epic', 'gafas-especiales': 'epic', 'roca-del-rey': 'epic', 'mineral-evolutivo': 'epic',
+  'bola-ferrea': 'epic', 'piedra-lunar': 'epic',
+  'cola-gemela': 'legendary', 'orbe-vital': 'legendary',
+};
+export const passiveRarity = (id: string): MoveRarity => PASSIVE_RARITY[id] ?? 'rare';
+/** Precio en la tienda según la rareza (monedas de la partida). */
+export const PASSIVE_PRICE: Record<MoveRarity, number> = { common: 11, rare: 15, epic: 21, legendary: 28 };
+export const passivePrice = (id: string): number => PASSIVE_PRICE[passiveRarity(id)];
+/** Peso al sortear un pasivo: los comunes salen 4 veces más que los legendarios. */
+export const PASSIVE_WEIGHT: Record<MoveRarity, number> = { common: 4, rare: 3, epic: 2, legendary: 1 };
+
+/** Elige un pasivo con los pesos de su rareza (una sola tirada de `rng`). */
+export function pickPassive(rng: () => number, list: readonly PassiveItem[]): PassiveItem {
+  const total = list.reduce((a, i) => a + PASSIVE_WEIGHT[passiveRarity(i.id)], 0);
+  let x = rng() * total;
+  for (const i of list) {
+    x -= PASSIVE_WEIGHT[passiveRarity(i.id)];
+    if (x < 0) return i;
+  }
+  return list[list.length - 1];
+}
+
 export function rollItem(
   rng: () => number,
   ownedPassives: ReadonlySet<string>,
@@ -401,5 +455,6 @@ export function rollItem(
   }
   const fresh = pool.filter((i) => !ownedPassives.has(i.id));
   const list = fresh.length > 0 ? fresh : pool;
-  return { kind: 'passive', item: list[Math.floor(rng() * list.length)] };
+  // T52: los raros salen menos
+  return { kind: 'passive', item: pickPassive(rng, list) };
 }
