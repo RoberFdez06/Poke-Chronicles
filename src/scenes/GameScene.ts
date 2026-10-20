@@ -2269,6 +2269,27 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return to !== undefined && sameGroup(room, this.floor.rooms[to]);
   }
 
+  /**
+   * Lados unidos de la casilla (sala grande) y esquinas interiores de las salas en L, para el decorado: en una
+   * esquina en L, la pared que bordea el hueco la pinta la casilla que la tiene al lado (roomDecor.ts).
+   */
+  private decorOpen(room: Room) {
+    const m = (d: Dir) => this.mergedSide(room, d);
+    const nb = (d: Dir) => this.floor.rooms[room.doors[d]!];
+    const left = m('left');
+    const up = m('up');
+    return {
+      left,
+      right: m('right'),
+      up,
+      down: m('down'),
+      topLeft: left && !up && this.mergedSide(nb('left'), 'up'),
+      bottomLeft: left && !m('down') && this.mergedSide(nb('left'), 'down'),
+      rightUp: up && !m('right') && this.mergedSide(nb('up'), 'right'),
+      leftUp: up && !left && this.mergedSide(nb('up'), 'left'),
+    };
+  }
+
   /** Zona de juego de la sala actual: el rectángulo que contiene toda su sala grande (o ella sola). */
   private arena() {
     const cells = this.groupIds(this.current).map((id) => this.interior(this.floor.rooms[id]));
@@ -2351,7 +2372,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.add.tileSprite(i.x0 - WALL, i.y0 - WALL, ROOM.w + WALL * 2, ROOM.h + WALL * 2, this.tiles.wall).setOrigin(0).setTileScale(ts).setDepth(0);
     this.add.tileSprite(i.x0, i.y0, ROOM.w, ROOM.h, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0);
     // Paisaje alrededor, manchas, detalles y sombras del bioma (supervisor)
-    decorateRoom(this, this.biome, { x: room.gx * VIEW.w, y: room.gy * VIEW.h, w: VIEW.w, h: VIEW.h }, i, WALL, this.floorSeed * 31 + room.id, ts * 2.4, { left: this.mergedSide(room, 'left'), right: this.mergedSide(room, 'right'), up: this.mergedSide(room, 'up'), down: this.mergedSide(room, 'down') });
+    decorateRoom(this, this.biome, { x: room.gx * VIEW.w, y: room.gy * VIEW.h, w: VIEW.w, h: VIEW.h }, i, WALL, this.floorSeed * 31 + room.id, ts * 2.4, this.decorOpen(room));
     if (!plain) {
       // Salas especiales: alfombra de su color (Centro rosa, tienda verde, objeto dorado…) sobre el suelo del bioma
       const rug = this.add.graphics().setDepth(0.2);
@@ -2423,6 +2444,21 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private buildJoin(room: Room) {
     const a = this.interior(room);
     const ts = TILE / ART_TILE;
+    // Sala en L: la casilla que falta para completar el rectángulo se rellena con el paisaje de fuera (si no, se
+    // veía el fondo azul oscuro al mover la cámara). Lo pinta la primera casilla del grupo.
+    const ids = this.groupIds(room);
+    if (ids.length > 2 && ids[0] === room.id && this.textures.exists(`outside-${this.biome.id}`)) {
+      const cells = ids.map((id) => this.floor.rooms[id]);
+      const gxs = cells.map((c) => c.gx);
+      const gys = cells.map((c) => c.gy);
+      for (let gx = Math.min(...gxs); gx <= Math.max(...gxs); gx++) {
+        for (let gy = Math.min(...gys); gy <= Math.max(...gys); gy++) {
+          if (cells.some((c) => c.gx === gx && c.gy === gy)) continue;
+          const sc = ts * 2.4;
+          this.add.tileSprite(gx * VIEW.w, gy * VIEW.h, VIEW.w, VIEW.h, `outside-${this.biome.id}`).setOrigin(0).setTileScale(sc).setDepth(-1.5);
+        }
+      }
+    }
     const wallTile = (x: number, y: number, w: number, h: number) => {
       // Por debajo del relieve de roomDecor (0.31), que pinta su canto y su sombra también sobre esta unión
       this.add.tileSprite(x, y, w, h, this.tiles.wall).setOrigin(0).setTileScale(ts).setDepth(0.25);
