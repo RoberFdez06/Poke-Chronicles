@@ -4607,6 +4607,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const menuPad = this.input.gamepad?.getPad(0);
     const menuPadNow = !!menuPad && menuPad.connected && (!!menuPad.buttons[8]?.pressed || (!this.ended && !!menuPad.buttons[9]?.pressed));
     if (!this.escKey) return; // create() aún no ha terminado de cargar
+    // Red de seguridad: ningún enemigo puede quedar fuera de la sala (empujones, remolinos, embestidas…)
+    if (!this.transitioning && this.current && this.host) {
+      const rm = this.host.room();
+      for (const c of this.enemies.getChildren()) {
+        const e = c as Sprite;
+        if (!e.active || !e.body) continue;
+        if (e.x < rm.x0 - 30 || e.x > rm.x1 + 30 || e.y < rm.y0 - 30 || e.y > rm.y1 + 30) {
+          (e.body as Body).reset(Phaser.Math.Clamp(e.x, rm.x0 + 30, rm.x1 - 30), Phaser.Math.Clamp(e.y, rm.y0 + 30, rm.y1 - 30));
+        }
+      }
+    }
     const menuPressed = Phaser.Input.Keyboard.JustDown(this.escKey) || Phaser.Input.Keyboard.JustDown(this.pauseKey) ||
       (menuPadNow && !this.menuPadPrev);
     this.menuPadPrev = menuPadNow;

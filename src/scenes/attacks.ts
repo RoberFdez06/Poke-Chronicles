@@ -434,8 +434,10 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
       // Remolino que avanza y se queda girando: atrapa y golpea a quien esté dentro
       const x0 = src.x;
       const y0 = src.y;
-      const tx = x0 + dir.x * p.dist;
-      const ty = y0 + dir.y * p.dist;
+      // El remolino se queda dentro de la sala (si no, arrastraba a los enemigos al otro lado de la pared)
+      const rmV = h.room();
+      const tx = Phaser.Math.Clamp(x0 + dir.x * p.dist, rmV.x0 + 50, rmV.x1 - 50);
+      const ty = Phaser.Math.Clamp(y0 + dir.y * p.dist, rmV.y0 + 50, rmV.y1 - 50);
       const c = sc.add.container(x0, y0).setDepth(7);
       // Tornado pixel art (supervisor): embudo de anillos que giran, más ancho arriba, con sombra en el suelo y
       // escombros dando vueltas. Se redibuja a saltos (como un sprite) para que se vea pixelado y no como líneas.
@@ -526,6 +528,11 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
               if (!e.active || ai?.boss || Phaser.Math.Distance.Between(e.x, e.y, c.x, c.y) > p.radius * 1.4) continue;
               e.setVelocity((c.x - e.x) * 2.2, (c.y - e.y) * 2.2);
               if (ai) ai.knockUntil = now(h) + 200;
+              // Nunca fuera de la sala
+              const rm = h.room();
+              const cx = Phaser.Math.Clamp(e.x, rm.x0 + 20, rm.x1 - 20);
+              const cy = Phaser.Math.Clamp(e.y, rm.y0 + 20, rm.y1 - 20);
+              if (cx !== e.x || cy !== e.y) (e.body as Body).reset(cx, cy);
             }
           }
         },
