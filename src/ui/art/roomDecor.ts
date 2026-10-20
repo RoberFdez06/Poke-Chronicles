@@ -187,15 +187,22 @@ export function decorateRoom(
     if (r() < 0.5) img.setFlipX(true);
   }
 
+  // En una sala grande, cada casilla pinta también el hueco que la une con la de la derecha o la de abajo
+  // (`extR`, `extD`) y no pinta nada en los lados unidos: así sombras, viñeta y paredes siguen sin cortes.
+  const extR = open.right ? cell.w - w : 0;
+  const extD = open.down ? cell.h - h : 0;
+  const W2 = w + extR;
+  const H2 = h + extD;
+
   // Sombra de la pared de arriba y de los lados sobre el suelo
   const sh = scene.add.graphics().setDepth(0.3);
   for (let s = 0; s < 4; s++) {
-    if (!open.up) sh.fillStyle(0x000000, 0.16 - s * 0.035).fillRect(room.x0, room.y0 + s * scale * 2, w, scale * 2);
-    if (!open.left) sh.fillStyle(0x000000, 0.1 - s * 0.022).fillRect(room.x0 + s * scale * 2, room.y0, scale * 2, h);
-    if (!open.right) sh.fillStyle(0x000000, 0.1 - s * 0.022).fillRect(room.x1 - (s + 1) * scale * 2, room.y0, scale * 2, h);
+    if (!open.up) sh.fillStyle(0x000000, 0.16 - s * 0.035).fillRect(room.x0, room.y0 + s * scale * 2, W2, scale * 2);
+    if (!open.left) sh.fillStyle(0x000000, 0.1 - s * 0.022).fillRect(room.x0 + s * scale * 2, room.y0, scale * 2, H2);
+    if (!open.right) sh.fillStyle(0x000000, 0.1 - s * 0.022).fillRect(room.x1 - (s + 1) * scale * 2, room.y0, scale * 2, H2);
   }
   // Borde de la pared con luz arriba (canto)
-  sh.fillStyle(shade(b.colors.wall, 0.35), 1).fillRect(room.x0 - wall, room.y0 - wall, w + wall * 2, scale);
+  if (!open.up) sh.fillStyle(shade(b.colors.wall, 0.35), 1).fillRect(room.x0 - wall, room.y0 - wall, W2 + wall * 2, scale);
   // Relieve de la pared como en Isaac: arriba se ve su cara (alta), abajo su parte de arriba (canto ancho) y a
   // los lados un poco de cada. El canto es piedra lisa clara; la cara, los bloques del bioma que oscurecen hacia el suelo.
   const relief = scene.add.graphics().setDepth(0.31);
@@ -204,8 +211,8 @@ export function decorateRoom(
   const capLo = shade(b.colors.wall, -0.35);
   const ox0 = room.x0 - wall;
   const oy0 = room.y0 - wall;
-  const ow = w + wall * 2;
-  const oh = h + wall * 2;
+  const ow = W2 + wall * 2;
+  const oh = H2 + wall * 2;
   const cap = (x: number, y: number, cw: number, ch: number, horiz: boolean) => {
     relief.fillStyle(capC, 1).fillRect(x, y, cw, ch);
     // Motas para que la piedra no sea plana
@@ -216,45 +223,72 @@ export function decorateRoom(
     else for (let k = y + 40; k < y + ch; k += 80) relief.fillStyle(capLo, 0.6).fillRect(x + 2, k, cw - 4, 2);
   };
   // Arriba: canto fino y cara alta
-  cap(ox0, oy0, ow, 12, true);
-  relief.fillStyle(capHi, 1).fillRect(ox0, oy0, ow, 2);
-  relief.fillStyle(capLo, 1).fillRect(ox0, oy0 + 12, ow, 2);
-  for (let s = 0; s < 4; s++) relief.fillStyle(0x000000, 0.06 + s * 0.06).fillRect(room.x0, room.y0 - 26 + s * 6.5, w, 6.5);
+  if (!open.up) {
+    cap(ox0, oy0, ow, 12, true);
+    relief.fillStyle(capHi, 1).fillRect(ox0, oy0, ow, 2);
+    relief.fillStyle(capLo, 1).fillRect(ox0, oy0 + 12, ow, 2);
+    for (let s = 0; s < 4; s++) relief.fillStyle(0x000000, 0.06 + s * 0.06).fillRect(room.x0, room.y0 - 26 + s * 6.5, W2, 6.5);
+  }
   // Abajo: canto ancho (se ve desde arriba) y una cara corta en sombra
-  cap(ox0, room.y1 + 24, ow, wall - 24, true);
-  relief.fillStyle(capHi, 1).fillRect(ox0, room.y1 + 24, ow, 2);
-  relief.fillStyle(0x000000, 0.3).fillRect(room.x0, room.y1, w, 10);
+  if (!open.down) {
+    cap(ox0, room.y1 + 24, ow, wall - 24, true);
+    relief.fillStyle(capHi, 1).fillRect(ox0, room.y1 + 24, ow, 2);
+    relief.fillStyle(0x000000, 0.3).fillRect(room.x0, room.y1, W2, 10);
+  }
   // Lados: canto por fuera y cara por dentro, más oscura junto al suelo
-  cap(ox0, oy0, 16, oh, false);
-  cap(room.x1 + wall - 16, oy0, 16, oh, false);
-  relief.fillStyle(capHi, 1).fillRect(ox0, oy0, 2, oh).fillRect(room.x1 + wall - 16, oy0, 2, oh);
-  relief.fillStyle(capLo, 1).fillRect(ox0 + 16, oy0, 2, oh).fillRect(room.x1 + wall - 18, oy0, 2, oh);
+  if (!open.left) {
+    cap(ox0, oy0, 16, oh, false);
+    relief.fillStyle(capHi, 1).fillRect(ox0, oy0, 2, oh);
+    relief.fillStyle(capLo, 1).fillRect(ox0 + 16, oy0, 2, oh);
+  }
+  if (!open.right) {
+    cap(room.x1 + wall - 16, oy0, 16, oh, false);
+    relief.fillStyle(capHi, 1).fillRect(room.x1 + wall - 16, oy0, 2, oh);
+    relief.fillStyle(capLo, 1).fillRect(room.x1 + wall - 18, oy0, 2, oh);
+  }
   for (let s = 0; s < 3; s++) {
-    if (!open.left) relief.fillStyle(0x000000, 0.06 + s * 0.07).fillRect(room.x0 - 24 + s * 8, room.y0, 8, h);
-    if (!open.right) relief.fillStyle(0x000000, 0.06 + s * 0.07).fillRect(room.x1 + 16 - s * 8, room.y0, 8, h);
+    if (!open.left) relief.fillStyle(0x000000, 0.06 + s * 0.07).fillRect(room.x0 - 24 + s * 8, room.y0, 8, H2);
+    if (!open.right) relief.fillStyle(0x000000, 0.06 + s * 0.07).fillRect(room.x1 + 16 - s * 8, room.y0, 8, H2);
   }
   // Viñeta: los bordes del suelo más oscuros, el centro más claro (como la luz de las salas de Isaac)
   const vig = scene.add.graphics().setDepth(0.29);
   for (let s = 0; s < 6; s++) {
     const d = 14 + s * 14;
     const a = 0.05;
-    // En una sala grande, el lado que da a la otra casilla no se oscurece (es la misma sala)
-    if (!open.up) vig.fillStyle(0x000000, a).fillRect(room.x0, room.y0, w, d);
-    if (!open.down) vig.fillStyle(0x000000, a).fillRect(room.x0, room.y1 - d, w, d);
-    if (!open.left) vig.fillStyle(0x000000, a).fillRect(room.x0, room.y0, d, h);
-    if (!open.right) vig.fillStyle(0x000000, a).fillRect(room.x1 - d, room.y0, d, h);
+    if (!open.up) vig.fillStyle(0x000000, a).fillRect(room.x0, room.y0, W2, d);
+    if (!open.down) vig.fillStyle(0x000000, a).fillRect(room.x0, room.y1 - d, W2, d);
+    if (!open.left) vig.fillStyle(0x000000, a).fillRect(room.x0, room.y0, d, H2);
+    if (!open.right) vig.fillStyle(0x000000, a).fillRect(room.x1 - d, room.y0, d, H2);
   }
   // Cara de la pared de arriba (en sombra), contorno entre pared y suelo y canto claro de las paredes de los lados
   // y de abajo: así la sala tiene relieve en vez de ser una franja plana (las puertas lo tapan con su suelo)
   const edge = scene.add.graphics().setDepth(0.32);
-  edge.fillStyle(shade(b.colors.wall, -0.5), 0.55).fillRect(room.x0, room.y0 - 10, w, 10);
-  edge.fillStyle(K, 1).fillRect(room.x0 - 2, room.y0 - 2, w + 4, 2).fillRect(room.x0 - 2, room.y1, w + 4, 2);
-  edge.fillStyle(K, 1).fillRect(room.x0 - 2, room.y0 - 2, 2, h + 4).fillRect(room.x1, room.y0 - 2, 2, h + 4);
   const lip = shade(b.colors.wall, 0.4);
-  edge.fillStyle(lip, 1).fillRect(room.x0 - 2, room.y1 + 2, w + 4, 3);
-  edge.fillStyle(lip, 0.8).fillRect(room.x0 - 5, room.y0 - 2, 3, h + 4).fillRect(room.x1 + 2, room.y0 - 2, 3, h + 4);
-  // Esquinas: un bloque más oscuro, como las piedras angulares
-  for (const [cx, cy] of [[room.x0 - wall, room.y0 - wall], [room.x1, room.y0 - wall], [room.x0 - wall, room.y1], [room.x1, room.y1]]) {
+  if (!open.up) {
+    edge.fillStyle(shade(b.colors.wall, -0.5), 0.55).fillRect(room.x0, room.y0 - 10, W2, 10);
+    edge.fillStyle(K, 1).fillRect(room.x0 - 2, room.y0 - 2, W2 + 4, 2);
+  }
+  if (!open.down) {
+    edge.fillStyle(K, 1).fillRect(room.x0 - 2, room.y1, W2 + 4, 2);
+    edge.fillStyle(lip, 1).fillRect(room.x0 - 2, room.y1 + 2, W2 + 4, 3);
+  }
+  if (!open.left) {
+    edge.fillStyle(K, 1).fillRect(room.x0 - 2, room.y0 - 2, 2, H2 + 4);
+    edge.fillStyle(lip, 0.8).fillRect(room.x0 - 5, room.y0 - 2, 3, H2 + 4);
+  }
+  if (!open.right) {
+    edge.fillStyle(K, 1).fillRect(room.x1, room.y0 - 2, 2, H2 + 4);
+    edge.fillStyle(lip, 0.8).fillRect(room.x1 + 2, room.y0 - 2, 3, H2 + 4);
+  }
+  // Esquinas: un bloque más oscuro, como las piedras angulares (solo donde se juntan dos paredes de verdad)
+  const corners: [number, number, boolean][] = [
+    [room.x0 - wall, room.y0 - wall, !open.up && !open.left],
+    [room.x1 + extR, room.y0 - wall, !open.up && !open.right],
+    [room.x0 - wall, room.y1 + extD, !open.down && !open.left],
+    [room.x1 + extR, room.y1 + extD, !open.down && !open.right],
+  ];
+  for (const [cx, cy, on] of corners) {
+    if (!on) continue;
     edge.fillStyle(K, 1).fillRect(cx, cy, wall, wall);
     edge.fillStyle(shade(b.colors.wall, -0.1), 1).fillRect(cx + 3, cy + 3, wall - 6, wall - 6);
     edge.fillStyle(shade(b.colors.wall, 0.3), 1).fillRect(cx + 3, cy + 3, wall - 6, 3);

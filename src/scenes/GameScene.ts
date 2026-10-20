@@ -2407,18 +2407,19 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const a = this.interior(room);
     const ts = TILE / ART_TILE;
     const wallTile = (x: number, y: number, w: number, h: number) => {
-      this.add.tileSprite(x, y, w, h, this.tiles.wall).setOrigin(0).setTileScale(ts).setDepth(0.4);
+      // Por debajo del relieve de roomDecor (0.31), que pinta su canto y su sombra también sobre esta unión
+      this.add.tileSprite(x, y, w, h, this.tiles.wall).setOrigin(0).setTileScale(ts).setDepth(0.25);
       this.addWall(x, y, w, h);
     };
     if (this.mergedSide(room, 'right')) {
       const b = this.interior(this.floor.rooms[room.doors.right!]);
-      this.add.tileSprite(a.x1, a.y0, b.x0 - a.x1, a.y1 - a.y0, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0.45);
+      this.add.tileSprite(a.x1, a.y0, b.x0 - a.x1, a.y1 - a.y0, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0.02);
       wallTile(a.x1 + WALL, a.y0 - WALL, b.x0 - a.x1 - WALL * 2, WALL);
       wallTile(a.x1 + WALL, a.y1, b.x0 - a.x1 - WALL * 2, WALL);
     }
     if (this.mergedSide(room, 'down')) {
       const b = this.interior(this.floor.rooms[room.doors.down!]);
-      this.add.tileSprite(a.x0, a.y1, a.x1 - a.x0, b.y0 - a.y1, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0.45);
+      this.add.tileSprite(a.x0, a.y1, a.x1 - a.x0, b.y0 - a.y1, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0.02);
       wallTile(a.x0 - WALL, a.y1, WALL, b.y0 - a.y1);
       wallTile(a.x1, a.y1, WALL, b.y0 - a.y1);
     }
