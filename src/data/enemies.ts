@@ -161,8 +161,8 @@ export function enemyStats(bst: number, behavior: EnemyBehavior, d: FloorDifficu
     : behavior === 'mine' || behavior === 'shielded' || behavior === 'healer' ? 0.6
     : 0.5;
   return {
-    // T32: base de 70 PS (antes 60)
-    hp: Math.round(70 * k * hpMul * d.hp),
+    // T32: base de 70 PS (antes 60); 20/10: 85, los poderes hacían mucho daño (pedido por Roberto)
+    hp: Math.round(85 * k * hpMul * d.hp),
     speed: Math.round(80 * speedMul * d.speed),
     damage: Math.round(10 * Math.sqrt(k) * d.damage),
   };
