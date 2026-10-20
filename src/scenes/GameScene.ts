@@ -111,6 +111,7 @@ import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
 import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
 import { decorateRoom } from '../ui/art/roomDecor';
+import { drawPits, drawShapedWalls } from '../ui/art/roomShape';
 import { FINALE_BONUS, GIANT_HP_MUL, GIANT_RAGE_AT, GIANT_SIZE, isFinalFloor, isFinaleGate, pickFinale, TRIO_HP_MUL, type Finale } from '../data/finale';
 import type { FinalChoice } from './FinalPromptScene';
 import { castPattern, setMotion, updateShots, type AttackHost, type ShootOpts, type Side } from './attacks';
@@ -3204,16 +3205,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         switch (c) {
           case 'R': {
             // Cada roca va aparte para que una bomba pueda romperla
-            const rock = this.add.image(cx, cy, this.tiles.rock).setScale(sc).setDepth(1);
+            // Un poco de desorden (posición y espejo) para que un grupo de rocas no parezca una cuadrícula
+            const jit = ((tx * 73856093) ^ (ty * 19349663) ^ room.id) >>> 0;
+            const rock = this.add.image(cx + ((jit % 5) - 2), cy + (((jit >> 3) % 5) - 2), this.tiles.rock).setScale(sc).setDepth(1).setFlipX((jit & 64) !== 0);
             this.rocks.set(`${room.id}:${tx},${ty}`, [rock, this.addWall(x, y, TILE, TILE)]);
             break;
           }
           case 'X': {
-            // Muro que da forma a la sala (en L, cruz, T…): mismo bloque que la pared
-            this.add.tileSprite(x, y, TILE, TILE, this.tiles.wall).setOrigin(0).setTileScale(sc).setDepth(1);
-            const edge = this.add.graphics().setDepth(1.1);
-            edge.fillStyle(0xffffff, 0.14).fillRect(x, y, TILE, 3);
-            edge.fillStyle(0x000000, 0.28).fillRect(x, y + TILE - 4, TILE, 4);
+            // Muro que da forma a la sala (en L, cruz, T…): se dibuja entero en drawShapedWalls
             this.addWall(x, y, TILE, TILE);
             break;
           }
@@ -3223,7 +3222,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             this.addWall(x, y, TILE, TILE);
             break;
           case 'H': {
-            this.add.image(cx, cy, this.tiles.hole).setScale(sc).setDepth(0.6);
+            // El foso se dibuja entero en drawPits
             const hole = this.add.rectangle(cx, cy, TILE - 6, TILE - 6).setVisible(false);
             this.holes.add(hole);
             break;
@@ -3240,6 +3239,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         }
       }),
     );
+    // Muros y fosos unidos (supervisor): se dibujan por zonas, no casilla a casilla
+    const sc = TILE / ART_TILE;
+    if (grid.some((row) => row.includes('X'))) {
+      drawShapedWalls(this, grid, i, TILE, WALL, this.biome, this.tiles.wall, sc, { x: room.gx * VIEW.w, y: room.gy * VIEW.h }, sc * 2.4);
+    }
+    if (grid.some((row) => row.includes('H'))) drawPits(this, grid, i, TILE, this.biome);
   }
 
   /** Un disparo rompe un poco la hierba alta: con dos golpes desaparece y deja pasar. */

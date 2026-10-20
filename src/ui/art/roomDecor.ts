@@ -25,7 +25,7 @@ const K = 0x18202c;
 const FLOWER_R: Decal = { rows: ['........', '...rr...', '..rWWr..', '..rWWr..', '...rr...', '...g....', '..gg....', '........'], pal: { r: 0xe8483a, W: 0xffe066, g: 0x2f8a3a } };
 const FLOWER_Y: Decal = { rows: ['........', '..y..y..', '...yy...', '..yOOy..', '...yy...', '..y.gy..', '....g...', '........'], pal: { y: 0xffe066, O: 0xe08a20, g: 0x2f8a3a } };
 const TUFT: Decal = { rows: ['........', '........', '.g...g..', '.gg.gg..', '..gGg.g.', '.gGgGgg.', '........', '........'], pal: { g: 0x2f7a2a, G: 0x58b848 } };
-const PEBBLE: Decal = { rows: ['........', '........', '..kkk...', '.kWRRk..', '.kRRrk..', '..kkk.k.', '.....kRk', '......k.'], pal: { k: K, R: 0x9a8a7a, r: 0x6e6052, W: 0xd8ccb8 } };
+const PEBBLE: Decal = { rows: ['........', '........', '...ddd..', '..dWRRd.', '..dRRrd.', '..drrrd.', '...ddd..', '........'], pal: { d: 0x5e544a, R: 0x9a8a7a, r: 0x7a6c5e, W: 0xd8ccb8 } };
 const CRYSTAL: Decal = { rows: ['....k...', '...kCk..', '..kCWk..', '..kCCk.k', '.k.kCkkC', 'kCk.kkCC', 'kCCkkCCk', '.kkkkkk.'], pal: { k: K, C: 0x8fd8ff, W: 0xffffff } };
 const SHELL: Decal = { rows: ['........', '...kkk..', '..kPWPk.', '.kPpPpPk', '.kPpPpPk', '..kPPPk.', '...kkk..', '........'], pal: { k: K, P: 0xf4b8c8, p: 0xd88aa0, W: 0xffffff } };
 const STAR: Decal = { rows: ['...k....', '..kOk...', 'kkkOOkkk', 'kOOOOOOk', '.kOOOOk.', '.kOkkOk.', 'kOk..kOk', 'kk....kk'], pal: { k: K, O: 0xf08a3a } };
@@ -189,4 +189,65 @@ export function decorateRoom(
   }
   // Borde de la pared con luz arriba (canto)
   sh.fillStyle(shade(b.colors.wall, 0.35), 1).fillRect(room.x0 - wall, room.y0 - wall, w + wall * 2, scale);
+  // Relieve de la pared como en Isaac: arriba se ve su cara (alta), abajo su parte de arriba (canto ancho) y a
+  // los lados un poco de cada. El canto es piedra lisa clara; la cara, los bloques del bioma que oscurecen hacia el suelo.
+  const relief = scene.add.graphics().setDepth(0.31);
+  const capC = shade(b.colors.wall, 0.18);
+  const capHi = shade(b.colors.wall, 0.45);
+  const capLo = shade(b.colors.wall, -0.35);
+  const ox0 = room.x0 - wall;
+  const oy0 = room.y0 - wall;
+  const ow = w + wall * 2;
+  const oh = h + wall * 2;
+  const cap = (x: number, y: number, cw: number, ch: number, horiz: boolean) => {
+    relief.fillStyle(capC, 1).fillRect(x, y, cw, ch);
+    // Motas para que la piedra no sea plana
+    const n = Math.floor((cw * ch) / 90);
+    for (let k = 0; k < n; k++) relief.fillStyle(r() < 0.5 ? capLo : capHi, 0.35).fillRect(x + Math.floor(r() * (cw - 3)), y + Math.floor(r() * (ch - 3)), 3, 3);
+    // Juntas de las losas del canto
+    if (horiz) for (let k = x + 40; k < x + cw; k += 80) relief.fillStyle(capLo, 0.6).fillRect(k, y + 2, 2, ch - 4);
+    else for (let k = y + 40; k < y + ch; k += 80) relief.fillStyle(capLo, 0.6).fillRect(x + 2, k, cw - 4, 2);
+  };
+  // Arriba: canto fino y cara alta
+  cap(ox0, oy0, ow, 12, true);
+  relief.fillStyle(capHi, 1).fillRect(ox0, oy0, ow, 2);
+  relief.fillStyle(capLo, 1).fillRect(ox0, oy0 + 12, ow, 2);
+  for (let s = 0; s < 4; s++) relief.fillStyle(0x000000, 0.06 + s * 0.06).fillRect(room.x0, room.y0 - 26 + s * 6.5, w, 6.5);
+  // Abajo: canto ancho (se ve desde arriba) y una cara corta en sombra
+  cap(ox0, room.y1 + 24, ow, wall - 24, true);
+  relief.fillStyle(capHi, 1).fillRect(ox0, room.y1 + 24, ow, 2);
+  relief.fillStyle(0x000000, 0.3).fillRect(room.x0, room.y1, w, 10);
+  // Lados: canto por fuera y cara por dentro, más oscura junto al suelo
+  cap(ox0, oy0, 16, oh, false);
+  cap(room.x1 + wall - 16, oy0, 16, oh, false);
+  relief.fillStyle(capHi, 1).fillRect(ox0, oy0, 2, oh).fillRect(room.x1 + wall - 16, oy0, 2, oh);
+  relief.fillStyle(capLo, 1).fillRect(ox0 + 16, oy0, 2, oh).fillRect(room.x1 + wall - 18, oy0, 2, oh);
+  for (let s = 0; s < 3; s++) {
+    relief.fillStyle(0x000000, 0.06 + s * 0.07).fillRect(room.x0 - 24 + s * 8, room.y0, 8, h);
+    relief.fillStyle(0x000000, 0.06 + s * 0.07).fillRect(room.x1 + 16 - s * 8, room.y0, 8, h);
+  }
+  // Viñeta: los bordes del suelo más oscuros, el centro más claro (como la luz de las salas de Isaac)
+  const vig = scene.add.graphics().setDepth(0.29);
+  for (let s = 0; s < 6; s++) {
+    const d = 14 + s * 14;
+    const a = 0.05;
+    vig.fillStyle(0x000000, a).fillRect(room.x0, room.y0, w, d).fillRect(room.x0, room.y1 - d, w, d);
+    vig.fillStyle(0x000000, a).fillRect(room.x0, room.y0, d, h).fillRect(room.x1 - d, room.y0, d, h);
+  }
+  // Cara de la pared de arriba (en sombra), contorno entre pared y suelo y canto claro de las paredes de los lados
+  // y de abajo: así la sala tiene relieve en vez de ser una franja plana (las puertas lo tapan con su suelo)
+  const edge = scene.add.graphics().setDepth(0.32);
+  edge.fillStyle(shade(b.colors.wall, -0.5), 0.55).fillRect(room.x0, room.y0 - 10, w, 10);
+  edge.fillStyle(K, 1).fillRect(room.x0 - 2, room.y0 - 2, w + 4, 2).fillRect(room.x0 - 2, room.y1, w + 4, 2);
+  edge.fillStyle(K, 1).fillRect(room.x0 - 2, room.y0 - 2, 2, h + 4).fillRect(room.x1, room.y0 - 2, 2, h + 4);
+  const lip = shade(b.colors.wall, 0.4);
+  edge.fillStyle(lip, 1).fillRect(room.x0 - 2, room.y1 + 2, w + 4, 3);
+  edge.fillStyle(lip, 0.8).fillRect(room.x0 - 5, room.y0 - 2, 3, h + 4).fillRect(room.x1 + 2, room.y0 - 2, 3, h + 4);
+  // Esquinas: un bloque más oscuro, como las piedras angulares
+  for (const [cx, cy] of [[room.x0 - wall, room.y0 - wall], [room.x1, room.y0 - wall], [room.x0 - wall, room.y1], [room.x1, room.y1]]) {
+    edge.fillStyle(K, 1).fillRect(cx, cy, wall, wall);
+    edge.fillStyle(shade(b.colors.wall, -0.1), 1).fillRect(cx + 3, cy + 3, wall - 6, wall - 6);
+    edge.fillStyle(shade(b.colors.wall, 0.3), 1).fillRect(cx + 3, cy + 3, wall - 6, 3);
+    edge.fillStyle(shade(b.colors.wall, -0.4), 1).fillRect(cx + 3, cy + wall - 6, wall - 6, 3);
+  }
 }
