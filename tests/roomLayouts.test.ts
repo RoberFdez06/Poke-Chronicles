@@ -88,3 +88,10 @@ test('la casilla libre más cercana', () => {
   assert.ok(Math.abs(x - 2) <= 1 && Math.abs(y - 2) <= 1);
   assert.deepEqual(nearestWalkable(g, 0, 0), [0, 0]);
 });
+
+test('las casillas de una sala grande no llevan muros X', () => {
+  for (let seed = 0; seed < 200; seed++) {
+    const g = layoutFor(seed * 31, 3, 'combat', true);
+    assert.ok(g.every((r) => !r.includes('X')));
+  }
+});

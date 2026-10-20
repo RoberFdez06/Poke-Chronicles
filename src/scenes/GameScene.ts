@@ -2331,7 +2331,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.add.tileSprite(i.x0 - WALL, i.y0 - WALL, ROOM.w + WALL * 2, ROOM.h + WALL * 2, this.tiles.wall).setOrigin(0).setTileScale(ts).setDepth(0);
     this.add.tileSprite(i.x0, i.y0, ROOM.w, ROOM.h, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0);
     // Paisaje alrededor, manchas, detalles y sombras del bioma (supervisor)
-    decorateRoom(this, this.biome, { x: room.gx * VIEW.w, y: room.gy * VIEW.h, w: VIEW.w, h: VIEW.h }, i, WALL, this.floorSeed * 31 + room.id, ts * 2.4, { left: this.mergedSide(room, 'left'), right: this.mergedSide(room, 'right') });
+    decorateRoom(this, this.biome, { x: room.gx * VIEW.w, y: room.gy * VIEW.h, w: VIEW.w, h: VIEW.h }, i, WALL, this.floorSeed * 31 + room.id, ts * 2.4, { left: this.mergedSide(room, 'left'), right: this.mergedSide(room, 'right'), up: this.mergedSide(room, 'up'), down: this.mergedSide(room, 'down') });
     if (!plain) {
       // Salas especiales: alfombra de su color (Centro rosa, tienda verde, objeto dorado…) sobre el suelo del bioma
       const rug = this.add.graphics().setDepth(0.2);
@@ -3402,7 +3402,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Dibuja y crea los cuerpos de los obstáculos de la sala. */
   private buildObstacles(room: Room) {
-    const grid = layoutFor(this.floorSeed, room.id, room.kind);
+    const grid = layoutFor(this.floorSeed, room.id, room.kind, this.groupIds(room).length > 1);
     this.grids.set(room.id, grid);
     const i = this.interior(room);
     grid.forEach((row, ty) =>
