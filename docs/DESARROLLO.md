@@ -294,6 +294,14 @@ color al descubrirla, hasta resolverla.
 - **Mercader ambulante** (turquesa): tres objetos o poderes por 8, 14 y 22 monedas; compras uno y se marcha.
 - **Altar** (morado): das un 15 % de tus PS máximos (para el resto de la partida) a cambio de un objeto.
 - **Cofre misterioso** (dorado): se abre sin llave; a veces es una trampa y sale un Pokémon fuerte que suelta el objeto.
+- **Entrenador rival** (rojo, T48): 3 oleadas cortas seguidas; al ganar, otros tantos tickets como da la sala (el doble).
+- **Fuente curativa** (azul claro): cura la mitad de los PS pagando monedas (6 + 2 × piso) o gratis, pero vas un 20 % más
+  lento las 2 salas siguientes ("Cansado" en el HUD).
+- **Sala del tiempo** (ámbar, desde el piso 3): 20 s de reloj; si limpias antes, cae un objeto; si no, entran más enemigos.
+- **Huevo misterioso** (rosa): lo coges y eclosiona tras 2 salas limpias ("Huevo (n)" en el HUD): un 60 % sale un
+  ayudante (un Pokémon del piso que te sigue y ataca al enemigo más cercano; se guarda y pasa de piso) y si no, un objeto.
+- Cada evento tiene su peso según el piso (`eventWeights`): arriba más huevos, fuentes y mercaderes; abajo, más rivales
+  y salas del tiempo. Al entrar, el aviso dice el premio y el riesgo.
 
 Se usan con Enter / A / clic cerca (como el cofre o la tienda).
 

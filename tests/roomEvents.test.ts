@@ -83,3 +83,65 @@ test('altar, cofre trampa y premio del Pokémon raro', () => {
   assert.ok(runawayTickets(4) > runawayTickets(2));
   assert.equal(runawayTickets(0), 4);
 });
+
+// --- T48 ---
+import {
+  EGG_ROOMS,
+  ROOM_EVENT_DESC,
+  TIME_TRIAL_SECONDS,
+  eggHatch,
+  eggTick,
+  eventWeights,
+  fountainHeal,
+  fountainPrice,
+  pickEventKind,
+  rivalBonus,
+  rivalWaveSize,
+  timeTrialExtra,
+  timeTrialSize,
+} from '../src/level/roomEvents.ts';
+
+test('T48: los 8 eventos tienen nombre, descripción (premio y riesgo) y color distinto', () => {
+  assert.equal(ROOM_EVENTS.length, 8);
+  for (const k of ROOM_EVENTS) assert.ok(ROOM_EVENT_DESC[k], k);
+  assert.equal(new Set(ROOM_EVENTS.map((k) => ROOM_EVENT_COLOR[k])).size, ROOM_EVENTS.length);
+});
+
+test('T48: probabilidades por piso: la sala del tiempo desde el piso 3, más rivales y menos huevos al bajar', () => {
+  assert.equal(eventWeights(2).timeTrial, 0);
+  assert.ok(eventWeights(3).timeTrial > 0);
+  assert.ok(eventWeights(6).rival > eventWeights(2).rival);
+  assert.ok(eventWeights(6).egg < eventWeights(2).egg);
+  for (const f of [2, 3, 5, 9]) for (const k of ROOM_EVENTS) assert.ok(eventWeights(f)[k] >= 0, `${f} ${k}`);
+  // El reparto sigue los pesos (muestreo uniforme de x)
+  for (const f of [2, 6]) {
+    const w = eventWeights(f);
+    const total = ROOM_EVENTS.reduce((a, k) => a + w[k], 0);
+    const count = Object.fromEntries(ROOM_EVENTS.map((k) => [k, 0])) as Record<string, number>;
+    const n = 4000;
+    for (let i = 0; i < n; i++) count[pickEventKind(f, (i + 0.5) / n)]++;
+    for (const k of ROOM_EVENTS) assert.ok(Math.abs(count[k] / n - w[k] / total) < 0.01, `${f} ${k}`);
+  }
+  assert.ok(ROOM_EVENTS.includes(pickEventKind(4, 0.9999999)));
+  assert.notEqual(pickEventKind(2, 0.9999999), 'timeTrial');
+});
+
+test('T48: rival, fuente, sala del tiempo y huevo', () => {
+  assert.ok(rivalWaveSize(1, 1) >= 2);
+  assert.ok(rivalWaveSize(5, 3) > rivalWaveSize(1, 1));
+  assert.ok(rivalWaveSize(99, 3) <= 6);
+  assert.equal(rivalBonus(2), 2);
+  assert.equal(rivalBonus(0), 1);
+  assert.equal(fountainHeal(100), 50);
+  assert.ok(fountainPrice(4) > fountainPrice(2));
+  assert.equal(TIME_TRIAL_SECONDS, 20);
+  assert.ok(timeTrialSize(6) >= timeTrialSize(1) && timeTrialSize(99) <= 8);
+  assert.ok(timeTrialExtra(99) <= 6);
+  assert.equal(eggTick(EGG_ROOMS), 1);
+  assert.equal(eggTick(eggTick(EGG_ROOMS)), 0);
+  assert.equal(eggTick(0), 0);
+  const rng = mulberry32(4);
+  let helpers = 0;
+  for (let i = 0; i < 1000; i++) if (eggHatch(rng) === 'helper') helpers++;
+  assert.ok(helpers > 500 && helpers < 700, `${helpers}`);
+});

@@ -25,6 +25,22 @@ import {
   ROOM_EVENT_LABEL,
   RUNAWAY_HP_MUL,
   RUNAWAY_SECONDS,
+  EGG_ROOMS,
+  FOUNTAIN_TIRED_ROOMS,
+  FOUNTAIN_TIRED_SPEED,
+  HELPER_ATTACK_MS,
+  HELPER_DAMAGE_MUL,
+  RIVAL_WAVES,
+  ROOM_EVENT_DESC,
+  TIME_TRIAL_SECONDS,
+  eggHatch,
+  eggTick,
+  fountainHeal,
+  fountainPrice,
+  rivalBonus,
+  rivalWaveSize,
+  timeTrialExtra,
+  timeTrialSize,
 } from '../level/roomEvents';
 import { applyDifficulty, scaleHeal, scaleTickets, withDifficulty, type Difficulty } from '../data/difficulty';
 import { loadSpeciesIndex } from '../data/speciesIndex';
@@ -231,7 +247,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms'
 >;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
@@ -430,6 +446,13 @@ export class GameScene extends Phaser.Scene {
   private roomEvent: RoomEvent | null = null;
   private eventsDone = new Set<number>();
   private hpSacrificed = 0;
+  /** T48: oleada del entrenador rival (0 = no hay), sala del tiempo en marcha, huevo, ayudante y cansancio. */
+  private rivalWave = 0;
+  private timeTrial?: { roomId: number; until: number; failed: boolean; label: Phaser.GameObjects.Text };
+  private eggLeft = 0;
+  private allyId = 0;
+  private ally?: { sprite: Sprite; type: string; nextAt: number };
+  private tiredRooms = 0;
   /** Lo dibujado del evento de la sala actual y los sitios donde se usa con Enter / A / clic. */
   private eventObjs: Phaser.GameObjects.GameObject[] = [];
   private eventSpots: { x: number; y: number; prompt: () => string; use: () => void }[] = [];
@@ -713,6 +736,12 @@ export class GameScene extends Phaser.Scene {
     this.eventObjs = [];
     this.eventSpots = [];
     this.runaway = undefined;
+    this.rivalWave = 0;
+    this.timeTrial = undefined;
+    this.ally = undefined;
+    this.eggLeft = r?.eggLeft ?? this.carry?.eggLeft ?? 0;
+    this.allyId = r?.allyId ?? this.carry?.allyId ?? 0;
+    this.tiredRooms = r?.tiredRooms ?? this.carry?.tiredRooms ?? 0;
     if (r) {
       this.floorNum = r.floor;
       this.bossHistory = [...r.bossHistory];
@@ -1038,6 +1067,8 @@ export class GameScene extends Phaser.Scene {
     this.ability?.apply?.(stats);
     // Altares (T39): los PS máximos dados se pierden para el resto de la partida
     if (this.hpSacrificed > 0) stats.maxHp = Math.max(1, stats.maxHp - this.hpSacrificed);
+    // Fuente curativa (T48): beber gratis cansa unas salas
+    if (this.tiredRooms > 0) stats.speed *= FOUNTAIN_TIRED_SPEED;
     return stats;
   }
 
@@ -1097,7 +1128,7 @@ export class GameScene extends Phaser.Scene {
     const i = this.interior(room);
     // Mismo azar cada vez que entras en esta sala (y en el desafío diario, el de todos)
     const rng = mulberry32((this.floorSeed ^ Math.imul(room.id + 1, 0x9e3779b1)) >>> 0);
-    this.notify(`¡Sala sorpresa!\n${ROOM_EVENT_LABEL[kind]}`, { kind: 'info', icon: 'star' });
+    this.notify(`¡Sala sorpresa! ${ROOM_EVENT_LABEL[kind]}\n${ROOM_EVENT_DESC[kind]}`, { kind: 'info', icon: 'star' });
     const keep = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
       this.eventObjs.push(o);
       return o;
@@ -1172,6 +1203,72 @@ export class GameScene extends Phaser.Scene {
           canUseAltar(this.stats.maxHp) ? `Enter / A / clic: dar ${altarCost(this.stats.maxHp)} PS máximos por un objeto` : 'Tienes muy pocos PS máximos para el altar',
         use,
       });
+      return;
+    }
+
+    if (kind === 'rival') {
+      // Entrenador rival: oleadas cortas seguidas; al ganar, el doble de tickets de la sala (ver checkClear)
+      this.rivalWave = 1;
+      label(i.cx, i.y0 + 40, '¡Entrenador rival!', 22, '#ff8a80');
+      this.setDoorsLocked(room, true, true);
+      sfx('door');
+      this.notify(`¡Combate contra el rival!\nOleada 1/${RIVAL_WAVES}`, { kind: 'danger', icon: 'sword' });
+      this.time.delayedCall(700, () => !this.ended && this.current.id === room.id && this.spawnEnemies(rivalWaveSize(this.floorNum, 1)));
+      return;
+    }
+
+    if (kind === 'timeTrial') {
+      // Sala del tiempo: enemigos y un reloj; si se acaba, entran más (ver updateTimeTrial y checkClear)
+      this.setDoorsLocked(room, true, true);
+      sfx('door');
+      const clock = label(i.cx, i.y0 + 40, '', 26, '#ffd34d');
+      this.timeTrial = { roomId: room.id, until: this.time.now + TIME_TRIAL_SECONDS * 1000, failed: false, label: clock };
+      this.spawnEnemies(timeTrialSize(this.floorNum));
+      return;
+    }
+
+    if (kind === 'fountain') {
+      // Fuente curativa: pagar monedas o beber gratis y cansarse unas salas
+      const g = keep(this.add.graphics().setDepth(2));
+      g.fillStyle(0x6e7686, 1).fillCircle(i.cx, i.cy, 62);
+      g.fillStyle(0x9aa3b4, 1).fillCircle(i.cx, i.cy, 54);
+      g.fillStyle(0x64b5f6, 0.95).fillCircle(i.cx, i.cy, 44);
+      g.fillStyle(0xbbdefb, 0.9).fillCircle(i.cx - 12, i.cy - 12, 10);
+      const drops = keep(this.add.graphics().setDepth(3));
+      this.tweens.addCounter({ from: 0, to: 1, duration: 900, repeat: -1, onUpdate: (tw) => {
+        const v = tw.getValue() ?? 0;
+        drops.clear().fillStyle(0xe3f2fd, 1 - v);
+        for (let k = 0; k < 3; k++) drops.fillRect(i.cx - 20 + k * 20, i.cy - 30 - v * 30, 4, 4);
+      } });
+      const price = fountainPrice(this.floorNum);
+      const amount = () => fountainHeal(this.stats.maxHp);
+      const pay = () => this.useFountain(room, true, price);
+      const free = () => this.useFountain(room, false, price);
+      for (const [x, text, use] of [[i.cx - 150, `Pagar ${price} monedas`, pay], [i.cx + 150, 'Beber gratis (cansa)', free]] as const) {
+        const z = keep(this.add.zone(x, i.cy + 70, 170, 50));
+        clickable(z, use);
+        label(x, i.cy + 70, text, 15, '#bbdefb');
+      }
+      label(i.cx, i.cy - 84, 'Fuente curativa', 18, '#e3f2fd');
+      this.eventSpots.push(
+        { x: i.cx - 150, y: i.cy + 70, prompt: () => `Enter / A / clic: curar ${amount()} PS por ${price} monedas (tienes ${this.coins})`, use: pay },
+        { x: i.cx + 150, y: i.cy + 70, prompt: () => `Enter / A / clic: curar ${amount()} PS gratis, pero irás más lento ${FOUNTAIN_TIRED_ROOMS} salas`, use: free },
+      );
+      return;
+    }
+
+    if (kind === 'egg') {
+      // Huevo misterioso: se lleva y eclosiona tras unas salas limpiadas
+      const g = keep(this.add.graphics().setDepth(3));
+      g.fillStyle(0x101828, 1).fillEllipse(i.cx, i.cy, 52, 66);
+      g.fillStyle(0xfdf6e3, 1).fillEllipse(i.cx, i.cy, 46, 60);
+      g.fillStyle(0x7cb342, 1).fillCircle(i.cx - 8, i.cy - 10, 6).fillCircle(i.cx + 10, i.cy + 8, 5).fillCircle(i.cx - 4, i.cy + 18, 4);
+      this.tweens.add({ targets: g, angle: { from: -3, to: 3 }, duration: 300, yoyo: true, repeat: -1, repeatDelay: 900 });
+      label(i.cx, i.cy + 56, 'Huevo misterioso', 15, '#f8bbd0');
+      const take = () => this.takeEgg(room);
+      const z = keep(this.add.zone(i.cx, i.cy, 70, 80));
+      clickable(z, take);
+      this.eventSpots.push({ x: i.cx, y: i.cy, prompt: () => (this.eggLeft > 0 ? 'Ya llevas un huevo' : 'Enter / A / clic: coger el huevo'), use: take });
       return;
     }
 
@@ -1331,6 +1428,122 @@ export class GameScene extends Phaser.Scene {
         if (show) o.cameraFilter &= ~cam;
         else o.cameraFilter |= cam;
       }
+    }
+  }
+
+  // --- Eventos de la T48: fuente, huevo, sala del tiempo y ayudante ---
+
+  private useFountain(room: Room, paid: boolean, price: number) {
+    if (this.ended || this.transitioning || this.eventsDone.has(room.id)) return;
+    if (!canHeal(this.hp, this.stats.maxHp)) return this.notify('Ya tienes todos los PS', { kind: 'warning', icon: 'heart' });
+    if (paid && this.coins < price) return this.notify(`Te faltan monedas (${this.coins}/${price})`, { kind: 'warning', icon: 'coin' });
+    if (paid) this.coins -= price;
+    const amount = scaleHeal(fountainHeal(this.stats.maxHp), this.diff);
+    this.hp = healed(this.hp, this.stats.maxHp, amount);
+    sfx('heal');
+    this.popup(this.player.x, this.player.y - 50, `+${amount} PS`, 0x64b5f6);
+    if (!paid) {
+      this.tiredRooms = FOUNTAIN_TIRED_ROOMS;
+      this.stats = this.calcStats();
+    }
+    this.notify(paid ? `¡Fuente curativa! +${amount} PS` : `¡Fuente curativa! +${amount} PS\nCansado: más lento ${FOUNTAIN_TIRED_ROOMS} salas`, { kind: 'heal', icon: 'heart' });
+    this.finishEvent(room);
+  }
+
+  private takeEgg(room: Room) {
+    if (this.ended || this.transitioning || this.eventsDone.has(room.id)) return;
+    if (this.eggLeft > 0) return this.notify('Ya llevas un huevo', { kind: 'warning', icon: 'star' });
+    this.eggLeft = EGG_ROOMS;
+    sfx('pickup');
+    this.notify(`¡Huevo misterioso!\nEclosiona tras ${EGG_ROOMS} salas limpias`, { kind: 'item', icon: 'star' });
+    this.finishEvent(room);
+  }
+
+  /** Al limpiar una sala: el huevo cuenta y, si toca, eclosiona; el cansancio de la fuente se pasa. */
+  private onRoomClearedT48() {
+    if (this.tiredRooms > 0) {
+      this.tiredRooms--;
+      if (this.tiredRooms === 0) {
+        this.stats = this.calcStats();
+        this.notify('Ya no estás cansado', { kind: 'info', icon: 'heart' });
+      }
+    }
+    if (this.eggLeft <= 0) return;
+    this.eggLeft = eggTick(this.eggLeft);
+    if (this.eggLeft > 0) return void this.notify(`El huevo se mueve…\nFalta ${this.eggLeft} sala${this.eggLeft === 1 ? '' : 's'}`, { kind: 'info', icon: 'star' });
+    const rng = mulberry32((this.floorSeed ^ (this.current.id * 7919 + 13)) >>> 0);
+    sparkle(this, this.player.x, this.player.y);
+    if (eggHatch(rng) === 'helper' && this.foeKinds.length > 0) {
+      const k = this.foeKinds[Math.floor(rng() * this.foeKinds.length)];
+      this.allyId = Number(k.key.replace('foe-', ''));
+      this.spawnAlly();
+      const name = k.name ? k.name.charAt(0).toUpperCase() + k.name.slice(1) : 'Un Pokémon';
+      this.notify(`¡El huevo ha eclosionado!\n${name} te ayuda a pelear`, { kind: 'reward', icon: 'star' });
+    } else {
+      const p = this.freeSpot(this.player.x + 60, this.player.y);
+      this.dropItem(this.current.id, p.x, p.y);
+      this.notify('¡El huevo ha eclosionado!\nHabía un objeto dentro', { kind: 'reward', icon: 'star' });
+    }
+  }
+
+  /** Ayudante del huevo: sigue al jugador y ataca al enemigo más cercano. Se crea si su dibujo está cargado. */
+  private spawnAlly() {
+    this.ally?.sprite.destroy();
+    this.ally = undefined;
+    const key = `foe-${this.allyId}`;
+    if (!this.allyId || !this.textures.exists(`${key}-front`) || !this.player) return;
+    const sprite = this.add.sprite(this.player.x - 50, this.player.y + 20, `${key}-front`).setDisplaySize(44, 44).setDepth(4) as Sprite;
+    const type = this.foeKinds.find((k) => k.key === key)?.type ?? 'normal';
+    this.ally = { sprite, type, nextAt: this.time.now + HELPER_ATTACK_MS };
+  }
+
+  private updateAlly(time: number, delta: number) {
+    const a = this.ally;
+    if (!a || !this.player) return;
+    const s = a.sprite;
+    // Va detrás del jugador, un poco a un lado
+    const tx = this.player.x - 50;
+    const ty = this.player.y + 20;
+    const f = Math.min(1, (delta / 1000) * 6);
+    s.setPosition(s.x + (tx - s.x) * f, s.y + (ty - s.y) * f + Math.sin(time / 180) * 0.6);
+    if (this.ended || this.transitioning || time < a.nextAt) return;
+    a.nextAt = time + HELPER_ATTACK_MS;
+    let best: Sprite | undefined;
+    let bestD = 520;
+    for (const c of this.enemies.getChildren()) {
+      const e = c as Sprite;
+      if (!e.active || e.getData('runaway')) continue;
+      const d = Phaser.Math.Distance.Between(s.x, s.y, e.x, e.y);
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    }
+    if (!best) return;
+    const target = best;
+    const color = typeColor(a.type);
+    const ball = this.add.circle(s.x, s.y, 7, color).setStrokeStyle(2, 0xffffff, 0.9).setDepth(6);
+    s.setFlipX(target.x > s.x);
+    this.tweens.add({
+      targets: ball, x: target.x, y: target.y, duration: Math.max(120, bestD * 0.9),
+      onComplete: () => {
+        ball.destroy();
+        if (target.active && !this.ended) this.hitEnemy(target, Math.max(1, this.stats.damage * HELPER_DAMAGE_MUL), a.type, target.x, target.y, color);
+      },
+    });
+  }
+
+  /** Sala del tiempo: cuenta atrás; si se acaba con enemigos vivos, entran más. */
+  private updateTimeTrial(time: number) {
+    const t = this.timeTrial;
+    if (!t || this.current?.id !== t.roomId) return;
+    const left = Math.max(0, Math.ceil((t.until - time) / 1000));
+    t.label.setText(t.failed ? '¡Tiempo!' : `⏱ ${left} s`).setColor(left <= 5 || t.failed ? '#ff6e6e' : '#ffd34d');
+    if (!t.failed && time >= t.until && !this.ended && !this.transitioning) {
+      t.failed = true;
+      this.cameras.main.shake(160, 0.005);
+      this.notify('¡Se acabó el tiempo!\nEntran más enemigos', { kind: 'danger', icon: 'clock' });
+      this.spawnEnemies(timeTrialExtra(this.floorNum));
     }
   }
 
@@ -1706,6 +1919,7 @@ export class GameScene extends Phaser.Scene {
       this.notify(`${head}
 ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
+    if (this.allyId) this.spawnAlly();
     if (this.weather) {
       this.weatherFx = new WeatherFx(this, this.weather, 20, this.fxBudget.low);
       const w = this.weather;
@@ -1882,6 +2096,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       difficulty: this.diff,
       eventsDone: [...this.eventsDone],
       hpSacrificed: this.hpSacrificed,
+      eggLeft: this.eggLeft,
+      allyId: this.allyId,
+      tiredRooms: this.tiredRooms,
     });
   }
 
@@ -3799,6 +4016,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       healed: this.healedRun,
       counters: { ...this.counters },
       hpSacrificed: this.hpSacrificed,
+      eggLeft: this.eggLeft,
+      allyId: this.allyId,
+      tiredRooms: this.tiredRooms,
     };
     // Caída por la trampilla: se coloca encima, gira encogiéndose hacia el agujero y la cámara se acerca
     const p = this.player;
@@ -3982,6 +4202,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     });
 
     this.updateRunaway(time);
+    this.updateTimeTrial(time);
+    this.updateAlly(time, delta);
 
     // HUD
     if (this.fpsText && time - ((this.fpsText.getData('at') as number | undefined) ?? 0) > 500) {
@@ -3989,7 +4211,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     const foes = this.enemies.countActive(true);
     this.nameText.setText(this.starterName.charAt(0).toUpperCase() + this.starterName.slice(1));
-    this.progressHud.setText(`${progressText(this.mode, this.floorNum)}${this.weather ? ` · ${WEATHER_LABEL[this.weather]}` : ''}${foes ? ` · ${foes} enem.` : ''}`);
+    this.progressHud.setText(`${progressText(this.mode, this.floorNum)}${this.weather ? ` · ${WEATHER_LABEL[this.weather]}` : ''}${this.eggLeft > 0 ? ` · Huevo (${this.eggLeft})` : ''}${this.tiredRooms > 0 ? ' · Cansado' : ''}${foes ? ` · ${foes} enem.` : ''}`);
     this.hpText.setText(`${Math.max(0, Math.ceil(this.hp))}/${this.stats.maxHp}`);
     this.hpBar.set(this.hp / this.stats.maxHp);
     const bb = this.bossBar;
@@ -4881,6 +5103,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       return;
     }
     if (this.cleared.has(room.id) || this.enemies.countActive(true) > 0) return;
+    if (this.rivalWave > 0 && this.roomEvent?.roomId === room.id && this.rivalWave < RIVAL_WAVES) {
+      this.rivalWave++;
+      const w = this.rivalWave;
+      this.notify(`El rival saca otro Pokémon\nOleada ${w}/${RIVAL_WAVES}`, { kind: 'danger', icon: 'sword' });
+      this.time.delayedCall(900, () => !this.ended && this.current.id === room.id && this.spawnEnemies(rivalWaveSize(this.floorNum, w)));
+      return;
+    }
     if (room.kind === 'challenge' && this.challengeWave > 0 && this.challengeWave < CHALLENGE_WAVES) {
       this.challengeWave++;
       this.notify(`Oleada ${this.challengeWave}/${CHALLENGE_WAVES}`, { kind: 'danger', icon: 'heart' });
@@ -4905,6 +5134,25 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // En Rush de jefes no hay salas que den tickets, así que cada jefe da algo menos que en un piso
     const bossReward = bossTicketsFor(this.mode === 'bossrush' ? Math.ceil(this.floorNum / 2) : this.floorNum);
     const reward = this.giveTickets(room.kind === 'boss' ? bossReward : roomTicketsFor(this.floorNum));
+    // T48: premio del rival y de la sala del tiempo; huevo y cansancio
+    if (this.rivalWave > 0 && this.roomEvent?.roomId === room.id) {
+      this.rivalWave = 0;
+      this.eventsDone.add(room.id);
+      const bonus = this.giveTickets(rivalBonus(reward));
+      this.notify(`¡Has vencido al rival!\n+${bonus} tickets extra`, { kind: 'reward', icon: 'ticket' });
+    }
+    const tt = this.timeTrial;
+    if (tt && tt.roomId === room.id) {
+      tt.label.destroy();
+      this.timeTrial = undefined;
+      this.eventsDone.add(room.id);
+      if (!tt.failed) {
+        const i = this.interior(room);
+        this.dropItem(room.id, i.cx, i.cy);
+        this.notify('¡A tiempo!\nHa caído un objeto', { kind: 'reward', icon: 'clock' });
+      } else this.notify('Sala del tiempo superada', { kind: 'info', icon: 'clock' });
+    }
+    this.onRoomClearedT48();
 
     if (room.kind === 'boss') {
       // Récord: pisos completados (Normal, Infinito) o jefes vencidos (Rush)

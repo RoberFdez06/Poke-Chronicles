@@ -974,3 +974,22 @@ solo con tests, tipos y build. Lo que más conviene mirar:
 - Medido en el navegador: la recogida normal ya era inmediata (~5 ms, un fotograma); con las ranuras llenas ahora se
   recoge en ~0,4 s desde el Enter (incluye la pulsación) y la pantalla se abre una sola vez.
 - Prueba nueva `tests/e2e/slotswap.spec.ts`.
+
+## T48 — Más eventos de sala
+- `src/level/roomEvents.ts`: 4 eventos nuevos con nombre, color de minimapa y `ROOM_EVENT_DESC` (premio y riesgo):
+  entrenador rival (`RIVAL_WAVES` 3, `rivalWaveSize`, `rivalBonus` = otros tantos tickets como la sala), fuente curativa
+  (`fountainHeal` 50 %, `fountainPrice` 6 + 2×piso, o gratis con `FOUNTAIN_TIRED_ROOMS` 2 salas a ×0,8 de velocidad),
+  sala del tiempo (`TIME_TRIAL_SECONDS` 20, `timeTrialSize`/`timeTrialExtra`) y huevo misterioso (`EGG_ROOMS` 2,
+  `eggHatch` 60 % ayudante / 40 % objeto). Probabilidades por piso con `eventWeights` + `pickEventKind` (la sala del
+  tiempo desde el piso 3; más rivales y menos huevos al bajar). Tests en `tests/roomEvents.test.ts` (7).
+- **RUN_VERSION 14**: `eggLeft`, `allyId` y `tiredRooms` (también en `FloorCarry`: el huevo, el ayudante y el
+  cansancio pasan de piso). Los v13 se migran a 0.
+- GameScene: los eventos nuevos en `startEvent`; oleadas del rival y premios del rival y de la sala del tiempo en
+  `checkClear`; `onRoomClearedT48` (cuenta del huevo, eclosión, fin del cansancio); `updateTimeTrial` (reloj arriba de
+  la sala, rojo en los últimos 5 s) y `updateAlly` (el ayudante sigue al jugador y cada 1,1 s lanza una bola de su tipo
+  al enemigo más cercano, 60 % de tu daño). El cansancio entra en `calcStats`. HUD: "Huevo (n)" y "Cansado".
+- Fuente y huevo se usan con Enter / A / clic cerca (dos sitios en la fuente: pagar y beber gratis).
+- e2e `tests/e2e/events.spec.ts`: fuente (sin monedas avisa; gratis cura y cansa), huevo y ayudante, reloj que se acaba
+  y rival con sus 3 oleadas y el premio; sin errores en consola (capturas 30-33).
+- Ojo para pruebas: los enemigos recién creados no cuentan en `countActive(true)` durante su entrada.
+- En GameScene solo he subido mis trozos; los del supervisor (muros y fosos con `roomShape`) siguen sin commit.

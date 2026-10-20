@@ -50,6 +50,9 @@ function sample(): RunSave {
     difficulty: 'hard',
     eventsDone: [5],
     hpSacrificed: 12,
+    eggLeft: 1,
+    allyId: 16,
+    tiredRooms: 0,
   };
 }
 
@@ -221,4 +224,14 @@ test('huecos fuera de rango no hacen nada', () => {
   assert.equal(loadRun(7, st), null);
   assert.equal(st.data.size, 0);
   assert.equal(runKey(0), 'pokeisaac.run.0');
+});
+
+test('un guardado v13 se migra sin huevo, ayudante ni cansancio (T48)', () => {
+  const { eggLeft: _e, allyId: _a, tiredRooms: _t, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 13 }));
+  assert.ok(run);
+  assert.equal(run.version, RUN_VERSION);
+  assert.deepEqual([run.eggLeft, run.allyId, run.tiredRooms], [0, 0, 0]);
+  assert.deepEqual([parseRun(JSON.stringify(sample()))?.eggLeft, parseRun(JSON.stringify(sample()))?.allyId], [1, 16]);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), eggLeft: -1 })), null);
 });

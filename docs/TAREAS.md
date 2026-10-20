@@ -358,7 +358,7 @@ Reglas de siempre: español, teclado/ratón/mando cada uno por separado, avisos 
 tickets/monedas/caramelos separados. Cada tarea con tests de lógica pura (`node --test`) y `tsc` + `npm test` en verde.
 No toques los ficheros del supervisor (arte, menús, `attacks.ts`, `movePatterns.ts`, `finale.ts`, etc.). Esta tanda va en `main`.
 
-## [ ] T48 — Más eventos de sala
+## [x] T48 — Más eventos de sala
 - En `src/level/roomEvents.ts` (hoy: Pokémon raro, mercader, altar, cofre trampa) añade 4 eventos nuevos con su etiqueta,
   color de minimapa, premio y riesgo: (1) **Entrenador rival**: combate de oleadas cortas con premio doble de tickets;
   (2) **Fuente curativa**: cura a medias y cuesta monedas o una mejora temporal; (3) **Sala del tiempo**: 20 s de reloj,
