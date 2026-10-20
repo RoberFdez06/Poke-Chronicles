@@ -40,4 +40,37 @@ export const EVOLVE_AT: Readonly<Record<GameMode, readonly number[]>> = {
   bossrush: [3, 6],
 };
 
-export const shouldEvolve = (mode: GameMode, n: number): boolean => EVOLVE_AT[mode].includes(n);
+/**
+ * Para los que solo evolucionan una vez (líneas de dos formas, como Pikachu-Raichu): una sola evolución a mitad de
+ * partida, en el piso 3 (pedido por Roberto el 20/10).
+ */
+export const EVOLVE_AT_SINGLE: Readonly<Record<GameMode, readonly number[]>> = {
+  normal: [3],
+  endless: [3],
+  waves: [9],
+  bossrush: [4],
+};
+
+/** Cuántas evoluciones le quedan a `id` en su cadena como mucho (0 si es la última forma o no está). */
+export function evolutionsLeft(chain: ChainLink, id: number): number {
+  const depth = (node: ChainLink): number => (node.evolves_to.length ? 1 + Math.max(...node.evolves_to.map(depth)) : 0);
+  const find = (node: ChainLink): ChainLink | null => {
+    if (idFromUrl(node.species.url) === id) return node;
+    for (const n of node.evolves_to) {
+      const hit = find(n);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const node = find(chain);
+  return node ? depth(node) : 0;
+}
+
+/** Pisos (o rondas, o jefes) en los que evoluciona un Pokémon al que, al empezar, le quedan `left` evoluciones. */
+export function evolveFloors(mode: GameMode, left: number): readonly number[] {
+  if (left <= 0) return [];
+  return left === 1 ? EVOLVE_AT_SINGLE[mode] : EVOLVE_AT[mode];
+}
+
+/** Si en este piso puede tocar evolucionar (luego `evolveFloors` decide según la cadena del Pokémon). */
+export const shouldEvolve = (mode: GameMode, n: number): boolean => EVOLVE_AT[mode].includes(n) || EVOLVE_AT_SINGLE[mode].includes(n);

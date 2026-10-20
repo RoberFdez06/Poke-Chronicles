@@ -2,7 +2,7 @@ import type { MoveInfo } from './items';
 import { isUsableMove, localName, pickMoveIds, typeMoveIds } from './moves';
 import { loadSpeciesIndex } from './speciesIndex';
 import { parseApiStats, type BaseStats } from './pokeStats';
-import { nextEvolutionIds, type ChainLink } from './evolution';
+import { evolutionsLeft, nextEvolutionIds, type ChainLink } from './evolution';
 import { ABILITY_EFFECTS, pickAbility } from './abilities';
 import { NETWORK_TIMEOUT_MS, offlinePath, substitutePokemon, withTimeout } from './offline';
 
@@ -144,6 +144,19 @@ export function fetchSpeciesName(id: number): Promise<string> {
 const chainCache = new Map<number, Promise<number[]>>();
 
 /** Especies en las que puede evolucionar `id` según su `evolution-chain` (vacío si no evoluciona). */
+const leftCache = new Map<number, Promise<number>>();
+
+/** Cuántas evoluciones le quedan a la especie `id` en su cadena (0 si no evoluciona). */
+export function fetchEvolutionsLeft(id: number): Promise<number> {
+  return cached(leftCache, id, async () => {
+    const species = await getJson(`${BASE}/pokemon-species/${id}`);
+    const url = species.evolution_chain?.url as string | undefined;
+    if (!url) return 0;
+    const chain = (await getJson(url)).chain as ChainLink;
+    return evolutionsLeft(chain, id);
+  });
+}
+
 export function fetchNextEvolutions(id: number): Promise<number[]> {
   return cached(chainCache, id, async () => {
     const species = await getJson(`${BASE}/pokemon-species/${id}`);

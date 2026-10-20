@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetchAttackMovesForTypes, fetchMoveInfo, fetchNextEvolutions, fetchPokemon, fetchPokemonCard, pickSprites } from '../data/pokeapi';
-import { pickEvolution, shouldEvolve } from '../data/evolution';
+import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetchAttackMovesForTypes, fetchMoveInfo, fetchEvolutionsLeft, fetchNextEvolutions, fetchPokemon, fetchPokemonCard, pickSprites } from '../data/pokeapi';
+import { evolveFloors, pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
 import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal } from '../data/save';
@@ -1986,6 +1986,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.evolving || this.ended) return;
     this.evolving = true;
     try {
+      // Las líneas de tres formas evolucionan en los pisos 2 y 4; las de dos, una vez en el piso 3 (evolution.ts)
+      const left = await fetchEvolutionsLeft(this.starterId).catch(() => 2);
+      if (!evolveFloors(this.mode, left).includes(this.floorNum)) return;
       const next = pickEvolution(await fetchNextEvolutions(this.formId), Math.random);
       if (next === null) return;
       const data = await fetchPokemon(next);
@@ -2450,7 +2453,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.secretWalls.delete(k);
       this.drawDoor(rm, dir, this.add.graphics().setDepth(0), this.floorColorOf(rm));
       const block = this.doorMap.get(k);
-      if (block) {
+      // Si la sala está cerrada por un combate (u otro evento), la puerta nueva nace cerrada también: no se puede
+      // huir a la sala secreta con enemigos vivos. Se abre con las demás al limpiar la sala.
+      const roomLocked = DIRS.some((dd) => {
+        const b = this.doorMap.get(doorKey(rm.id, dd));
+        return !!b && b !== block && (b.body as Phaser.Physics.Arcade.StaticBody).enable;
+      });
+      if (block && roomLocked) {
+        block.setVisible(true);
+        (block.getData('bars') as Phaser.GameObjects.Container | undefined)?.setVisible(true);
+        (block.body as Phaser.Physics.Arcade.StaticBody).enable = true;
+      } else if (block) {
         block.setVisible(false);
         (block.getData('bars') as Phaser.GameObjects.Graphics | undefined)?.setVisible(false);
         (block.body as Phaser.Physics.Arcade.StaticBody).enable = false;
