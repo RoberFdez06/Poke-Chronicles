@@ -7,6 +7,7 @@ import type { Anim, Motion, Pattern } from '../data/movePatterns';
 import { typeColor } from '../data/types';
 import { typeImpact, typeTrail, projKey } from '../ui/art/typeFx';
 import { dustBurst, hitSpark } from '../ui/art/combatFx';
+import { drawPixBeam, pixBlast, pixBolt, pixCracks, pixDebris, pixGeyser, pixMarker, pixRing, pixSpeedLines, pixTrap, PX } from '../ui/art/pixelFx';
 
 /** Mezcla dos colores (t = 0 → a, t = 1 → b). */
 function mixColor(a: number, b: number, t: number): number {
@@ -148,11 +149,8 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
           g.lineStyle(4, color, 0.5).lineBetween(src.x, src.y, x2, y2);
           return { x2, y2, on: false };
         }
-        const w = p.width * (0.85 + Math.random() * 0.3);
-        g.lineStyle(w + 14, color, 0.25).lineBetween(src.x, src.y, x2, y2);
-        g.lineStyle(w, color, 0.9).lineBetween(src.x, src.y, x2, y2);
-        g.lineStyle(w * 0.35, 0xffffff, 1).lineBetween(src.x, src.y, x2, y2);
-        g.fillStyle(0xffffff, 1).fillCircle(src.x, src.y, w * 0.6);
+        // Rayo pixel art (supervisor): bandas de color con núcleo blanco y anillos de energía que viajan
+        drawPixBeam(g, src.x, src.y, x2, y2, Math.max(PX * 3, p.width), color, t);
         return { x2, y2, on: true };
       };
       const ev = sc.time.addEvent({
@@ -189,6 +187,7 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
         later(h, r * 170, () => {
           if (!src.active) return;
           const off = r * (Math.PI / p.n) + (side === 'foe' ? Math.random() : 0);
+          pixRing(sc, src.x, src.y + 10, 70 + r * 20, color, 300, 6);
           for (let k = 0; k < p.n; k++) fire(off + (k / p.n) * Math.PI * 2, { speed: p.speed, size: p.size, motion: p.motion, anim: p.anim, life: 900 });
         });
       }
@@ -203,12 +202,14 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
       const g = sc.add.graphics().setDepth(1.5);
       const warn = side === 'foe' ? 500 : 0;
       if (warn) {
-        const w = sc.add.circle(cx, cy, p.radius).setStrokeStyle(4, color, 0.7).setFillStyle(color, 0.12).setDepth(1.5);
+        const w = pixMarker(sc, cx, cy, p.radius, color);
         sc.tweens.add({ targets: w, alpha: 0.3, yoyo: true, repeat: 2, duration: warn / 6, onComplete: () => w.destroy() });
       }
       later(h, warn, () => {
         sc.cameras.main.shake(p.ms * 0.6, 0.008);
         dustBurst(sc, cx, cy, 1.6, 12);
+        pixCracks(sc, cx, cy, p.radius * 0.8, color, p.ms + 300);
+        pixDebris(sc, cx, cy, color, 12, 1.1);
         const t0 = now(h);
         const ev = sc.time.addEvent({
           delay: 30,
@@ -217,8 +218,15 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
             const k = Math.min(1, (now(h) - t0) / p.ms);
             const r = p.radius * Phaser.Math.Easing.Cubic.Out(k);
             g.clear();
-            g.lineStyle(14, color, 0.35 * (1 - k)).strokeEllipse(cx, cy, r * 2, r * 1.3);
-            g.lineStyle(5, 0xffffff, 0.8 * (1 - k)).strokeEllipse(cx, cy, r * 2, r * 1.3);
+            // Onda de tierra en píxeles: borde de rocas del color del tipo con cresta blanca
+            const stepA = (PX * 0.9) / Math.max(r, 10);
+            for (let t = 0; t < Math.PI * 2; t += stepA) {
+              const px = Math.round((cx + Math.cos(t) * r) / PX) * PX;
+              const py = Math.round((cy + Math.sin(t) * r * 0.65) / PX) * PX;
+              g.fillStyle(0x18202c, 0.6 * (1 - k)).fillRect(px - PX, py - PX + 2, PX * 2, PX * 2);
+              g.fillStyle(color, 1 - k).fillRect(px - PX, py - PX, PX * 2, PX);
+              g.fillStyle((t * 5) % 2 < 1 ? 0xffffff : color, 1 - k).fillRect(px - PX / 2, py - PX, PX, PX);
+            }
             if (Math.random() < 0.6) {
               const a = Math.random() * Math.PI * 2;
               typeImpact(sc, cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.65, type, 0.6, 3);
@@ -244,8 +252,8 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
           const first = i === 0;
           const x = Phaser.Math.Clamp(base.x + (first ? 0 : Phaser.Math.Between(-p.area / 2, p.area / 2)), rm.x0 + 30, rm.x1 - 30);
           const y = Phaser.Math.Clamp(base.y + (first ? 0 : Phaser.Math.Between(-p.area / 2, p.area / 2)), rm.y0 + 30, rm.y1 - 30);
-          const mark = sc.add.circle(x, y, p.radius, color, 0.15).setStrokeStyle(3, color, 0.85).setDepth(1.5);
-          sc.tweens.add({ targets: mark, scale: { from: 1.3, to: 1 }, fillAlpha: 0.35, duration: p.delay });
+          const mark = pixMarker(sc, x, y, p.radius, color);
+          sc.tweens.add({ targets: mark, scale: { from: 1.3, to: 1 }, duration: p.delay });
           // Lo que cae: el dibujo del tipo, grande, desde arriba
           const fall = sc.add.image(x, y - 420, projKey(type)).setScale(4.5).setDepth(12).setRotation(Math.PI / 2);
           sc.tweens.add({
@@ -255,8 +263,8 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
               sc.tweens.killTweensOf(mark);
               mark.destroy();
               if (!h.alive()) return;
-              typeImpact(sc, x, y, type, 1.4, 12);
-              hitSpark(sc, x, y, color, 8, 1.3);
+              typeImpact(sc, x, y, type, 1, 6);
+              pixBlast(sc, x, y, p.radius, color);
               sc.cameras.main.shake(90, 0.004);
               h.area(side, x, y, p.radius, dmg, type, src);
             },
@@ -277,7 +285,7 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
         const y0 = src.y;
         const ms = (side === 'foe' ? 900 : 620) / slow;
         const shadow = sc.add.ellipse(x0, y0 + 20, 26, 9, 0x000000, 0.3).setDepth(1.5);
-        const mark = side === 'foe' ? sc.add.circle(tx, ty, p.radius, color, 0.12).setStrokeStyle(2, color, 0.7).setDepth(1.5) : undefined;
+        const mark = side === 'foe' ? pixMarker(sc, tx, ty, p.radius, color) : undefined;
         const ball = sc.add.image(x0, y0, projKey(type)).setScale(3.6).setDepth(12);
         const k = { v: 0 };
         sc.tweens.add({
@@ -293,10 +301,9 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
             shadow.destroy();
             mark?.destroy();
             if (!h.alive()) return;
-            typeImpact(sc, tx, ty, type, 1.5, 14);
+            typeImpact(sc, tx, ty, type, 1, 6);
             dustBurst(sc, tx, ty, 1.1, 8);
-            const ring = sc.add.circle(tx, ty, 10, color, 0.5).setDepth(7);
-            sc.tweens.add({ targets: ring, radius: p.radius, alpha: 0, duration: 260, onComplete: () => ring.destroy() });
+            pixBlast(sc, tx, ty, p.radius, color);
             h.area(side, tx, ty, p.radius, dmg, type, src);
           },
         });
@@ -336,7 +343,8 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
         const e = nearestTarget(h, side, from.x, from.y, hit, k === 0 ? p.range * 1.5 : p.range);
         if (!e) return;
         hit.add(e);
-        bolt(sc, from.x, from.y, e.x, e.y, color);
+        pixBolt(sc, from.x, from.y, e.x, e.y, color);
+        hitSpark(sc, e.x, e.y, color, 6, 1);
         if (side === 'player') h.hitOne(e, dmg, type);
         else h.area('foe', e.x, e.y, 1, dmg, type, src);
         from = { x: e.x, y: e.y };
@@ -353,19 +361,16 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
         const x = src.x + dir.x * p.gap * (i + 1);
         const y = src.y + dir.y * p.gap * (i + 1) + 10;
         if (warn) {
-          const m = sc.add.circle(x, y, p.radius, color, 0.15).setStrokeStyle(2, color, 0.8).setDepth(1.5);
+          const m = pixMarker(sc, x, y, p.radius, color);
           later(h, warn + i * p.every, () => m.destroy());
         }
         later(h, warn + i * p.every, () => {
           // Grieta en el suelo y un géiser del tipo que sale hacia arriba
           const crack = sc.add.ellipse(x, y, p.radius * 1.6, p.radius * 0.6, 0x000000, 0.35).setDepth(1.5);
           sc.tweens.add({ targets: crack, alpha: 0, duration: 700, delay: 200, onComplete: () => crack.destroy() });
-          for (let j = 0; j < 6; j++) {
-            const g = sc.add.image(x + Phaser.Math.Between(-p.radius * 0.4, p.radius * 0.4), y, projKey(type)).setScale(3 + Math.random() * 1.5).setDepth(9);
-            g.setRotation(-Math.PI / 2 + (Math.random() - 0.5) * 0.4);
-            sc.tweens.add({ targets: g, y: y - 70 - Math.random() * 60, alpha: 0, scale: 1.5, duration: 320 + j * 40, ease: 'Quad.easeOut', onComplete: () => g.destroy() });
-          }
-          typeImpact(sc, x, y - 30, type, 1.2, 10);
+          // Géiser pixel art (supervisor) del color del tipo
+          pixGeyser(sc, x, y, color, 100 + p.radius * 0.6, Math.max(30, p.radius * 0.8));
+          typeImpact(sc, x, y - 30, type, 0.9, 5);
           dustBurst(sc, x, y, 0.9, 6);
           h.area(side, x, y, p.radius, dmg, type, src);
         });
@@ -381,9 +386,8 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
         const rm = h.room();
         const x = Phaser.Math.Clamp(src.x + Math.cos(a) * d, rm.x0 + 20, rm.x1 - 20);
         const y = Phaser.Math.Clamp(src.y + Math.sin(a) * d, rm.y0 + 20, rm.y1 - 20);
-        const m = sc.add.image(x, y, projKey(type)).setScale(3).setDepth(1.6).setAlpha(0.9);
-        const ring = sc.add.circle(x, y, p.radius * 0.5).setStrokeStyle(2, color, 0.6).setDepth(1.5);
-        sc.tweens.add({ targets: [m, ring], scale: '*=1.15', duration: 400, yoyo: true, repeat: -1 });
+        // Runa de trampa pixel art que late (supervisor)
+        const m = pixTrap(sc, x, y, p.radius, color);
         const t0 = now(h);
         const ev = sc.time.addEvent({
           delay: 90,
@@ -393,12 +397,10 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
             const near = !gone && nearestTarget(h, side, x, y, undefined, p.radius * 0.7);
             if (!gone && !near) return;
             ev.remove();
-            sc.tweens.killTweensOf([m, ring]);
             m.destroy();
-            ring.destroy();
             if (gone) return;
-            typeImpact(sc, x, y, type, 1.3, 12);
-            hitSpark(sc, x, y, color, 8, 1.2);
+            typeImpact(sc, x, y, type, 1, 6);
+            pixBlast(sc, x, y, p.radius, color);
             h.area(side, x, y, p.radius, dmg, type, src);
           },
         });
@@ -421,6 +423,7 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
             .setTintFill(color).setAlpha(0.5).setDepth(src.depth - 0.1);
           sc.tweens.add({ targets: ghost, alpha: 0, duration: 220, onComplete: () => ghost.destroy() });
           typeTrail(sc, src.x, src.y, type, 1.3, 6);
+          if (Math.random() < 0.5) pixSpeedLines(sc, src.x, src.y, dir.x, dir.y, color);
           h.area(side, src.x, src.y, p.radius, dmg, type, src, once);
         },
       });
@@ -532,24 +535,6 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
   }
 }
 
-/** Rayo quebrado de (x1, y1) a (x2, y2) que se apaga enseguida. */
-function bolt(sc: Phaser.Scene, x1: number, y1: number, x2: number, y2: number, color: number) {
-  const g = sc.add.graphics().setDepth(9);
-  const pts: [number, number][] = [[x1, y1]];
-  const n = 7;
-  for (let i = 1; i < n; i++) {
-    const t = i / n;
-    pts.push([Phaser.Math.Linear(x1, x2, t) + Phaser.Math.Between(-16, 16), Phaser.Math.Linear(y1, y2, t) + Phaser.Math.Between(-16, 16)]);
-  }
-  pts.push([x2, y2]);
-  for (const [w, c, a] of [[10, color, 0.4], [4, 0xffffff, 1]] as const) {
-    g.lineStyle(w, c, a).beginPath();
-    pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
-    g.strokePath();
-  }
-  hitSpark(sc, x2, y2, color, 6, 1);
-  sc.tweens.add({ targets: g, alpha: 0, duration: 220, onComplete: () => g.destroy() });
-}
 
 /**
  * Mueve y anima los proyectiles de un grupo cada fotograma: ondas, zigzag, aceleración, persecución, bumerán,
