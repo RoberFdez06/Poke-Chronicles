@@ -386,3 +386,73 @@ No toques los ficheros del supervisor (arte, menús, `attacks.ts`, `movePatterns
 ## [x] T52 — Más sinergias y objetos pasivos
 - Otros 12 pasivos y 6 sinergias nuevas en `items.ts`/`synergies.ts` con precio y rareza; los tests de `items.test.ts` y
   `synergies.test.ts` deben seguir pasando y cubrir los nuevos.
+
+# Tanda 8 (pedida por Roberto el 26/10: más frenesí, más variedad, más colección)
+
+Reglas de siempre: español, teclado/ratón/mando cada uno por separado (los botones nuevos entran en `keybinds.ts`, en la pantalla de
+controles y en los avisos de botón del HUD), avisos nunca en el centro, los invitados no guardan, tickets/monedas/caramelos separados.
+Cada tarea con tests de lógica pura (`node --test`) y `tsc` + `npm test` en verde. Comenta el código explicando el porqué.
+No toques los ficheros del supervisor (arte, menús, `attacks.ts`, `pixelFx.ts`, `movePatterns.ts`, `finale.ts`, etc.): si una tarea
+necesita un efecto visual nuevo, déjalo con un hueco claro (`// TODO(supervisor): efecto ...`) y lo dibuja él. Va en `main`.
+
+## [ ] T53 — Parry (bloqueo con contraataque)
+- Un botón de parry (teclado, ratón y mando, con su etiqueta en la pantalla de controles). Si lo pulsas justo antes de recibir un golpe
+  (ventana corta, constante en la lógica pura), bloqueas todo el daño de ese golpe y el siguiente ataque tuyo que impacte es **crítico**
+  garantizado (ventana de contraataque de ~2 s). Si fallas el momento no bloqueas y pagas el golpe normal.
+- Tras usar el parry (acierte o no) hay una **recarga de 0,5 s** (Roberto escribió «0.5 ms»; es obvio que quería medio segundo; si ves
+  que se siente mal, déjalo en una constante fácil de tocar). Usa `this.game.loop.time` para la recarga, no `Clock.now` (no avanza en pausa).
+- Solo bloquea golpes de enemigos y proyectiles normales; los ataques de jefe marcados como «inbloqueables» (zona de peligro, láser) no.
+- Avisos fuera del centro: «¡Parry!» al acertar. Tests: ventana, recarga, crítico garantizado y que no se apile.
+
+## [ ] T54 — Lluvia de botín
+- Monedas, corazones y objetos de suelo salen despedidos con un salto y rebotan antes de quedar quietos, y **se atraen hacia el jugador**
+  al acercarse (radio pequeño que sube con un pasivo de imán). Lógica de movimiento en una función pura con test; dejar el efecto de
+  destello al recoger como `// TODO(supervisor)`. Que no puedan salir de la sala (como los activos de T49).
+
+## [ ] T55 — Adrenalina
+- Barra nueva en el HUD que sube al encadenar kills y esquivas/parrys y baja sola si dejas de jugar. Al llenarse se activa unos segundos
+  (velocidad y daño extra, cantidades en constantes) y se vacía. Todo en lógica pura con tests (subida, bajada, activación, que no
+  se acumule con pausa). La barra se dibuja con las formas de `theme.ts`; el brillo del jugador activado queda como `// TODO(supervisor)`.
+
+## [ ] T56 — Salas con reglas especiales
+- En `roomEvents.ts`/mezcla de sala añade modificadores de combate con etiqueta en el minimapa y aviso al entrar: **solo un tipo de daño**
+  (el resto de ataques hacen la mitad), **enemigos que se multiplican** (al morir uno, 25 % de que salga uno pequeño), **sala a oscuras**
+  (visión reducida alrededor del jugador, respetando el modo de efectos bajos) y **sala de velocidad** (enemigos más rápidos, mejor botín).
+  Probabilidad por piso en la lógica pura y probada; nunca en la sala del jefe, la tienda ni la inicial.
+
+## [ ] T57 — «Una más»
+- Al morir, una única segunda oportunidad por run: cuesta caramelos o tickets (el jugador elige cuál, sin mezclar monedas de la run),
+  te revive con media vida en la misma sala con 2 s de inmunidad. Se ofrece en la pantalla de muerte con botones para teclado, ratón y
+  mando. Los invitados pueden usarla pero no guardan nada. Tests: coste, una sola vez por run y que no pueda pagar sin saldo.
+
+## [ ] T58 — Retos diarios con semilla
+- Una run por día con la misma semilla para todos (semilla derivada de la fecha, no de la hora, en lógica pura con test). Pantalla o
+  botón en el menú de modos (pide al supervisor el hueco visual si lo necesitas), una sola participación diaria con su resultado
+  guardado (piso alcanzado y tiempo) y una **medalla** nueva en `medals.ts` por completarlo. Los invitados no guardan.
+
+## [ ] T59 — Entrenadores rivales (ampliar el evento de T48)
+- El «Entrenador rival» de T48 hoy es oleadas cortas. Conviértelo en un **combate de entrenador**: un entrenador con 2-3 Pokémon que
+  salen de uno en uno (el siguiente entra cuando cae el anterior), con su aviso de «¡X te desafía!» fuera del centro y premio de
+  tickets + objeto. El equipo se genera por piso y bioma en lógica pura con test; el sprite del entrenador queda como `// TODO(supervisor)`.
+
+## [ ] T60 — Sinergias por tipo con aviso
+- Reglas nuevas en `synergies.ts` que potencian objetos del mismo tipo (fuego + planta, agua + eléctrico…) además de las de T52, y un
+  **aviso al activarse** una sinergia (arriba, nunca en el centro) con su nombre. Listado de sinergias activas en la pantalla de pausa.
+  Tests de que las existentes siguen pasando y de las nuevas.
+
+## [ ] T61 — Clima por piso
+- Cada piso puede tener un clima (lluvia, sol, tormenta de arena, niebla) elegido por semilla; cambia el daño según el tipo (lluvia
+  potencia agua y debilita fuego, sol al revés, etc., multiplicadores en constantes). Tabla y selección en lógica pura con tests. Aviso
+  del clima al empezar el piso; las partículas y el fondo quedan como `// TODO(supervisor)`. Respeta el modo de efectos bajos.
+
+## [ ] T62 — Resumen de run
+- Al terminar (muerte o victoria) muestra estadísticas: daño total, kills, parrys acertados, objetos cogidos, sala más rápida y
+  rango/tiempo por piso. Las cuentas se acumulan en la lógica pura durante la run con tests. Se puede navegar con teclado, ratón y mando.
+
+## [ ] T63 — Pokédex de la run
+- Registro de las especies derrotadas en la run (y acumuladas en la cuenta, sin guardar para invitados), con la lista por tipo en una
+  pantalla accesible desde el menú y premio (caramelos o medalla) por completar un tipo entero. Datos en lógica pura con tests;
+  reutiliza los iconos y nombres ya cargados de `species-index.json`.
+
+## Orden recomendado
+- T53, T54, T55 primero (sensación inmediata), luego T56-T59, y al final T60-T63 (colección y comodidad).
