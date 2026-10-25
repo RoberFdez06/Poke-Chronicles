@@ -48,6 +48,7 @@ Tres dificultades (Fácil, Normal, Difícil), cada una con sus récords.
 | Disparar | Flechas | Clic izquierdo hacia el cursor | Stick derecho |
 | Poderes 1-4 | 1, 2, 3, 4 | Clic en la ranura | A, B, X, Y |
 | Objeto activo / bomba | Espacio / E | Clic en su cuadro | LB / RB |
+| Parry (justo antes del golpe) | F | Clic central (rueda) o clic en su cuadro | RT |
 | Pausa | Esc o P | Botón ❚❚ | Start |
 
 Las teclas se pueden cambiar en **Ajustes > Controles y teclas**. En el juego, **Controles** enseña solo los del

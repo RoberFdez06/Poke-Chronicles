@@ -173,7 +173,7 @@ import {
 } from '../data/loot';
 import { comboAlive, comboBreak, comboHit, milestoneReward, newCombo, type ComboState } from '../data/combo';
 import { ComboHud } from '../ui/art/comboHud';
-import { addHpBar, addTypeChip, drawBox, fadeIn, FONT, goTo, HEX, hpColor, shorten } from '../ui/theme';
+import { addHpBar, addTypeChip, COLORS, drawBox, fadeIn, FONT, goTo, HEX, hpColor, shorten } from '../ui/theme';
 import {
   applyStatus,
   drainHeal,
@@ -223,6 +223,7 @@ import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBeh
   turnToward,
 } from '../data/enemies';
 import { drawMinimap } from './minimap';
+import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
 
 // Cada sala ocupa una pantalla del mundo; ROOM es su interior relativo a la celda
 const VIEW = { w: 960, h: 640 };
@@ -573,6 +574,10 @@ export class GameScene extends Phaser.Scene {
   private potionKey!: Key;
   private l3Prev = false;
   private potionsHud?: Phaser.GameObjects.Text;
+  /** T53: parry (ventana, recarga y crítico pendiente), su tecla y su cuadro del HUD con la recarga. */
+  private parry: ParryState = newParry();
+  private parryKey!: Key;
+  private parryHud?: { g: Phaser.GameObjects.Graphics; x: number; y: number; w: number; h: number; shown: string };
   /** Multiplicador de daño mientras dura Ataque X o el Caramelo Raro. */
   private buffMul = 1;
   /** Cofres de este piso: sala → posición y dibujo. */
@@ -627,7 +632,7 @@ export class GameScene extends Phaser.Scene {
   /** Botón con el que se lanza cada poder (tecla o botón del mando, según con qué juegues). */
   private slotBadges: Phaser.GameObjects.Text[] = [];
   /** Botón de la bomba, la poción y el objeto activo (tecla o botón del mando), junto a cada uno en el HUD. */
-  private actionBadges: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; x: number; y: number; pad: string; action: 'active' | 'bomb' | 'potion' }[] = [];
+  private actionBadges: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; x: number; y: number; pad: string; action: 'active' | 'bomb' | 'potion' | 'parry' }[] = [];
   private badgeShown = '';
   private banner!: Phaser.GameObjects.Text;
   private toasts?: ToastStack;
@@ -675,6 +680,8 @@ export class GameScene extends Phaser.Scene {
     this.nextTear = 0;
     this.aim.set(0, 1);
     this.invulnUntil = 0;
+    this.parry = newParry();
+    this.parryHud = undefined;
     this.ended = false;
     this.endedAt = 0;
     this.earned = 0;
@@ -1835,6 +1842,7 @@ export class GameScene extends Phaser.Scene {
     this.enterKey = key('accept');
     this.bombKey = key('bomb');
     this.potionKey = key('potion');
+    this.parryKey = key('parry');
     this.activeKey = key('active');
     this.escKey = key('back');
     this.pauseKey = key('pause');
@@ -1879,6 +1887,16 @@ export class GameScene extends Phaser.Scene {
         .setPadding(14, 12)
         .setInteractive({ useHandCursor: true }),
     );
+    // T53: cuadro del parry a la derecha de la pausa (la recarga se ve vaciándose); clic en él también hace parry,
+    // aunque con ratón lo cómodo es el clic central, que no obliga a quitar el puntero de donde apuntas.
+    {
+      const px = LX + 76;
+      const pw = LW - 76;
+      this.parryHud = { g: hud(this.add.graphics()), x: px, y: 16, w: pw, h: 30, shown: '' };
+      txt(px + 12, 31, 14, '#f8f8f8', true).setOrigin(0, 0.5).setText('Parry');
+      const parryBtn = over(hud(this.add.zone(px + pw / 2, 31, pw, 30).setInteractive({ useHandCursor: true })));
+      parryBtn.on('pointerdown', () => this.doParry());
+    }
     // Ficha del Pokémon: nombre, progreso y PS
     hud(drawHudFrame(this.add.graphics(), LX, 96, LW, 150));
     this.nameText = txt(LX + 22, 124, 24, '#f8f8f8', true).setOrigin(0, 0.5);
@@ -1918,11 +1936,12 @@ export class GameScene extends Phaser.Scene {
     };
     const activeBtn = over(hud(this.add.zone(LX + LW / 2, H - 71, LW, 110).setInteractive({ useHandCursor: true })));
     // Con qué se usa cada cosa (se redibuja al cambiar de teclado a mando): bomba, poción y objeto activo
-    const badge = (x: number, y: number, pad: string, action: 'active' | 'bomb' | 'potion') =>
+    const badge = (x: number, y: number, pad: string, action: 'active' | 'bomb' | 'potion' | 'parry') =>
       this.actionBadges.push({ g: hud(this.add.graphics()), t: txt(x, y, 11, '#1d2848', true).setOrigin(0.5), x, y, pad, action });
     badge(LX + HUD_COUNT_X.bomb + 6, 316, 'RB', 'bomb');
     badge(LX + HUD_COUNT_X.potion + 6, 316, 'L3', 'potion');
     badge(LX + LW - 36, H - HUD.pad - 110 + 18, 'LB', 'active');
+    badge(LX + LW - 22, 31, 'RT', 'parry');
     activeBtn.on('pointerdown', () => this.useActive());
     // Poderes: cuatro cuadros abajo a la derecha (clic para lanzar)
     for (let i = 0; i < SLOT_COUNT; i++) {
@@ -1966,6 +1985,8 @@ export class GameScene extends Phaser.Scene {
       }),
     ).setOrigin(0.5);
     pb.on('pointerdown', () => this.openPause());
+    // T53: con ratón, el parry es el clic central (rueda): no hay que quitar el puntero de donde apuntas
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => p.middleButtonDown() && this.doParry());
 
     // Tienda: al continuar, lo que quedaba; si no, artículos nuevos para este piso
     if (this.floor.shopId !== undefined) {
@@ -3259,6 +3280,33 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (a) this.active.charge = chargeAfterClear(this.active.charge, a.charge);
   }
 
+  /**
+   * T53: se pulsa parry (tecla, RT, clic central, clic en su cuadro o botón táctil). La recarga va con el reloj del
+   * bucle (game.loop.time) y no con el de la escena, que se para en pausa (ver data/parry.ts).
+   */
+  private doParry() {
+    if (this.ended || this.transitioning || this.evolving) return;
+    if (!pressParry(this.parry, this.game.loop.time)) return;
+    sfx('select');
+    // TODO(supervisor): efecto de la postura de parry (un destello corto alrededor del jugador al pulsar)
+  }
+
+  /** Cuadro del parry: dorado cuando está listo; mientras recarga, una barra que se vacía. */
+  private paintParry() {
+    const h = this.parryHud;
+    if (!h) return;
+    const left = parryCooldownLeft(this.parry, this.game.loop.time);
+    const counter = this.parry.counterUntil > this.time.now;
+    // Redibujar solo cuando cambia algo que se vea (pasos de 1/20)
+    const key = `${Math.ceil(left * 20)}:${counter}`;
+    if (h.shown === key) return;
+    h.shown = key;
+    h.g.clear();
+    h.g.fillStyle(0x101828, 1).fillRoundedRect(h.x, h.y, h.w, h.h, 8);
+    h.g.fillStyle(counter ? 0xff6b3d : left > 0 ? 0x3a4560 : COLORS.gold, 1).fillRoundedRect(h.x + 3, h.y + 3, h.w - 6, h.h - 6, 6);
+    if (left > 0) h.g.fillStyle(0x6a7898, 1).fillRect(h.x + 3, h.y + h.h - 7, (h.w - 6) * left, 4);
+  }
+
   /** Cuadro del objeto activo abajo a la izquierda: color, nombre corto y carga por casillas. */
   private paintActionBadges() {
     const device = currentInput();
@@ -4075,7 +4123,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       for (const p of spots) {
         const fx = this.add.circle(p.x, p.y, R, typeColor(ai.type), 0.7).setDepth(12);
         this.tweens.add({ targets: fx, alpha: 0, scale: 1.3, duration: 260, onComplete: () => fx.destroy() });
-        if (b.active && inBlast(p.x, p.y, this.player.x, this.player.y, R)) this.hurtPlayer(b);
+        if (b.active && inBlast(p.x, p.y, this.player.x, this.player.y, R)) this.hurtPlayer(b, true);
       }
     });
   }
@@ -4131,7 +4179,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             onUpdate: () => {
               g.clear().lineStyle(16, color, 0.85).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
               g.lineStyle(4, 0xffffff, 0.7).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
-              if (b.active && !this.ended && shockwaveHits(cx, cy, st.r, gapAt, sw.gap, this.player.x, this.player.y)) this.hurtPlayer(b);
+              if (b.active && !this.ended && shockwaveHits(cx, cy, st.r, gapAt, sw.gap, this.player.x, this.player.y)) this.hurtPlayer(b, true);
             },
             onComplete: () => g.destroy(),
           });
@@ -4165,7 +4213,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
               const y2 = b.y + Math.sin(a) * ls.length;
               g.lineStyle(26, color, 0.35).lineBetween(b.x, b.y, x2, y2);
               g.lineStyle(10, 0xffffff, 0.9).lineBetween(b.x, b.y, x2, y2);
-              if (laserHits(b.x, b.y, a, ls.length, this.player.x, this.player.y)) this.hurtPlayer(b);
+              if (laserHits(b.x, b.y, a, ls.length, this.player.x, this.player.y)) this.hurtPlayer(b, true);
             }
           },
           onComplete: () => g.destroy(),
@@ -4199,7 +4247,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       for (const sp of spots) {
         const fx = this.add.circle(sp.x, sp.y, R, 0xff7043, 0.75).setDepth(12);
         this.tweens.add({ targets: fx, alpha: 0, scale: 1.25, duration: 280, onComplete: () => fx.destroy() });
-        if (b.active && inBlast(sp.x, sp.y, this.player.x, this.player.y, R)) this.hurtPlayer(b);
+        if (b.active && inBlast(sp.x, sp.y, this.player.x, this.player.y, R)) this.hurtPlayer(b, true);
       }
     });
     return hz.warnMs;
@@ -4844,6 +4892,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (Phaser.Input.Keyboard.JustDown(this.noTipsKey) || (ltNow && !this.triggerPrev[0])) this.closeTip(true);
       else if (Phaser.Input.Keyboard.JustDown(this.tipKey) || (rtNow && !this.triggerPrev[1])) this.closeTip();
     }
+    // T53: parry con su tecla, RT o el botón táctil (el clic central y el del HUD van por eventos del puntero).
+    // RT sigue cerrando el consejo si hay uno: las dos cosas a la vez no estorban y así no hay que elegir.
+    if (Phaser.Input.Keyboard.JustDown(this.parryKey) || (rtNow && !this.triggerPrev[1]) || this.touch?.consume('parry')) this.doParry();
     this.triggerPrev = [ltNow, rtNow];
     const padA = hasPad && pad!.A && !this.padPrev[0];
     const usedA = this.updateInteract(Phaser.Input.Keyboard.JustDown(this.enterKey) || !!this.touch?.consume('use'), padA);
@@ -4911,6 +4962,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       bb.bar.set(hp / Math.max(1, max));
     }
     this.paintActive();
+    this.paintParry();
     this.paintActionBadges();
     if (this.shieldRing) this.shieldRing.setPosition(this.player.x, this.player.y).setVisible(this.shieldLeft > 0);
     this.coinsHud.setText(String(this.coins));
@@ -5184,7 +5236,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     dmg *= damageMul(status, defTypes);
     this.effectivenessPopup(effectOf(status, defTypes), enemy.x, enemy.y - (enemy.getData('size') as number) * 0.75);
     let crit = false;
-    if (this.stats.critChance > 0 && Math.random() < this.stats.critChance) {
+    // T53: el primer golpe que impacta tras un parry es crítico seguro (se gasta aquí, uno por parry)
+    if (takeCounterCrit(this.parry, this.time.now)) {
+      dmg *= this.stats.critMul;
+      crit = true;
+    } else if (this.stats.critChance > 0 && Math.random() < this.stats.critChance) {
       dmg *= this.stats.critMul;
       crit = true;
     }
@@ -6041,7 +6097,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
   }
 
-  private hurtPlayer(enemy: Sprite) {
+  /**
+   * Te dan. `unblockable`: ataques de jefe que el parry no para (zonas de peligro marcadas, ondas y láseres), que
+   * ya avisan antes y se esquivan moviéndose; si se pudieran bloquear, quedarían sin sentido.
+   */
+  private hurtPlayer(enemy: Sprite, unblockable = false) {
     const now = this.time.now;
     if (this.ended || this.transitioning || now < this.invulnUntil) return;
     // Quien salta no hace daño mientras desaparece o recién aparecido
@@ -6051,6 +6111,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (enemy.getData('runaway')) return;
     // Bajo tierra o escondido no hace daño al tocarte
     if (ai && (ai.behavior === 'burrow' || ai.behavior === 'ambush') && (ai.state === 'vanish' || ai.state === 'appear')) return;
+    // T53: parry a tiempo. Va antes que la esquiva y el escudo para no gastarlos en un golpe que ya está parado.
+    if (tryParry(this.parry, this.game.loop.time, now, unblockable)) {
+      this.invulnUntil = now + PARRY_GRACE_MS;
+      // Aviso sobre el jugador, como "¡Esquivado!" (nunca en el centro de la pantalla)
+      this.popup(this.player.x, this.player.y - 50, '¡Parry!', 0xffd34d);
+      sfx('crit');
+      // TODO(supervisor): efecto de parry acertado (chispa/onda dorada en el punto de choque)
+      return;
+    }
     if (this.stats.dodge > 0 && Math.random() < this.stats.dodge) {
       this.invulnUntil = now + 500;
       this.popup(this.player.x, this.player.y - 50, '¡Esquivado!', 0xfff8c0);

@@ -1055,3 +1055,20 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   publicado).
 - Tests: items (+2), synergies (+1) y e2e `actives.spec.ts` (coger los 12 pasivos y activar sinergias sin errores).
   267 tests en verde. Iconos pedidos al supervisor (N25).
+
+## T53 — Parry (bloqueo con contraataque)
+- `src/data/parry.ts` (lógica pura): ventana de 200 ms (`PARRY_WINDOW_MS`), recarga de 0,5 s (`PARRY_COOLDOWN_MS`;
+  Roberto escribió «0.5 ms», se entiende medio segundo), contraataque de 2 s (`PARRY_COUNTER_MS`) y 350 ms de gracia
+  tras bloquear (el contacto se mira cada fotograma y sin ella el mismo enemigo te daría al siguiente). Una pulsación
+  bloquea un solo golpe y otro parry durante el contraataque solo renueva el plazo (no apila críticos).
+- Relojes: ventana y recarga con `game.loop.time` (como pedía la tarea: no se congela en pausa); el plazo del crítico
+  con el reloj de la escena para no perderlo si pausas.
+- Controles: acción `parry` en `keybinds.ts` (por defecto **F**: la Q la usaban los tests como tecla libre y F queda
+  junto a la E de la bomba). `parseKeys` migra: si la tecla por defecto de una acción no guardada ya está cogida, usa
+  una de reserva en vez de devolver todas por defecto (así nadie pierde sus teclas). RT con mando, clic central con
+  ratón (o clic en el cuadro "Parry" del HUD, a la derecha de la pausa, que muestra la recarga) y botón táctil.
+  Pantalla de Teclas a 2 columnas de 10 y Controles con una fila más (35 px por fila).
+- GameScene: `hurtPlayer(enemy, unblockable)` prueba el parry antes de esquiva y escudo; las zonas de peligro, ondas y
+  láseres de jefe pasan `unblockable = true`. `hitEnemy` gasta el crítico garantizado. Aviso «¡Parry!» sobre el
+  jugador (como «¡Esquivado!»). Efectos pendientes del supervisor: `TODO(supervisor)` en `doParry` y en el acierto.
+- Tests: `tests/parry.test.ts` (6) y keybinds (+2). README con la fila del parry.

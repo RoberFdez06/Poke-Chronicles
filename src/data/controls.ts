@@ -19,13 +19,14 @@ export type ControlMode = (typeof CONTROL_MODES)[number];
 export const CONTROL_MODE_LABEL: Record<ControlMode, string> = { keyboard: 'Teclado', mouse: 'Ratón', gamepad: 'Mando', touch: 'Táctil' };
 
 /** Todo lo que se puede hacer, en el orden en que sale en cada sección. */
-export const CONTROL_ACTIONS = ['move', 'shoot', 'powers', 'active', 'bomb', 'potion', 'use', 'pause', 'menus', 'back'] as const;
+export const CONTROL_ACTIONS = ['move', 'shoot', 'powers', 'parry', 'active', 'bomb', 'potion', 'use', 'pause', 'menus', 'back'] as const;
 export type ControlAction = (typeof CONTROL_ACTIONS)[number];
 
 export const CONTROL_ACTION_LABEL: Record<ControlAction, string> = {
   move: 'Moverse',
   shoot: 'Disparar',
   powers: 'Poderes',
+  parry: 'Parry (justo antes del golpe)',
   active: 'Objeto activo',
   bomb: 'Bomba',
   potion: 'Poción',
@@ -43,6 +44,7 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       move: `${L('up')} ${L('left')} ${L('down')} ${L('right')}`,
       shoot: `${L('shootUp')} ${L('shootLeft')} ${L('shootDown')} ${L('shootRight')} (dos a la vez, en diagonal)`,
       powers: `${L('power1')} ${L('power2')} ${L('power3')} ${L('power4')}`,
+      parry: L('parry'),
       active: L('active'),
       bomb: L('bomb'),
       potion: L('potion'),
@@ -55,6 +57,7 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       move: 'Mantén el clic derecho hacia donde quieras ir',
       shoot: 'Mantén el clic izquierdo hacia donde quieras disparar',
       powers: 'Clic en la ranura del poder',
+      parry: 'Clic central (rueda) · o clic en el cuadro Parry del HUD',
       active: 'Clic en su cuadro del HUD',
       bomb: 'Clic en la bomba del HUD',
       potion: 'Clic en la poción del HUD',
@@ -67,6 +70,7 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       move: 'Stick izquierdo',
       shoot: 'Stick derecho',
       powers: 'A B X Y',
+      parry: 'RT',
       active: 'LB',
       bomb: 'RB',
       potion: 'Pulsar el stick izquierdo (L3)',
@@ -79,6 +83,7 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       move: 'Joystick de la izquierda',
       shoot: 'Joystick de la derecha: dispara hacia donde lo empujes',
       powers: 'Botones 1 2 3 4 (encima del joystick derecho)',
+      parry: 'Botón "Parry" (encima del joystick derecho)',
       active: 'Botón del objeto activo (encima del joystick izquierdo)',
       bomb: 'Botón de la bomba (encima del joystick izquierdo)',
       potion: 'Botón de la poción (encima del joystick izquierdo)',

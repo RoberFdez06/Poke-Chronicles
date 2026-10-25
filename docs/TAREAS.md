@@ -395,7 +395,7 @@ Cada tarea con tests de lógica pura (`node --test`) y `tsc` + `npm test` en ver
 No toques los ficheros del supervisor (arte, menús, `attacks.ts`, `pixelFx.ts`, `movePatterns.ts`, `finale.ts`, etc.): si una tarea
 necesita un efecto visual nuevo, déjalo con un hueco claro (`// TODO(supervisor): efecto ...`) y lo dibuja él. Va en `main`.
 
-## [ ] T53 — Parry (bloqueo con contraataque)
+## [x] T53 — Parry (bloqueo con contraataque)
 - Un botón de parry (teclado, ratón y mando, con su etiqueta en la pantalla de controles). Si lo pulsas justo antes de recibir un golpe
   (ventana corta, constante en la lógica pura), bloqueas todo el daño de ese golpe y el siguiente ataque tuyo que impacte es **crítico**
   garantizado (ventana de contraataque de ~2 s). Si fallas el momento no bloqueas y pagas el golpe normal.

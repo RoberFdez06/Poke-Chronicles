@@ -10,9 +10,10 @@ import { NavInput } from '../ui/nav';
 import { drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
 
-const COL_ROWS = 9;
-const ROW = { w: 420, h: 44, gap: 6, top: 96, x: [50, 490] };
-/** Opciones: las 17 acciones, "Restablecer" y "Volver". */
+// T53: 10 filas por columna (19 acciones con el parry), algo más bajas para que quepan Restablecer y Volver
+const COL_ROWS = 10;
+const ROW = { w: 420, h: 38, gap: 5, top: 90, x: [50, 490] };
+/** Opciones: todas las acciones, "Restablecer" y "Volver". */
 const RESET = ACTIONS.length;
 const BACK = ACTIONS.length + 1;
 
@@ -54,10 +55,10 @@ export class KeysScene extends Phaser.Scene {
       const y = ROW.top + (i % COL_ROWS) * (ROW.h + ROW.gap);
       this.addRow(i, x, y, ROW.w, ACTION_LABEL[a]);
     });
-    this.addRow(RESET, 490, ROW.top + 8 * (ROW.h + ROW.gap), 200, 'Restablecer');
-    this.addRow(BACK, 710, ROW.top + 8 * (ROW.h + ROW.gap), 200, 'Volver');
+    this.addRow(RESET, 490, ROW.top + COL_ROWS * (ROW.h + ROW.gap), 200, 'Restablecer');
+    this.addRow(BACK, 710, ROW.top + COL_ROWS * (ROW.h + ROW.gap), 200, 'Volver');
 
-    this.message = this.add.text(480, 568, '', { fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: '#ffffff', align: 'center' }).setOrigin(0.5);
+    this.message = this.add.text(480, 580, '', { fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: '#ffffff', align: 'center' }).setOrigin(0.5);
     this.add
       .text(480, 612, 'Elige con flechas, ratón o mando · Enter, clic o A y pulsa la tecla nueva · Esc o B para volver', {
         fontFamily: FONT, fontSize: '14px', color: '#ffffff',

@@ -5,7 +5,7 @@
 import Phaser from 'phaser';
 import { H, HUD, W } from './layout';
 
-export type TouchButton = 'power1' | 'power2' | 'power3' | 'power4' | 'active' | 'bomb' | 'potion' | 'use';
+export type TouchButton = 'power1' | 'power2' | 'power3' | 'power4' | 'active' | 'bomb' | 'potion' | 'use' | 'parry';
 
 const R = 86; // radio del joystick
 const KNOB = 38;
@@ -72,6 +72,8 @@ export class TouchControls {
     btn('power2', ax + 56, ay, '2', 0x3b6fd6);
     btn('power3', ax, ay + 46, '3', 0x3b6fd6);
     btn('power4', ax - 56, ay, '4', 0x3b6fd6);
+    // T53: parry encima del rombo de poderes, a mano del pulgar derecho (el que apunta)
+    btn('parry', ax, ay - 112, 'Parry', 0xd4a017);
     const lx = this.sticks.move.cx;
     const ly = bottom - R - 70;
     btn('active', lx - 64, ly, 'Activo', 0x8e44ad);

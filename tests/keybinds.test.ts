@@ -59,6 +59,22 @@ test('T49: usar poción tiene su tecla (C) y sale en los controles', async () =>
   assert.equal(DEFAULT_KEYS.potion, 'C');
   assert.equal(ACTION_LABEL.potion, 'Usar poción');
   assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([, how]) => how.includes('Poción: C')));
-  // Caben en la pantalla de teclas (2 columnas de 9)
-  assert.ok(ACTIONS.length <= 18);
+  // Caben en la pantalla de teclas (2 columnas de 10 desde T53)
+  assert.ok(ACTIONS.length <= 20);
+});
+
+test('T53: el parry tiene su tecla (F), sale en los controles y es la última acción', () => {
+  assert.equal(DEFAULT_KEYS.parry, 'F');
+  assert.equal(ACTIONS[ACTIONS.length - 1], 'parry');
+  assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([what, how]) => what === 'Parry' && how.includes('F') && how.includes('RT')));
+});
+
+test('T53: un guardado de antes con la F en otra acción no pierde sus teclas', () => {
+  const k = parseKeys(JSON.stringify({ ...DEFAULT_KEYS, parry: undefined, bomb: 'F' }));
+  assert.equal(k.bomb, 'F');
+  assert.notEqual(k.parry, 'F');
+  assert.equal(new Set(Object.values(k)).size, ACTIONS.length);
+  // El resto se queda como estaba
+  assert.equal(k.up, 'W');
+  assert.equal(k.potion, 'C');
 });
