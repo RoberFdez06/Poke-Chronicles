@@ -46,6 +46,8 @@ export interface PlayerStats {
   backShots: number;
   /** Alcance extra por cada enemigo vivo en la sala (fracción). */
   rangePerEnemy: number;
+  /** T54: radio extra (px) al que el botín del suelo vuela hacia ti. */
+  lootMagnet: number;
   /** Multiplicador de las monedas que recoges. */
   coinMul: number;
   /** Tamaño de tus disparos. */
@@ -80,6 +82,7 @@ export const BASE_STATS: Readonly<PlayerStats> = {
   homing: 0,
   backShots: 0,
   rangePerEnemy: 0,
+  lootMagnet: 0,
   coinMul: 1,
   shotScale: 1,
   typeBoost: {},
@@ -303,6 +306,10 @@ const SPECIAL_ITEMS: PassiveItem[] = [
     apply: (s) => void ((s.shieldPerRoom += 1), (s.maxHp -= 5)) },
   { id: 'pua-toxica', name: 'Púa Tóxica', description: 'Quien te toca recibe 20 de daño y tu veneno es un 30 % más fuerte.', color: 0x9c27b0,
     apply: (s) => void ((s.thorns += 20), (s.statusBoost.poison = (s.statusBoost.poison ?? 1) * 1.3)) },
+  // T54: atrae el botín del suelo desde más lejos (el Zahorí de los juegos encuentra objetos escondidos)
+  // TODO(supervisor): icono del Zahorí en ui/art/itemIcons.ts (ahora sale la bola genérica)
+  { id: 'zahori', name: 'Zahorí', description: 'Las monedas, bayas y demás botín vuelan hacia ti desde mucho más lejos.', color: 0x4fc3f7,
+    apply: (s) => void (s.lootMagnet += 110) },
   { id: 'piedra-lunar', name: 'Piedra Lunar', description: 'Tus disparos giran un poco hacia los enemigos y llegan un 10 % más lejos.', color: 0xcfd8dc,
     apply: (s) => void ((s.homing += 1.2), (s.range *= 1.1)) },
   ...TYPE_BOOSTERS.map(([id, name, type, color]) => ({
@@ -438,7 +445,7 @@ export const MOVE_ITEM_CHANCE = 0.5;
 /** Rareza de cada pasivo (los que no están, raros). Más rara = sale menos y cuesta más en la tienda. */
 export const PASSIVE_RARITY: Readonly<Record<string, MoveRarity>> = {
   'baya-aranja': 'common', 'pluma-ligera': 'common', 'piedra-dura': 'common', 'baya-meloc': 'common', 'baya-lichi': 'common',
-  'polvo-veloz': 'common', 'cuerda-huida': 'common', 'reloj-arena': 'common',
+  'polvo-veloz': 'common', 'cuerda-huida': 'common', 'reloj-arena': 'common', zahori: 'common',
   'cinta-elegida': 'epic', 'gafas-elegidas': 'epic', 'panuelo-elegido': 'epic', 'banda-focus': 'epic', 'telescopio': 'epic',
   'doble-equipo': 'epic', 'concha-campana': 'epic', 'gafas-especiales': 'epic', 'roca-del-rey': 'epic', 'mineral-evolutivo': 'epic',
   'bola-ferrea': 'epic', 'piedra-lunar': 'epic',

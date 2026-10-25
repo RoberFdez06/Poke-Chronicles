@@ -404,7 +404,7 @@ necesita un efecto visual nuevo, déjalo con un hueco claro (`// TODO(supervisor
 - Solo bloquea golpes de enemigos y proyectiles normales; los ataques de jefe marcados como «inbloqueables» (zona de peligro, láser) no.
 - Avisos fuera del centro: «¡Parry!» al acertar. Tests: ventana, recarga, crítico garantizado y que no se apile.
 
-## [ ] T54 — Lluvia de botín
+## [x] T54 — Lluvia de botín
 - Monedas, corazones y objetos de suelo salen despedidos con un salto y rebotan antes de quedar quietos, y **se atraen hacia el jugador**
   al acercarse (radio pequeño que sube con un pasivo de imán). Lógica de movimiento en una función pura con test; dejar el efecto de
   destello al recoger como `// TODO(supervisor)`. Que no puedan salir de la sala (como los activos de T49).

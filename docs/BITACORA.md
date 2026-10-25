@@ -1072,3 +1072,19 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   láseres de jefe pasan `unblockable = true`. `hitEnemy` gasta el crítico garantizado. Aviso «¡Parry!» sobre el
   jugador (como «¡Esquivado!»). Efectos pendientes del supervisor: `TODO(supervisor)` en `doParry` y en el acierto.
 - Tests: `tests/parry.test.ts` (6) y keybinds (+2). README con la fila del parry.
+
+## T54 — Lluvia de botín
+- `src/data/lootMotion.ts` (lógica pura): salto con gravedad y botes que se apagan (`LOOT_BOUNCE`), deslizamiento
+  exponencial hacia un destino libre (no depende de los FPS y no se pasa), recorte a los límites de la sala en cada paso
+  y atracción hacia el jugador dentro de `magnetRadius` (70 px de base), más rápida cuanto más cerca. Solo atrae lo que
+  se puede coger (una baya con la vida llena o una poción con el cupo lleno no se te pega debajo) y nunca en el primer
+  salto (siempre se ve).
+- Pasivo nuevo **Zahorí** (común, +110 px de radio; stat `lootMagnet`). Icono pendiente: `TODO(supervisor)` en items.ts
+  (sale la bola genérica).
+- GameScene: `dropLoot` elige el destino con `scatterTarget` + `freeSpot` y lanza desde donde cae; `spawnLoot(…, from?)`
+  guarda en el guardado la posición final (si sales en pleno salto, al volver está en su sitio). `stepLootAll` mueve todo
+  el botín cada fotograma y pone el balanceo de antes (ya no es un tween, que chocaba con el salto). Los objetos de suelo
+  (pasivos, poderes, activos) caen con un rebote si salen en tu sala, pero **no** se atraen: al cogerlos pueden preguntar
+  si cambias un poder y no quiero forzar esa elección.
+- Destello al recoger: `TODO(supervisor)` en `pickLoot`.
+- Tests: `tests/lootMotion.test.ts` (5).

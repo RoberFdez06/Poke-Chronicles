@@ -224,6 +224,7 @@ import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBeh
 } from '../data/enemies';
 import { drawMinimap } from './minimap';
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
+import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
 
 // Cada sala ocupa una pantalla del mundo; ROOM es su interior relativo a la celda
 const VIEW = { w: 960, h: 640 };
@@ -2890,10 +2891,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Deja en el suelo un objeto al azar: un pasivo propio o un poder (movimiento de PokeAPI). */
   private dropItem(roomId: number, x: number, y: number) {
-    this.spawnPickup(roomId, x, y, rollItem(this.rng(RNG.items), new Set(this.passives), this.movePool, ACTIVE_DROP_CHANCE, ACTIVE_IDS, this.passivePool(), this.floorNum));
+    // T54: si cae en la sala en la que estás (cofre, jefe, evento…) se ve el salto; al montar el piso, no
+    this.spawnPickup(roomId, x, y, rollItem(this.rng(RNG.items), new Set(this.passives), this.movePool, ACTIVE_DROP_CHANCE, ACTIVE_IDS, this.passivePool(), this.floorNum), this.current?.id === roomId);
   }
 
-  private spawnPickup(roomId: number, x: number, y: number, item: DroppedItem) {
+  private spawnPickup(roomId: number, x: number, y: number, item: DroppedItem, hop = false) {
     const entry: FloorItemSave = { roomId, x, y, drop: this.toSaved(item) };
     this.floorItems.push(entry);
     const act = item.kind === 'active' ? activeById(item.id) : undefined;
@@ -2926,7 +2928,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         }
       }
     }
-    this.tweens.add({ targets: s, y: y - 8, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const bob = () => s.active && this.tweens.add({ targets: s, y: y - 8, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    if (hop) {
+      // T54: cae desde arriba y rebota en su sitio (que ya es libre y dentro de la sala). Sin atracción: al cogerlo
+      // puede preguntar si cambias un poder, y que se te eche encima obligaría a elegir sin querer.
+      s.y = y - 70;
+      this.tweens.add({ targets: s, y, duration: 560, ease: 'Bounce.easeOut', onComplete: bob });
+    } else bob();
   }
 
   /**
@@ -4886,6 +4894,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (Phaser.Input.Keyboard.JustDown(this.activeKey) || (lbNow && !this.lbPrev) || this.touch?.consume('active')) this.useActive();
     this.lbPrev = lbNow;
     if (this.stats.homing > 0) this.steerShots(delta);
+    this.stepLootAll(time, delta);
     const ltNow = hasPad && (pad!.buttons[6]?.value ?? 0) > 0.5;
     const rtNow = hasPad && (pad!.buttons[7]?.value ?? 0) > 0.5;
     if (this.tipObjects.length > 0) {
@@ -5452,22 +5461,68 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
   }
 
-  /** Suelta botín dentro de la sala actual. */
+  /**
+   * Suelta botín dentro de la sala actual. T54: sale despedido desde (x, y) con un salto hacia un sitio libre de
+   * rocas y agujeros cercano (data/lootMotion.ts), así nunca acaba donde no se puede coger ni fuera de la sala.
+   */
   private dropLoot(x: number, y: number, drop: LootDrop) {
-    const i = this.arena();
-    const p = this.freeSpot(Phaser.Math.Clamp(x, i.x0 + 30, i.x1 - 30), Phaser.Math.Clamp(y, i.y0 + 30, i.y1 - 30));
-    this.spawnLoot(this.current.id, p.x, p.y, drop);
+    const b = this.lootBounds(this.current.id);
+    const from = clampToBounds(x, y, b);
+    const t = scatterTarget(from.x, from.y, Math.random, b);
+    const p = this.freeSpot(t.x, t.y);
+    this.spawnLoot(this.current.id, p.x, p.y, drop, from);
   }
 
-  private spawnLoot(roomId: number, x: number, y: number, drop: LootDrop) {
-    const entry: FloorItemSave = { roomId, x, y, drop };
+  /** Límites del botín en una sala (con las salas grandes, todas sus casillas), con margen para que no toque la pared. */
+  private lootBounds(roomId: number): LootBounds {
+    const cells = this.groupIds(this.floor.rooms[roomId]).map((id) => this.interior(this.floor.rooms[id]));
+    const m = 30;
+    return {
+      x0: Math.min(...cells.map((c) => c.x0)) + m,
+      y0: Math.min(...cells.map((c) => c.y0)) + m,
+      x1: Math.max(...cells.map((c) => c.x1)) - m,
+      y1: Math.max(...cells.map((c) => c.y1)) - m,
+    };
+  }
+
+  /** `from`: de dónde sale despedido (si no se da, ya estaba en el suelo: al volver a la sala o al continuar). */
+  private spawnLoot(roomId: number, x: number, y: number, drop: LootDrop, from?: { x: number; y: number }) {
+    const bounds = this.lootBounds(roomId);
+    const motion = from ? launchLoot(from.x, from.y, x, y, Math.random, bounds) : restingLoot(x, y, bounds);
+    // Lo guardado es donde acabará quieto (si sales de la sala en pleno salto, al volver ya está en su sitio)
+    const entry: FloorItemSave = { roomId, x: motion.tx, y: motion.ty, drop };
     this.floorItems.push(entry);
     const icon = drop.kind === 'berry' ? iconKey(drop.id) : iconKey(drop.kind);
-    const s = this.loot.create(x, y, icon) as Sprite;
+    const s = this.loot.create(motion.x, motion.y, icon) as Sprite;
     // Iconos de 16 px: la moneda de 5 algo más grande
     s.setScale(drop.kind === 'coin' && drop.value > 1 ? 2.6 : 2);
-    s.setDepth(2).setData('drop', drop).setData('entry', entry);
-    this.tweens.add({ targets: s, y: y - 5, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    // El balanceo de siempre lo pone stepLootAll (antes era un tween, pero chocaba con el salto); fase al azar para
+    // que un montón de monedas no suba y baje a la vez
+    s.setDepth(2).setData('drop', drop).setData('entry', entry).setData('motion', motion).setData('bob', Math.random() * 1200);
+  }
+
+  /** T54: mueve el botín (salto, botes y atracción hacia el jugador) y le pone el balanceo cuando está quieto. */
+  private stepLootAll(time: number, delta: number) {
+    const dt = Math.min(delta, 50) / 1000;
+    const radius = magnetRadius(this.stats.lootMagnet);
+    const canHealNow = canHeal(this.hp, this.stats.maxHp);
+    const canPotion = canCarryPotion(this.potions);
+    for (const c of this.loot.getChildren()) {
+      const s = c as Sprite;
+      const m = s.getData('motion') as LootBody | undefined;
+      if (!s.active || !m) continue;
+      const drop = s.getData('drop') as LootDrop;
+      // Con la vida llena la baya no vuela hacia ti, ni la poción si ya llevas todas (se quedarían pegadas debajo)
+      const wanted = drop.kind === 'berry' ? canHealNow : drop.kind === 'potion' ? canPotion : true;
+      const pulled = !this.ended && stepLoot(m, dt, { x: this.player.x, y: this.player.y, radius, wanted });
+      const bob = m.resting && !pulled ? 5 * (0.5 - 0.5 * Math.cos(((time + (s.getData('bob') as number)) / 600) * Math.PI)) : 0;
+      s.setPosition(m.x, m.y - m.z - bob);
+      if (pulled) {
+        const e = s.getData('entry') as FloorItemSave;
+        e.x = m.x;
+        e.y = m.y;
+      }
+    }
   }
 
   private pickLoot(sprite: Sprite) {
@@ -5510,6 +5565,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         drop.kind === 'coin' ? [LX + HUD_COUNT_X.coin, 288, this.coinsHud] : drop.kind === 'key' ? [LX + HUD_COUNT_X.key, 288, this.keysHud]
           : drop.kind === 'bomb' ? [LX + HUD_COUNT_X.bomb, 288, this.bombsHud]
           : drop.kind === 'potion' ? [LX + HUD_COUNT_X.potion, 288, this.potionsHud] : [LX + LW / 2, 186, this.hpText];
+      // TODO(supervisor): efecto de destello al recoger botín (T54), en el sitio donde estaba antes de volar al HUD
       this.flyToHud(sprite.texture.key, sprite.frame.name, sprite.x, sprite.y, target[0], target[1], target[2]);
     }
     this.floorItems = this.floorItems.filter((f) => f !== sprite.getData('entry'));
