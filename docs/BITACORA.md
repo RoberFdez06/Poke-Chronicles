@@ -1088,3 +1088,15 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   si cambias un poder y no quiero forzar esa elección.
 - Destello al recoger: `TODO(supervisor)` en `pickLoot`.
 - Tests: `tests/lootMotion.test.ts` (5).
+
+## T55 — Adrenalina
+- `src/data/adrenaline.ts` (lógica pura): barra de 0 a 100; baja +8, esquiva +10, parry +20. A los 2,5 s sin sumar
+  baja 14/s. Al llenarse: 6 s de ×1,2 velocidad y ×1,3 daño (constantes `ADRENALINE_*`) y luego se vacía; mientras
+  dura no se carga otra. Todo en milisegundos restantes (no momentos del reloj) y el paso se recorta a 100 ms, así la
+  pausa no la vacía ni gasta el subidón.
+- GameScene: barra debajo del cuadro del parry dibujada con `drawBox` de theme.ts; `tickAdrenaline` en el update;
+  suma en `killEnemy`, la esquiva y el parry de `hurtPlayer`; el daño entra en `dmgMul()` (se multiplica con Ataque X)
+  y la velocidad en el movimiento. Aviso «¡Adrenalina!» en la columna de avisos. Brillo del jugador:
+  `TODO(supervisor)` en `addAdrenaline`.
+- Duda: las bajas de los ayudantes que invoca un jefe también cargan (son enemigos de verdad y dan ritmo al combate).
+- Tests: `tests/adrenaline.test.ts` (5). README actualizado (parry, adrenalina y botín).

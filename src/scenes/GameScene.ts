@@ -225,6 +225,7 @@ import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBeh
 import { drawMinimap } from './minimap';
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
+import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineSpeedMul, gainAdrenaline, newAdrenaline, tickAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
 
 // Cada sala ocupa una pantalla del mundo; ROOM es su interior relativo a la celda
 const VIEW = { w: 960, h: 640 };
@@ -579,6 +580,9 @@ export class GameScene extends Phaser.Scene {
   private parry: ParryState = newParry();
   private parryKey!: Key;
   private parryHud?: { g: Phaser.GameObjects.Graphics; x: number; y: number; w: number; h: number; shown: string };
+  /** T55: adrenalina (sube con bajas, esquivas y parrys) y su barra del HUD. */
+  private adrenaline: AdrenalineState = newAdrenaline();
+  private adrenalineHud?: { g: Phaser.GameObjects.Graphics; text: Phaser.GameObjects.Text; x: number; y: number; w: number; h: number; shown: string };
   /** Multiplicador de daño mientras dura Ataque X o el Caramelo Raro. */
   private buffMul = 1;
   /** Cofres de este piso: sala → posición y dibujo. */
@@ -683,6 +687,8 @@ export class GameScene extends Phaser.Scene {
     this.invulnUntil = 0;
     this.parry = newParry();
     this.parryHud = undefined;
+    this.adrenaline = newAdrenaline();
+    this.adrenalineHud = undefined;
     this.ended = false;
     this.endedAt = 0;
     this.earned = 0;
@@ -1149,7 +1155,8 @@ export class GameScene extends Phaser.Scene {
 
   /** Multiplicador de daño de Ataque X mientras dura. */
   private dmgMul(): number {
-    return this.time.now < this.buffUntil ? this.buffMul : 1;
+    // T55: la adrenalina activa se suma a Ataque X (se multiplican)
+    return (this.time.now < this.buffUntil ? this.buffMul : 1) * adrenalineDamageMul(this.adrenaline);
   }
 
   /**
@@ -1897,6 +1904,13 @@ export class GameScene extends Phaser.Scene {
       txt(px + 12, 31, 14, '#f8f8f8', true).setOrigin(0, 0.5).setText('Parry');
       const parryBtn = over(hud(this.add.zone(px + pw / 2, 31, pw, 30).setInteractive({ useHandCursor: true })));
       parryBtn.on('pointerdown', () => this.doParry());
+    }
+    // T55: barra de adrenalina debajo del parry (se llena con bajas, esquivas y parrys; al llenarse, subidón)
+    {
+      const ax = LX + 76;
+      const g = hud(this.add.graphics());
+      const text = txt(ax + (LW - 76) / 2, 66, 12, '#f8f8f8', true).setOrigin(0.5).setText('Adrenalina');
+      this.adrenalineHud = { g, text, x: ax, y: 50, w: LW - 76, h: 32, shown: '' };
     }
     // Ficha del Pokémon: nombre, progreso y PS
     hud(drawHudFrame(this.add.graphics(), LX, 96, LW, 150));
@@ -3313,6 +3327,30 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     h.g.fillStyle(0x101828, 1).fillRoundedRect(h.x, h.y, h.w, h.h, 8);
     h.g.fillStyle(counter ? 0xff6b3d : left > 0 ? 0x3a4560 : COLORS.gold, 1).fillRoundedRect(h.x + 3, h.y + 3, h.w - 6, h.h - 6, 6);
     if (left > 0) h.g.fillStyle(0x6a7898, 1).fillRect(h.x + 3, h.y + h.h - 7, (h.w - 6) * left, 4);
+  }
+
+  /** T55: suma adrenalina; si se llena, avisa en la columna de avisos (nunca en el centro). */
+  private addAdrenaline(source: AdrenalineSource) {
+    if (this.ended || !gainAdrenaline(this.adrenaline, source)) return;
+    this.notify('¡Adrenalina!\nMás velocidad y daño unos segundos', { kind: 'reward', icon: 'star' });
+    sfx('levelup');
+    // TODO(supervisor): brillo del jugador mientras dure la adrenalina (adrenalineActive(this.adrenaline))
+  }
+
+  /** Barra de adrenalina con las formas de theme.ts: cuadro GBA y relleno naranja (rojo intenso mientras está activa). */
+  private paintAdrenaline() {
+    const h = this.adrenalineHud;
+    if (!h) return;
+    const fill = adrenalineFill(this.adrenaline);
+    const on = adrenalineActive(this.adrenaline);
+    const key = `${Math.round(fill * 40)}:${on}`;
+    if (h.shown === key) return;
+    h.shown = key;
+    h.g.clear();
+    drawBox(h.g, h.x, h.y, h.w, h.h, { fill: 0x1d2440 });
+    const inner = { x: h.x + 10, y: h.y + 10, w: h.w - 20, h: h.h - 20 };
+    if (fill > 0) h.g.fillStyle(on ? 0xff3d3d : 0xff9a3d, 1).fillRect(inner.x, inner.y, Math.max(2, inner.w * fill), inner.h);
+    h.text.setText(on ? '¡Adrenalina!' : 'Adrenalina').setColor(on ? '#fff3b0' : '#f8f8f8');
   }
 
   /** Cuadro del objeto activo abajo a la izquierda: color, nombre corto y carga por casillas. */
@@ -4856,7 +4894,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (dir.length() > 1) dir.normalize();
     // En los charcos vas más despacio
     const wade = this.cellAt(this.player.x, this.player.y) === 'W' ? 0.6 : 1;
-    if (this.time.now >= this.playerKnockUntil) this.player.setVelocity(dir.x * this.stats.speed * wade, dir.y * this.stats.speed * wade);
+    // T55: con la adrenalina activa vas más rápido
+    const spd = this.stats.speed * wade * adrenalineSpeedMul(this.adrenaline);
+    if (this.time.now >= this.playerKnockUntil) this.player.setVelocity(dir.x * spd, dir.y * spd);
     if (this.player.getData('pmd')) {
       const moving = dir.length() > 0.2;
       if (this.player.getData('moving') !== moving) {
@@ -4895,6 +4935,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.lbPrev = lbNow;
     if (this.stats.homing > 0) this.steerShots(delta);
     this.stepLootAll(time, delta);
+    if (tickAdrenaline(this.adrenaline, delta)) this.adrenalineHud && (this.adrenalineHud.shown = '');
     const ltNow = hasPad && (pad!.buttons[6]?.value ?? 0) > 0.5;
     const rtNow = hasPad && (pad!.buttons[7]?.value ?? 0) > 0.5;
     if (this.tipObjects.length > 0) {
@@ -4972,6 +5013,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     this.paintActive();
     this.paintParry();
+    this.paintAdrenaline();
     this.paintActionBadges();
     if (this.shieldRing) this.shieldRing.setPosition(this.player.x, this.player.y).setVisible(this.shieldLeft > 0);
     this.coinsHud.setText(String(this.coins));
@@ -5331,6 +5373,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private killEnemy(enemy: Sprite) {
     const boss = !!(enemy.getData('ai') as EnemyAI | undefined)?.boss;
     this.counters.kills++;
+    // T55: las bajas cargan la adrenalina (los ayudantes que invoca un jefe también cuentan: son enemigos de verdad)
+    this.addAdrenaline('kill');
     this.comboKill(enemy);
     this.mission({ kind: 'defeat', types: boss ? this.bossTypes : ((enemy.getData('types') as string[] | undefined) ?? []) });
     // Monedas solo donde hay tienda en la que gastarlas; bayas siempre
@@ -6172,6 +6216,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.invulnUntil = now + PARRY_GRACE_MS;
       // Aviso sobre el jugador, como "¡Esquivado!" (nunca en el centro de la pantalla)
       this.popup(this.player.x, this.player.y - 50, '¡Parry!', 0xffd34d);
+      this.addAdrenaline('parry');
       sfx('crit');
       // TODO(supervisor): efecto de parry acertado (chispa/onda dorada en el punto de choque)
       return;
@@ -6179,6 +6224,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.stats.dodge > 0 && Math.random() < this.stats.dodge) {
       this.invulnUntil = now + 500;
       this.popup(this.player.x, this.player.y - 50, '¡Esquivado!', 0xfff8c0);
+      this.addAdrenaline('dodge');
       return;
     }
     if (this.shieldLeft > 0) {

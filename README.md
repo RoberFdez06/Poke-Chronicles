@@ -18,6 +18,10 @@ Es un **fan game gratuito y sin ánimo de lucro** (nunca se cobra dinero real po
   cofre trampa) y clima distinto en cada piso.
 - Al terminar el piso 5 puedes aceptar el **reto final**: el trío legendario o un gigante, elegido al azar.
 - Los **pasivos** de los objetos se combinan en sinergias.
+- **Parry**: pulsado justo antes de un golpe lo bloquea y tu siguiente ataque es crítico (los ataques de zona y
+  los láseres de los jefes no se bloquean). Las bajas, esquivas y parrys llenan la **adrenalina**: al llenarse, unos
+  segundos con más velocidad y daño.
+- El **botín** sale despedido al caer y vuela hacia ti cuando te acercas (más lejos con el Zahorí).
 
 ## Modos
 

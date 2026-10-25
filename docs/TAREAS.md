@@ -409,7 +409,7 @@ necesita un efecto visual nuevo, déjalo con un hueco claro (`// TODO(supervisor
   al acercarse (radio pequeño que sube con un pasivo de imán). Lógica de movimiento en una función pura con test; dejar el efecto de
   destello al recoger como `// TODO(supervisor)`. Que no puedan salir de la sala (como los activos de T49).
 
-## [ ] T55 — Adrenalina
+## [x] T55 — Adrenalina
 - Barra nueva en el HUD que sube al encadenar kills y esquivas/parrys y baja sola si dejas de jugar. Al llenarse se activa unos segundos
   (velocidad y daño extra, cantidades en constantes) y se vacía. Todo en lógica pura con tests (subida, bajada, activación, que no
   se acumule con pausa). La barra se dibuja con las formas de `theme.ts`; el brillo del jugador activado queda como `// TODO(supervisor)`.
