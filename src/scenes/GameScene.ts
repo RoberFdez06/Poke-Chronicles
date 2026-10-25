@@ -173,7 +173,7 @@ import {
 } from '../data/loot';
 import { comboAlive, comboBreak, comboHit, milestoneReward, newCombo, type ComboState } from '../data/combo';
 import { ComboHud } from '../ui/art/comboHud';
-import { addHpBar, addTypeChip, COLORS, drawBox, fadeIn, FONT, goTo, HEX, hpColor, shorten } from '../ui/theme';
+import { addHpBar, addTypeChip, COLORS, drawBox, fadeIn, FONT, goTo, HEX, hpColor, lowFx, shorten } from '../ui/theme';
 import {
   applyStatus,
   drainHeal,
@@ -226,6 +226,7 @@ import { drawMinimap } from './minimap';
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
 import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineSpeedMul, gainAdrenaline, newAdrenaline, tickAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
+import { DARK_RADIUS, darkEdge, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, ruleDamageMul, ruleNotice, shouldMultiply, speedRoomBonus, MULTIPLY_HP, MULTIPLY_SIZE, SPEED_ROOM_MUL, type RoomRule } from '../level/roomRules';
 
 // Cada sala ocupa una pantalla del mundo; ROOM es su interior relativo a la celda
 const VIEW = { w: 960, h: 640 };
@@ -486,6 +487,9 @@ export class GameScene extends Phaser.Scene {
   private roomEvent: RoomEvent | null = null;
   private eventsDone = new Set<number>();
   private hpSacrificed = 0;
+  /** T56: reglas de sala del piso (sala → regla) y la oscuridad de la sala a oscuras mientras dura. */
+  private roomRules = new Map<number, RoomRule>();
+  private darkness?: { hole: Phaser.GameObjects.Image; sides: Phaser.GameObjects.Rectangle[] };
   /** T48: oleada del entrenador rival (0 = no hay), sala del tiempo en marcha, huevo, ayudante y cansancio. */
   private rivalWave = 0;
   private timeTrial?: { roomId: number; until: number; failed: boolean; label: Phaser.GameObjects.Text };
@@ -689,6 +693,8 @@ export class GameScene extends Phaser.Scene {
     this.parryHud = undefined;
     this.adrenaline = newAdrenaline();
     this.adrenalineHud = undefined;
+    this.darkness = undefined;
+    this.roomRules = new Map();
     this.ended = false;
     this.endedAt = 0;
     this.earned = 0;
@@ -1797,6 +1803,12 @@ export class GameScene extends Phaser.Scene {
       (this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)
         ? pickRoomEvent(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x2545f491), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]))
         : null;
+    // T56: reglas de sala, con otra semilla del piso; nunca en la del evento ni la del minijefe (ya tienen lo suyo) ni
+    // en las salas grandes (se puede entrar por cualquiera de sus casillas y la regla quedaría en otra)
+    this.roomRules =
+      this.mode === 'normal' || this.mode === 'endless'
+        ? pickRoomRules(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x6c8e9cf5), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...(this.roomEvent ? [this.roomEvent.roomId] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]))
+        : new Map();
 
     // Al continuar: objetos, estado del jugador y sala donde estabas
     const r = this.resume;
@@ -2837,6 +2849,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Sala sorpresa: se marca al descubrirla, hasta resolverla
     const ev = this.roomEvent;
     if (ev && this.visited.has(ev.roomId) && !this.eventsDone.has(ev.roomId)) marks.set(ev.roomId, ROOM_EVENT_COLOR[ev.kind]);
+    // T56: salas con regla, en cuanto se ven en el mapa y hasta limpiarlas
+    for (const [id, rule] of this.roomRules) if (!this.cleared.has(id)) marks.set(id, ROOM_RULE_COLOR[rule]);
     const bottom = drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2, marks);
     this.toasts?.setTop(bottom + 16);
   }
@@ -3329,6 +3343,120 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (left > 0) h.g.fillStyle(0x6a7898, 1).fillRect(h.x + 3, h.y + h.h - 7, (h.w - 6) * left, 4);
   }
 
+  // --- T56: salas con reglas especiales (level/roomRules.ts) ---
+
+  /** Regla de la sala en la que estás mientras no esté limpia (una vez limpia es una sala más). */
+  private activeRule(): RoomRule | undefined {
+    const id = this.current?.id;
+    if (id === undefined || this.cleared.has(id)) return undefined;
+    return this.roomRules.get(id);
+  }
+
+  /** Al entrar en una sala con regla (ya con sus enemigos): aviso en la columna de avisos y su efecto. */
+  private applyRoomRule(room: Room) {
+    const rule = this.roomRules.get(room.id);
+    if (!rule || this.cleared.has(room.id)) return;
+    this.notify(ruleNotice(rule, typeNameEs(oneTypeFor(this.playerTypes, room.id))), { kind: 'warning', icon: 'star' });
+    if (rule === 'speed') {
+      for (const c of this.enemies.getChildren()) {
+        const e = c as Sprite;
+        if (e.active) e.setData('speed', (e.getData('speed') as number) * SPEED_ROOM_MUL);
+      }
+    } else if (rule === 'dark') this.makeDarkness();
+  }
+
+  /** Sala con regla limpia: se va la oscuridad y la de velocidad suelta su botín extra. */
+  private onRuleRoomCleared(room: Room) {
+    const rule = this.roomRules.get(room.id);
+    if (!rule) return;
+    this.clearDarkness();
+    if (rule === 'speed') {
+      const i = this.interior(room);
+      speedRoomBonus(this.floorNum, this.floor.shopId !== undefined).forEach((d, k) => this.dropLoot(i.cx + (k - 1) * 40, i.cy + 20, d));
+      this.notify('¡Sala de velocidad superada!\nBotín extra', { kind: 'reward', icon: 'star' });
+    }
+  }
+
+  /**
+   * Sala de la plaga: sale un Pokémon pequeño de la misma especie donde cayó el otro. Va marcado como ayudante: así no
+   * suelta botín ni vuelve a multiplicarse (shouldMultiply no deja a los ayudantes), y la cadena siempre se acaba.
+   */
+  private spawnSmallCopy(parent: Sprite) {
+    if (this.foeKinds.length === 0) return;
+    const sheet = ((parent.getData('sheet') as string | undefined) ?? '').replace(/-s$/, '');
+    const kind = this.foeKinds.find((k) => k.key === sheet) ?? (Phaser.Utils.Array.GetRandom(this.foeKinds) as FoeKind);
+    const ai = parent.getData('ai') as EnemyAI | undefined;
+    const p = this.freeSpot(parent.x, parent.y);
+    const e = this.spawnEnemy(kind, ai?.behavior ?? kind.behavior, p);
+    const size = Math.round(60 * MULTIPLY_SIZE);
+    e.setDisplaySize(size, size).setData('size', size);
+    if (!e.getData('shiny')) this.applyPmd(e, Number(kind.key.replace('foe-', '')), size);
+    const hp = Math.max(1, Math.round(((parent.getData('maxHp') as number | undefined) ?? 20) * MULTIPLY_HP));
+    e.setData('hp', hp).setData('maxHp', hp);
+    if (this.fxBudget.take(this.time.now)) this.popup(p.x, p.y - 30, '¡Se multiplica!', 0x9ccc65);
+  }
+
+  /**
+   * Sala a oscuras: una capa negra con un agujero alrededor del jugador (un círculo de textura y cuatro rectángulos
+   * que tapan el resto). Con efectos bajos el borde es duro: la textura no lleva degradado (ver darkEdge).
+   */
+  private makeDarkness() {
+    this.clearDarkness();
+    const R = DARK_RADIUS;
+    const edge = darkEdge(lowFx());
+    const key = `dark-hole-${edge}`;
+    if (!this.textures.exists(key)) {
+      const tex = this.textures.createCanvas(key, R * 2, R * 2);
+      if (!tex) return;
+      const ctx = tex.getContext();
+      if (edge > 0) {
+        const grad = ctx.createRadialGradient(R, R, R - edge, R, R, R);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, 'rgba(0,0,0,0.93)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, R * 2, R * 2);
+      } else {
+        ctx.fillStyle = 'rgba(0,0,0,0.93)';
+        ctx.fillRect(0, 0, R * 2, R * 2);
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.arc(R, R, R, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+      tex.refresh();
+    }
+    // Por encima de enemigos, disparos y botín; el HUD va en su propia cámara y no se tapa
+    const depth = 40;
+    const hole = this.add.image(this.player.x, this.player.y, key).setDepth(depth);
+    const big = 4000;
+    const side = (ox: number, oy: number, w: number, h: number) =>
+      this.add.rectangle(0, 0, w, h, 0x000000, 0.93).setOrigin(ox, oy).setDepth(depth);
+    this.darkness = { hole, sides: [side(1, 0.5, big, big * 2), side(0, 0.5, big, big * 2), side(0.5, 1, R * 2, big), side(0.5, 0, R * 2, big)] };
+    // TODO(supervisor): oscuridad más bonita (viñeta con ruido, brillo en los ojos de los enemigos…)
+    this.updateDarkness();
+  }
+
+  /** La oscuridad sigue al jugador. */
+  private updateDarkness() {
+    const d = this.darkness;
+    if (!d || !this.player) return;
+    const { x, y } = this.player;
+    const R = DARK_RADIUS;
+    d.hole.setPosition(x, y);
+    d.sides[0].setPosition(x - R, y);
+    d.sides[1].setPosition(x + R, y);
+    d.sides[2].setPosition(x, y - R);
+    d.sides[3].setPosition(x, y + R);
+  }
+
+  private clearDarkness() {
+    if (!this.darkness) return;
+    this.darkness.hole.destroy();
+    this.darkness.sides.forEach((s) => s.destroy());
+    this.darkness = undefined;
+  }
+
   /** T55: suma adrenalina; si se llena, avisa en la columna de avisos (nunca en el centro). */
   private addAdrenaline(source: AdrenalineSource) {
     if (this.ended || !gainAdrenaline(this.adrenaline, source)) return;
@@ -3433,6 +3561,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   private enterRoom(room: Room) {
     this.current = room;
+    // T56: la oscuridad es de la sala de la que vienes
+    this.clearDarkness();
     this.showRooms([room.id]);
     this.setRoomCamera(room);
     this.shieldLeft = this.stats.shieldPerRoom;
@@ -3464,6 +3594,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         const cells = this.groupIds(room).length;
         const n = Math.round(Phaser.Math.Between(...this.difficulty.enemies) * (cells > 1 ? cells * 0.75 : 1));
         this.spawnEnemies(n);
+        this.applyRoomRule(room);
       }
       this.setGroupDoorsLocked(room, true, true);
       sfx('door');
@@ -4935,6 +5066,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.lbPrev = lbNow;
     if (this.stats.homing > 0) this.steerShots(delta);
     this.stepLootAll(time, delta);
+    this.updateDarkness();
     if (tickAdrenaline(this.adrenaline, delta)) this.adrenalineHud && (this.adrenalineHud.shown = '');
     const ltNow = hasPad && (pad!.buttons[6]?.value ?? 0) > 0.5;
     const rtNow = hasPad && (pad!.buttons[7]?.value ?? 0) > 0.5;
@@ -5285,6 +5417,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Eficacia de tipos (como en Pokémon): súper eficaz, no muy eficaz o casi sin efecto
     const defTypes = this.foeTypesOf(enemy);
     dmg *= damageMul(status, defTypes);
+    // T56: sala de un solo tipo: los demás tipos pegan la mitad
+    const rule = this.activeRule();
+    if (rule === 'oneType') dmg *= ruleDamageMul(rule, status, oneTypeFor(this.playerTypes, this.current.id));
     this.effectivenessPopup(effectOf(status, defTypes), enemy.x, enemy.y - (enemy.getData('size') as number) * 0.75);
     let crit = false;
     // T53: el primer golpe que impacta tras un parry es crítico seguro (se gasta aquí, uno por parry)
@@ -5426,6 +5561,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.time.delayedCall(900, () => !this.ended && this.dropItem(roomId, ex, ey));
       this.notify(`¡Minijefe derrotado! +${bonus} tickets\nHa caído un objeto`, { kind: 'reward', icon: 'star' });
     }
+    // T56: sala de la plaga. Antes de destruirlo, para que el pequeño cuente al mirar si la sala está limpia
+    if (shouldMultiply(this.activeRule(), boss || mini || !!enemy.getData('helper') || !!enemy.getData('runaway') || !!enemy.getData('mimic'), Math.random)) this.spawnSmallCopy(enemy);
     enemy.destroy();
     if (boss && others.length === 0) {
       playTrack(trackForBiome(this.biome.id));
@@ -5976,6 +6113,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       return;
     }
     for (const id of this.groupIds(room)) this.cleared.add(id);
+    this.onRuleRoomCleared(room);
     this.chargeActive();
     this.mission({ kind: 'room' });
     this.tip('pause');

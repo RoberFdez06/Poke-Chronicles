@@ -414,7 +414,7 @@ necesita un efecto visual nuevo, déjalo con un hueco claro (`// TODO(supervisor
   (velocidad y daño extra, cantidades en constantes) y se vacía. Todo en lógica pura con tests (subida, bajada, activación, que no
   se acumule con pausa). La barra se dibuja con las formas de `theme.ts`; el brillo del jugador activado queda como `// TODO(supervisor)`.
 
-## [ ] T56 — Salas con reglas especiales
+## [x] T56 — Salas con reglas especiales
 - En `roomEvents.ts`/mezcla de sala añade modificadores de combate con etiqueta en el minimapa y aviso al entrar: **solo un tipo de daño**
   (el resto de ataques hacen la mitad), **enemigos que se multiplican** (al morir uno, 25 % de que salga uno pequeño), **sala a oscuras**
   (visión reducida alrededor del jugador, respetando el modo de efectos bajos) y **sala de velocidad** (enemigos más rápidos, mejor botín).

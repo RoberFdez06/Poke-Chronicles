@@ -1100,3 +1100,20 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   `TODO(supervisor)` en `addAdrenaline`.
 - Duda: las bajas de los ayudantes que invoca un jefe también cargan (son enemigos de verdad y dan ritmo al combate).
 - Tests: `tests/adrenaline.test.ts` (5). README actualizado (parry, adrenalina y botín).
+
+## T56 — Salas con reglas especiales
+- `src/level/roomRules.ts` (lógica pura) en vez de meterlo en `roomEvents.ts`: una sala puede tener evento **y** no
+  quería mezclar sus tiradas (cambiar las de los eventos movería las salas sorpresa de los guardados y del diario).
+  `ruleChance` (0 en el piso 1, 8 % en el 2 y +4 % por piso hasta 30 %), `pickRoomRules` (solo salas de combate,
+  dos tiradas por sala siempre, en orden de id), y las cuatro reglas:
+  - **Un solo tipo**: el tipo es siempre uno de los del jugador (`oneTypeFor`, fijo por sala); el resto, ×0,5.
+  - **Plaga**: 25 % de que salga un pequeño (65 % de tamaño, 40 % de vida) al caer un enemigo; el pequeño va marcado
+    como ayudante (sin botín y no se vuelve a multiplicar: la cadena siempre acaba).
+  - **A oscuras**: radio de 190 px; con efectos bajos el borde es duro (`darkEdge`).
+  - **Velocidad**: enemigos ×1,35 y al limpiarla `speedRoomBonus` (baya y monedas si hay tienda; si no, bomba).
+- GameScene: reglas con otra semilla del piso (iguales al continuar y en el diario), nunca en la sala del evento, la
+  del minijefe ni las salas grandes (se entra por cualquier casilla). Rombo de su color en el minimapa (con las
+  `marks` que ya había, sin tocar `minimap.ts`) y aviso en la columna de avisos al entrar. La oscuridad es una textura
+  con agujero + 4 rectángulos que siguen al jugador; se quita al limpiar o salir. Solo en Normal e Infinito (como los
+  eventos). `TODO(supervisor)` para una oscuridad más bonita.
+- Tests: `tests/roomRules.test.ts` (6).

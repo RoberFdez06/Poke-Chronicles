@@ -15,7 +15,8 @@ Es un **fan game gratuito y sin ánimo de lucro** (nunca se cobra dinero real po
 - Cada piso tiene su **bioma** (bosque, cueva, mar, volcán, torre, ciudad, nieve, pantano, cumbre), sus enemigos con
   distintas formas de moverse, un **minijefe** en su propia sala y un **jefe legendario** con dos fases.
 - Hay **Centro Pokémon**, **tienda**, cofres con llave, bombas, salas sorpresa (Pokémon raro que huye, mercader, altar,
-  cofre trampa) y clima distinto en cada piso.
+  cofre trampa) y clima distinto en cada piso. Desde el piso 2 algunas salas traen una **regla especial** (un solo
+  tipo de daño, enemigos que se multiplican, sala a oscuras o de velocidad), marcada en el minimapa.
 - Al terminar el piso 5 puedes aceptar el **reto final**: el trío legendario o un gigante, elegido al azar.
 - Los **pasivos** de los objetos se combinan en sinergias.
 - **Parry**: pulsado justo antes de un golpe lo bloquea y tu siguiente ataque es crítico (los ataques de zona y
