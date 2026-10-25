@@ -54,6 +54,7 @@ function sample(): RunSave {
     allyId: 16,
     tiredRooms: 0,
     potions: 2,
+    secondChance: false,
   };
 }
 
@@ -245,4 +246,14 @@ test('un guardado v14 se migra sin pociones (T49) y las pociones del suelo se gu
   const withPotion = parseRun(JSON.stringify({ ...sample(), floorItems: [{ roomId: 1, x: 5, y: 6, drop: { kind: 'potion' } }] }));
   assert.deepEqual(withPotion?.floorItems[0].drop, { kind: 'potion' });
   assert.equal(parseRun(JSON.stringify({ ...sample(), potions: -1 })), null);
+});
+
+test('T57: un guardado v15 se migra con la segunda oportunidad sin usar y se guarda si ya se usó', () => {
+  const { secondChance: _s, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 15 }));
+  assert.ok(run);
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.secondChance, false);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), secondChance: true }))?.secondChance, true);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), secondChance: 'sí' })), null);
 });

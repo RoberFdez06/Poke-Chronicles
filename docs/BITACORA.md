@@ -1117,3 +1117,17 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   con agujero + 4 rectángulos que siguen al jugador; se quita al limpiar o salir. Solo en Normal e Infinito (como los
   eventos). `TODO(supervisor)` para una oscuridad más bonita.
 - Tests: `tests/roomRules.test.ts` (6).
+
+## T57 — «Una más»
+- `src/data/secondChance.ts` (lógica pura): coste en tickets 10 + 2 por piso (tope 30) y en caramelos al cambio de
+  siempre (`CANDY_PER_TICKET`); `canOfferRevive` (sin usar y con saldo en alguna), `reviveCharge`, `revivedHp` (50 %)
+  y `REVIVE_IMMUNE_MS` (2 s). Nunca monedas de la partida.
+- `RunSave` v16: `secondChance` (migración desde v15 sin usar); también pasa de piso a piso (`FloorCarry`), así es
+  una sola vez por partida aunque continúes o bajes de piso.
+- `SecondChanceScene` (registrada antes de `PauseScene`): dos botones de revivir (con coste y saldo) y "Terminar";
+  flechas/Enter, ratón y cruceta/A; Esc/B termina. Si eliges una moneda sin saldo, avisa y no se cierra. A los
+  invitados se les recuerda que no se guarda: gastan en el almacenamiento en memoria, así que pueden usarla igual.
+- GameScene: `playerDown` sustituye a `finish(false)` al caer (golpe o bomba propia); cobra al elegir, vuelve con
+  media vida e inmunidad en la misma sala, marca los botones del mando como pulsados y no cuenta como curarse.
+  `TODO(supervisor)` para el efecto de revivir.
+- Tests: `tests/secondChance.test.ts` (5) y runSave (+1).

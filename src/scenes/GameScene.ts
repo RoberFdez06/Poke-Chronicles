@@ -3,7 +3,7 @@ import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetch
 import { evolveFloors, pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
-import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal } from '../data/save';
+import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal, loadCandies, loadTickets, spendCandies, spendTickets } from '../data/save';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
 import { dailyFloorSeed, dailyRng } from '../data/daily';
 import { damageMul, effectOf, EFFECT_COLOR, EFFECT_LABEL } from '../data/typeChart';
@@ -227,6 +227,9 @@ import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PAR
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
 import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineSpeedMul, gainAdrenaline, newAdrenaline, tickAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
 import { DARK_RADIUS, darkEdge, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, ruleDamageMul, ruleNotice, shouldMultiply, speedRoomBonus, MULTIPLY_HP, MULTIPLY_SIZE, SPEED_ROOM_MUL, type RoomRule } from '../level/roomRules';
+import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data/secondChance';
+import type { SecondChanceChoice } from './SecondChanceScene';
+import { accountInfo } from '../net/cloud';
 
 // Cada sala ocupa una pantalla del mundo; ROOM es su interior relativo a la celda
 const VIEW = { w: 960, h: 640 };
@@ -286,7 +289,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance'
 >;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
@@ -487,6 +490,8 @@ export class GameScene extends Phaser.Scene {
   private roomEvent: RoomEvent | null = null;
   private eventsDone = new Set<number>();
   private hpSacrificed = 0;
+  /** T57: la segunda oportunidad («Una más») ya se usó en esta partida (pasa de piso a piso y se guarda). */
+  private secondChanceUsed = false;
   /** T56: reglas de sala del piso (sala → regla) y la oscuridad de la sala a oscuras mientras dura. */
   private roomRules = new Map<number, RoomRule>();
   private darkness?: { hole: Phaser.GameObjects.Image; sides: Phaser.GameObjects.Rectangle[] };
@@ -815,6 +820,7 @@ export class GameScene extends Phaser.Scene {
   private async boot(loading: Phaser.GameObjects.Text) {
     const r = this.resume;
     this.hpSacrificed = r?.hpSacrificed ?? this.carry?.hpSacrificed ?? 0;
+    this.secondChanceUsed = r?.secondChance ?? this.carry?.secondChance ?? false;
     this.eventsDone = new Set(r?.eventsDone ?? []);
     this.eventObjs = [];
     this.eventSpots = [];
@@ -2234,6 +2240,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       allyId: this.allyId,
       tiredRooms: this.tiredRooms,
       potions: this.potions,
+      secondChance: this.secondChanceUsed,
     });
   }
 
@@ -2798,7 +2805,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.invulnUntil = this.time.now + 900;
       this.hp -= BOMB.selfDamage;
       sfx('hurt');
-      if (this.hp <= 0) this.finish(false, `Has caído · +${this.earned} tickets\nPulsa R, Start o haz clic para ver el resumen`);
+      if (this.hp <= 0) this.playerDown(`Has caído · +${this.earned} tickets\nPulsa R, Start o haz clic para ver el resumen`);
     }
 
     // Rocas y hierba alta de la sala
@@ -4905,6 +4912,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       allyId: this.allyId,
       tiredRooms: this.tiredRooms,
       potions: this.potions,
+      secondChance: this.secondChanceUsed,
     };
     // Caída por la trampilla: se coloca encima, gira encogiéndose hacia el agujero y la cámara se acerca
     const p = this.player;
@@ -6404,8 +6412,52 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
     if (this.hp <= 0) {
       const where = this.mode === 'normal' ? '' : ` en ${progressText(this.mode, this.floorNum).toLowerCase()}`;
-      this.finish(false, `Has caído${where} · +${this.earned} tickets\nPulsa R, Start o haz clic para ver el resumen`);
+      this.playerDown(`Has caído${where} · +${this.earned} tickets\nPulsa R, Start o haz clic para ver el resumen`);
     }
+  }
+
+  /**
+   * T57: has caído. Si queda la segunda oportunidad de la partida y se puede pagar con caramelos o tickets, se ofrece
+   * («Una más», SecondChanceScene); si no, o si la rechazas, se acaba la partida con `message`.
+   */
+  private playerDown(message: string) {
+    if (this.ended) return;
+    const balances = { candies: loadCandies(), tickets: loadTickets() };
+    if (!this.scene.manager.keys['SecondChance'] || this.scene.isActive('SecondChance') || !canOfferRevive(this.secondChanceUsed, balances, this.floorNum)) {
+      this.finish(false, message);
+      return;
+    }
+    const costs = { candies: reviveCost('candies', this.floorNum), tickets: reviveCost('tickets', this.floorNum) };
+    const mode = accountInfo().mode;
+    this.player.setVelocity(0, 0);
+    this.scene.launch('SecondChance', {
+      costs,
+      balances,
+      guest: mode !== 'cloud' && mode !== 'local',
+      onChoice: (c: SecondChanceChoice) => {
+        this.scene.stop('SecondChance');
+        this.scene.resume();
+        this.input.keyboard?.resetKeys();
+        // Los botones del mando con los que se eligió siguen pulsados: que no lancen un poder al volver
+        this.padPrev = [true, true, true, true];
+        // Se cobra aquí (y no en la otra escena) para que el saldo sea el de este momento
+        const paid = c === 'candies' ? spendCandies(costs.candies) : c === 'tickets' ? spendTickets(costs.tickets) : false;
+        if (!paid) {
+          this.finish(false, message);
+          return;
+        }
+        this.secondChanceUsed = true;
+        this.hp = revivedHp(this.stats.maxHp);
+        // Volver no cuenta como curarse para las misiones «sin curarte»
+        this.hpMark = this.hp;
+        this.invulnUntil = this.time.now + REVIVE_IMMUNE_MS;
+        this.notify(`¡Una más!\nVuelves con ${Math.ceil(this.hp)} PS`, { kind: 'heal', icon: 'heart' });
+        sfx('heal');
+        // TODO(supervisor): efecto de revivir (el jugador se levanta con un destello)
+        this.saveNow();
+      },
+    });
+    this.scene.pause();
   }
 
   /** Fin de partida: congela el juego y deja salir con teclado (R), mando (Start / A) o ratón (clic). */

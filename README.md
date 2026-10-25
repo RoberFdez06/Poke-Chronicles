@@ -18,6 +18,7 @@ Es un **fan game gratuito y sin ánimo de lucro** (nunca se cobra dinero real po
   cofre trampa) y clima distinto en cada piso. Desde el piso 2 algunas salas traen una **regla especial** (un solo
   tipo de daño, enemigos que se multiplican, sala a oscuras o de velocidad), marcada en el minimapa.
 - Al terminar el piso 5 puedes aceptar el **reto final**: el trío legendario o un gigante, elegido al azar.
+- **«Una más»**: al caer, una vez por partida, puedes volver con media vida pagando caramelos o tickets (tú eliges).
 - Los **pasivos** de los objetos se combinan en sinergias.
 - **Parry**: pulsado justo antes de un golpe lo bloquea y tu siguiente ataque es crítico (los ataques de zona y
   los láseres de los jefes no se bloquean). Las bajas, esquivas y parrys llenan la **adrenalina**: al llenarse, unos

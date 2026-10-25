@@ -420,7 +420,7 @@ necesita un efecto visual nuevo, déjalo con un hueco claro (`// TODO(supervisor
   (visión reducida alrededor del jugador, respetando el modo de efectos bajos) y **sala de velocidad** (enemigos más rápidos, mejor botín).
   Probabilidad por piso en la lógica pura y probada; nunca en la sala del jefe, la tienda ni la inicial.
 
-## [ ] T57 — «Una más»
+## [x] T57 — «Una más»
 - Al morir, una única segunda oportunidad por run: cuesta caramelos o tickets (el jugador elige cuál, sin mezclar monedas de la run),
   te revive con media vida en la misma sala con 2 s de inmunidad. Se ofrece en la pantalla de muerte con botones para teclado, ratón y
   mando. Los invitados pueden usarla pero no guardan nada. Tests: coste, una sola vez por run y que no pueda pagar sin saldo.
