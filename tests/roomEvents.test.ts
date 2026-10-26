@@ -16,6 +16,8 @@ import {
   pickRoomEvent,
   runawayTickets,
   trapChestOutcome,
+  megaStoneDoneKey,
+  pickMegaStoneRoom,
 } from '../src/level/roomEvents.ts';
 import { generateFloor, mulberry32 } from '../src/level/floorGen.ts';
 import { PASSIVE_ITEMS } from '../src/data/items.ts';
@@ -47,7 +49,9 @@ test('sala sorpresa: a veces, nunca en el piso 1, en una sala de combate libre y
     assert.deepEqual(pickRoomEvent(f, 3, mulberry32(i), exclude), ev);
   }
   assert.ok(Math.abs(some / n - EVENT_CHANCE) < 0.06, `${some / n}`);
-  assert.equal(kinds.size, ROOM_EVENTS.length);
+  // Salen todos menos el santuario de la Mega Piedra, que tiene su propia sala fija
+  assert.equal(kinds.size, ROOM_EVENTS.length - 1);
+  assert.ok(!kinds.has('megaStone'));
   for (let i = 0; i < 40; i++) assert.equal(pickRoomEvent(floorFor(i), 1, mulberry32(i)), null);
   // Sin salas de combate libres, nada
   const f = floorFor(7);
@@ -103,8 +107,8 @@ import {
   timeTrialSize,
 } from '../src/level/roomEvents.ts';
 
-test('T48: los 11 eventos tienen nombre, descripción (premio y riesgo) y color distinto', () => {
-  assert.equal(ROOM_EVENTS.length, 12);
+test('T48: los eventos tienen nombre, descripción (premio y riesgo) y color distinto', () => {
+  assert.equal(ROOM_EVENTS.length, 13);
   for (const k of ROOM_EVENTS) assert.ok(ROOM_EVENT_DESC[k], k);
   assert.equal(new Set(ROOM_EVENTS.map((k) => ROOM_EVENT_COLOR[k])).size, ROOM_EVENTS.length);
 });
@@ -240,4 +244,75 @@ test('desafío diario: slots, thief y fishing nunca salen; en partidas normales 
   for (let i = 0; i < 400; i++) vistos.add(pickEventKind(5, i / 400, ['water']));
   for (const k of nuevos) assert.ok(vistos.has(k), k);
   assert.ok(eventWeights(5, ['water']).fishing > 0);
+});
+
+// --- Santuario de la Mega Piedra ---
+
+test('Mega Piedra: el santuario es un evento con nombre, descripción y color distinto, y nunca sale al sortear', () => {
+  assert.ok(ROOM_EVENTS.includes('megaStone'));
+  assert.equal(ROOM_EVENT_LABEL.megaStone, 'Santuario de la Mega Piedra');
+  assert.ok(ROOM_EVENT_DESC.megaStone);
+  for (const k of ROOM_EVENTS) if (k !== 'megaStone') assert.notEqual(ROOM_EVENT_COLOR[k], ROOM_EVENT_COLOR.megaStone, k);
+  for (const fl of [1, 2, 3, 5, 9]) {
+    assert.equal(eventWeights(fl, ['water']).megaStone, 0);
+    for (let i = 0; i < 400; i++) assert.notEqual(pickEventKind(fl, i / 400, ['water']), 'megaStone');
+  }
+  assert.ok(!DAILY_EVENTS.includes('megaStone'));
+  for (let seed = 1; seed <= 200; seed++) {
+    const ev = pickRoomEvent(floorFor(seed), 4, mulberry32(seed));
+    assert.notEqual(ev?.kind, 'megaStone');
+  }
+});
+
+test('Mega Piedra: cada piso tiene exactamente una sala, determinista, nunca la de inicio ni la del jefe', () => {
+  for (let seed = 1; seed <= 400; seed++) {
+    const make = () => [floorFor(seed), generateFloor({ seed, roomCount: 6 }), generateFloor({ seed, roomCount: 9, special: true })];
+    const again = make();
+    for (const [k, f] of make().entries()) {
+      const a = pickMegaStoneRoom(f, seed);
+      const b = pickMegaStoneRoom(again[k], seed);
+      assert.notEqual(a, null, `semilla ${seed}`);
+      assert.equal(a, b);
+      const room = f.rooms[a!];
+      assert.ok(room);
+      assert.notEqual(room.id, f.startId);
+      assert.notEqual(room.id, f.bossId);
+      assert.notEqual(room.kind, 'start');
+      assert.notEqual(room.kind, 'boss');
+      assert.notEqual(room.kind, 'secret');
+    }
+  }
+});
+
+test('Mega Piedra: respeta las salas excluidas (minijefe, evento, reglas) cuando hay otras libres', () => {
+  for (let seed = 1; seed <= 200; seed++) {
+    const f = floorFor(seed);
+    const first = pickMegaStoneRoom(f, seed)!;
+    const second = pickMegaStoneRoom(f, seed, new Set([first]))!;
+    assert.notEqual(second, first);
+    assert.notEqual(second, f.startId);
+    assert.notEqual(second, f.bossId);
+  }
+});
+
+test('Mega Piedra: distintas semillas de piso la ponen en salas distintas (no siempre la misma)', () => {
+  const ids = new Set<number>();
+  for (let seed = 1; seed <= 100; seed++) ids.add(pickMegaStoneRoom(floorFor(seed), seed)!);
+  assert.ok(ids.size > 2);
+});
+
+test('Mega Piedra: la marca de «ya cogida» no choca con la de otros eventos de la misma sala (forja de la Torre)', () => {
+  for (const id of [0, 1, 7, 20]) assert.notEqual(megaStoneDoneKey(id), id);
+  assert.equal(new Set([0, 1, 2, 3].map(megaStoneDoneKey)).size, 4);
+});
+
+test('Mega Piedra: el desafío diario sigue estable (el santuario no toca las tiradas del evento al azar)', () => {
+  for (let seed = 1; seed <= 60; seed++) {
+    const floor = floorFor(seed);
+    const antes = pickRoomEvent(floor, 4, mulberry32(seed * 31), new Set(), ['water'], DAILY_EVENTS);
+    pickMegaStoneRoom(floor, seed); // función pura: no consume nada del generador del evento
+    const despues = pickRoomEvent(floor, 4, mulberry32(seed * 31), new Set(), ['water'], DAILY_EVENTS);
+    assert.deepEqual(antes, despues);
+    assert.notEqual(despues?.kind, 'megaStone');
+  }
 });

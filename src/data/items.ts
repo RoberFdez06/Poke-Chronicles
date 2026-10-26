@@ -327,6 +327,14 @@ const SPECIAL_ITEMS: PassiveItem[] = [
 (PASSIVE_ITEMS as PassiveItem[]).push(...SPECIAL_ITEMS);
 
 /**
+ * Pasivos que NO salen en sorteos al azar (cofres, suelo, tienda, mercader, jefes, forja): solo se consiguen en su sala
+ * dedicada. La Mega Piedra sale siempre, una vez por piso, en el Santuario de la Mega Piedra (level/roomEvents.ts).
+ */
+export const NON_RANDOM_PASSIVES: ReadonlySet<string> = new Set(['mega-piedra']);
+/** Pasivos que pueden salir al azar: todos menos los de `NON_RANDOM_PASSIVES`. */
+export const RANDOM_PASSIVES: readonly PassiveItem[] = PASSIVE_ITEMS.filter((i) => !NON_RANDOM_PASSIVES.has(i.id));
+
+/**
  * Estadísticas resultantes de tener estos objetos (se repiten si hay duplicados), encima de las del
  * Pokémon (`base`, ver pokeStats.ts) o de las de por defecto.
  */
@@ -453,7 +461,7 @@ export const PASSIVE_RARITY: Readonly<Record<string, MoveRarity>> = {
   'doble-equipo': 'epic', 'concha-campana': 'epic', 'gafas-especiales': 'epic', 'roca-del-rey': 'epic', 'mineral-evolutivo': 'epic',
   'bola-ferrea': 'epic', 'piedra-lunar': 'epic',
   'cola-gemela': 'legendary', 'orbe-vital': 'legendary',
-  // T74: objeto raro de verdad (sale poco en cofres, tienda y jefes)
+  // T74: objeto raro de verdad; ya no sale al azar, solo en el Santuario de la Mega Piedra (una vez por piso)
   'mega-piedra': 'legendary',
 };
 export const passiveRarity = (id: string): MoveRarity => PASSIVE_RARITY[id] ?? 'rare';
@@ -482,7 +490,7 @@ export function rollItem(
   activeChance = 0,
   actives: readonly string[] = [],
   /** Pasivos que pueden salir (sin los bloqueados por logros, ver missions.ts). */
-  pool: readonly PassiveItem[] = PASSIVE_ITEMS,
+  pool: readonly PassiveItem[] = RANDOM_PASSIVES,
   /** Piso actual: cuanto más alto, más raros los poderes que salen. */
   floor = 1,
 ): DroppedItem {

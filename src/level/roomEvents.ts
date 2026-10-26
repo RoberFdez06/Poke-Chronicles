@@ -16,14 +16,16 @@
 // - Laguna de pesca: lanzas la caña y pulsas cuando pica (ver fishing.ts).
 // T73:
 // - Forja: reciclar un objeto por monedas o fusionar dos de la misma rareza (ver data/forge.ts).
+// Mega Piedra:
+// - Santuario de la Mega Piedra: sala dedicada, una por piso, con la Mega Piedra (ver pickMegaStoneRoom).
 // Sale de la semilla del piso, así al continuar o en el desafío diario es el mismo. Lógica pura, sin Phaser.
-import type { Floor } from './floorGen.ts';
-import { PASSIVE_ITEMS, takeMoveByRarity, type MovePower, type PassiveItem } from '../data/items.ts';
+import { mulberry32, type Floor } from './floorGen.ts';
+import { RANDOM_PASSIVES, takeMoveByRarity, type MovePower, type PassiveItem } from '../data/items.ts';
 import { fishingWeight } from './fishing.ts';
 import { forgeWeight } from '../data/forge.ts';
 import type { ShopGoods, ShopSlot } from '../data/loot.ts';
 
-export const ROOM_EVENTS = ['runaway', 'merchant', 'altar', 'trapChest', 'rival', 'fountain', 'timeTrial', 'egg', 'slots', 'thief', 'fishing', 'forge'] as const;
+export const ROOM_EVENTS = ['runaway', 'merchant', 'altar', 'trapChest', 'rival', 'fountain', 'timeTrial', 'egg', 'slots', 'thief', 'fishing', 'forge', 'megaStone'] as const;
 export type RoomEventKind = (typeof ROOM_EVENTS)[number];
 
 /**
@@ -51,6 +53,7 @@ export const ROOM_EVENT_LABEL: Record<RoomEventKind, string> = {
   thief: 'Ladrón',
   fishing: 'Laguna de pesca',
   forge: 'Forja',
+  megaStone: 'Santuario de la Mega Piedra',
 };
 
 /** Color de la marca en el minimapa (al descubrir la sala, hasta resolver el evento). */
@@ -67,6 +70,7 @@ export const ROOM_EVENT_COLOR: Record<RoomEventKind, number> = {
   thief: 0x8d6e63,
   fishing: 0x0288d1,
   forge: 0xe67e22,
+  megaStone: 0x8fd3ff, // el color de la propia Mega Piedra
 };
 
 /** Premio y riesgo de cada evento, para el aviso al entrar. */
@@ -83,6 +87,7 @@ export const ROOM_EVENT_DESC: Record<RoomEventKind, string> = {
   thief: 'Te roba monedas y huye: abátelo antes de que salga y te las devuelve con extra',
   fishing: 'Lanza la caña y pulsa cuando pique: monedas, bayas, objetos… o algo raro',
   forge: 'Recicla un objeto por monedas o fusiona dos de la misma rareza en uno mejor',
+  megaStone: 'Una Mega Piedra por piso: sin ella no hay megaevolución',
 };
 
 /**
@@ -105,6 +110,7 @@ export function eventWeights(floorNum: number, biomeTypes: readonly string[] = [
     thief: 0.5 + 0.3 * deep, // T70: algo más hondo, cuando llevas más monedas
     fishing: fishingWeight(biomeTypes), // T69: sobre todo en biomas con agua
     forge: forgeWeight(f), // T73: más probable cuanto más hondo
+    megaStone: 0, // nunca sale al sortear: tiene su propia sala fija por piso (pickMegaStoneRoom)
   };
 }
 
@@ -140,6 +146,45 @@ export function pickRoomEvent(floor: Floor, floorNum: number, rng: () => number,
   return { roomId: room.id, kind: pickEventKind(floorNum, which, biomeTypes, kinds) };
 }
 
+// --- Santuario de la Mega Piedra ---
+
+/**
+ * La Mega Piedra ya no sale al azar: cada piso tiene EXACTAMENTE una sala dedicada (la que devuelve
+ * `pickMegaStoneRoom`) con un altar que la da una vez. Es un evento aparte del «sala sorpresa» del piso: puede haber
+ * las dos cosas en el mismo piso, en salas distintas.
+ *
+ * Las marcas de «ya cogida» van en `eventsDone` (que ya se guarda) con la clave `megaStoneDoneKey`, para no chocar con
+ * otros eventos de la misma sala (la forja de la Torre). Así no hace falta tocar RunSave.
+ *
+ * Desafío diario: sigue usando la lista congelada DAILY_EVENTS para el evento al azar y, además, tiene su santuario
+ * (la sala se elige con una semilla propia y SIN alterar las demás tiradas, así el reto del día sale igual que antes
+ * salvo por esa sala extra). Torre (una sola sala por piso): el altar aparece en las salas de descanso y de suministros
+ * (ver GameScene.towerEnter); en los pisos de combate, minijefe y jefe no, para no romper su estructura.
+ */
+export const MEGA_STONE_SEED_SALT = 0x3b9aca07;
+/** Las claves de `eventsDone` de la Mega Piedra son `MEGA_STONE_DONE_BASE + id de sala` (las salas reales son pocas). */
+export const MEGA_STONE_DONE_BASE = 100000;
+export const megaStoneDoneKey = (roomId: number): number => MEGA_STONE_DONE_BASE + roomId;
+
+/**
+ * Sala del Santuario de la Mega Piedra del piso: determinista por la semilla del piso, nunca la de inicio ni la del
+ * jefe (ni secreta, tienda, centro, objeto ni desafío). Prefiere una sala de combate libre (no en `exclude`: minijefe,
+ * evento sorpresa, reglas…; ni de cofre ni grande), mejor sin salida; si no hay, cualquier sala de combate; y si
+ * tampoco, cualquier sala que no sea de inicio, jefe ni secreta. Solo devuelve null si el piso no tiene otra sala.
+ */
+export function pickMegaStoneRoom(floor: Floor, seed: number, exclude: ReadonlySet<number> = new Set()): number | null {
+  const rng = mulberry32((seed ^ MEGA_STONE_SEED_SALT) >>> 0);
+  const x = rng();
+  const chests = floor.chestRooms ?? [];
+  const base = floor.rooms.filter((r) => r.id !== floor.startId && r.id !== floor.bossId && r.kind !== 'start' && r.kind !== 'boss' && r.kind !== 'secret');
+  const combat = base.filter((r) => r.kind === 'combat');
+  const free = combat.filter((r) => !exclude.has(r.id) && !chests.includes(r.id) && r.group === undefined);
+  const ends = free.filter((r) => Object.keys(r.doors).length === 1);
+  const pool = ends.length > 0 ? ends : free.length > 0 ? free : combat.length > 0 ? combat : base;
+  if (pool.length === 0) return null;
+  return pool[Math.min(pool.length - 1, Math.floor(x * pool.length))].id;
+}
+
 // --- Pokémon raro que huye ---
 
 /** Segundos que tarda en escapar. */
@@ -162,7 +207,7 @@ export function merchantStock(
   rng: () => number,
   ownedPassives: ReadonlySet<string>,
   movePool: MovePower[],
-  pool: readonly PassiveItem[] = PASSIVE_ITEMS,
+  pool: readonly PassiveItem[] = RANDOM_PASSIVES,
   floor = 1,
 ): ShopSlot[] {
   const used = new Set<string>();

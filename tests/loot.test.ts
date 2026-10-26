@@ -134,3 +134,37 @@ test('T49: pociones en el suelo: caen a veces y se llevan como mucho tres', asyn
   assert.ok(!canCarryPotion(MAX_POTIONS));
   assert.ok(CARRIED_POTION_HEAL > 0);
 });
+
+// --- La Mega Piedra no sale al azar (solo en su santuario) ---
+import { MEGA_STONE_ID } from '../src/data/powerForm.ts';
+import { PASSIVE_ITEMS, RANDOM_PASSIVES, NON_RANDOM_PASSIVES, pickPassive, rollItem as rollItemMega } from '../src/data/items.ts';
+import { rollShop as rollShopMega } from '../src/data/loot.ts';
+import { merchantStock as merchantStockMega } from '../src/level/roomEvents.ts';
+import { fuseResult } from '../src/data/forge.ts';
+
+test('Mega Piedra: sigue siendo un pasivo válido pero queda fuera de los sorteos al azar', () => {
+  assert.ok(PASSIVE_ITEMS.some((i) => i.id === MEGA_STONE_ID));
+  assert.ok(NON_RANDOM_PASSIVES.has(MEGA_STONE_ID));
+  assert.ok(!RANDOM_PASSIVES.some((i) => i.id === MEGA_STONE_ID));
+  assert.equal(RANDOM_PASSIVES.length, PASSIVE_ITEMS.length - NON_RANDOM_PASSIVES.size);
+});
+
+test('Mega Piedra: nunca sale en cofres/suelo, tienda, mercader ni forja con los sorteos por defecto', () => {
+  const seen = new Set<string>();
+  for (let seed = 1; seed <= 3000; seed++) {
+    const rng = mulberry32(seed);
+    const drop = rollItemMega(rng, new Set(), [], 0, [], undefined, 1 + (seed % 9));
+    if (drop.kind === 'passive') seen.add(drop.item.id);
+    for (const s of rollShopMega(mulberry32(seed), new Set(), [], undefined, 1 + (seed % 9))) if (s.goods.kind === 'passive') seen.add(s.goods.id);
+    for (const s of merchantStockMega(mulberry32(seed), new Set(), [])) if (s.goods.kind === 'passive') seen.add(s.goods.id);
+    assert.notEqual(pickPassive(mulberry32(seed), RANDOM_PASSIVES).id, MEGA_STONE_ID);
+  }
+  assert.ok(!seen.has(MEGA_STONE_ID));
+  assert.ok(seen.size > 20); // el sorteo sigue funcionando con el resto
+  // Forja: fusionar dos objetos no da la Mega Piedra
+  const ids = RANDOM_PASSIVES.slice(0, 40).map((i) => i.id);
+  for (let a = 0; a + 1 < ids.length; a++) for (let seed = 1; seed <= 20; seed++) {
+    const r = fuseResult(ids[a], ids[a + 1], [ids[a], ids[a + 1]], mulberry32(seed));
+    assert.notEqual(r?.id, MEGA_STONE_ID);
+  }
+});

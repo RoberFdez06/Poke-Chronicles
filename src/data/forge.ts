@@ -6,7 +6,7 @@ import {
   ITEM_SLOTS_MAX,
   ITEM_SLOTS_PER_BOSS,
   MOVE_RARITIES,
-  PASSIVE_ITEMS,
+  RANDOM_PASSIVES,
   passivePrice,
   passiveRarity,
   type MoveRarity,
@@ -95,7 +95,7 @@ export const fuseCost = (a: string): number => FUSE_COST[nextRarity(passiveRarit
  * Objeto que sale de fusionar `a` y `b`: uno al azar de la rareza siguiente que no lleves (si los llevas todos,
  * cualquiera de esa rareza). Usa una sola tirada de `rng`, así con un azar fijo se puede enseñar antes de aceptar.
  */
-export function fuseResult(a: string, b: string, passives: readonly string[], rng: () => number, pool: readonly PassiveItem[] = PASSIVE_ITEMS): PassiveItem | null {
+export function fuseResult(a: string, b: string, passives: readonly string[], rng: () => number, pool: readonly PassiveItem[] = RANDOM_PASSIVES): PassiveItem | null {
   if (fuseProblem(a, b, passives)) return null;
   const target = nextRarity(passiveRarity(a))!;
   const all = pool.filter((i) => passiveRarity(i.id) === target);
