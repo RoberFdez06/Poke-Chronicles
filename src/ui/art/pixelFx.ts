@@ -214,17 +214,34 @@ export function pixCracks(sc: Phaser.Scene, x: number, y: number, radius: number
   });
 }
 
-/** Runa de trampa en el suelo que late (para minas). Devuelve el gráfico para destruirlo al estallar. */
+/**
+ * Runa de trampa en el suelo que late (para minas): sombra, anillo de runas que gira, rombo con contorno, cruz y ojo
+ * central que parpadea; de vez en cuando suelta una chispa del tipo hacia arriba (reposo). Devuelve el gráfico para
+ * destruirlo al estallar.
+ */
 export function pixTrap(sc: Phaser.Scene, x: number, y: number, radius: number, color: number, depth = 1.6) {
   const light = lightOf(color);
+  const dark = darkOf(color);
   const g = sc.add.graphics().setDepth(depth);
   let t = 0;
+  const sparks: { x: number; y: number; age: number }[] = [];
   const draw = () => {
     if (!g.active) return ev.remove();
     t += 1;
     g.clear();
-    const r = radius * 0.45 * (1 + 0.12 * Math.sin(t * 0.8));
-    // Rombo con contorno y ojo central que parpadea
+    const beat = Math.sin(t * 0.8);
+    const r = radius * 0.45 * (1 + 0.12 * beat);
+    // Sombra y brillo del suelo
+    g.fillStyle(0x000000, 0.22).fillEllipse(x, y + 3, radius * 1.5, radius * 0.75);
+    g.fillStyle(color, 0.12 + 0.08 * Math.max(0, beat)).fillEllipse(x, y, radius * 1.3, radius * 0.65);
+    // Anillo exterior de runas que gira despacio
+    const R = radius * 0.68;
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2 + t * 0.06;
+      if (i % 4 === 3) continue;
+      dot(g, x + Math.cos(a) * R, y + Math.sin(a) * R * 0.6, i % 4 === 0 ? light : dark, 0.85);
+    }
+    // Rombo con contorno
     for (let i = 0; i < 24; i++) {
       const a = (i / 24) * Math.PI * 2;
       const c = Math.cos(a);
@@ -232,11 +249,103 @@ export function pixTrap(sc: Phaser.Scene, x: number, y: number, radius: number, 
       const k = 1 / (Math.abs(c) + Math.abs(s));
       dot(g, x + c * k * r, y + s * k * r * 0.7, i % 2 ? color : light, 0.95, PX, true);
     }
+    // Cruz interior y ojo
+    for (let i = 1; i <= 2; i++) {
+      dot(g, x + i * PX, y, dark, 0.9);
+      dot(g, x - i * PX, y, dark, 0.9);
+      dot(g, x, y + i * PX * 0.7, dark, 0.9);
+      dot(g, x, y - i * PX * 0.7, dark, 0.9);
+    }
     dot(g, x, y, t % 4 < 2 ? 0xffffff : color, 1, PX * 2, true);
+    // Chispas que suben (vida en reposo)
+    if (t % 5 === 0) sparks.push({ x: x + (Math.random() - 0.5) * r * 1.6, y: y + (Math.random() - 0.5) * r * 0.6, age: 0 });
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const sp = sparks[i];
+      sp.age += 1;
+      if (sp.age > 8) {
+        sparks.splice(i, 1);
+        continue;
+      }
+      dot(g, sp.x, sp.y - sp.age * 4, sp.age < 3 ? 0xffffff : light, 1 - sp.age / 9);
+    }
   };
   const ev = sc.time.addEvent({ delay: 90, loop: true, callback: draw });
   draw();
   return g;
+}
+
+/**
+ * Chorro pixel art (para 'stream'): cono que se abre desde la boca con contorno oscuro, cuerpo del color, banda clara
+ * y núcleo blanco cerca de la boca; el final se deshace en píxeles sueltos. Se dibuja en un Graphics que ya existe.
+ */
+export function drawPixJet(g: Phaser.GameObjects.Graphics, x: number, y: number, ang: number, len: number, w0: number, w1: number, color: number, t: number, a = 1) {
+  const light = lightOf(color);
+  const dark = darkOf(color);
+  const ux = Math.cos(ang);
+  const uy = Math.sin(ang);
+  const nx = -uy;
+  const ny = ux;
+  const fr = Math.floor(t / 50);
+  for (let d = PX; d < len; d += PX) {
+    const f = d / len;
+    const w = (w0 + (w1 - w0) * Math.sqrt(f)) * (0.9 + 0.15 * Math.sin(d * 0.15 - t * 0.04));
+    const cx = x + ux * d;
+    const cy = y + uy * d;
+    const di = Math.round(d / PX);
+    for (let o = -w / 2 - PX; o <= w / 2 + PX; o += PX) {
+      const oi = Math.round(o / PX);
+      // El final del chorro se rompe en trozos (tramado que cambia cada fotograma)
+      if (f > 0.65 && ((di * 7 + oi * 3 + fr) % 5) < Math.floor((f - 0.65) * 14)) continue;
+      const k = Math.abs(o) / (w / 2);
+      let c: number;
+      let al = a;
+      if (k > 1) {
+        c = OUT;
+        al = a * 0.55;
+      } else if (k > 0.75) c = dark;
+      else if (k > 0.45) c = color;
+      else if (k > 0.18 || f > 0.55) c = light;
+      else c = 0xffffff;
+      g.fillStyle(c, al).fillRect(snap(cx + nx * o) - PX / 2, snap(cy + ny * o) - PX / 2, PX, PX);
+    }
+  }
+  // Boca: destello blanco con borde del color
+  const r = Math.max(PX * 1.5, w0 * 0.9);
+  for (let yy = -r; yy <= r; yy += PX) {
+    const half = Math.sqrt(Math.max(0, r * r - yy * yy));
+    g.fillStyle(color, a).fillRect(snap(x + ux * PX - half), snap(y + uy * PX + yy), snap(half * 2) || PX, PX);
+    g.fillStyle(0xffffff, a).fillRect(snap(x + ux * PX - half * 0.5), snap(y + uy * PX + yy * 0.5), snap(half) || PX, PX);
+  }
+}
+
+/** Orbe de energía pixel (halo detrás de proyectiles grandes): contorno, color, claro y centro blanco que late. */
+export function drawPixOrb(g: Phaser.GameObjects.Graphics, x: number, y: number, r: number, color: number, t: number, a = 1) {
+  const rr = r * (1 + 0.12 * Math.sin(t * 0.02));
+  const layers: [number, number, number][] = [[1.18, OUT, 0.45], [1, darkOf(color), 0.8], [0.78, color, 0.9], [0.5, lightOf(color), 1], [0.25, 0xffffff, 1]];
+  for (const [f, c, al] of layers) {
+    const R = rr * f;
+    for (let yy = -R; yy <= R; yy += PX) {
+      const half = Math.sqrt(Math.max(0, R * R - yy * yy));
+      g.fillStyle(c, al * a).fillRect(snap(x - half), snap(y + yy), snap(half * 2) || PX, PX);
+    }
+  }
+}
+
+/** Fogonazo de disparo pixel: estrella corta hacia delante con chispas y núcleo blanco. */
+export function pixMuzzle(sc: Phaser.Scene, x: number, y: number, ang: number, color: number, size = 1, depth = 6) {
+  const light = lightOf(color);
+  const rays = [-0.9, -0.45, 0, 0.45, 0.9];
+  animate(sc, depth, 160, (g, k) => {
+    const a = 1 - k;
+    const ox = x + Math.cos(ang) * 22;
+    const oy = y + Math.sin(ang) * 22;
+    for (const r of rays) {
+      const aa = ang + r;
+      const l = (r === 0 ? 30 : 16) * size * (0.5 + k);
+      for (let d = 0; d < l; d += PX) dot(g, ox + Math.cos(aa) * d, oy + Math.sin(aa) * d, d < PX * 2 ? 0xffffff : r === 0 ? light : color, a);
+    }
+    dot(g, ox, oy, 0xffffff, a, PX * 2, true);
+  }, 40);
 }
 
 /** Estela de velocidad (líneas de píxel detrás de algo que va rápido). */
