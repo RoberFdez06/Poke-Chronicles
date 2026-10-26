@@ -45,6 +45,8 @@ const T: Record<string, string[]> = {
   bomb: ['..........k', '.........kWk', '........k.k', '.....kkkkk', '...kkLLPPPkk', '..kLWLPPPPPPk', '.kLWLPPPPPPPpk', '.kLLPPPPPPPPpk', 'kPPPPPPPPPPPPpk', 'kPPPPPPPPPPPppk', 'kpPPPPPPPPPpppk', '.kpPPPPPPPpppk', '..kkppppppkk', '....kkkkkk'],
   warp: ['.....kkkkk', '...kkLLLLLkk', '..kLLPPPPPLLk', '.kLPPkkkkPPLk', '.kLPkLLLLkPPk', 'kLPkLPPPPLkPk', 'kLPkLPkkPLkPk', 'kPPkLPkWPLkPk', 'kPPkLPPkPLkPk', '.kPPkLLLLkPpk', '.kpPPkkkkPppk', '..kppPPPPppk', '...kkppppkk', '.....kkkk'],
   spike: ['', '.......k', '......kWk', '......kLk', '.....kLLPk', '.....kLPPk', '....kLLPPpk', '....kLPPPpk', '...kLLPPPppk', '...kLPPPPppk', '..kLLPPPPPppk', '..kkkkkkkkkkk'],
+  // Varita de zahorí: rama en Y
+  rod: ['', '..kk........kk', '.kLPk......kLPk', '.kLPk......kLPk', '..kLPk....kLPk', '...kLPk..kLPk', '....kLPkkLPk', '.....kLPPLk', '......kPPk', '......kPPk', '......kPpk', '......kPpk', '.......kk'],
   moon: ['', '.....kkkk', '...kkLLPk', '..kLWLkk', '.kLWLk', '.kLLk', 'kLLPk', 'kLPPk', 'kLPPk', 'kLPPPk......k', '.kPPPPkk..kkPk', '.kpPPPPPkkPPpk', '..kkpppppppkk', '....kkkkkkk'],
 };
 
@@ -67,6 +69,7 @@ const SHAPE: Record<string, string> = {
   'polvo-veloz': 'powder', 'baya-lichi': 'apple', 'seguro-debilidad': 'tag', 'bola-luminosa': 'ball', 'cuerda-huida': 'rope',
   'hierba-mental': 'herb', 'pua-toxica': 'spike', 'piedra-lunar': 'moon',
   magikarp: 'fish', gyarados: 'serpent',
+  zahori: 'rod',
 };
 
 const shade = (c: number, f: number) => {

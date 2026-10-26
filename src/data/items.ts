@@ -307,7 +307,6 @@ const SPECIAL_ITEMS: PassiveItem[] = [
   { id: 'pua-toxica', name: 'Púa Tóxica', description: 'Quien te toca recibe 20 de daño y tu veneno es un 30 % más fuerte.', color: 0x9c27b0,
     apply: (s) => void ((s.thorns += 20), (s.statusBoost.poison = (s.statusBoost.poison ?? 1) * 1.3)) },
   // T54: atrae el botín del suelo desde más lejos (el Zahorí de los juegos encuentra objetos escondidos)
-  // TODO(supervisor): icono del Zahorí en ui/art/itemIcons.ts (ahora sale la bola genérica)
   { id: 'zahori', name: 'Zahorí', description: 'Las monedas, bayas y demás botín vuelan hacia ti desde mucho más lejos.', color: 0x4fc3f7,
     apply: (s) => void (s.lootMagnet += 110) },
   { id: 'piedra-lunar', name: 'Piedra Lunar', description: 'Tus disparos giran un poco hacia los enemigos y llegan un 10 % más lejos.', color: 0xcfd8dc,

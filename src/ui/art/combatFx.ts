@@ -328,3 +328,40 @@ export function evolveBurst(scene: Phaser.Scene, x: number, y: number, feetY: nu
   phaseShock(scene, x, feetY, 0xfff2a8, 1.2, 14);
   starBurst(scene, x, y, 0xffffff, 10, 1.5, 15);
 }
+
+// ---- Tanda 8: parry, botín, adrenalina y revivir (supervisor) ----
+
+/** Postura de parry: un aro dorado corto alrededor del jugador al pulsar (se ve aunque falles el momento). */
+export function parryStance(scene: Phaser.Scene, x: number, y: number, depth = 10) {
+  phaseShock(scene, x, y + 14, 0xffd34d, 0.55, depth);
+}
+
+/** Parry acertado: onda dorada, estrellas y chispas blancas en el punto de choque (más grande que un golpe normal). */
+export function parryHit(scene: Phaser.Scene, x: number, y: number, depth = 11) {
+  phaseShock(scene, x, y + 10, 0xffe066, 1, depth);
+  starBurst(scene, x, y, 0xffe066, 7, 1.2, depth + 1);
+  hitSpark(scene, x, y, 0xffffff, 8, 1.4, depth + 1);
+}
+
+/** Destello al recoger botín: unas estrellitas del color del objeto donde estaba antes de volar al HUD. */
+export function lootFlash(scene: Phaser.Scene, x: number, y: number, color = 0xffe066, depth = 9) {
+  starBurst(scene, x, y, color, 3, 0.7, depth);
+}
+
+/** Chispas de adrenalina: se llama cada poco mientras dura; sale una brasa roja y otra amarilla de los pies. */
+export function adrenalineTrail(scene: Phaser.Scene, x: number, y: number, depth = 5) {
+  hitSpark(scene, x, y + 16, 0xff5a3d, 2, 0.9, depth);
+  hitSpark(scene, x + Phaser.Math.Between(-10, 10), y + 8, 0xffd34d, 1, 0.7, depth);
+}
+
+/** Revivir («Una más»): destello, columna de luz que sube y estrellas; el jugador se levanta con brillo. */
+export function reviveBurst(scene: Phaser.Scene, x: number, y: number, depth = 14) {
+  scene.cameras.main.flash(220, 255, 244, 190);
+  phaseShock(scene, x, y + 16, 0xfff2a8, 1.1, depth);
+  starBurst(scene, x, y, 0xffffff, 9, 1.3, depth + 1);
+  // Columna de luz: tres rectángulos de píxel gordo que suben y se apagan
+  for (let i = 0; i < 3; i++) {
+    const col = scene.add.rectangle(x + (i - 1) * 14, y + 24, 8, 30, i === 1 ? 0xffffff : 0xfff2a8, 0.9).setDepth(depth);
+    scene.tweens.add({ targets: col, y: y - 70 - i * 12, alpha: 0, scaleY: 2.2, duration: 620 + i * 90, ease: 'Quad.Out', onComplete: () => col.destroy() });
+  }
+}

@@ -121,7 +121,7 @@ import { shotSfx } from '../data/sounds';
 import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
-import { bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
+import { adrenalineTrail, lootFlash, parryHit, parryStance, reviveBurst, bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
 import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
@@ -591,6 +591,8 @@ export class GameScene extends Phaser.Scene {
   private parryHud?: { g: Phaser.GameObjects.Graphics; x: number; y: number; w: number; h: number; shown: string };
   /** T55: adrenalina (sube con bajas, esquivas y parrys) y su barra del HUD. */
   private adrenaline: AdrenalineState = newAdrenaline();
+  /** Cuándo toca la siguiente brasa de la adrenalina (reloj de la escena). */
+  private adrenalineTrailAt = 0;
   private adrenalineHud?: { g: Phaser.GameObjects.Graphics; text: Phaser.GameObjects.Text; x: number; y: number; w: number; h: number; shown: string };
   /** Multiplicador de daño mientras dura Ataque X o el Caramelo Raro. */
   private buffMul = 1;
@@ -3331,7 +3333,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.ended || this.transitioning || this.evolving) return;
     if (!pressParry(this.parry, this.game.loop.time)) return;
     sfx('select');
-    // TODO(supervisor): efecto de la postura de parry (un destello corto alrededor del jugador al pulsar)
+    parryStance(this, this.player.x, this.player.y);
   }
 
   /** Cuadro del parry: dorado cuando está listo; mientras recarga, una barra que se vacía. */
@@ -3469,7 +3471,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.ended || !gainAdrenaline(this.adrenaline, source)) return;
     this.notify('¡Adrenalina!\nMás velocidad y daño unos segundos', { kind: 'reward', icon: 'star' });
     sfx('levelup');
-    // TODO(supervisor): brillo del jugador mientras dure la adrenalina (adrenalineActive(this.adrenaline))
   }
 
   /** Barra de adrenalina con las formas de theme.ts: cuadro GBA y relleno naranja (rojo intenso mientras está activa). */
@@ -3478,6 +3479,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!h) return;
     const fill = adrenalineFill(this.adrenaline);
     const on = adrenalineActive(this.adrenaline);
+    // Brasas que salen de los pies del jugador mientras dura la adrenalina (cada ~140 ms, sin acumular con la pausa)
+    if (on && this.player?.active && this.time.now >= this.adrenalineTrailAt) {
+      this.adrenalineTrailAt = this.time.now + 140;
+      adrenalineTrail(this, this.player.x, this.player.y);
+    }
     const key = `${Math.round(fill * 40)}:${on}`;
     if (h.shown === key) return;
     h.shown = key;
@@ -5754,7 +5760,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         drop.kind === 'coin' ? [LX + HUD_COUNT_X.coin, 288, this.coinsHud] : drop.kind === 'key' ? [LX + HUD_COUNT_X.key, 288, this.keysHud]
           : drop.kind === 'bomb' ? [LX + HUD_COUNT_X.bomb, 288, this.bombsHud]
           : drop.kind === 'potion' ? [LX + HUD_COUNT_X.potion, 288, this.potionsHud] : [LX + LW / 2, 186, this.hpText];
-      // TODO(supervisor): efecto de destello al recoger botín (T54), en el sitio donde estaba antes de volar al HUD
+      lootFlash(this, sprite.x, sprite.y, (sprite.tintTopLeft || 0xffe066) as number);
       this.flyToHud(sprite.texture.key, sprite.frame.name, sprite.x, sprite.y, target[0], target[1], target[2]);
     }
     this.floorItems = this.floorItems.filter((f) => f !== sprite.getData('entry'));
@@ -6364,7 +6370,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.popup(this.player.x, this.player.y - 50, '¡Parry!', 0xffd34d);
       this.addAdrenaline('parry');
       sfx('crit');
-      // TODO(supervisor): efecto de parry acertado (chispa/onda dorada en el punto de choque)
+      parryHit(this, this.player.x, this.player.y);
       return;
     }
     if (this.stats.dodge > 0 && Math.random() < this.stats.dodge) {
@@ -6453,7 +6459,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.invulnUntil = this.time.now + REVIVE_IMMUNE_MS;
         this.notify(`¡Una más!\nVuelves con ${Math.ceil(this.hp)} PS`, { kind: 'heal', icon: 'heart' });
         sfx('heal');
-        // TODO(supervisor): efecto de revivir (el jugador se levanta con un destello)
+        reviveBurst(this, this.player.x, this.player.y);
         this.saveNow();
       },
     });
