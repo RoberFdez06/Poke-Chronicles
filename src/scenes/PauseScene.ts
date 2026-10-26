@@ -9,6 +9,7 @@ import { itemLinesFromHeight, pauseTailLayout, PAUSE_ITEMS_Y, PAUSE_ITEM_MAX_LIN
 import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
 import type { SettingsData } from './SettingsScene';
 import { copyText } from '../ui/clipboard';
+import { addCodeTicket } from '../ui/art/seedArt';
 
 export interface PauseData {
   starterName: string;
@@ -134,8 +135,8 @@ export class PauseScene extends Phaser.Scene {
       if (m) addTypeChip(this, x + 196, y + 11, typeNameEs(m.type), typeColor(m.type), 64, 20);
     });
 
-    this.menu = new MenuList(this, 760, 200, ['Reanudar', 'Reiniciar', 'Código de semilla', 'Controles', 'Ajustes', 'Salir y guardar'], (i) => this.pick(i), {
-      // TODO(supervisor): repasar el espaciado con la sexta opción (T81)
+    this.menu = new MenuList(this, 760, 175, ['Reanudar', 'Reiniciar', 'Código de semilla', 'Controles', 'Ajustes', 'Salir y guardar'], (i) => this.pick(i), {
+      // Seis opciones centradas a la altura del panel de la izquierda (100-570)
       w: 290, h: 50, gap: 14,
     });
     this.add
@@ -204,11 +205,12 @@ export class PauseScene extends Phaser.Scene {
   /** T81: el código de la partida, con botón de copiar (teclado, ratón o mando). */
   private showSeedCode() {
     const code = this.info.seedCode;
-    // TODO(supervisor): diseño del panel del código
+    // Panel del código: billete dorado con brillo (ui/art/seedArt.ts)
     const layer = addPanel(this, 480, 320, 600, 320, 50);
+    if (code) layer.add(addCodeTicket(this, 480, 255, 440, 62));
     layer.add(this.add.text(480, 205, 'Código de semilla', { fontFamily: UI.FONT, fontSize: '24px', fontStyle: 'bold', color: '#2b3a67' }).setOrigin(0.5));
     layer.add(this.add.text(480, 255, code ?? 'Esta partida no tiene código\n(se empezó en una versión anterior)', {
-      fontFamily: UI.FONT, fontSize: code ? '34px' : '18px', fontStyle: 'bold', color: code ? '#b8860b' : '#4a5578', align: 'center',
+      fontFamily: UI.FONT, fontSize: code ? '34px' : '18px', fontStyle: 'bold', color: code ? '#8a5a00' : '#4a5578', align: 'center',
     }).setOrigin(0.5));
     layer.add(this.add.text(480, 300, 'Con él, otro jugador juega esta misma partida desde «Partida con código».', {
       fontFamily: UI.FONT, fontSize: '14px', color: '#4a5578', align: 'center', wordWrap: { width: 520 },

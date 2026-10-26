@@ -14,6 +14,7 @@ import { HIDDEN_ITEMS, PASSIVE_ITEMS } from '../data/items';
 import { sfx } from '../ui/audio';
 import { shareCardData } from '../data/shareCard';
 import { renderShareCard, shareOrDownload } from './shareImage';
+import { addCodeTicket } from '../ui/art/seedArt';
 import { copyText } from '../ui/clipboard';
 import { loadSeedBest } from '../data/save';
 import { seedBestText } from '../data/seedCode';
@@ -135,9 +136,9 @@ export class SummaryScene extends Phaser.Scene {
     this.routesLine(r);
 
     this.seedLine(r);
-    // TODO(supervisor): colocación del menú con la quinta opción (T81) y de la nota de abajo
-    this.menu = new MenuList(this, 780, 150, ['Otra partida', 'Guardar imagen', 'Copiar código', 'Historial', 'Menú'], (i) => this.pick(i), { w: 280, h: 40, gap: 10, fontSize: 20 });
-    this.saveNote = this.add.text(780, 382, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0.5).setAlpha(0.85);
+    // Cinco opciones (121-343) y la nota debajo, con aire hasta las rutas (que crecen hacia arriba desde 444)
+    this.menu = new MenuList(this, 780, 140, ['Otra partida', 'Guardar imagen', 'Copiar código', 'Historial', 'Menú'], (i) => this.pick(i), { w: 280, h: 38, gap: 8, fontSize: 20 });
+    this.saveNote = this.add.text(780, 362, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0.5).setAlpha(0.85);
     this.add
       .text(480, 612, 'Flechas, ratón o mando para elegir · Enter, clic o A · Esc o B: menú', { fontFamily: FONT, fontSize: '15px', color: '#ffffff' })
       .setOrigin(0.5).setAlpha(0.6);
@@ -145,9 +146,11 @@ export class SummaryScene extends Phaser.Scene {
 
   /** T81: código de semilla de la partida y, si se jugó con código, que no cuenta y su mejor resultado. */
   private seedLine(r: RunRecord) {
-    // TODO(supervisor): estilo de la línea del código
-    const style = { fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: '#b8860b' };
-    this.add.text(580, 462, r.seedCode ? `Código: ${r.seedCode}` : 'Sin código de semilla', style).setOrigin(1, 0);
+    // Línea del código: billete dorado con brillo detrás (ui/art/seedArt.ts)
+    const plate = r.seedCode ? this.add.graphics() : undefined;
+    const style = { fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: r.seedCode ? '#8a5a00' : HEX.textSoft };
+    const line = this.add.text(r.seedCode ? 570 : 580, 462, r.seedCode ? `Código: ${r.seedCode}` : 'Sin código de semilla', style).setOrigin(1, 0);
+    if (plate) addCodeTicket(this, 570 - line.width / 2, 462 + line.height / 2, line.width + 24, line.height + 10, plate);
     if (r.fromCode && r.seedCode) {
       const note = `Con código: sin récords ni misiones · ${seedBestText(r.mode, loadSeedBest(r.seedCode))}`;
       this.add.text(580, 440, note, { fontFamily: FONT, fontSize: '12px', color: HEX.textSoft }).setOrigin(1, 0);

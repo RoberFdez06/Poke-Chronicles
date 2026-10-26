@@ -73,8 +73,8 @@ export class ModeScene extends Phaser.Scene {
         this.shown = -1;
       })
       .catch(() => undefined);
-    this.list = new MenuList(this, 280, 170, [...MODES.map((m) => MODE_LABEL[m]), 'Desafío diario', 'Partida con código'], (i) => this.start(i), {
-      // TODO(supervisor): repasar el espaciado con la séptima opción (T81)
+    this.list = new MenuList(this, 280, 184, [...MODES.map((m) => MODE_LABEL[m]), 'Desafío diario', 'Partida con código'], (i) => this.start(i), {
+      // Siete opciones a la altura del panel de la derecha (160-540), sin tocar la fila de la dificultad
       w: 320, h: 46, gap: 8,
     });
 

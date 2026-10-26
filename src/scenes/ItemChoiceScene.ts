@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { MenuList, NavInput } from '../ui/nav';
-import { drawBox, FONT, HEX } from '../ui/theme';
+import { FONT, HEX } from '../ui/theme';
+import { addForgeFrame } from '../ui/art/forgeArt';
 import { addPixelText } from '../ui/art/pixel';
 import { sfx } from '../ui/audio';
 
@@ -44,9 +45,9 @@ export class ItemChoiceScene extends Phaser.Scene {
   create() {
     fitDesign(this);
     this.nav = new NavInput(this);
-    // TODO(supervisor): marco con el yunque de la forja o los huecos dibujados; ahora, la caja estándar del tema
+    // Marco de hierro con yunques (forja) o huecos dibujados: ui/art/forgeArt.ts
     this.add.rectangle(DCX, DCY, COVER_W + 4, COVER_H + 4, 0x0d1425, 0.82).setInteractive();
-    drawBox(this.add.graphics(), 130, 30, 700, 580, { radius: 16, border: 0xe67e22 });
+    addForgeFrame(this, 130, 30, 700, 580, this.args.title);
     addPixelText(this, 480, 62, this.args.title, { size: 16, scale: 2.2, color: '#f8d030', stroke: '#283068', strokeWidth: 3, shadow: '#101828' });
     this.add
       .text(480, 112, this.args.text, { fontFamily: FONT, fontSize: '16px', color: HEX.text, align: 'center', wordWrap: { width: 640 }, lineSpacing: 4 })

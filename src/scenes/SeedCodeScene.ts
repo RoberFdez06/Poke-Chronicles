@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 import { fitDesign } from '../ui/layout';
 import { addBackButton } from '../ui/cards';
-import { drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
+import { fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
 import { PadButtons } from '../ui/nav';
+import { addCodeCursor, drawCodePanel, drawCodeSlot, drawKeyCap, type CodePanelState } from '../ui/art/seedArt';
 import { sfx } from '../ui/audio';
 import { fetchSpeciesName } from '../data/pokeapi';
 import { MODE_LABEL } from '../data/modes';
@@ -30,7 +31,7 @@ const BOXES_Y = 190;
  * T81: «Partida con código». Se escribe el código con el teclado (o pegándolo), con el ratón (teclado de letras en
  * pantalla) o con el mando (arriba/abajo cambia la letra, izquierda/derecha mueve el cursor, A juega, X borra, Y pega,
  * B vuelve). Con un código válido se ve qué partida es y tu mejor resultado con él.
- * TODO(supervisor): diseño de las casillas, del teclado en pantalla y del panel de la partida.
+ * Arte de las casillas, el teclado en pantalla y el panel: ui/art/seedArt.ts.
  */
 export class SeedCodeScene extends Phaser.Scene {
   private args!: SeedCodeData;
@@ -45,6 +46,8 @@ export class SeedCodeScene extends Phaser.Scene {
   private readyAt = 0;
   private leaving = false;
   private onPaste?: (e: ClipboardEvent) => void;
+  private panel!: Phaser.GameObjects.Graphics;
+  private caret!: ReturnType<typeof addCodeCursor>;
 
   constructor() {
     super('SeedCode');
@@ -82,6 +85,7 @@ export class SeedCodeScene extends Phaser.Scene {
       this.add.zone(x, BOXES_Y, BOX_W, 56).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.moveTo(i));
       this.boxes.push({ g, t, x });
     }
+    this.caret = addCodeCursor(this, BOX_W, 56);
 
     // Teclado en pantalla para el ratón (y táctil)
     SEED_ALPHABET.split('').forEach((c, k) => {
@@ -89,13 +93,13 @@ export class SeedCodeScene extends Phaser.Scene {
       const y = 268 + Math.floor(k / 16) * 52;
       this.button(x, y, 44, 44, c, () => this.type(c));
     });
-    this.button(250, 384, 130, 42, 'Borrar', () => this.erase());
-    this.button(400, 384, 130, 42, 'Pegar', () => void this.pasteFromClipboard());
-    this.button(560, 384, 150, 42, 'Jugar', () => this.play());
+    this.button(250, 384, 130, 42, 'Borrar', () => this.erase(), 'erase');
+    this.button(400, 384, 130, 42, 'Pegar', () => void this.pasteFromClipboard(), 'paste');
+    this.button(560, 384, 150, 42, 'Jugar', () => this.play(), 'play');
 
-    const panel = this.add.graphics();
-    drawBox(panel, 180, 420, 600, 150, { radius: 18 });
-    this.info = this.add.text(206, 436, '', { fontFamily: FONT, fontSize: '18px', color: HEX.text, wordWrap: { width: 550 }, lineSpacing: 4 });
+    this.panel = this.add.graphics();
+    drawCodePanel(this.panel, 180, 420, 600, 150, 'empty');
+    this.info = this.add.text(206, 440, '', { fontFamily: FONT, fontSize: '18px', color: HEX.text, wordWrap: { width: 500 }, lineSpacing: 4 });
     this.status = this.add.text(480, 590, '', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#ffd34d' }).setOrigin(0.5);
     this.add.text(480, 618, 'Teclado: escribe o pega (Ctrl+V) · Ratón: letras de arriba · Mando: arriba/abajo letra, izq/der mover, A jugar, X borrar, Y pegar · Esc o B: volver', {
       fontFamily: FONT, fontSize: '12px', color: '#ffffff', align: 'center', wordWrap: { width: 900 },
@@ -116,11 +120,14 @@ export class SeedCodeScene extends Phaser.Scene {
     this.refresh();
   }
 
-  private button(x: number, y: number, w: number, h: number, label: string, onClick: () => void) {
+  private button(x: number, y: number, w: number, h: number, label: string, onClick: () => void, kind: 'letter' | 'erase' | 'paste' | 'play' = 'letter') {
     const g = this.add.graphics();
-    drawBox(g, x - w / 2, y - h / 2, w, h, { radius: 10 });
-    this.add.text(x, y, label, { fontFamily: FONT, fontSize: label.length > 1 ? '18px' : '22px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5);
-    this.add.zone(x, y, w, h).setInteractive({ useHandCursor: true }).on('pointerdown', () => {
+    drawKeyCap(g, x, y, w, h, false, kind);
+    const txt = this.add.text(x, y - 2, label, { fontFamily: FONT, fontSize: label.length > 1 ? '18px' : '22px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5);
+    const zone = this.add.zone(x, y, w, h).setInteractive({ useHandCursor: true });
+    zone.on('pointerover', () => (drawKeyCap(g, x, y, w, h, true, kind), txt.setY(y + 2)));
+    zone.on('pointerout', () => (drawKeyCap(g, x, y, w, h, false, kind), txt.setY(y - 2)));
+    zone.on('pointerdown', () => {
       if (this.leaving) return;
       sfx('select');
       onClick();
@@ -188,10 +195,14 @@ export class SeedCodeScene extends Phaser.Scene {
   private refresh() {
     this.boxes.forEach(({ g, t, x }, i) => {
       g.clear();
-      drawBox(g, x - BOX_W / 2, BOXES_Y - 28, BOX_W, 56, { radius: 8, selected: i === this.cursor });
+      const full = this.chars.join('').length === SEED_CODE_CHARS;
+      drawCodeSlot(g, x, BOXES_Y, BOX_W, 56, { filled: !!this.chars[i], cursor: i === this.cursor, group: Math.floor(i / 4), bad: full && !decodeSeed(this.chars.join('')).ok });
       t.setText(this.chars[i]);
+      if (i === this.cursor) this.caret.move(x, BOXES_Y);
     });
     const code = this.chars.join('');
+    const look: CodePanelState = code.length < SEED_CODE_CHARS ? 'empty' : decodeSeed(code).ok ? 'ok' : 'error';
+    drawCodePanel(this.panel, 180, 420, 600, 150, look);
     this.status.setText('');
     const prev = this.decoded;
     this.decoded = null;

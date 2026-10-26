@@ -12,6 +12,7 @@ import { NavInput, PadButtons } from '../ui/nav';
 import { ARROW, COLORS, drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
 import { addIcon } from '../ui/art/icons';
+import { addTreeLinks, BRANCH_COLORS, drawTreeNode, type TreeHalo, type TreeLink } from '../ui/art/upgradeArt';
 
 // Árbol: una columna por rama y una fila por profundidad (T71)
 const TREE = { x0: 505, dx: 114, y0: 178, dy: 84, w: 104, h: 66 };
@@ -31,6 +32,7 @@ export class UpgradeScene extends Phaser.Scene {
   private pad!: PadButtons;
   private nodes = new Map<UpgradeKind, { bg: Phaser.GameObjects.Graphics; cost: Phaser.GameObjects.Text; x: number; y: number }>();
   private lines!: Phaser.GameObjects.Graphics;
+  private links!: ReturnType<typeof addTreeLinks>;
   private detail!: Phaser.GameObjects.Text;
   private goal!: Phaser.GameObjects.Text;
   private prevKey!: Phaser.Input.Keyboard.Key;
@@ -110,8 +112,9 @@ export class UpgradeScene extends Phaser.Scene {
     this.add.zone(CARD_X, 562, 220, 44).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.search());
     this.add.text(CARD_X, 104, `${this.index + 1} de ${this.ids.length}`, { fontFamily: FONT, fontSize: '16px', color: '#ffffff' }).setOrigin(0.5).setName('count');
 
-    // TODO(supervisor): dibujo propio de los nodos y de las ramas; de momento cajas de theme.ts y líneas lisas.
+    // Arte de nodos y ramas: ui/art/upgradeArt.ts
     this.lines = this.add.graphics();
+    this.links = addTreeLinks(this, this.lines);
     BRANCHES.forEach((b, i) => {
       this.add.text(TREE.x0 + i * TREE.dx, TREE.y0 - 52, BRANCH_LABEL[b], { fontFamily: FONT, fontSize: '18px', fontStyle: 'bold', color: '#ffffff' }).setOrigin(0.5).setStroke('#2b3a67', 6);
     });
@@ -180,7 +183,8 @@ export class UpgradeScene extends Phaser.Scene {
     this.ticketsText.setText(`Caramelos: ${loadCandies()}`);
     if (this.ids.length === 0) return;
     const lv = levelsFor(loadUpgrades(), this.id);
-    this.lines.clear();
+    const links: TreeLink[] = [];
+    const halos: TreeHalo[] = [];
     for (const n of UPGRADE_TREE) {
       const r = this.nodes.get(n.kind)!;
       const state = nodeState(n.kind, lv);
@@ -188,19 +192,17 @@ export class UpgradeScene extends Phaser.Scene {
       // Rama hacia el padre: verde si el padre ya está comprado
       if (n.parent) {
         const p = this.nodes.get(n.parent)!;
-        this.lines.lineStyle(4, lv[n.parent] > 0 ? COLORS.hpGreen : COLORS.hpTrack, 1).lineBetween(p.x, p.y + TREE.h / 2, r.x, r.y - TREE.h / 2);
+        links.push({ x1: p.x, y1: p.y + TREE.h / 2, x2: r.x, y2: r.y - TREE.h / 2, on: lv[n.parent] > 0, color: BRANCH_COLORS[n.branch] ?? COLORS.hpGreen });
       }
       r.bg.clear();
-      drawBox(r.bg, r.x - TREE.w / 2, r.y - TREE.h / 2, TREE.w, TREE.h, { selected: sel, radius: n.final ? 18 : 10 });
-      r.bg.setAlpha(state === 'locked' ? 0.55 : 1);
-      // Niveles como casillas, al estilo de las barras de los juegos
-      const max = UPGRADE_MAX[n.kind];
-      const cw = Math.min(14, (TREE.w - 16) / max - 3);
-      const left = r.x - (max * (cw + 3) - 3) / 2;
-      for (let k = 0; k < max; k++) r.bg.fillStyle(k < lv[n.kind] ? COLORS.hpGreen : COLORS.hpTrack, 1).fillRoundedRect(left + k * (cw + 3), r.y, cw, 9, 2);
+      const look = state === 'locked' ? 'locked' : state === 'max' ? 'max' : lv[n.kind] > 0 ? 'owned' : 'available';
+      const color = BRANCH_COLORS[n.branch] ?? COLORS.hpGreen;
+      drawTreeNode(r.bg, r.x, r.y, TREE.w, TREE.h, { look, sel, final: !!n.final, color, lv: lv[n.kind], max: UPGRADE_MAX[n.kind] });
+      if (state === 'available' || sel) halos.push({ x: r.x, y: r.y, w: TREE.w, h: TREE.h, color: sel ? COLORS.gold : color, sel });
       const cost = nodeCost(n.kind, lv);
       r.cost.setText(state === 'locked' ? 'Bloqueado' : cost === null ? 'MÁX' : `${cost} car.`);
     }
+    this.links.set(links, halos);
     const n = treeNode(this.selected);
     const cost = nodeCost(this.selected, lv);
     const state = nodeState(this.selected, lv);
