@@ -6556,10 +6556,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.daily?.counts && submitDaily(this.daily.day, won ? this.floorNum : this.floorNum - 1)) this.counters.newRecord = true;
     // T58: completar el desafío con la racha en un día redondo (3, 7, 14, 30) da tickets de más
     if (this.daily?.counts && won) {
-      const bonus = streakReward(loadDaily().streak);
+      const streak = loadDaily().streak;
+      const bonus = streakReward(streak);
       if (bonus > 0) {
+        // También en los tickets de la partida, para que el resumen y el historial cuenten lo ganado de verdad
+        this.earned += bonus;
         addTickets(bonus);
-        this.notify(`¡Racha de ${loadDaily().streak} días!\n+${bonus} tickets`, { kind: 'reward', icon: 'ticket' });
+        this.notify(`¡Racha de ${streak} días!\n+${bonus} tickets`, { kind: 'reward', icon: 'ticket' });
       }
     }
     this.ended = true;
