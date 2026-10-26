@@ -143,6 +143,7 @@ import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuf
 import { ARENA_WARN_MS, ARENA_WARNING, arenaCanStart, arenaPhase, arenaStage, megaCanStart, type ArenaPhase } from '../level/arenaPhase';
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
+import { buildShopArt, type ShopArt } from '../ui/art/shopArt';
 import { buildForgeArt, buildLagoonArt, buildSlotArt } from '../ui/art/eventArt';
 import { ballEscape, ballShake, ballSuccess, ballThrow, dayNightLayer, megaAura, megaEvolveFx } from '../ui/art/powerFx';
 import { adrenalineTrail, lootFlash, parryHit, parryStance, reviveBurst, bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
@@ -701,6 +702,7 @@ export class GameScene extends Phaser.Scene {
   private loot!: Phaser.Physics.Arcade.Group;
   private counter?: { x: number; y: number; art: CenterArt };
   private shopViews: Phaser.GameObjects.GameObject[][] = [];
+  private shopArt?: ShopArt;
   /** Artículo de la tienda que estás pisando (para no repetir el aviso de "te faltan monedas"). */
   private shopTouch = -1;
   private counterTouch = false;
@@ -7771,16 +7773,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   private buildShop(room: Room) {
     const i = this.interior(room);
-    this.add
-      .text(i.cx, i.cy - 120, 'Tienda', { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#1e8449' })
-      .setOrigin(0.5)
-      .setDepth(3);
+    // Dibujo de la sala (shopArt.ts, del supervisor): toldo, estantes, mercader, alfombra y pedestales
+    this.shopArt?.destroy();
+    this.shopArt = buildShopArt(this, i, i.cx, i.cy, SHOP_OFFSETS);
     this.shopViews = this.shop.map((slot, k) => {
       if (slot.sold) return [];
       const x = i.cx + SHOP_OFFSETS[k];
       const y = i.cy;
       const { name, color } = this.goodsInfo(slot);
-      const shadow = this.add.ellipse(x, y + 18, 80, 30, 0xa8c9a8).setDepth(1);
       const g = slot.goods;
       const iconName = g.kind === 'potion' ? (g.id === 'pocion' ? 'potion' : 'superpotion') : g.kind === 'move' ? 'disc' : 'bag';
       const icon = this.add.image(x, y, iconKey(iconName)).setScale(3).setDepth(2);
@@ -7799,7 +7799,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       icon.on('pointerover', () => (this.overHud = true));
       icon.on('pointerout', () => (this.overHud = false));
       icon.on('pointerdown', () => this.current?.id === room.id && this.buy(k));
-      return [shadow, icon, label, price];
+      return [icon, label, price];
     });
   }
 
@@ -7828,6 +7828,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.coins -= slot.price;
     sfx('buy');
     slot.sold = true;
+    this.shopArt?.sold(k);
     this.shopViews[k]?.forEach((o) => o.destroy());
     this.shopViews[k] = [];
     const g = slot.goods;
