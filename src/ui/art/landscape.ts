@@ -236,11 +236,62 @@ export function addLandscape(scene: Phaser.Scene, art: LandscapeArt, seed = 7): 
     [scene.add.tileSprite(x0, 0, tilesW, PIX.h, near), 8],
   ];
   layers.forEach(([t], i) => t.setOrigin(0).setScale(S).setDepth(-9 + i));
+  // Vida en reposo (dos Graphics: halo detrás y brillos delante; se redibuja a ~8 fps desde update): halo del sol que respira, destellos
+  // que aparecen y se apagan sobre el mar y luciérnagas/copos que flotan sobre la hierba
+  const amb = scene.add.graphics().setDepth(-6.5);
+  // El halo va detrás de nubes y montañas (el sol al atardecer se esconde tras ellas)
+  const halo = scene.add.graphics().setDepth(-9.5);
+  const sx = x0 + (214 * tilesW * S) / PIX.w;
+  const glints: { x: number; y: number; t: number }[] = [];
+  const motes = Array.from({ length: 7 }, (_, i) => ({ x: rng() * tilesW, y: 112 + rng() * 22, ph: i * 1.7 }));
+  const moteCol = art.cap ? 0xffffff : art.sea ? art.sea[1] : art.flowers[1] ?? 0xffffff;
+  let acc = 0;
+  let time = 0;
+  const drawAmb = () => {
+    amb.clear();
+    halo.clear();
+    // Halo del sol en escalones de píxel gordo (detrás de las nubes no: va encima del cielo, translúcido)
+    const r = art.sun.r + 5 + Math.round(Math.sin(time / 900));
+    const a = 0.16 + 0.1 * Math.sin(time / 600);
+    halo.fillStyle(art.sun.glow, a);
+    for (let dy = -r; dy <= r; dy++) {
+      const half = Math.floor(Math.sqrt(r * r - dy * dy));
+      const inner = Math.abs(dy) <= art.sun.r + 2 ? Math.floor(Math.sqrt(Math.max(0, (art.sun.r + 2) ** 2 - dy * dy))) : -1;
+      if (inner < 0) halo.fillRect(sx - half * S, (art.sun.y + dy) * S, (half * 2 + 1) * S, S);
+      else {
+        halo.fillRect(sx - half * S, (art.sun.y + dy) * S, (half - inner) * S, S);
+        halo.fillRect(sx + (inner + 1) * S, (art.sun.y + dy) * S, (half - inner) * S, S);
+      }
+    }
+    if (art.sea) {
+      for (const gl of glints) {
+        const w = gl.t < 3 ? gl.t + 1 : 6 - gl.t;
+        if (w > 0) amb.fillStyle(0xffffff, 0.85).fillRect(x0 + (gl.x - w) * S, gl.y * S, w * 2 * S, S);
+      }
+    }
+    for (const m of motes) {
+      const on = Math.sin(time / 500 + m.ph) > -0.2;
+      if (!on) continue;
+      const mx = x0 + (Math.round(m.x + Math.sin(time / 1400 + m.ph) * 3) % tilesW) * S;
+      const my = Math.round(m.y + Math.sin(time / 1100 + m.ph * 2) * 2) * S;
+      amb.fillStyle(moteCol, 0.85).fillRect(mx, my, S, S);
+    }
+  };
+  drawAmb();
   return {
     art,
     groundSpeed: 8 * S,
     update(dt) {
       for (const [t, speed] of layers) t.tilePositionX += (speed * dt) / 1000;
+      time += dt;
+      acc += dt;
+      if (acc < 120) return;
+      acc = 0;
+      for (let i = glints.length - 1; i >= 0; i--) if (++glints[i].t > 6) glints.splice(i, 1);
+      if (art.sea && glints.length < 6) glints.push({ x: Math.floor(rng() * tilesW), y: 106 + Math.floor(rng() * 20), t: 0 });
+      // Las luciérnagas van un poco con el suelo (parallax) para no parecer pegadas a la pantalla
+      for (const m of motes) m.x = (m.x + tilesW - 0.4) % tilesW;
+      drawAmb();
     },
   };
 }

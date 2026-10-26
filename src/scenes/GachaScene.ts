@@ -15,7 +15,7 @@ import { typeColor, typeNameEs } from '../data/types';
 import { cry, sfx } from '../ui/audio';
 import { ARROW, addTypeChip, drawBox, fadeIn, FONT, goTo, hex, RARITY_COLORS } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
-import { addBurst, addRays, bakeGachaArt, ballKey, CRANK_KEY, MACHINE, MACHINE_KEY } from '../ui/art/gachaMachine';
+import { addBurst, addMachineIdle, addRays, bakeGachaArt, ballKey, CRANK_KEY, MACHINE, MACHINE_KEY } from '../ui/art/gachaMachine';
 
 /** Tickets que devuelve una tirada repetida. */
 /** Tickets que devuelve un repetido: menos que una tirada (si no, tirar daría tickets gratis). */
@@ -95,6 +95,7 @@ export class GachaScene extends Phaser.Scene {
     const top = MAC.y - (MACHINE.h * MAC.s) / 2;
     this.crank = this.add.image(left + MACHINE.crankX * MAC.s, top + MACHINE.crankY * MAC.s, CRANK_KEY).setScale(MAC.s);
     this.tweens.add({ targets: this.machine, y: MAC.y - 3, duration: 1600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    addMachineIdle(this, this.machine, MAC.s);
 
     // Tickets y desbloqueados
     drawBox(this.add.graphics(), 690, 14, 254, 80, { radius: 12 });

@@ -1,6 +1,7 @@
 // Arte de los easter eggs (supervisor): el camión de la sala secreta, la figura glitch de MissingNo. (un bloque de
 // ruido de colores, dibujo propio) y el destello de "error" de pantalla. Todo pixel art hecho con rectángulos.
 import Phaser from 'phaser';
+import { lowFx } from '../theme';
 
 const K = 0x18202c;
 
@@ -35,6 +36,29 @@ export function drawTruck(sc: Phaser.Scene, x: number, y: number) {
     r(wx + 1, -1, 2, 2, 0xb0b0c0);
   }
   c.add(g);
+  // Motor al ralentí: la carrocería tiembla un píxel, el faro parpadea y salen bocanadas por el escape
+  if (!lowFx()) {
+    const fx = sc.add.graphics();
+    c.add(fx);
+    let k = 0;
+    const ev = sc.time.addEvent({ delay: 110, loop: true, callback: () => {
+      if (!c.active) return ev.remove();
+      k++;
+      g.y = k % 4 < 2 ? 0 : -1;
+      fx.clear();
+      const lit = k % 24 < 20;
+      if (lit) {
+        fx.fillStyle(0xfff6c0, 0.3).fillRect(16 * P, -5 * P + g.y, P, 2 * P);
+        fx.fillStyle(0xfff6c0, 1).fillRect(14 * P, -5 * P + g.y, P, P);
+      }
+      // Tres bocanadas de humo que suben y se deshacen detrás de la caja
+      for (let i = 0; i < 3; i++) {
+        const t = (k + i * 6) % 18;
+        const sz = t < 6 ? 1 : 2;
+        fx.fillStyle(0xd8dce4, 0.7 * (1 - t / 18)).fillRect((-18 - Math.floor(t / 3)) * P, (-2 - Math.floor(t / 2)) * P, sz * P, sz * P);
+      }
+    } });
+  }
   return c;
 }
 
