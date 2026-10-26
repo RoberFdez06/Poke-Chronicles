@@ -194,6 +194,7 @@ import {
   LootDrop,
   ShopSlot,
 } from '../data/loot';
+import { canReact, consumeStatus, discover, discoveredLine, findReaction, reactionDamage, type ReactionId } from '../data/reactions';
 import { comboAlive, comboBreak, comboHit, milestoneReward, newCombo, type ComboState } from '../data/combo';
 import { ComboHud } from '../ui/art/comboHud';
 import { addHpBar, addTypeChip, COLORS, drawBox, fadeIn, FONT, goTo, HEX, hpColor, lowFx, shorten } from '../ui/theme';
@@ -480,6 +481,8 @@ export class GameScene extends Phaser.Scene {
   /** Curación por golpes (Drenar, Concha Campana): tope por segundo y una vez por lanzamiento. */
   private healBudget = 0;
   private drainReadyAt = 0;
+  /** Reacciones de tipo descubiertas en esta partida (T76). */
+  private reactionsFound: ReactionId[] = [];
   /** Destello rojo sobre la sala al recibir daño (capa del HUD). */
   private hurtFlash?: Phaser.GameObjects.Rectangle;
   /** Tienes shiny al Pokémon elegido: juegas con su sprite shiny (también al evolucionar). */
@@ -851,6 +854,7 @@ export class GameScene extends Phaser.Scene {
     this.minibossRoom = undefined;
     this.healBudget = 0;
     this.drainReadyAt = 0;
+    this.reactionsFound = [];
     this.floorNum = 1;
     this.ability = null;
     this.healedRun = false;
@@ -3136,6 +3140,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       stats: this.stats,
       baseStats: this.baseStats,
       ability: this.ability ? { name: this.ability.name, description: this.ability.description } : undefined,
+      reactions: discoveredLine(this.reactionsFound),
       items: [
         `Huecos ${slotsLabel(this.passives, this.bossesBeaten)}`,
         ...[...counts].map(([id, n]) => (passiveById(id)?.name ?? id) + (n > 1 ? ` x${n}` : '')),
@@ -6805,7 +6810,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.lifestealAcc = Math.min(this.lifestealAcc, 5);
     }
     this.countDamage(enemy, dmg);
-    const hp = (enemy.getData('hp') as number) - dmg;
+    let hp = (enemy.getData('hp') as number) - dmg;
     sfx('hit');
     if (status && this.fxBudget.take(this.time.now)) typeImpact(this, enemy.x, enemy.y, status, 0.8, 7);
     // Golpe: destello blanco, chispas, número de daño y un empujoncito (no a los jefes)
@@ -6820,6 +6825,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const pv = push.normalize().scale(crit ? 220 : 130);
       enemy.setVelocity(pv.x, pv.y);
       hitAi.knockUntil = this.time.now + 90;
+    }
+    if (status && hp > 0) {
+      this.tryReaction(enemy, status, dmg);
+      hp = enemy.getData('hp') as number;
     }
     // Drenar cura aunque el golpe lo derrote; el resto solo afecta a quien sigue en pie
     if (status && (hp > 0 || statusForType(status)?.kind === 'drain')) this.applyStatusTo(enemy, status, dmg);
@@ -7382,6 +7391,41 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const fresh = !prev.some((s) => s.kind === effect.kind && now < s.until);
     enemy.setData('statuses', applyStatus(prev, effect, now, damage));
     if (fresh) this.popup(enemy.x, enemy.y - (enemy.getData('size') as number) / 2 - 10, effect.label, effect.color);
+  }
+
+  /** T76: estado ya puesto + golpe de otro tipo = reacción (una por enemigo cada 1,5 s). */
+  private tryReaction(enemy: Sprite, type: string, damage: number) {
+    const now = this.time.now;
+    const list = (enemy.getData('statuses') as ActiveStatus[] | undefined) ?? [];
+    const r = findReaction(list, type, now);
+    if (!r || !canReact(enemy.getData('reactAt') as number | undefined, now)) return;
+    enemy.setData('reactAt', now);
+    let rest = consumeStatus(list, r);
+    if (r.applies) rest = applyStatus(rest, STATUS_EFFECTS[r.applies], now, damage);
+    if (r.stunMs > 0) rest = applyStatus(rest, { ...STATUS_EFFECTS.stun, duration: r.stunMs }, now, 0);
+    enemy.setData('statuses', rest);
+    this.reactionsFound = discover(this.reactionsFound, r.id);
+    // Aviso sobre el enemigo, nunca en el centro
+    this.popup(enemy.x, enemy.y - (enemy.getData('size') as number) / 2 - 28, r.name, r.color);
+    // TODO(supervisor): efecto visual de cada reacción (chispa que salta, nube de vapor, explosión tóxica, hielo roto…)
+    const hurt = (e: Sprite) => {
+      const boss = !!(e.getData('ai') as EnemyAI | undefined)?.boss;
+      const d = reactionDamage(r, damage, boss);
+      this.countDamage(e, d);
+      const hp = (e.getData('hp') as number) - d;
+      e.setData('hp', hp);
+      damageNumber(this, e.x, e.y - (e.getData('size') as number) * 0.45, d, {});
+      if (hp <= 0 && e !== enemy) this.killEnemy(e);
+    };
+    hurt(enemy);
+    if (r.radius <= 0 && r.chain <= 0) return;
+    const others = (this.enemies.getChildren() as Sprite[])
+      .filter((e) => e !== enemy && e.active && (e.getData('hp') as number) > 0)
+      .map((e) => ({ e, d: Phaser.Math.Distance.Between(enemy.x, enemy.y, e.x, e.y) }));
+    const targets = r.radius > 0
+      ? others.filter((o) => o.d <= r.radius)
+      : others.filter((o) => o.d <= 180).sort((a, b) => a.d - b.d).slice(0, r.chain);
+    for (const o of targets) hurt(o.e);
   }
 
   /** Daño de quemaduras y veneno. Devuelve true si el enemigo ha caído. */

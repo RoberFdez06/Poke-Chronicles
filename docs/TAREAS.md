@@ -619,7 +619,7 @@ guardado, tests de lógica pura, `tsc` + `npm test` en verde, grafo de graphify 
 sprites como `// TODO(supervisor)`, efectos bajos respetados, un commit por tarea sin firmas ni mención a Claude, sin push. Haz esta tanda
 **después** de la Tanda 9 (algunas tareas usan cosas de ella: la Torre, los jefes con megaevolución y los huecos de objetos).
 
-## [ ] T76 — Reacciones de tipo
+## [x] T76 — Reacciones de tipo
 - Hoy los estados (`status.ts`: quemar, congelar, paralizar, envenenar, mojar, etc.) actúan por separado. Haz que **combinar un estado ya
   puesto con un ataque de otro tipo provoque una reacción**, en una tabla de lógica pura nueva (`src/data/reactions.ts`) con tests: por
   ejemplo mojado + eléctrico = descarga que salta a los enemigos cercanos; mojado + hielo = congelación inmediata; quemado + agua = vapor

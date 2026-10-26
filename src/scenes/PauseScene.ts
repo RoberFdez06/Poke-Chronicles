@@ -24,6 +24,8 @@ export interface PauseData {
   ability?: { name: string; description: string };
   /** Nombres de los objetos pasivos, ya agrupados ("Lupa x2"). */
   items: string[];
+  /** Línea con las reacciones de tipo descubiertas (T76). */
+  reactions?: string;
   moves: (MovePower | null)[];
   roomsCleared: number;
   roomCount: number;
@@ -111,6 +113,8 @@ export class PauseScene extends Phaser.Scene {
     }
     t(66, 414, 'Objetos', 18, '#2b3a67', true);
     t(66, 436, d.items.length ? d.items.join(' · ') : 'Ninguno todavía', 14, '#4a5578');
+    // TODO(supervisor): si los objetos ocupan dos líneas, recolocar esta
+    if (d.reactions) t(66, 456, shorten(d.reactions, 70), 12, '#4a5578');
     t(66, 474, 'Poderes', 18, '#2b3a67', true);
     d.moves.forEach((m, i) => {
       const x = 66 + (i % 2) * 245;
