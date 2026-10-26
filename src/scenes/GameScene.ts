@@ -370,6 +370,8 @@ export interface GameData {
   difficulty?: Difficulty;
   /** T81: semilla de la partida (de un código o nueva); pasa de piso en piso. Si falta en una partida nueva se crea. */
   seeded?: SeedRun | null;
+  /** T72: piso de la Torre desde el que se empieza (punto de control elegido en ModeScene). */
+  towerStart?: number;
 }
 
 /** Una de las especies de enemigo del piso. */
@@ -644,6 +646,7 @@ export class GameScene extends Phaser.Scene {
   /** T72: cómo es el piso actual de la Torre (solo en ese modo) y la semilla de toda la subida. */
   private towerSpec?: TowerFloorSpec;
   private towerSeed = 0;
+  private towerStart = 1;
   /** T72: dibujo y puntos de uso de la tienda y el altar del descanso (aparte de los de la forja). */
   private towerRestObjs: Phaser.GameObjects.GameObject[] = [];
   private towerRestSpots: { x: number; y: number; prompt: () => string; use: () => void }[] = [];
@@ -831,6 +834,7 @@ export class GameScene extends Phaser.Scene {
     // T84: la cadena shiny sigue entre pisos de la misma partida; una partida nueva o cargada empieza de cero
     if (!data?.carry || this.resume) this.shinyChain = newShinyChain();
     this.diff = this.resume ? this.resume.difficulty : (data?.difficulty ?? 'normal');
+    this.towerStart = !this.resume && !data?.carry && this.mode === 'tower' ? Math.max(1, Math.floor(data?.towerStart ?? 1)) : 1;
   }
 
   create() {
@@ -925,6 +929,8 @@ export class GameScene extends Phaser.Scene {
     this.tipObjects = [];
     this.tipTimer = undefined;
     this.bossHistory = [];
+    // T72: punto de control de la Torre (partida nueva)
+    if (this.towerStart > 1) this.floorNum = this.towerStart;
     const c = this.carry;
     if (c) {
       // Bajas al piso siguiente con tus objetos, poderes y PS

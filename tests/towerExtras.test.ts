@@ -68,3 +68,24 @@ test('T72: puntos de control: piso 1 gratis y el descanso de cada jefe vencido',
   assert.deepEqual(o.map((x) => x.floor), [1, 11, 21, 31]);
   assert.ok(o[1].cost > 0 && o[3].cost > o[1].cost);
 });
+
+test('T72: la sala 2x2 sale en la Torre y une sus 4 casillas', async () => {
+  const { towerFloorSpec, towerFloor, towerPlayable } = await import('../src/level/tower.ts');
+  let found = 0;
+  for (let seed = 1; seed <= 4 && found === 0; seed++)
+    for (let f = 1; f <= 100; f++) {
+      const sp = towerFloorSpec(f, seed);
+      if (sp.shape !== 'square') continue;
+      found++;
+      assert.equal(sp.cells.length, 4);
+      assert.ok(towerPlayable(sp));
+      const fl = towerFloor(sp, seed);
+      assert.equal(fl.rooms.length, 4);
+      assert.deepEqual(fl.groups, [[0, 1, 2, 3]]);
+      assert.equal(fl.rooms[0].doors.right, 1);
+      assert.equal(fl.rooms[0].doors.down, 2);
+      assert.equal(fl.rooms[3].doors.up, 1);
+      assert.equal(fl.rooms[3].doors.left, 2);
+    }
+  assert.ok(found > 0);
+});

@@ -1179,15 +1179,29 @@ Hecho:
   `towerAscend`/`towerArrive` (towerFx), cartel de la regla del piso siguiente, daño de pinchos y lava, descanso con el
   Centro Pokémon como fuente + un objeto, suministros con una cosa, victoria en el piso 100. La semilla de la subida se
   recupera al continuar a partir de `floorSeed` (sin versión nueva de `RunSave`).
+Hecho (segunda parte, rama `torre`):
+- `src/level/towerExtras.ts` (tests en `tests/towerExtras.test.ts`): `towerAltarItems` (3 distintos, al menos uno raro o
+  mejor), `towerShopStock` (2 objetos al 70 % y uno exclusivo legendario, también rebajado, el último), `towerMinibossItem`
+  (épico que no lleves), `isTowerFinale`, `iceVelocity` (inercia con `ICE_GRIP`) y `towerCheckpointOptions`.
+- Descanso: altar de 3 objetos abajo a la izquierda (coges uno y los otros desaparecen; al continuar se reconocen por su
+  sitio; marca `TOWER_ALTAR_DONE` en `eventsDone`) y tienda a la derecha (compra con teclado/mando por `eventSpots`, o
+  clic; cada artículo vendido en `eventsDone` como `TOWER_SHOP_DONE + n`). Sustituyen al objeto suelto de antes. La
+  tienda sigue aunque se gaste la forja (`towerRestSpots` se repone en `finishEvent`). Sin versión nueva de `RunSave`.
+- Hielo resbaladizo: sobre una casilla de hielo la velocidad se acerca poco a poco a la pedida (vale para teclado,
+  ratón y mando porque actúa sobre la dirección ya calculada).
+- Minijefe de la Torre: encadena un segundo movimiento de su tipo y, al caer, suelta además un objeto épico.
+- Piso 100: reto final de `finale.ts` (trío o gigante) en lugar del jefe normal; la victoria sigue en `towerCleared`.
+- Sala 2x2 (`square`) entre las formas grandes; `towerFloor` une las 4 casillas (test).
+- Punto de control: al elegir Torre en ModeScene, si has vencido algún jefe, `ItemChoiceScene` pregunta desde qué
+  descanso empiezas (piso 1 gratis; los demás cuestan caramelos, apagados si no llegan). `GameData.towerStart`.
 Pendiente (T72 sigue `[ ]`):
-- Sala de 2x2: las salas grandes de `floorGen` son de 2-3 casillas; no la he metido para no arriesgar `buildJoin`.
-- Descanso completo: altar de 3 objetos (uno raro o mejor), forja (depende de T73) y tienda con descuento con artículo exclusivo.
-- Suministros a elegir entre poción, llave y baya (ahora cae una sola, decidida por la semilla).
-- Minijefe: ataque extra y objeto épico al caer. Piso 100 con `finale.ts` (ahora es un jefe normal; `isFinalFloor` es solo de Normal).
-- Hielo resbaladizo (ahora solo se ve). Dibujo de peligros y columna: `// TODO(supervisor)` con colores lisos.
-- Música por bioma en la Torre (usa la del bioma si GameScene ya la saca de `this.biome`; sin comprobar en juego).
-- Puntos de control al morir: la lógica está, falta la pantalla para elegir el punto y cobrar los caramelos.
-- Probar en el navegador (solo verificado con `tsc` y `npm test`).
+- Suministros a elegir entre poción, llave y baya (sigue cayendo una sola, decidida por la semilla).
+- La tienda del descanso se sortea sin mirar lo que llevas (para que sea la misma al continuar); puede vender algo
+  repetido. Empezar desde un punto de control no da objetos ni huecos extra (sales con lo básico).
+- `// TODO(supervisor)`: altar y puesto del descanso (rectángulos lisos), peligros y columna.
+- Música por bioma en la Torre sin comprobar en juego.
+- Probar en el navegador: nada de esta parte se ha probado jugando (solo `tsc` y `npm test`), en especial la unión
+  de la sala 2x2 (`buildJoin`), el resbalón y la colocación del altar y la tienda junto al Centro y la forja.
 ## Arreglos: desafío diario estable y contadores de sala guardados
 - **Desafío diario**: `pickRoomEvent` y `pickEventKind` aceptan una lista opcional de eventos (`kinds`, por defecto
   `ROOM_EVENTS`). El diario pasa `DAILY_EVENTS`, una tabla CONGELADA con los ocho de antes de T68 (runaway, merchant,
