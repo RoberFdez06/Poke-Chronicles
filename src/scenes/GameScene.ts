@@ -140,6 +140,7 @@ import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
+import { bombExplosion, bombFuse } from '../ui/art/bombFx';
 import { buildForgeArt, buildLagoonArt, buildSlotArt } from '../ui/art/eventArt';
 import { ballEscape, ballShake, ballSuccess, ballThrow, dayNightLayer, megaAura, megaEvolveFx } from '../ui/art/powerFx';
 import { adrenalineTrail, lootFlash, parryHit, parryStance, reviveBurst, bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
@@ -3735,10 +3736,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const x = this.player.x;
     const y = this.player.y + 10;
     const roomId = this.current.id;
-    const b = this.add.image(x, y, iconKey('bomb')).setDepth(3).setScale(2.4);
-    this.tweens.add({ targets: b, scale: 2.9, duration: 160, yoyo: true, repeat: -1 });
+    const b = bombFuse(this, x, y, BOMB.fuse, BOMB.radius);
     this.time.delayedCall(BOMB.fuse, () => {
-      this.tweens.killTweensOf(b);
       b.destroy();
       if (!this.ended && this.current.id === roomId) this.explode(x, y);
     });
@@ -3749,8 +3748,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const R = BOMB.radius;
     sfx('boom');
     this.cameras.main.shake(180, 0.006);
-    const fx = this.add.circle(x, y, R, 0xffb347, 0.55).setDepth(12);
-    this.tweens.add({ targets: fx, alpha: 0, scale: 1.2, duration: 300, onComplete: () => fx.destroy() });
+    bombExplosion(this, x, y, R);
 
     for (const c of [...this.enemies.getChildren()]) {
       const e = c as Sprite;
@@ -4598,10 +4596,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const dmg = BOMB.damage * ACTIVE_EFFECT.baitDamageMul;
     sfx('boom');
     this.cameras.main.shake(220, 0.008);
-    for (const [delay, color] of [[0, 0xffb347], [90, 0xff7043]] as const) {
-      const fx = this.add.circle(x, y, 30, color, 0.5).setDepth(12);
-      this.tweens.add({ targets: fx, radius: R, alpha: 0, duration: 360, delay, ease: 'Cubic.easeOut', onComplete: () => fx.destroy() });
-    }
+    bombExplosion(this, x, y, R, 0xff5a3c);
     for (const c of [...this.enemies.getChildren()]) {
       const e = c as Sprite;
       if (!e.active || !inBlast(x, y, e.x, e.y, R + (e.getData('size') as number) / 3)) continue;
