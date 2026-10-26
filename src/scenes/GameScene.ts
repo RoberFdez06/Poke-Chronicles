@@ -70,7 +70,7 @@ import {
 import { addRunHistory, loadKeys, loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMission, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
 import { disableTips, markTipSeen, shouldShowTip, TIPS, type TipId } from '../data/tutorial';
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
-import { emptyCounters, noteFloorTime, noteParry, notePickup, noteRoomTime, type RunCounters, type RunRecord } from '../data/runHistory';
+import { closeFloor, emptyCounters, floorTimes, noteParry, notePickup, noteRoomTime, openFloor, type RunCounters, type RunRecord } from '../data/runHistory';
 import { ToastStack, type ToastOptions } from '../ui/toast';
 import { reportError } from '../ui/errorScreen';
 import { keyCode } from '../ui/keys';
@@ -452,9 +452,8 @@ export class GameScene extends Phaser.Scene {
   private leavingToSummary = false;
   /** Tiempo, enemigos vencidos, daño hecho y récord de la partida (para el resumen, T28). */
   private counters: RunCounters = emptyCounters();
-  /** T62: segundos de partida al entrar en la sala y al empezar el piso (para la sala más rápida y el tiempo por piso). */
+  /** T62: segundo de partida al entrar en la sala (para la sala más rápida; el del piso va en los contadores). */
   private roomStartSec = 0;
-  private floorStartSec: number | undefined;
   /** Habilidad de PokeAPI de tu Pokémon (T27); null mientras carga o si no tiene. */
   private ability: Ability | null = null;
   private hpMark = -1;
@@ -773,7 +772,6 @@ export class GameScene extends Phaser.Scene {
     this.healedRun = false;
     this.counters = emptyCounters();
     this.roomStartSec = 0;
-    this.floorStartSec = undefined;
     this.lastRecord = undefined;
     this.leavingToSummary = false;
     this.hpMark = -1;
@@ -1774,9 +1772,6 @@ export class GameScene extends Phaser.Scene {
 
   private startFloor() {
     this.physics.resume();
-    // T62: al empezar un piso se cierra el tiempo del anterior (el último se apunta al acabar la partida)
-    if (this.floorStartSec !== undefined) noteFloorTime(this.counters, this.counters.seconds - this.floorStartSec);
-    this.floorStartSec = this.counters.seconds;
 
     if (!this.textures.exists('shot')) {
       const g = this.add.graphics();
@@ -1842,6 +1837,8 @@ export class GameScene extends Phaser.Scene {
     // Al continuar: objetos, estado del jugador y sala donde estabas
     const r = this.resume;
     if (r) this.restoreRun(r);
+    // T62: el piso empieza a contar ya con los contadores buenos (los del piso anterior o los de la partida guardada)
+    openFloor(this.counters);
 
     // Jugador, con un cuerpo circular más pequeño que el arte para pasar por las puertas
     const start = this.floor.rooms[r?.roomId ?? this.floor.startId] ?? this.floor.rooms[this.floor.startId];
@@ -4945,6 +4942,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.transitioning = true;
     this.trapdoor = undefined;
     this.player.setVelocity(0, 0);
+    // T62: el piso que se deja se apunta ya (la escena se reinicia y el siguiente empieza a contar en startFloor)
+    closeFloor(this.counters);
     const carry: FloorCarry = {
       floor: this.floorNum + 1,
       bossHistory: [...this.bossHistory],
@@ -6581,8 +6580,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       parries: this.counters.parries ?? 0,
       picked: this.counters.picked ?? 0,
       fastestRoom: Math.round(this.counters.fastestRoom ?? 0),
-      // Los pisos ya cerrados y, además, el último (el de ahora), que no se ha cerrado con startFloor
-      floorSeconds: [...(this.counters.floorSeconds ?? []), ...(this.floorStartSec === undefined ? [] : [Math.round(this.counters.seconds - this.floorStartSec)])],
+      // Los pisos ya cerrados al bajar y el de ahora, que sigue abierto
+      floorSeconds: floorTimes(this.counters),
     };
     addRunHistory(this.lastRecord);
     // Un momento de margen y un clic nuevo, para no saltarse la pantalla si estabas disparando; si no, va solo

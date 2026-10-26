@@ -83,6 +83,11 @@ export interface RunCounters {
   fastestRoom?: number;
   /** Lo que tardaste en cada piso ya terminado (segundos). */
   floorSeconds?: number[];
+  /**
+   * Segundo de partida en que empezó el piso actual. Va en los contadores (y no en la escena) porque la escena se
+   * reinicia en cada piso y al continuar una partida: así el tiempo del piso sobrevive a las dos cosas.
+   */
+  floorStartedAt?: number;
 }
 
 export const emptyCounters = (): RunCounters => ({ seconds: 0, kills: 0, damage: 0, newRecord: false });
@@ -90,7 +95,7 @@ export const emptyCounters = (): RunCounters => ({ seconds: 0, kills: 0, damage:
 export const isCounters = (c: unknown): c is RunCounters => {
   const o = c as RunCounters;
   return !!o && isNum(o.seconds) && isNum(o.kills) && isNum(o.damage) && typeof o.newRecord === 'boolean' &&
-    optNum(o.parries) && optNum(o.picked) && optNum(o.fastestRoom) && optNums(o.floorSeconds);
+    optNum(o.parries) && optNum(o.picked) && optNum(o.fastestRoom) && optNums(o.floorSeconds) && optNum(o.floorStartedAt);
 };
 
 /** Una sala limpiada en menos de esto no cuenta como «sala más rápida» (tienda, objeto… se limpian al entrar). */
@@ -115,3 +120,21 @@ export function noteFloorTime(c: RunCounters, seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) return;
   c.floorSeconds = [...(c.floorSeconds ?? []), Math.round(seconds)];
 }
+
+/** Empieza a contar el piso actual (si ya se estaba contando, p. ej. al continuar la partida, no lo toca). */
+export function openFloor(c: RunCounters) {
+  if (c.floorStartedAt === undefined || c.floorStartedAt > c.seconds) c.floorStartedAt = c.seconds;
+}
+
+/** Cierra el piso actual (al bajar por la trampilla): apunta lo que se tardó y deja de contarlo. */
+export function closeFloor(c: RunCounters) {
+  if (c.floorStartedAt === undefined) return;
+  noteFloorTime(c, c.seconds - c.floorStartedAt);
+  c.floorStartedAt = undefined;
+}
+
+/** Tiempo de cada piso para el resumen: los cerrados y, si hay, el que se está jugando (el de la caída o la victoria). */
+export const floorTimes = (c: RunCounters): number[] => [
+  ...(c.floorSeconds ?? []),
+  ...(c.floorStartedAt === undefined ? [] : [Math.round(Math.max(0, c.seconds - c.floorStartedAt))]),
+];
