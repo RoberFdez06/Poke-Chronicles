@@ -8,6 +8,7 @@ import { isMode, type GameMode } from './modes.ts';
 import { isDifficulty, type Difficulty } from './difficulty.ts';
 import { emptyCounters, isCounters, type RunCounters } from './runHistory.ts';
 import { BERRIES, POTIONS, type ShopSlot } from './loot.ts';
+import { REACTIONS, discover, type ReactionId } from './reactions.ts';
 import { isPowerFormSave, type PowerFormSave } from './powerForm.ts';
 
 export const RUN_SLOTS = 3;
@@ -31,8 +32,9 @@ export const RUN_SLOTS = 3;
  *      menos el actual; no se les quita ningún objeto aunque lleven más que huecos.
  * v20: forma de poder (megaevolución, T74): cuánto le queda y si ya se usó en el piso. Los v19 no la tenían.
  * v21: medidor de poder y Cristal Z usado (T75). La forma guarda además el tipo Tera y el escudo del Dinamax.
+ * v22: reacciones de tipo descubiertas (T76). Los v21 empiezan sin ninguna.
  */
-export const RUN_VERSION = 21;
+export const RUN_VERSION = 22;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -139,6 +141,8 @@ export interface RunSave {
   /** T75: medidor de poder (0..100) y si ya se ha usado el Cristal Z en la partida. */
   powerMeter: number;
   zUsed: boolean;
+  /** T76: reacciones de tipo descubiertas en la partida (en el orden de la tabla, sin repetir). */
+  reactionsFound: ReactionId[];
 }
 
 export interface DailyRun {
@@ -283,6 +287,21 @@ function migrateV20(d: RunSave): RunSave {
   return { ...d, version: 21, powerMeter: 0, zUsed: false };
 }
 
+/** v21 no guardaba las reacciones descubiertas (T76): empiezan vacías. */
+function migrateV21(d: RunSave): RunSave {
+  return { ...d, version: 22, reactionsFound: [] };
+}
+
+const REACTION_IDS: readonly string[] = REACTIONS.map((r) => r.id);
+
+/** Lista de reacciones guardada: debe ser un array; los ids desconocidos se descartan y los repetidos se juntan. */
+function cleanReactions(a: unknown): ReactionId[] | null {
+  if (!Array.isArray(a)) return null;
+  let out: ReactionId[] = [];
+  for (const id of a) if (typeof id === 'string' && REACTION_IDS.includes(id)) out = discover(out, id as ReactionId);
+  return out;
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -313,7 +332,11 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 18) d = migrateV18(d);
   if (d.version === 19) d = migrateV19(d);
   if (d.version === 20) d = migrateV20(d);
+  if (d.version === 21) d = migrateV21(d);
   if (d.version !== RUN_VERSION) return null;
+  const reactions = cleanReactions(d.reactionsFound);
+  if (!reactions) return null;
+  d = { ...d, reactionsFound: reactions };
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
     isInt(d.floor) && d.floor >= 1 && isIntArray(d.bossHistory) &&

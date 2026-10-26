@@ -5,6 +5,7 @@ import type { MovePower, PlayerStats } from '../data/items';
 import { typeColor, typeHex, typeNameEs } from '../data/types';
 import { addHpBar, addTypeChip, drawBox, shorten } from '../ui/theme';
 import { STAT_KEYS, STAT_LABEL, type BaseStats } from '../data/pokeStats';
+import { itemLinesFromHeight, pauseTailLayout, PAUSE_ITEMS_Y, PAUSE_ITEM_MAX_LINES, PAUSE_PANEL_MIN_H, PAUSE_PANEL_Y } from '../data/pauseLayout';
 import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
 import type { SettingsData } from './SettingsScene';
 
@@ -112,13 +113,18 @@ export class PauseScene extends Phaser.Scene {
       t(66, 392, d.ability.description, 13, '#4a5578');
     }
     t(66, 414, 'Objetos', 18, '#2b3a67', true);
-    t(66, 436, d.items.length ? d.items.join(' · ') : 'Ninguno todavía', 14, '#4a5578');
-    // TODO(supervisor): si los objetos ocupan dos líneas, recolocar esta
-    if (d.reactions) t(66, 456, shorten(d.reactions, 70), 12, '#4a5578');
-    t(66, 474, 'Poderes', 18, '#2b3a67', true);
+    const itemsText = t(66, PAUSE_ITEMS_Y, d.items.length ? d.items.join(' · ') : 'Ninguno todavía', 14, '#4a5578').setMaxLines(PAUSE_ITEM_MAX_LINES);
+    // Lo de debajo se coloca donde termina de verdad la lista de objetos (1, 2 o 3 líneas)
+    const tail = pauseTailLayout(itemLinesFromHeight(itemsText.height), !!d.reactions, d.moves.length);
+    if (tail.panelH > PAUSE_PANEL_MIN_H) {
+      g.clear();
+      drawBox(g, 40, PAUSE_PANEL_Y, 520, tail.panelH, { radius: 20 });
+    }
+    if (d.reactions && tail.reactionsY !== null) t(66, tail.reactionsY, shorten(d.reactions, 70), 12, '#4a5578');
+    t(66, tail.powersTitleY, 'Poderes', 18, '#2b3a67', true);
     d.moves.forEach((m, i) => {
       const x = 66 + (i % 2) * 245;
-      const y = 500 + Math.floor(i / 2) * 30;
+      const y = tail.movesY + Math.floor(i / 2) * 30;
       t(x, y, `${i + 1}  ${m ? shorten(pretty(m.name), 13) : '—'}`, 16, m ? typeHex(m.type) : '#9aa5b1', true)
         .setStroke(m ? '#2b3a67' : '#00000000', m ? 2 : 0);
       // Ficha del tipo del poder

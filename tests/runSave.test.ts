@@ -63,6 +63,7 @@ function sample(): RunSave {
     powerForm: { active: null, leftMs: 0, used: false },
     powerMeter: 0,
     zUsed: false,
+    reactionsFound: [],
   };
 }
 
@@ -338,4 +339,22 @@ test('T75: v20 se migra con el medidor vacío y el Z sin usar; medidor, Z, Tera 
   assert.equal(parseRun(JSON.stringify({ ...sample(), zUsed: 'no' })), null);
   assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'tera', leftMs: 100, used: true } })), null);
   assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'dynamax', leftMs: 100, used: true, shield: 999 } })), null);
+});
+
+test('T76: v21 se migra sin reacciones; las descubiertas hacen la ida y vuelta y las corruptas se rechazan o limpian', () => {
+  const { reactionsFound: _r, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 21 }))!;
+  assert.equal(run.version, RUN_VERSION);
+  assert.deepEqual(run.reactionsFound, []);
+  // Sin el campo en la versión actual: guardado corrupto
+  assert.equal(parseRun(JSON.stringify(old)), null);
+  // Ida y vuelta por el almacenamiento
+  const st = fakeStorage();
+  assert.ok(saveRun(1, { ...sample(), reactionsFound: ['descarga', 'vapor'] }, st));
+  assert.deepEqual(loadRun(1, st)!.reactionsFound, ['descarga', 'vapor']);
+  // Desordenadas, repetidas o con ids desconocidos: se limpian
+  const messy = parseRun(JSON.stringify({ ...sample(), reactionsFound: ['vapor', 'nada', 'descarga', 'vapor', 7, null] }))!;
+  assert.deepEqual(messy.reactionsFound, ['descarga', 'vapor']);
+  // Tipos equivocados: se rechaza
+  for (const bad of ['descarga', 5, null, { 0: 'vapor' }]) assert.equal(parseRun(JSON.stringify({ ...sample(), reactionsFound: bad })), null);
 });
