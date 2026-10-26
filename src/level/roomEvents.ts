@@ -12,12 +12,15 @@
 // - Sala de juegos: una tragaperras que se juega con monedas (ver slotMachine.ts).
 // T70:
 // - Ladrón: te roba monedas y huye hacia una puerta (ver thief.ts).
+// T69:
+// - Laguna de pesca: lanzas la caña y pulsas cuando pica (ver fishing.ts).
 // Sale de la semilla del piso, así al continuar o en el desafío diario es el mismo. Lógica pura, sin Phaser.
 import type { Floor } from './floorGen.ts';
 import { PASSIVE_ITEMS, takeMoveByRarity, type MovePower, type PassiveItem } from '../data/items.ts';
+import { fishingWeight } from './fishing.ts';
 import type { ShopGoods, ShopSlot } from '../data/loot.ts';
 
-export const ROOM_EVENTS = ['runaway', 'merchant', 'altar', 'trapChest', 'rival', 'fountain', 'timeTrial', 'egg', 'slots', 'thief'] as const;
+export const ROOM_EVENTS = ['runaway', 'merchant', 'altar', 'trapChest', 'rival', 'fountain', 'timeTrial', 'egg', 'slots', 'thief', 'fishing'] as const;
 export type RoomEventKind = (typeof ROOM_EVENTS)[number];
 
 export interface RoomEvent {
@@ -36,6 +39,7 @@ export const ROOM_EVENT_LABEL: Record<RoomEventKind, string> = {
   egg: 'Huevo misterioso',
   slots: 'Sala de juegos',
   thief: 'Ladrón',
+  fishing: 'Laguna de pesca',
 };
 
 /** Color de la marca en el minimapa (al descubrir la sala, hasta resolver el evento). */
@@ -50,6 +54,7 @@ export const ROOM_EVENT_COLOR: Record<RoomEventKind, number> = {
   egg: 0xf8bbd0,
   slots: 0xff7043,
   thief: 0x8d6e63,
+  fishing: 0x0288d1,
 };
 
 /** Premio y riesgo de cada evento, para el aviso al entrar. */
@@ -64,13 +69,14 @@ export const ROOM_EVENT_DESC: Record<RoomEventKind, string> = {
   egg: 'Llévalo 2 salas: eclosiona en un ayudante o un objeto',
   slots: 'Tragaperras con monedas: apuesta 3, 6 o 12 (tiradas limitadas)',
   thief: 'Te roba monedas y huye: abátelo antes de que salga y te las devuelve con extra',
+  fishing: 'Lanza la caña y pulsa cuando pique: monedas, bayas, objetos… o algo raro',
 };
 
 /**
  * Peso de cada evento según el piso (T48): al principio más huevos, fuentes y mercaderes; hondo, más rivales y salas
  * del tiempo. 0 = no sale en ese piso.
  */
-export function eventWeights(floorNum: number): Record<RoomEventKind, number> {
+export function eventWeights(floorNum: number, biomeTypes: readonly string[] = []): Record<RoomEventKind, number> {
   const f = Math.max(1, Math.floor(floorNum));
   const deep = Math.min(1, (f - 2) / 3); // 0 en el piso 2, 1 desde el 5
   return {
@@ -84,12 +90,13 @@ export function eventWeights(floorNum: number): Record<RoomEventKind, number> {
     egg: 1.2 - 0.6 * deep,
     slots: 0.7, // T68: poco peso y fijo; solo cuesta monedas
     thief: 0.5 + 0.3 * deep, // T70: algo más hondo, cuando llevas más monedas
+    fishing: fishingWeight(biomeTypes), // T69: sobre todo en biomas con agua
   };
 }
 
 /** Elige evento con los pesos del piso; `x` en [0, 1). */
-export function pickEventKind(floorNum: number, x: number): RoomEventKind {
-  const w = eventWeights(floorNum);
+export function pickEventKind(floorNum: number, x: number, biomeTypes: readonly string[] = []): RoomEventKind {
+  const w = eventWeights(floorNum, biomeTypes);
   const total = ROOM_EVENTS.reduce((a, k) => a + w[k], 0);
   let r = Math.min(0.999999, Math.max(0, x)) * total;
   for (const k of ROOM_EVENTS) {
@@ -106,7 +113,7 @@ export const EVENT_CHANCE = 0.35;
  * Sala sorpresa del piso (o null). Una sala de combate que no sea de las de `exclude` (minijefe, cofres…), mejor
  * sin salida. Siempre hace tres tiradas de `rng`.
  */
-export function pickRoomEvent(floor: Floor, floorNum: number, rng: () => number, exclude: ReadonlySet<number> = new Set()): RoomEvent | null {
+export function pickRoomEvent(floor: Floor, floorNum: number, rng: () => number, exclude: ReadonlySet<number> = new Set(), biomeTypes: readonly string[] = []): RoomEvent | null {
   const roll = rng();
   const which = rng();
   const where = rng();
@@ -116,7 +123,7 @@ export function pickRoomEvent(floor: Floor, floorNum: number, rng: () => number,
   const ends = combat.filter((r) => Object.keys(r.doors).length === 1);
   const pool = ends.length > 0 ? ends : combat;
   const room = pool[Math.min(pool.length - 1, Math.floor(where * pool.length))];
-  return { roomId: room.id, kind: pickEventKind(floorNum, which) };
+  return { roomId: room.id, kind: pickEventKind(floorNum, which, biomeTypes) };
 }
 
 // --- Pokémon raro que huye ---
