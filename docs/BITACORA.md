@@ -1194,14 +1194,33 @@ Hecho (segunda parte, rama `torre`):
 - Sala 2x2 (`square`) entre las formas grandes; `towerFloor` une las 4 casillas (test).
 - Punto de control: al elegir Torre en ModeScene, si has vencido algún jefe, `ItemChoiceScene` pregunta desde qué
   descanso empiezas (piso 1 gratis; los demás cuestan caramelos, apagados si no llegan). `GameData.towerStart`.
-Pendiente (T72 sigue `[ ]`):
-- Suministros a elegir entre poción, llave y baya (sigue cayendo una sola, decidida por la semilla).
-- La tienda del descanso se sortea sin mirar lo que llevas (para que sea la misma al continuar); puede vender algo
-  repetido. Empezar desde un punto de control no da objetos ni huecos extra (sales con lo básico).
-- `// TODO(supervisor)`: altar y puesto del descanso (rectángulos lisos), peligros y columna.
-- Música por bioma en la Torre sin comprobar en juego.
-- Probar en el navegador: nada de esta parte se ha probado jugando (solo `tsc` y `npm test`), en especial la unión
-  de la sala 2x2 (`buildJoin`), el resbalón y la colocación del altar y la tienda junto al Centro y la forja.
+Hecho (cierre, rama `torre2`; T72 pasa a `[x]`):
+- Suministros a elegir: un puesto (rectángulo liso, `// TODO(supervisor)`) abre `ItemChoiceScene` con poción, llave o
+  Baya Aranja (teclado, ratón y mando); lo elegido cae delante y se marca `TOWER_SUPPLY_DONE` en `eventsDone`, así que
+  al continuar sin haber elegido el puesto sigue ahí. Ya no cae una sola cosa decidida por la semilla.
+- Tienda del descanso sin repetidos: `towerShopOffer` (en `towerExtras.ts`) baraja la bolsa con la semilla sin mirar lo
+  que llevas (orden fijo) y enseña los dos primeros normales y el primer legendario que no lleves o que ya se vendieran
+  aquí; lo vendido va en `eventsDone` como `TOWER_SHOP_SOLD + n.º de candidato` (201000+), así al continuar es la misma
+  y no se rellena tras comprar. Si coges del altar algo que vendía, ese artículo cambia por otro (`towerShopDraw`).
+  Sin versión nueva de `RunSave`. Las marcas antiguas (`200010 + n`) ya no se leen: un guardado viejo a mitad de un
+  descanso ve la tienda entera otra vez, pero nunca con algo que ya lleve.
+- Punto de control: `towerCheckpointKit(piso)` da los huecos de los jefes saltados (`bossesBeaten`), 2 objetos por jefe
+  hasta `TOWER_KIT_MAX` (8; distintos, sin legendarios, uno raro o mejor de cada tres), 15 monedas por jefe y hasta 3
+  pociones. Se aplica en `boot` solo en partida nueva desde un descanso (no al continuar ni al subir).
+- Sitios del descanso en `TOWER_REST_LAYOUT` (respecto al centro de la sala) con test de que no se solapan: Centro en
+  medio arriba, forja a la izquierda debajo de los bancos, altar de 3 abajo a la izquierda, tienda abajo a la derecha,
+  Mega Piedra a la derecha (también en suministros) y la columna de luz del descanso abajo en medio (antes caía encima
+  del mostrador). El puesto de suministros va a la izquierda. Guardados viejos a mitad de descanso: los objetos del
+  altar estaban en otro sitio y ya no se reconocen como altar (se quedan como objetos sueltos).
+- Piso 100: test de que es `final`, reto final (`isTowerFinale`) y última etapa (`isLastStage`); la victoria sale de
+  `towerCleared` al limpiar la sala del reto (trío o gigante).
+- Tests nuevos en `tests/towerCierre.test.ts`.
+Sin probar (solo `tsc` y `npm test`):
+- Nada se ha jugado en el navegador: la sala 2x2 (`buildJoin`), el resbalón, la colocación real del descanso (las cajas
+  del test son aproximadas al dibujo), el puesto de suministros con mando y la victoria del piso 100.
+- Música por bioma: el código pone `trackForBiome(this.biome.id)` con el bioma del tramo (`towerSpec.biome`), pero no se
+  ha comprobado a oído.
+- `// TODO(supervisor)`: altar, puesto de la tienda, puesto de suministros, peligros y columna (rectángulos lisos).
 ## Arreglos: desafío diario estable y contadores de sala guardados
 - **Desafío diario**: `pickRoomEvent` y `pickEventKind` aceptan una lista opcional de eventos (`kinds`, por defecto
   `ROOM_EVENTS`). El diario pasa `DAILY_EVENTS`, una tabla CONGELADA con los ocho de antes de T68 (runaway, merchant,

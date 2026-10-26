@@ -161,7 +161,9 @@ import {
   upcomingRule, type TowerFloorSpec,
 } from '../level/tower';
 import { towerArrive, towerAscend } from '../ui/art/towerFx';
-import { iceVelocity, isTowerFinale, TOWER_ALTAR_COUNT, towerAltarItems, towerMinibossItem, towerShopStock } from '../level/towerExtras';
+import {
+  iceVelocity, isTowerFinale, TOWER_ALTAR_COUNT, TOWER_REST_LAYOUT, TOWER_SHOP_SOLD, towerAltarItems, towerCheckpointKit, towerMinibossItem, towerShopOffer,
+} from '../level/towerExtras';
 import { FINALE_BONUS, GIANT_HP_MUL, GIANT_RAGE_AT, GIANT_SIZE, isFinalFloor, isFinaleGate, pickFinale, TRIO_HP_MUL, type Finale } from '../data/finale';
 import type { FinalChoice } from './FinalPromptScene';
 import { castPattern, setMotion, updateShots, type AttackHost, type ShootOpts, type Side } from './attacks';
@@ -301,7 +303,8 @@ const VIEW = { w: 960, h: 640 };
 const ROOM = { x: 80, y: 80, w: 800, h: 480 };
 /** T72: marcas en eventsDone del descanso de la Torre (lejos de las salas y de MEGA_STONE_DONE_BASE). */
 const TOWER_ALTAR_DONE = 200000;
-const TOWER_SHOP_DONE = 200010;
+/** Suministros de la Torre ya elegidos en este piso. */
+const TOWER_SUPPLY_DONE = 200005;
 const WALL = 40;
 /** Radio máximo del cuerpo del jugador (px): menos de media casilla, para caber por pasillos de una casilla. */
 const PLAYER_BODY_R = 16;
@@ -658,6 +661,9 @@ export class GameScene extends Phaser.Scene {
   private towerStart = 1;
   /** T72: dibujo y puntos de uso de la tienda y el altar del descanso (aparte de los de la forja). */
   private towerRestObjs: Phaser.GameObjects.GameObject[] = [];
+  /** T72: dibujo de la tienda del descanso (se rehace si coges algo que vendía) y la clave de lo que enseña. */
+  private towerShopObjs: Phaser.GameObjects.GameObject[] = [];
+  private towerShopKey = '';
   private towerRestSpots: { x: number; y: number; prompt: () => string; use: () => void }[] = [];
   private hazardTickAt = 0;
   /** T78: arena del jefe. Fase ya aplicada, aviso en curso y casillas con grietas (daño) de la sala del jefe. */
@@ -1080,6 +1086,8 @@ export class GameScene extends Phaser.Scene {
     }
     this.towerSpec = undefined;
     this.towerRestObjs = [];
+    this.towerShopObjs = [];
+    this.towerShopKey = '';
     this.towerRestSpots = [];
     this.hazardTickAt = 0;
     this.arenaDone = 0;
@@ -1102,6 +1110,15 @@ export class GameScene extends Phaser.Scene {
       else if (!this.carry || this.towerSeed === 0) this.towerSeed = this.seeded ? seedFloorSeed(this.seeded.seed, 0) || 1 : Phaser.Math.Between(1, 0x7fffffff);
       if (!r) this.floorSeed = (this.towerSeed ^ mix) >>> 0;
       this.towerSpec = towerFloorSpec(this.floorNum, this.towerSeed);
+      // T72: empezar desde un punto de control: huecos de los jefes saltados y un lote de objetos (con tope)
+      if (!r && !this.carry && this.towerStart > 1 && this.floorNum === this.towerStart) {
+        const kit = towerCheckpointKit(this.towerStart, mulberry32(this.towerSeed ^ 0x6d2b79f5), this.passivePool());
+        this.bossesBeaten = kit.bosses;
+        this.passives = [...this.passives, ...kit.passives];
+        this.coins += kit.coins;
+        this.potions += kit.potions;
+        if (kit.passives.length > 0) this.time.delayedCall(1500, () => !this.ended && this.notify(`Punto de control: piso ${this.towerStart}\n+${kit.passives.length} objetos, +${kit.coins} monedas y huecos de ${kit.bosses} jefes`, { kind: 'reward', icon: 'bag' }));
+      }
       this.biome = this.towerSpec.biome;
       this.floor = towerFloor(this.towerSpec, this.floorSeed);
     } else if (this.mode === 'waves') this.floor = arenaFloor(this.floorSeed, 'combat');
@@ -6952,20 +6969,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             if (it) this.spawnPickup(room.id, at.x, at.y, { kind: 'passive', item: it });
           });
           this.notify(`Sala de descanso\nCúrate en el Centro, elige un objeto del altar\ny mira la tienda con descuento`, { kind: 'reward', icon: 'heart' });
-        } else {
-          // Suministros: una cosa (la elección entre las tres queda pendiente, ver BITACORA)
-          const pick = SUPPLY_CHOICES[Math.floor(mulberry32(this.floorSeed ^ 0x51ed270b)() * SUPPLY_CHOICES.length)];
-          this.dropLoot(i.cx - 80, i.cy + 40, pick);
-          this.notify('Sala de suministros', { kind: 'reward', icon: 'chest' });
-        }
+        } else this.notify('Sala de suministros\nElige una poción, una llave o una baya', { kind: 'reward', icon: 'chest' });
       }
       this.saveNow();
     }
+    const L = TOWER_REST_LAYOUT;
     if (spec.kind === 'rest') this.towerRestExtras(room);
+    if (spec.kind === 'supply') this.towerSupply(room);
     // T73: el descanso siempre tiene forja (de un uso; al continuar sigue si no se había usado)
-    if (spec.kind === 'rest' && !this.eventsDone.has(room.id)) this.placeForge(room, i.cx - 170, i.cy + 40);
+    if (spec.kind === 'rest' && !this.eventsDone.has(room.id)) this.placeForge(room, i.cx + L.forge.x, i.cy + L.forge.y);
     // Mega Piedra en la Torre: en descansos y suministros (una vez por sala; en los demás pisos no, para no romper su estructura)
-    if ((spec.kind === 'rest' || spec.kind === 'supply') && !this.eventsDone.has(megaStoneDoneKey(room.id))) this.placeMegaAltar(room, i.cx, i.cy - 110);
+    if ((spec.kind === 'rest' || spec.kind === 'supply') && !this.eventsDone.has(megaStoneDoneKey(room.id))) this.placeMegaAltar(room, i.cx + L.mega.x, i.cy + L.mega.y);
     if (this.cleared.has(0) && !isLastStage(this.mode, this.floorNum)) this.spawnTrapdoor();
     if (spec.rule && !this.cleared.has(0)) this.notify(ruleNotice(spec.rule), { kind: 'danger', icon: 'star' });
   }
@@ -6986,19 +7000,60 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.eventsDone.add(TOWER_ALTAR_DONE);
     // El rótulo y la base del altar se van (son los dos primeros de towerRestObjs)
     this.towerRestObjs.splice(0, 2).forEach((o) => o.destroy());
+    // La tienda no vende lo que ya llevas: si vendía el que has cogido, cambia ese artículo
+    this.towerShopDraw(this.floor.rooms[0]);
     this.saveNow();
+  }
+
+  /**
+   * T72: sala de suministros: un puesto donde eliges poción, llave o baya (ItemChoiceScene: teclado, ratón y mando).
+   * Lo elegido cae delante del puesto; la elección se apunta en eventsDone (también al continuar).
+   * TODO(supervisor): dibujo del puesto de suministros; ahora es un rectángulo de color liso.
+   */
+  private towerSupply(room: Room) {
+    if (this.eventsDone.has(TOWER_SUPPLY_DONE)) return;
+    const i = this.interior(room);
+    const x = i.cx + TOWER_REST_LAYOUT.supply.x;
+    const y = i.cy + TOWER_REST_LAYOUT.supply.y;
+    const objs: Phaser.GameObjects.GameObject[] = [];
+    const box = this.add.rectangle(x, y, 120, 50, 0x3f7f5a, 1).setDepth(0.8);
+    const t = this.add.text(x, y - 46, 'Suministros: elige uno', { fontFamily: FONT, fontSize: '15px', color: '#d6ffd8', stroke: '#101828', strokeThickness: 4 }).setOrigin(0.5).setDepth(4);
+    objs.push(box, t);
+    this.towerRestObjs.push(...objs);
+    const names = ['Poción', 'Llave', 'Baya Aranja'];
+    const open = () => {
+      if (this.ended || this.transitioning || this.eventsDone.has(TOWER_SUPPLY_DONE) || this.current?.id !== room.id || this.game.loop.time < this.itemChoiceCooldownUntil) return;
+      this.openItemChoice('SUMINISTROS', 'Elige una cosa para seguir subiendo.', [...names], (k) => {
+        if (k < 0 || this.eventsDone.has(TOWER_SUPPLY_DONE)) return;
+        this.eventsDone.add(TOWER_SUPPLY_DONE);
+        this.dropLoot(x, y + 60, SUPPLY_CHOICES[k]);
+        this.eventSpots = this.eventSpots.filter((sp) => sp.use !== open);
+        this.towerRestSpots = this.towerRestSpots.filter((sp) => sp.use !== open);
+        objs.forEach((o) => o.destroy());
+        this.notify(`Has elegido: ${names[k]}`, { kind: 'reward', icon: 'chest' });
+        this.saveNow();
+      }, 'Ahora no');
+    };
+    box.setInteractive({ useHandCursor: true });
+    box.on('pointerover', () => (this.overHud = true));
+    box.on('pointerout', () => (this.overHud = false));
+    box.on('pointerdown', open);
+    const spot = { x, y, prompt: () => 'Enter / A / clic: elegir poción, llave o baya', use: open };
+    this.towerRestSpots.push(spot);
+    this.eventSpots.push(spot);
   }
 
   /** T72: sitio de cada objeto del altar del descanso (abajo a la izquierda, debajo de la forja). */
   private towerAltarSpot(room: Room, k: number) {
     const i = this.interior(room);
-    return { x: i.cx - 300 + k * 110, y: i.cy + 185 };
+    const a = TOWER_REST_LAYOUT.altar;
+    return { x: i.cx + a.x + k * a.step, y: i.cy + a.y };
   }
 
   /**
    * T72: altar y tienda del descanso. Los objetos del altar se marcan para que, al coger uno, se vayan los otros
    * (también al continuar: se reconocen por su sitio). La tienda vende dos objetos rebajados y uno exclusivo; lo
-   * comprado se apunta en eventsDone (TOWER_SHOP_DONE + n.º de artículo). TODO(supervisor): dibujo del altar y del
+   * comprado se apunta en eventsDone (ver towerShopDraw). TODO(supervisor): dibujo del altar y del
    * puesto; ahora son rectángulos de color liso.
    */
   private towerRestExtras(room: Room) {
@@ -7012,36 +7067,61 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         const e = (o as Sprite).getData('entry') as FloorItemSave | undefined;
         if (e && e.roomId === room.id && spots.some((p) => p.x === e.x && p.y === e.y)) (o as Sprite).setData('towerAltar', true);
       }
-      const base = this.add.rectangle(i.cx - 190, i.cy + 205, 340, 22, 0x6e6e84, 1).setDepth(0.8);
+      const a = TOWER_REST_LAYOUT.altar;
+      const ax = i.cx + a.x + a.step;
+      const base = this.add.rectangle(ax, i.cy + a.y + 22, a.step * 2 + 60, 18, 0x6e6e84, 1).setDepth(0.8);
       this.towerRestObjs.push(base);
-      const t = this.add.text(i.cx - 190, i.cy + 228, 'Altar: coge uno', { fontFamily: FONT, fontSize: '14px', color: '#e3d4ff', stroke: '#101828', strokeThickness: 4 }).setOrigin(0.5).setDepth(4);
+      const t = this.add.text(ax, i.cy + a.y - 40, 'Altar: coge uno', { fontFamily: FONT, fontSize: '14px', color: '#e3d4ff', stroke: '#101828', strokeThickness: 4 }).setOrigin(0.5).setDepth(4);
       this.towerRestObjs.push(t);
     }
-    const stock = towerShopStock(mulberry32(this.floorSeed ^ 0x1b873593), new Set(), this.passivePool());
-    const stall = this.add.rectangle(i.cx + 230, i.cy + 150, 340, 20, 0x6b4423, 1).setDepth(0.8);
-    this.towerRestObjs.push(stall);
-    const title = this.add.text(i.cx + 230, i.cy + 70, 'Tienda del descanso (-30 %)', { fontFamily: FONT, fontSize: '15px', color: '#ffe9a8', stroke: '#101828', strokeThickness: 4 }).setOrigin(0.5).setDepth(4);
-    this.towerRestObjs.push(title);
-    stock.forEach((slot, k) => {
-      if (this.eventsDone.has(TOWER_SHOP_DONE + k) || slot.goods.kind !== 'passive') return;
+    this.towerShopKey = '';
+    this.towerShopDraw(room);
+  }
+
+  /**
+   * T72: tienda del descanso (towerShopOffer): nunca vende lo que ya llevas y es la misma al continuar (lo vendido va en
+   * eventsDone como TOWER_SHOP_SOLD + n.º de candidato). Se rehace si cambia lo que enseña (p. ej. al coger del altar).
+   */
+  private towerShopDraw(room: Room) {
+    if (this.towerSpec?.kind !== 'rest') return;
+    const i = this.interior(room);
+    const S = TOWER_REST_LAYOUT.shop;
+    const sold = new Set([...this.eventsDone].filter((n) => n >= TOWER_SHOP_SOLD && n < TOWER_SHOP_SOLD + 1000).map((n) => n - TOWER_SHOP_SOLD));
+    const stock = towerShopOffer(mulberry32(this.floorSeed ^ 0x1b873593), this.passivePool(), new Set(this.passives), sold);
+    const key = stock.map((o) => o.k).join(',');
+    if (key === this.towerShopKey && this.towerShopObjs.length > 0) return;
+    this.towerShopKey = key;
+    this.towerShopObjs.forEach((o) => o.destroy());
+    this.towerShopObjs = [];
+    const drop = new Set(this.towerRestSpots.filter((sp) => (sp as { shop?: boolean }).shop));
+    this.towerRestSpots = this.towerRestSpots.filter((sp) => !drop.has(sp));
+    this.eventSpots = this.eventSpots.filter((sp) => !drop.has(sp));
+    const sx = i.cx + S.x + S.step;
+    const stall = this.add.rectangle(sx, i.cy + S.y + 30, S.step * 2 + 100, 18, 0x6b4423, 1).setDepth(0.8);
+    const title = this.add.text(sx, i.cy + S.y - 50, 'Tienda del descanso (-30 %)', { fontFamily: FONT, fontSize: '15px', color: '#ffe9a8', stroke: '#101828', strokeThickness: 4 }).setOrigin(0.5).setDepth(4);
+    this.towerShopObjs.push(stall, title);
+    stock.forEach((slot, n) => {
+      if (slot.goods.kind !== 'passive') return;
       const item = passiveById(slot.goods.id);
       if (!item) return;
-      const x = i.cx + 120 + k * 110;
-      const y = i.cy + 120;
+      const x = i.cx + S.x + n * S.step;
+      const y = i.cy + S.y;
       const objs: Phaser.GameObjects.GameObject[] = [];
       const tex = itemIconKey(item.id);
       const img = this.add.image(x, y, this.textures.exists(tex) ? tex : iconKey('bag')).setScale(3).setDepth(3);
       const name = this.add.text(x, y + 40, `${item.name}${slot.exclusive ? '\nExclusivo' : ''}\n${slot.price} monedas`, { fontFamily: FONT, fontSize: '13px', color: slot.exclusive ? '#ffb02e' : '#ffd34d', stroke: '#101828', strokeThickness: 4, align: 'center' }).setOrigin(0.5, 0).setDepth(4);
       objs.push(img, name);
-      this.towerRestObjs.push(...objs);
+      this.towerShopObjs.push(...objs);
+      const done = TOWER_SHOP_SOLD + slot.k;
       const buy = () => {
-        if (this.ended || this.transitioning || this.eventsDone.has(TOWER_SHOP_DONE + k) || this.current?.id !== room.id) return;
+        if (this.ended || this.transitioning || this.eventsDone.has(done) || this.current?.id !== room.id) return;
+        if (this.passives.includes(item.id)) return this.notify(`Ya llevas ${item.name}`, { kind: 'warning', icon: 'bag' });
         if (this.coins < slot.price) return this.notify(`Te faltan monedas (${this.coins}/${slot.price})`, { kind: 'warning', icon: 'coin' });
         if (!canTakePassive(item.id, this.passives, this.bossesBeaten)) return this.notify('Tienes los huecos de objeto llenos\nRecicla uno en la forja', { kind: 'warning', icon: 'bag' });
         this.coins -= slot.price;
         sfx('buy');
+        this.eventsDone.add(done);
         this.gainItem({ kind: 'passive', item });
-        this.eventsDone.add(TOWER_SHOP_DONE + k);
         this.eventSpots = this.eventSpots.filter((sp) => sp.use !== buy);
         this.towerRestSpots = this.towerRestSpots.filter((sp) => sp.use !== buy);
         objs.forEach((o) => o.destroy());
@@ -7053,7 +7133,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       img.on('pointerover', () => (this.overHud = true));
       img.on('pointerout', () => (this.overHud = false));
       img.on('pointerdown', buy);
-      const spot = { x, y, prompt: () => `Enter / A / clic: comprar ${item.name} por ${slot.price} (tienes ${this.coins})`, use: buy };
+      const spot = { x, y, prompt: () => `Enter / A / clic: comprar ${item.name} por ${slot.price} (tienes ${this.coins})`, use: buy, shop: true };
       this.towerRestSpots.push(spot);
       this.eventSpots.push(spot);
     });
@@ -7146,10 +7226,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const i = this.interior(this.floor.rooms[this.floor.bossId]);
     if (this.mode === 'tower') {
       // T72: columna de luz en el centro. TODO(supervisor): dibujo de la columna en reposo (ahora, un rectángulo liso)
-      const col = this.add.rectangle(i.cx, i.cy - 30, 36, 110, 0xfff2a8, 0.6).setDepth(1);
+      // En el descanso (con Centro, forja, altar y tienda) va abajo en medio para no pisar nada (TOWER_REST_LAYOUT)
+      const rest = this.towerSpec?.kind === 'rest';
+      const cx = rest ? i.cx + TOWER_REST_LAYOUT.column.x : i.cx;
+      const cy = rest ? i.cy + TOWER_REST_LAYOUT.column.y : i.cy;
+      const col = this.add.rectangle(cx, cy - 30, 36, 110, 0xfff2a8, 0.6).setDepth(1);
       if (!lowFx()) this.tweens.add({ targets: col, alpha: 0.3, duration: 700, yoyo: true, repeat: -1 });
-      this.add.text(i.cx, i.cy - 100, 'Subir', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(0.5).setDepth(3);
-      this.trapdoor = { x: i.cx, y: i.cy, armed: false };
+      this.add.text(cx, cy - 100, 'Subir', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(0.5).setDepth(3);
+      this.trapdoor = { x: cx, y: cy, armed: false };
       return;
     }
     const img = this.add.image(i.cx, i.cy, iconKey('trapdoor')).setScale(5).setDepth(1);
