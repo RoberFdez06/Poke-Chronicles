@@ -494,7 +494,7 @@ export class GameScene extends Phaser.Scene {
   private secondChanceUsed = false;
   /** T56: reglas de sala del piso (sala → regla) y la oscuridad de la sala a oscuras mientras dura. */
   private roomRules = new Map<number, RoomRule>();
-  private darkness?: { hole: Phaser.GameObjects.Image; sides: Phaser.GameObjects.Rectangle[] };
+  private darkness?: { hole: Phaser.GameObjects.Image; sides: Phaser.GameObjects.Rectangle[]; eyes: Phaser.GameObjects.Graphics };
   /** T48: oleada del entrenador rival (0 = no hay), sala del tiempo en marcha, huevo, ayudante y cansancio. */
   private rivalWave = 0;
   private timeTrial?: { roomId: number; until: number; failed: boolean; label: Phaser.GameObjects.Text };
@@ -3424,6 +3424,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         grad.addColorStop(1, 'rgba(0,0,0,0.93)');
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, R * 2, R * 2);
+        // Escalones: el borde de la luz se ve a bandas, como un sprite, no como un degradado de foto
+        const img = ctx.getImageData(0, 0, R * 2, R * 2);
+        for (let i = 3; i < img.data.length; i += 4) img.data[i] = Math.round((img.data[i] / 255) * 6) * (255 / 6);
+        ctx.putImageData(img, 0, 0);
       } else {
         ctx.fillStyle = 'rgba(0,0,0,0.93)';
         ctx.fillRect(0, 0, R * 2, R * 2);
@@ -3441,8 +3445,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const big = 4000;
     const side = (ox: number, oy: number, w: number, h: number) =>
       this.add.rectangle(0, 0, w, h, 0x000000, 0.93).setOrigin(ox, oy).setDepth(depth);
-    this.darkness = { hole, sides: [side(1, 0.5, big, big * 2), side(0, 0.5, big, big * 2), side(0.5, 1, R * 2, big), side(0.5, 0, R * 2, big)] };
-    // TODO(supervisor): oscuridad más bonita (viñeta con ruido, brillo en los ojos de los enemigos…)
+    // Ojos brillantes de los enemigos que están en la sombra (por encima de la oscuridad)
+    const eyes = this.add.graphics().setDepth(depth + 1);
+    this.darkness = { hole, sides: [side(1, 0.5, big, big * 2), side(0, 0.5, big, big * 2), side(0.5, 1, R * 2, big), side(0.5, 0, R * 2, big)], eyes };
     this.updateDarkness();
   }
 
@@ -3457,12 +3462,25 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     d.sides[1].setPosition(x + R, y);
     d.sides[2].setPosition(x, y - R);
     d.sides[3].setPosition(x, y + R);
+    // Dos píxeles rojos por enemigo fuera de la luz; parpadean con un ritmo distinto para cada uno
+    d.eyes.clear();
+    const t = this.time.now;
+    for (const o of this.enemies?.getChildren() ?? []) {
+      const e = o as Phaser.GameObjects.Sprite;
+      if (!e.active || !e.visible) continue;
+      const dist = Phaser.Math.Distance.Between(x, y, e.x, e.y);
+      if (dist < R * 0.8 || dist > R * 3) continue;
+      if (Math.floor((t + e.x * 7) / 240) % 9 === 0) continue; // parpadeo
+      d.eyes.fillStyle(0xff3030, 1).fillRect(Math.round((e.x - 9) / 3) * 3, Math.round((e.y - 6) / 3) * 3, 6, 6);
+      d.eyes.fillRect(Math.round((e.x + 3) / 3) * 3, Math.round((e.y - 6) / 3) * 3, 6, 6);
+    }
   }
 
   private clearDarkness() {
     if (!this.darkness) return;
     this.darkness.hole.destroy();
     this.darkness.sides.forEach((s) => s.destroy());
+    this.darkness.eyes.destroy();
     this.darkness = undefined;
   }
 
