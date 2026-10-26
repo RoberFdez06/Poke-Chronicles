@@ -34,6 +34,7 @@ import {
   rivalMemberHpMul,
   rivalTeamSize,
   rivalTrainerName,
+  pickRivalTeam,
   ROOM_EVENT_DESC,
   TIME_TRIAL_SECONDS,
   eggHatch,
@@ -507,6 +508,8 @@ export class GameScene extends Phaser.Scene {
   /** T59: cuántos Pokémon tiene el entrenador rival y cómo se llama. */
   private rivalTeam = 0;
   private rivalName = '';
+  /** Especies del equipo del rival, en el orden en que salen (del piso y su bioma; ver pickRivalTeam). */
+  private rivalKinds: FoeKind[] = [];
   private timeTrial?: { roomId: number; until: number; failed: boolean; label: Phaser.GameObjects.Text };
   private eggLeft = 0;
   private allyId = 0;
@@ -1324,6 +1327,7 @@ export class GameScene extends Phaser.Scene {
       this.rivalWave = 1;
       this.rivalTeam = rivalTeamSize(this.floorNum);
       this.rivalName = rivalTrainerName(Math.random);
+      this.rivalKinds = pickRivalTeam(this.foeKinds, this.rivalTeam, Math.random);
       label(i.cx, i.y0 + 40, this.rivalName, 22, '#ff8a80');
       this.setDoorsLocked(room, true, true);
       sfx('door');
@@ -3921,7 +3925,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Varios enemigos del piso; al menos uno de cada tres dispara, sea del tipo que sea (T32). */
   /** T59: un Pokémon del equipo del rival: uno solo, con más vida que uno normal y más cuanto más tarde sale. */
   private spawnRivalMember(member: number) {
-    const e = this.spawnEnemy();
+    // Su especie es la que le tocó en el equipo (si por lo que sea no está, una del piso)
+    const e = this.spawnEnemy(this.rivalKinds[member - 1]);
     const maxHp = Math.round((e.getData('maxHp') as number) * rivalMemberHpMul(this.floorNum, member));
     e.setData('hp', maxHp).setData('maxHp', maxHp);
   }

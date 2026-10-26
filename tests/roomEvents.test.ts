@@ -162,3 +162,21 @@ test('T59: el rival tiene 2 o 3 Pokémon, cada uno más duro, y un nombre invent
     assert.ok(RIVAL_NAMES.includes(name));
   }
 });
+
+test('T59: el equipo del rival sale de las especies del piso, sin repetir mientras haya bastantes', async () => {
+  const { pickRivalTeam } = await import('../src/level/roomEvents.ts');
+  const pool = ['a', 'b', 'c', 'd'];
+  for (let s = 0; s < 50; s++) {
+    const team = pickRivalTeam(pool, 3, mulberry32(s));
+    assert.equal(team.length, 3);
+    assert.equal(new Set(team).size, 3);
+    assert.ok(team.every((t) => pool.includes(t)));
+    // Misma semilla, mismo equipo
+    assert.deepEqual(pickRivalTeam(pool, 3, mulberry32(s)), team);
+  }
+  // Con menos especies que huecos se repiten, pero el equipo sale completo
+  assert.deepEqual(pickRivalTeam(['x'], 3, () => 0.5), ['x', 'x', 'x']);
+  assert.deepEqual(pickRivalTeam([], 3, () => 0.5), []);
+  // rng() que devuelve 1 (o casi) no se sale de la lista
+  assert.equal(pickRivalTeam(pool, 2, () => 0.9999999).length, 2);
+});

@@ -179,6 +179,20 @@ export const RIVAL_TITLES: readonly string[] = ['Joven', 'Excursionista', 'Cazab
 export const RIVAL_NAMES: readonly string[] = ['Marcos', 'Lucía', 'Íker', 'Noa', 'Hugo', 'Sara', 'Leo', 'Irene', 'Pablo', 'Claudia'];
 export const rivalTrainerName = (rng: () => number): string =>
   `${RIVAL_TITLES[Math.floor(rng() * RIVAL_TITLES.length) % RIVAL_TITLES.length]} ${RIVAL_NAMES[Math.floor(rng() * RIVAL_NAMES.length) % RIVAL_NAMES.length]}`;
+/**
+ * Equipo del rival: `size` Pokémon sacados de `pool` (las especies del piso, que ya salen de su bioma), sin repetir
+ * mientras haya bastantes; si hay menos especies que huecos, se repiten. Sin especies, equipo vacío.
+ */
+export function pickRivalTeam<T>(pool: readonly T[], size: number, rng: () => number): T[] {
+  const left = [...pool];
+  const team: T[] = [];
+  for (let k = 0; k < size && pool.length > 0; k++) {
+    if (left.length === 0) left.push(...pool);
+    const i = Math.min(left.length - 1, Math.floor(rng() * left.length));
+    team.push(left.splice(i, 1)[0]);
+  }
+  return team;
+}
 /** Tickets extra al ganar: otros tantos como da la sala (en total, el doble). */
 export const rivalBonus = (roomTickets: number): number => Math.max(1, roomTickets);
 
