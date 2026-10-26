@@ -145,6 +145,7 @@ import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_HOLD_MS, FALL_
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
 import { arenaBackdrop, arenaCollapse, arenaCrack, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
+import { buildClue, buildNpc, drawBallIcon } from '../ui/art/worldArt';
 import { buildShopArt, type ShopArt } from '../ui/art/shopArt';
 import { buildForgeArt, buildLagoonArt, buildSlotArt } from '../ui/art/eventArt';
 import { ballEscape, ballShake, ballSuccess, ballThrow, dayNightLayer, megaAura, megaEvolveFx } from '../ui/art/powerFx';
@@ -2285,9 +2286,7 @@ export class GameScene extends Phaser.Scene {
     const i = this.interior(room);
     const x = i.x0 + 70;
     const y = i.y0 + 70;
-    // TODO(supervisor): dibujo de la pista (huella, ruido o pluma); de momento, un círculo de color liso
-    const color = kind === 'huella' ? 0x8a5a2b : kind === 'ruido' ? 0x9ad7ff : 0xffd34d;
-    const mark = this.add.circle(x, y, 14, color).setDepth(3);
+    const mark = buildClue(this, x, y, kind);
     const z = this.add.zone(x, y, 48, 48).setInteractive({ useHandCursor: true });
     z.on('pointerover', () => (this.overHud = true));
     z.on('pointerout', () => (this.overHud = false));
@@ -2389,12 +2388,8 @@ export class GameScene extends Phaser.Scene {
     if (h.shown === state) return;
     h.shown = state;
     const a = state === 'ok' ? 1 : 0.3;
-    // TODO(supervisor): icono de Poké Ball de verdad (y otro para «ya capturado en este piso»).
     h.g.clear();
-    h.g.fillStyle(0xe8423c, a).slice(h.x, h.y, 14, Math.PI, 0, false).fillPath();
-    h.g.fillStyle(0xf8f8f8, a).slice(h.x, h.y, 14, 0, Math.PI, false).fillPath();
-    h.g.lineStyle(3, 0x101828, a).strokeCircle(h.x, h.y, 14).lineBetween(h.x - 14, h.y, h.x + 14, h.y);
-    h.g.fillStyle(0xf8f8f8, a).fillCircle(h.x, h.y, 4).lineStyle(2, 0x101828, a).strokeCircle(h.x, h.y, 4);
+    drawBallIcon(h.g, h.x, h.y, a, state === 'done');
   }
 
   /** Ayudante del huevo: sigue al jugador y ataca al enemigo más cercano. Se crea si su dibujo está cargado. */
@@ -8266,8 +8261,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     hit.on('pointerout', () => (this.overHud = false));
     hit.on('pointerdown', () => this.current?.id === room.id && this.useCenter());
     // T87: NPC de los encargos al lado del mostrador
-    // TODO(supervisor): sprite del NPC; de momento un círculo de color liso
-    this.add.circle(x + 170, y + 40, 16, 0xe6a23c).setDepth(3);
+    buildNpc(this, x + 170, y + 40);
   }
 
   private paintCounter() {

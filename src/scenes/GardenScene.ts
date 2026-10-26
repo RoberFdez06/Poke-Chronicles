@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { drawPlant, drawSoil } from '../ui/art/worldArt';
 import { fitDesign } from '../ui/layout';
 import { loadGarden, saveGarden } from '../data/save';
 import {
@@ -71,14 +72,12 @@ export class GardenScene extends Phaser.Scene {
       const x = plotX(k) - PLOT.w / 2;
       const p = this.garden.plots[k];
       drawBox(g, x, PLOT.y - PLOT.h / 2, PLOT.w, PLOT.h, { radius: 14, selected: k === this.plotSel });
-      // TODO(supervisor): arte de la tierra y de la planta; de momento colores lisos
-      g.fillStyle(0x7a5230, 1).fillRect(x + 20, PLOT.y - 20, PLOT.w - 40, 60);
+      drawSoil(g, x + 20, PLOT.y - 20, PLOT.w - 40, 60);
       if (p) {
         const b = GARDEN_BERRIES[p.berry];
         const ripe = isRipe(p);
         const grow = p.runs / b.growRuns;
-        g.fillStyle(0x3f8f3a, 1).fillRect(plotX(k) - 4, PLOT.y - 20 - Math.round(50 * grow), 8, Math.round(50 * grow) + 2);
-        if (ripe) g.fillStyle(b.color, 1).fillCircle(plotX(k), PLOT.y - 78, 16);
+        drawPlant(g, plotX(k), PLOT.y + 8, Math.min(1, Math.max(0.15, grow)), ripe, b.color);
         text(plotX(k), PLOT.y - PLOT.h / 2 + 20, b.name, 16, HEX.text, true);
         text(plotX(k), PLOT.y + 64, ripe ? '¡Lista para recoger!' : `Faltan ${runsLeft(p)} ${runsLeft(p) === 1 ? 'partida' : 'partidas'}`, 14,
           ripe ? '#2e9a4a' : HEX.textSoft, ripe);

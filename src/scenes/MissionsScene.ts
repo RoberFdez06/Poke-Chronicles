@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { buildNpc } from '../ui/art/worldArt';
 import { fitDesign } from '../ui/layout';
 import { loadMedals, loadMissions } from '../data/save';
 import { dayNumber } from '../data/gacha';
@@ -143,8 +144,7 @@ export class MissionsScene extends Phaser.Scene {
         }).setOrigin(0.5);
         continue;
       }
-      // TODO(supervisor): retrato del NPC; de momento un círculo de color liso
-      this.add.circle(84, y + 50, 24, 0xe6a23c);
+      buildNpc(this, 84, y + 50, 3, 1, false);
       this.add.text(124, y + 26, m.npc, { fontFamily: FONT, fontSize: '19px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5);
       this.add.text(124, y + 56, `«${m.dialog}»`, { fontFamily: FONT, fontSize: '14px', fontStyle: 'italic', color: HEX.textSoft, wordWrap: { width: 760 } })
         .setOrigin(0, 0.5);
