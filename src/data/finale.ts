@@ -22,9 +22,10 @@ export const TRIOS: readonly Trio[] = [
   { name: 'Espadachines místicos', ids: [638, 639, 640] },
   { name: 'Fuerzas de la naturaleza', ids: [641, 642, 645] },
   { name: 'Tapus', ids: [785, 786, 787] },
+  { name: 'Tesoros de la ruina', ids: [1001, 1002, 1003] },
 ];
 /** Legendarios de portada: los gigantes. */
-export const GIANTS: readonly number[] = [150, 249, 250, 382, 383, 384, 483, 484, 487, 643, 644, 646, 716, 717, 718, 791, 792, 800, 888, 889, 890];
+export const GIANTS: readonly number[] = [150, 249, 250, 382, 383, 384, 483, 484, 487, 643, 644, 646, 716, 717, 718, 791, 792, 800, 888, 889, 890, 898, 1007, 1008, 1024];
 
 export type Finale = { kind: 'trio'; name: string; ids: number[] } | { kind: 'giant'; name: string; ids: number[] };
 
