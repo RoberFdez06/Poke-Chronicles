@@ -408,3 +408,68 @@ export function arenaLetterbox(scene: Phaser.Scene, viewW: number, viewH: number
     scene.tweens.add({ targets: bot, y: viewH + bar / 2, duration: outMs, ease: 'Cubic.easeIn', onComplete: () => bot.destroy() });
   });
 }
+
+export type FallStyle = 'tiempo' | 'fuego' | 'mar' | 'espacio' | 'sombra' | 'hielo' | 'rayo' | 'roca';
+/** Estilo del derrumbe según la especie del jefe (dex); los demás usan el del tipo y, si no, roca. */
+const FALL_BY_SPECIES: Readonly<Record<number, FallStyle>> = {
+  483: 'tiempo', 484: 'espacio', 487: 'sombra', 146: 'fuego', 250: 'fuego', 383: 'fuego', 382: 'mar', 249: 'mar', 144: 'hielo', 145: 'rayo', 243: 'rayo', 150: 'espacio', 384: 'rayo',
+};
+const FALL_BY_TYPE: Readonly<Record<string, FallStyle>> = { fire: 'fuego', water: 'mar', ice: 'hielo', electric: 'rayo', ghost: 'sombra', dark: 'sombra', psychic: 'espacio', dragon: 'espacio', steel: 'tiempo' };
+export function fallStyleOf(speciesId: number | undefined, types: readonly string[]): FallStyle {
+  return (speciesId !== undefined ? FALL_BY_SPECIES[speciesId] : undefined) ?? types.map((t) => FALL_BY_TYPE[t]).find((s) => s !== undefined) ?? 'roca';
+}
+export const FALL_STYLE_GLOW: Readonly<Record<FallStyle, number>> = { tiempo: 0x7fd4ff, fuego: 0xff8a30, mar: 0x4aa8ff, espacio: 0xd070ff, sombra: 0x8a4aff, hielo: 0xbfe6ff, rayo: 0xffe94a, roca: 0xff9a4a };
+
+/**
+ * Efecto propio del jefe durante el derrumbe: reloj con agujas y engranajes (tiempo), columnas de fuego, marea que sube con
+ * olas, grieta del espacio con estrellas y anillos, bruma de sombras, ventisca o rayos. Dura `ms`; lo anima solo.
+ */
+export function arenaFallFx(scene: Phaser.Scene, style: FallStyle, x0: number, y0: number, w: number, h: number, cx: number, cy: number, ms: number): Phaser.GameObjects.Graphics {
+  const g = scene.add.graphics().setDepth(0.8);
+  const t0 = scene.time.now;
+  const col = FALL_STYLE_GLOW[style];
+  const paint = () => {
+    if (!g.active) return;
+    const t = scene.time.now - t0;
+    const k = Math.min(1, t / ms);
+    g.clear();
+    const inside = (x: number, y: number) => x >= x0 && x <= x0 + w && y >= y0 && y <= y0 + h;
+    const dot = (x: number, y: number, c: number, a: number, s = P) => { if (inside(x, y)) px(g, Math.round(x / P) * P, Math.round(y / P) * P, c, a, s, s); };
+    if (style === 'tiempo') {
+      const R = 40 + k * 120;
+      for (let i = 0; i < 48; i++) { const a = (i / 48) * 6.283; dot(cx + Math.cos(a) * R, cy + Math.sin(a) * R * 0.8, i % 4 === 0 ? 0xffffff : col, 0.8 * (1 - k * 0.4), i % 4 === 0 ? P + 2 : P); }
+      const spin = t / 180;
+      for (const [len, sp, c] of [[R * 0.9, 1, 0xffffff], [R * 0.6, 0.083, col]] as const)
+        for (let d = 0; d < len; d += P) dot(cx + Math.cos(spin * sp) * d, cy + Math.sin(spin * sp) * d * 0.8, c, 0.9);
+      for (let n = 0; n < 3; n++) { const a0 = t / 400 * (n % 2 ? -1 : 1) + n * 2; const gr = 28 + n * 26; for (let i = 0; i < 10; i++) { const a = a0 + (i / 10) * 6.283; dot(cx + Math.cos(a) * gr + (n - 1) * 90, cy + Math.sin(a) * gr * 0.8 + 50, 0x8aa4b8, 0.7, P + 2); } }
+    } else if (style === 'fuego') {
+      for (let i = 0; i < 14; i++) {
+        const bx = x0 + ((i * 131 + 40) % w); const grow = Math.min(1, Math.max(0, k * 1.6 - (i % 5) * 0.08));
+        for (let yy = 0; yy < grow * 150; yy += P) { const fl = Math.sin(yy * 0.1 + t / 70 + i) * 4; dot(bx + fl, y0 + h - yy, yy > 90 ? 0xff5a2a : yy > 40 ? 0xff9a2a : 0xffe08a, (1 - yy / 170) * 0.9, P + 2); }
+      }
+    } else if (style === 'mar') {
+      const lvl = y0 + h - k * h * 0.55;
+      for (let x = x0; x < x0 + w; x += P) {
+        const wy = lvl + Math.sin(x * 0.045 + t / 200) * 6 + Math.sin(x * 0.11 - t / 140) * 3;
+        dot(x, wy, 0xe8f8ff, 0.95);
+        for (let y = wy + P; y < y0 + h; y += P * 2) dot(x, y, mixColor(0x1a5aa8, 0x0a2a5a, (y - wy) / h), 0.5);
+      }
+      for (let i = 0; i < 14; i++) { const ph = (t / 900 + i / 14) % 1; dot(x0 + ((i * 89) % w), lvl - ph * 70, 0xffffff, 1 - ph, P - 1); }
+    } else if (style === 'espacio') {
+      for (let i = 0; i < 40; i++) { const a = i * 2.4 + t / 1500; const r = 20 + ((i * 53) % 150) * (0.4 + k); dot(cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.8, i % 3 ? 0xffffff : col, 0.5 + 0.5 * Math.sin(t / 120 + i), i % 5 ? P - 1 : P + 2); }
+      for (let n = 0; n < 3; n++) { const r = 30 + ((t / 8 + n * 70) % 210); for (let i = 0; i < 36; i++) { const a = (i / 36) * 6.283; dot(cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.8, col, 0.7 * (1 - r / 240)); } }
+    } else if (style === 'sombra') {
+      for (let i = 0; i < 26; i++) { const a = i * 1.7 + t / 900; const r = 30 + ((i * 41) % 170) * (0.3 + k); dot(cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.7 - k * 30, i % 2 ? 0x2a0a4a : 0x6a2aaa, 0.55, P * 3); }
+    } else if (style === 'hielo') {
+      for (let i = 0; i < 50; i++) { const ph = (t / 700 + i / 50) % 1; dot(x0 + ((i * 97) % w) - ph * 60 * k, y0 + ph * h, 0xffffff, 0.8, P - 1 + (i % 2)); }
+    } else if (style === 'rayo') {
+      if (Math.floor(t / 90) % 2 === 0) for (let n = 0; n < 3; n++) { let x = x0 + ((n * 277 + Math.floor(t / 180) * 61) % w); for (let y = y0; y < y0 + h; y += P) { x += (((y * 7 + n * 13 + Math.floor(t / 90) * 5) % 5) - 2) * 3; dot(x, y, 0xffffff, 0.95, P + 2); dot(x + P, y, col, 0.6, P); } }
+    } else {
+      for (let i = 0; i < 30; i++) { const ph = (t / 800 + i / 30) % 1; dot(x0 + ((i * 71) % w), y0 + ph * h, 0xb8a98f, 0.7, P - 1 + (i % 3)); }
+    }
+  };
+  paint();
+  const ev = scene.time.addEvent({ delay: 60, loop: true, callback: paint });
+  g.once(Phaser.GameObjects.Events.DESTROY, () => ev.remove());
+  return g;
+}

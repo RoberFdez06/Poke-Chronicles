@@ -144,7 +144,7 @@ import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuf
 import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
-import { arenaBackdrop, arenaChasm, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
+import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, FALL_STYLE_GLOW, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
 import { dynamaxBurst, teraBurst, zMoveFx } from '../ui/art/formsFx';
 import { buildClue, buildNpc, drawBallIcon } from '../ui/art/worldArt';
 import { buildShopArt, type ShopArt } from '../ui/art/shopArt';
@@ -6206,7 +6206,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!lowFx()) {
       // Cinemática corta: bandas de cine, gran grieta que parte la sala por el jefe, rugido con cámara lenta y sacudida del jefe
       arenaLetterbox(this, this.scale.width, this.scale.height, 260, FALL_SHAKE_MS - 260 + FALL_FADE_MS, 300);
-      this.arenaObjs.push(arenaChasm(this, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS));
+      // Derrumbe propio de cada jefe: Dialga con relojes, Moltres con fuego, Kyogre con la marea, Palkia con el espacio…
+      const style = fallStyleOf(b.getData('speciesId') as number | undefined, (b.getData('btypes') as string[] | undefined) ?? this.bossTypes);
+      this.arenaObjs.push(arenaChasm(this, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS, FALL_STYLE_GLOW[style]));
+      this.arenaObjs.push(arenaFallFx(this, style, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS));
       this.time.delayedCall(FALL_SHAKE_MS * 0.3, () => {
         sfx('enrage');
         cam.flash(180, 255, 255, 255);
