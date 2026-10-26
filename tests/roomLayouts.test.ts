@@ -3,6 +3,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CENTER_TILES,
+  SPAWN_TILES,
+  TEMPLATE_NAMES,
+  clearSpawnZones,
   COLS,
   DOOR_TILES,
   ROWS,
@@ -101,5 +104,33 @@ test('los muros X dejan dos casillas de margen junto a cada puerta (el marco no 
     const g = parseTemplate(rows);
     for (const x of [0, COLS - 1]) for (let y = 3; y <= 8; y++) assert.notEqual(g[y][x], 'X', `${name} (${x},${y})`);
     for (const y of [0, ROWS - 1]) for (let x = 7; x <= 12; x++) assert.notEqual(g[y][x], 'X', `${name} (${x},${y})`);
+  }
+});
+
+test('ningún obstáculo cae en la zona de aparición junto a las puertas (muchas semillas, salas y espejos)', () => {
+  for (let seed = 1; seed <= 400; seed++) {
+    for (let id = 0; id < 12; id++) {
+      for (const big of [false, true]) {
+        const g = layoutFor(seed * 7919, id, 'combat', big);
+        for (const [x, y] of SPAWN_TILES) assert.ok(isWalkable(g[y][x]), `semilla ${seed} sala ${id} (${x},${y}) = ${g[y][x]}`);
+        assert.ok(allConnected(g, [...mustReach, ...SPAWN_TILES]), `semilla ${seed} sala ${id}: zona de aparición aislada`);
+      }
+    }
+  }
+});
+
+test('las plantillas, en todos sus espejos, quedan con la zona de aparición libre y conectada', () => {
+  for (const name of TEMPLATE_NAMES) {
+    for (const fx of [false, true]) {
+      for (const fy of [false, true]) {
+        let g = parseTemplate(TEMPLATES[name]);
+        if (fx) g = g.map((r) => [...r].reverse());
+        if (fy) g = [...g].reverse();
+        for (const [x, y] of SPAWN_TILES) assert.notEqual(g[y][x], 'X', `${name}: muro X en la zona de aparición`);
+        g = clearSpawnZones(g);
+        for (const [x, y] of SPAWN_TILES) assert.equal(g[y][x] === '.' || g[y][x] === 'W', true, `${name} (${x},${y})`);
+        assert.ok(allConnected(g, [...mustReach, ...SPAWN_TILES]), name);
+      }
+    }
   }
 });
