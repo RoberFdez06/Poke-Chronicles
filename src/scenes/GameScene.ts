@@ -159,6 +159,7 @@ import {
   upcomingRule, type TowerFloorSpec,
 } from '../level/tower';
 import { towerArrive, towerAscend } from '../ui/art/towerFx';
+import { iceVelocity, isTowerFinale, TOWER_ALTAR_COUNT, towerAltarItems, towerMinibossItem, towerShopStock } from '../level/towerExtras';
 import { FINALE_BONUS, GIANT_HP_MUL, GIANT_RAGE_AT, GIANT_SIZE, isFinalFloor, isFinaleGate, pickFinale, TRIO_HP_MUL, type Finale } from '../data/finale';
 import type { FinalChoice } from './FinalPromptScene';
 import { castPattern, setMotion, updateShots, type AttackHost, type ShootOpts, type Side } from './attacks';
@@ -289,6 +290,9 @@ import { accountInfo } from '../net/cloud';
 // Cada sala ocupa una pantalla del mundo; ROOM es su interior relativo a la celda
 const VIEW = { w: 960, h: 640 };
 const ROOM = { x: 80, y: 80, w: 800, h: 480 };
+/** T72: marcas en eventsDone del descanso de la Torre (lejos de las salas y de MEGA_STONE_DONE_BASE). */
+const TOWER_ALTAR_DONE = 200000;
+const TOWER_SHOP_DONE = 200010;
 const WALL = 40;
 /** Radio máximo del cuerpo del jugador (px): menos de media casilla, para caber por pasillos de una casilla. */
 const PLAYER_BODY_R = 16;
@@ -640,6 +644,9 @@ export class GameScene extends Phaser.Scene {
   /** T72: cómo es el piso actual de la Torre (solo en ese modo) y la semilla de toda la subida. */
   private towerSpec?: TowerFloorSpec;
   private towerSeed = 0;
+  /** T72: dibujo y puntos de uso de la tienda y el altar del descanso (aparte de los de la forja). */
+  private towerRestObjs: Phaser.GameObjects.GameObject[] = [];
+  private towerRestSpots: { x: number; y: number; prompt: () => string; use: () => void }[] = [];
   private hazardTickAt = 0;
   /** T78: arena del jefe. Fase ya aplicada, aviso en curso y casillas con grietas (daño) de la sala del jefe. */
   private arenaDone: 0 | 1 | 2 = 0;
@@ -1035,6 +1042,8 @@ export class GameScene extends Phaser.Scene {
       this.biome = biomeById(this.route.biomeId);
     }
     this.towerSpec = undefined;
+    this.towerRestObjs = [];
+    this.towerRestSpots = [];
     this.hazardTickAt = 0;
     this.arenaDone = 0;
     this.arenaWarn = undefined;
@@ -1101,8 +1110,8 @@ export class GameScene extends Phaser.Scene {
       return kept.length > 0 ? kept : ids;
     };
     let bossId = r?.bossId;
-    if (isFinalFloor(this.mode, this.floorNum)) {
-      // Reto final: trío legendario o legendario gigante, al azar
+    if (isFinalFloor(this.mode, this.floorNum) || isTowerFinale(this.mode, this.floorNum)) {
+      // Reto final: trío legendario o legendario gigante, al azar (también en el piso 100 de la Torre, T72)
       const okIds = bundled;
       this.finale = pickFinale(this.rng(RNG.boss), (id) => !okIds || okIds.has(id));
       bossId = this.finale.ids[0];
@@ -1817,7 +1826,8 @@ export class GameScene extends Phaser.Scene {
   private finishEvent(room: Room) {
     this.eventsDone.add(room.id);
     this.cleared.add(room.id);
-    this.eventSpots = [];
+    // T72: la tienda del descanso de la Torre sigue aunque se gaste la forja
+    this.eventSpots = [...this.towerRestSpots];
     this.prompt.setText('');
     this.drawMap();
     this.saveNow();
@@ -4086,8 +4096,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     this.floorItems = this.floorItems.filter((f) => f !== sprite.getData('entry'));
     this.tweens.killTweensOf(sprite);
+    const altar = !!sprite.getData('towerAltar');
     sprite.destroy();
     this.gainItem(item);
+    if (altar) this.towerAltarTaken();
   }
 
   /** T81: la partida se empezó escribiendo un código (no cuenta para récords, diario, misiones ni registro de combate). */
@@ -5450,7 +5462,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const hp = Math.round((e.getData('maxHp') as number) * (6 + this.level() * 0.6));
     e.setData('hp', hp).setData('maxHp', hp).setData('dmg', Math.round((e.getData('dmg') as number) * 1.3)).setData('miniboss', true);
     if (this.mode === 'tower') {
-      // T72: minijefe «chetado» de la Torre: más vida y daño. TODO: su ataque extra y el objeto épico al caer (ver BITACORA)
+      // T72: minijefe «chetado» de la Torre: más vida y daño; encadena un segundo movimiento y suelta un objeto épico
       const thp = Math.round(hp * TOWER_MINIBOSS_HP_MUL);
       e.setData('hp', thp).setData('maxHp', thp).setData('dmg', Math.round((e.getData('dmg') as number) * TOWER_MINIBOSS_DMG_MUL));
     }
@@ -6547,10 +6559,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       for (const rm of this.floor.rooms) this.cleared.add(rm.id);
       if (!this.resume) {
         if (spec.kind === 'rest') {
-          // Descanso: el Centro Pokémon hace de fuente, cae un objeto y hay forja (T73, abajo). El altar de 3 objetos
-          // y la tienda con descuento quedan pendientes, ver BITACORA
-          this.dropItem(room.id, i.cx + 170, i.cy);
-          this.notify(`Sala de descanso\nCúrate en el Centro y coge el objeto`, { kind: 'reward', icon: 'heart' });
+          // Descanso: el Centro Pokémon hace de fuente, altar de 3 objetos (coges uno), tienda con descuento y forja
+          const pool = this.passivePool();
+          const ids = towerAltarItems(mulberry32(this.floorSeed ^ 0x3c6ef372), new Set(this.passives), pool);
+          ids.forEach((id, k) => {
+            const it = passiveById(id);
+            const at = this.towerAltarSpot(room, k);
+            if (it) this.spawnPickup(room.id, at.x, at.y, { kind: 'passive', item: it });
+          });
+          this.notify(`Sala de descanso\nCúrate en el Centro, elige un objeto del altar\ny mira la tienda con descuento`, { kind: 'reward', icon: 'heart' });
         } else {
           // Suministros: una cosa (la elección entre las tres queda pendiente, ver BITACORA)
           const pick = SUPPLY_CHOICES[Math.floor(mulberry32(this.floorSeed ^ 0x51ed270b)() * SUPPLY_CHOICES.length)];
@@ -6560,12 +6577,102 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       }
       this.saveNow();
     }
+    if (spec.kind === 'rest') this.towerRestExtras(room);
     // T73: el descanso siempre tiene forja (de un uso; al continuar sigue si no se había usado)
     if (spec.kind === 'rest' && !this.eventsDone.has(room.id)) this.placeForge(room, i.cx - 170, i.cy + 40);
     // Mega Piedra en la Torre: en descansos y suministros (una vez por sala; en los demás pisos no, para no romper su estructura)
     if ((spec.kind === 'rest' || spec.kind === 'supply') && !this.eventsDone.has(megaStoneDoneKey(room.id))) this.placeMegaAltar(room, i.cx, i.cy - 110);
     if (this.cleared.has(0) && !isLastStage(this.mode, this.floorNum)) this.spawnTrapdoor();
     if (spec.rule && !this.cleared.has(0)) this.notify(ruleNotice(spec.rule), { kind: 'danger', icon: 'star' });
+  }
+
+  /** T72: has cogido un objeto del altar del descanso: los otros desaparecen. */
+  private towerAltarTaken() {
+    for (const o of [...this.pickups.getChildren()]) {
+      const sp = o as Sprite;
+      if (!sp.active || !sp.getData('towerAltar')) continue;
+      (sp.getData('label') as Phaser.GameObjects.Text | undefined)?.destroy();
+      (sp.getData('shadow') as Phaser.GameObjects.Ellipse | undefined)?.destroy();
+      (sp.getData('halo') as Phaser.GameObjects.Arc | undefined)?.destroy();
+      this.floorItems = this.floorItems.filter((f) => f !== sp.getData('entry'));
+      this.tweens.killTweensOf(sp);
+      sparkle(this, sp.x, sp.y);
+      sp.destroy();
+    }
+    this.eventsDone.add(TOWER_ALTAR_DONE);
+    // El rótulo y la base del altar se van (son los dos primeros de towerRestObjs)
+    this.towerRestObjs.splice(0, 2).forEach((o) => o.destroy());
+    this.saveNow();
+  }
+
+  /** T72: sitio de cada objeto del altar del descanso (abajo a la izquierda, debajo de la forja). */
+  private towerAltarSpot(room: Room, k: number) {
+    const i = this.interior(room);
+    return { x: i.cx - 300 + k * 110, y: i.cy + 185 };
+  }
+
+  /**
+   * T72: altar y tienda del descanso. Los objetos del altar se marcan para que, al coger uno, se vayan los otros
+   * (también al continuar: se reconocen por su sitio). La tienda vende dos objetos rebajados y uno exclusivo; lo
+   * comprado se apunta en eventsDone (TOWER_SHOP_DONE + n.º de artículo). TODO(supervisor): dibujo del altar y del
+   * puesto; ahora son rectángulos de color liso.
+   */
+  private towerRestExtras(room: Room) {
+    const i = this.interior(room);
+    this.towerRestObjs.forEach((o) => o.destroy());
+    this.towerRestObjs = [];
+    this.towerRestSpots = [];
+    if (!this.eventsDone.has(TOWER_ALTAR_DONE)) {
+      const spots = Array.from({ length: TOWER_ALTAR_COUNT }, (_, k) => this.towerAltarSpot(room, k));
+      for (const o of this.pickups.getChildren()) {
+        const e = (o as Sprite).getData('entry') as FloorItemSave | undefined;
+        if (e && e.roomId === room.id && spots.some((p) => p.x === e.x && p.y === e.y)) (o as Sprite).setData('towerAltar', true);
+      }
+      const base = this.add.rectangle(i.cx - 190, i.cy + 205, 340, 22, 0x6e6e84, 1).setDepth(0.8);
+      this.towerRestObjs.push(base);
+      const t = this.add.text(i.cx - 190, i.cy + 228, 'Altar: coge uno', { fontFamily: FONT, fontSize: '14px', color: '#e3d4ff', stroke: '#101828', strokeThickness: 4 }).setOrigin(0.5).setDepth(4);
+      this.towerRestObjs.push(t);
+    }
+    const stock = towerShopStock(mulberry32(this.floorSeed ^ 0x1b873593), new Set(), this.passivePool());
+    const stall = this.add.rectangle(i.cx + 230, i.cy + 150, 340, 20, 0x6b4423, 1).setDepth(0.8);
+    this.towerRestObjs.push(stall);
+    const title = this.add.text(i.cx + 230, i.cy + 70, 'Tienda del descanso (-30 %)', { fontFamily: FONT, fontSize: '15px', color: '#ffe9a8', stroke: '#101828', strokeThickness: 4 }).setOrigin(0.5).setDepth(4);
+    this.towerRestObjs.push(title);
+    stock.forEach((slot, k) => {
+      if (this.eventsDone.has(TOWER_SHOP_DONE + k) || slot.goods.kind !== 'passive') return;
+      const item = passiveById(slot.goods.id);
+      if (!item) return;
+      const x = i.cx + 120 + k * 110;
+      const y = i.cy + 120;
+      const objs: Phaser.GameObjects.GameObject[] = [];
+      const tex = itemIconKey(item.id);
+      const img = this.add.image(x, y, this.textures.exists(tex) ? tex : iconKey('bag')).setScale(3).setDepth(3);
+      const name = this.add.text(x, y + 40, `${item.name}${slot.exclusive ? '\nExclusivo' : ''}\n${slot.price} monedas`, { fontFamily: FONT, fontSize: '13px', color: slot.exclusive ? '#ffb02e' : '#ffd34d', stroke: '#101828', strokeThickness: 4, align: 'center' }).setOrigin(0.5, 0).setDepth(4);
+      objs.push(img, name);
+      this.towerRestObjs.push(...objs);
+      const buy = () => {
+        if (this.ended || this.transitioning || this.eventsDone.has(TOWER_SHOP_DONE + k) || this.current?.id !== room.id) return;
+        if (this.coins < slot.price) return this.notify(`Te faltan monedas (${this.coins}/${slot.price})`, { kind: 'warning', icon: 'coin' });
+        if (!canTakePassive(item.id, this.passives, this.bossesBeaten)) return this.notify('Tienes los huecos de objeto llenos\nRecicla uno en la forja', { kind: 'warning', icon: 'bag' });
+        this.coins -= slot.price;
+        sfx('buy');
+        this.gainItem({ kind: 'passive', item });
+        this.eventsDone.add(TOWER_SHOP_DONE + k);
+        this.eventSpots = this.eventSpots.filter((sp) => sp.use !== buy);
+        this.towerRestSpots = this.towerRestSpots.filter((sp) => sp.use !== buy);
+        objs.forEach((o) => o.destroy());
+        this.notify(`Has comprado ${item.name}`, { kind: 'item', icon: 'shop' });
+        this.refreshInventory();
+        this.saveNow();
+      };
+      img.setInteractive({ useHandCursor: true });
+      img.on('pointerover', () => (this.overHud = true));
+      img.on('pointerout', () => (this.overHud = false));
+      img.on('pointerdown', buy);
+      const spot = { x, y, prompt: () => `Enter / A / clic: comprar ${item.name} por ${slot.price} (tienes ${this.coins})`, use: buy };
+      this.towerRestSpots.push(spot);
+      this.eventSpots.push(spot);
+    });
   }
 
   /** Sala de la Torre limpia: récord, premio del jefe y la columna de luz (o la victoria en el piso 100). */
@@ -6619,9 +6726,19 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
   }
 
+  /** T72: ¿estás pisando una casilla de hielo de la Torre? */
+  private onTowerIce(): boolean {
+    const spec = this.towerSpec;
+    if (!spec || spec.hazard !== 'ice' || spec.hazards.length === 0 || !this.current) return false;
+    const i = this.interior(this.current);
+    const tx = Math.floor((this.player.x - i.x0) / TILE);
+    const ty = Math.floor((this.player.y - i.y0) / TILE);
+    return spec.hazards.some((h) => h.cell === this.current.id && h.tx === tx && h.ty === ty);
+  }
+
   /**
    * Pinchos y lava hacen un poco de daño cada cierto tiempo mientras los pisas (nunca te dejan por debajo de 1 PS,
-   * como el clima). El hielo de momento solo se ve: el resbalón queda pendiente (BITACORA).
+   * como el clima). El hielo no hace daño: resbala (onTowerIce, en el movimiento).
    */
   private hazardTick(time: number) {
     const spec = this.towerSpec;
@@ -6890,7 +7007,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const loopNow = this.game.loop.time;
     const chargeSlow = CHARGE_SOURCES.some((k) => isCharging(this.charges[k], loopNow)) ? CHARGE_MOVE_MUL : 1;
     const spd = this.stats.speed * wade * chargeSlow * adrenalineSpeedMul(this.adrenaline) * powerFormSpeedMul(this.powerForm);
-    if (this.time.now >= this.playerKnockUntil) this.player.setVelocity(dir.x * spd, dir.y * spd);
+    if (this.time.now >= this.playerKnockUntil) {
+      // T72: en el hielo de la Torre resbalas (tu velocidad se acerca poco a poco a la que pides)
+      if (this.onTowerIce()) {
+        const b = this.player.body as Body;
+        const v = iceVelocity(b.velocity, { x: dir.x * spd, y: dir.y * spd }, this.game.loop.delta);
+        this.player.setVelocity(v.x, v.y);
+      } else this.player.setVelocity(dir.x * spd, dir.y * spd);
+    }
     if (this.player.getData('pmd')) {
       const moving = dir.length() > 0.2;
       if (this.player.getData('moving') !== moving) {
@@ -6996,6 +7120,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         const mv = mini && eai.moves?.length ? eai.moves[Math.floor(Math.random() * eai.moves.length)] : eai.eliteMove;
         eai.eliteAt = time + (mini ? 2600 : Math.max(2200, 4400 - this.level() * 220));
         this.foeMove(e, mv, eai.type, Math.round((e.getData('dmg') as number) * (mini ? 0.7 : 0.6)), mini ? 650 : 450, mini);
+        // T72: el minijefe de la Torre encadena un segundo movimiento (su ataque extra)
+        if (mini && this.mode === 'tower' && eai.moves && eai.moves.length > 0) {
+          const mv2 = eai.moves[Math.floor(Math.random() * eai.moves.length)];
+          this.time.delayedCall(900, () => e.active && !this.ended && this.foeMove(e, mv2, eai.type, Math.round((e.getData('dmg') as number) * 0.6), 550, true));
+          eai.eliteAt += 700;
+        }
       }
       this.paintEnemy(e, time);
       this.drawEnemyBar(e);
@@ -7528,7 +7658,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const ey = enemy.y;
       const roomId = this.current.id;
       this.time.delayedCall(900, () => !this.ended && this.dropItem(roomId, ex, ey));
-      this.notify(`¡Minijefe derrotado! +${bonus} tickets\nHa caído un objeto`, { kind: 'reward', icon: 'star' });
+      // T72: en la Torre además suelta un objeto épico
+      const epic = this.mode === 'tower' ? passiveById(towerMinibossItem(this.rng(RNG.items), new Set(this.passives), this.passivePool())) : undefined;
+      if (epic) this.time.delayedCall(1100, () => { if (!this.ended) { const p = this.freeSpot(ex + 90, ey); this.spawnPickup(roomId, p.x, p.y, { kind: 'passive', item: epic }, this.current?.id === roomId); } });
+      this.notify(`¡Minijefe derrotado! +${bonus} tickets\n${epic ? 'Han caído un objeto y uno épico' : 'Ha caído un objeto'}`, { kind: 'reward', icon: 'star' });
     }
     // T56: sala de la plaga. Antes de destruirlo, para que el pequeño cuente al mirar si la sala está limpia
     if (shouldMultiply(this.activeRule(), boss || mini || !!enemy.getData('helper') || !!enemy.getData('runaway') || !!enemy.getData('mimic'), Math.random)) this.spawnSmallCopy(enemy);
