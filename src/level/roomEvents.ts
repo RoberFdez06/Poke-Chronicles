@@ -10,12 +10,14 @@
 // - Huevo misterioso: lo llevas y eclosiona tras 2 salas limpiadas en un ayudante o un objeto.
 // T68:
 // - Sala de juegos: una tragaperras que se juega con monedas (ver slotMachine.ts).
+// T70:
+// - Ladrón: te roba monedas y huye hacia una puerta (ver thief.ts).
 // Sale de la semilla del piso, así al continuar o en el desafío diario es el mismo. Lógica pura, sin Phaser.
 import type { Floor } from './floorGen.ts';
 import { PASSIVE_ITEMS, takeMoveByRarity, type MovePower, type PassiveItem } from '../data/items.ts';
 import type { ShopGoods, ShopSlot } from '../data/loot.ts';
 
-export const ROOM_EVENTS = ['runaway', 'merchant', 'altar', 'trapChest', 'rival', 'fountain', 'timeTrial', 'egg', 'slots'] as const;
+export const ROOM_EVENTS = ['runaway', 'merchant', 'altar', 'trapChest', 'rival', 'fountain', 'timeTrial', 'egg', 'slots', 'thief'] as const;
 export type RoomEventKind = (typeof ROOM_EVENTS)[number];
 
 export interface RoomEvent {
@@ -33,6 +35,7 @@ export const ROOM_EVENT_LABEL: Record<RoomEventKind, string> = {
   timeTrial: 'Sala del tiempo',
   egg: 'Huevo misterioso',
   slots: 'Sala de juegos',
+  thief: 'Ladrón',
 };
 
 /** Color de la marca en el minimapa (al descubrir la sala, hasta resolver el evento). */
@@ -46,6 +49,7 @@ export const ROOM_EVENT_COLOR: Record<RoomEventKind, number> = {
   timeTrial: 0xffb300,
   egg: 0xf8bbd0,
   slots: 0xff7043,
+  thief: 0x8d6e63,
 };
 
 /** Premio y riesgo de cada evento, para el aviso al entrar. */
@@ -59,6 +63,7 @@ export const ROOM_EVENT_DESC: Record<RoomEventKind, string> = {
   timeTrial: '20 s: si limpias a tiempo, un objeto; si no, más enemigos',
   egg: 'Llévalo 2 salas: eclosiona en un ayudante o un objeto',
   slots: 'Tragaperras con monedas: apuesta 3, 6 o 12 (tiradas limitadas)',
+  thief: 'Te roba monedas y huye: abátelo antes de que salga y te las devuelve con extra',
 };
 
 /**
@@ -78,6 +83,7 @@ export function eventWeights(floorNum: number): Record<RoomEventKind, number> {
     timeTrial: f >= 3 ? 0.6 + 0.8 * deep : 0,
     egg: 1.2 - 0.6 * deep,
     slots: 0.7, // T68: poco peso y fijo; solo cuesta monedas
+    thief: 0.5 + 0.3 * deep, // T70: algo más hondo, cuando llevas más monedas
   };
 }
 

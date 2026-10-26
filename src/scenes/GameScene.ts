@@ -46,6 +46,7 @@ import {
   timeTrialExtra,
   timeTrialSize,
 } from '../level/roomEvents';
+import { THIEF_HP_MUL, THIEF_SPEED_MUL, coinsAfterTheft, thiefCanAppear, thiefEscapeDoor, thiefEscaped, thiefRefund, thiefSteal } from '../level/thief';
 import { SLOT_BETS, SLOT_MAX_SPINS, SLOT_OUTCOME_LABEL, canSpin, spinSlot } from '../level/slotMachine';
 import { applyDifficulty, scaleHeal, scaleTickets, withDifficulty, type Difficulty } from '../data/difficulty';
 import { loadSpeciesIndex } from '../data/speciesIndex';
@@ -540,6 +541,8 @@ export class GameScene extends Phaser.Scene {
   private eventSpots: { x: number; y: number; prompt: () => string; use: () => void }[] = [];
   /** Pokémon raro que huye: hasta cuándo se queda y su cuenta atrás. */
   private runaway?: { sprite: Sprite; until: number; label: Phaser.GameObjects.Text; name: string };
+  /** T70: ladrón de la sala sorpresa (puerta a la que huye y monedas que lleva robadas). */
+  private thief?: { sprite: Sprite; door: { x: number; y: number }; stolen: number; label: Phaser.GameObjects.Text };
   /** Oleadas: hay una ronda en marcha (sus enemigos ya han salido). */
   private waveActive = false;
   private floorSeed = 0;
@@ -1314,6 +1317,27 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (kind === 'thief') {
+      // T70: ladrón rápido y sin ataque. Toca para robar y corre hacia la puerta más lejana de ti.
+      if (this.foeKinds.length === 0) return this.finishEvent(room);
+      const k = this.foeKinds[Math.floor(rng() * this.foeKinds.length) % this.foeKinds.length];
+      // TODO(supervisor): sprite propio del ladrón (antifaz, saco de monedas); de momento un enemigo normal del piso
+      const e = this.spawnEnemy(k, 'chase');
+      const ai = e.getData('ai') as EnemyAI;
+      ai.eliteMove = undefined;
+      const hp = Math.max(1, Math.round((e.getData('maxHp') as number) * THIEF_HP_MUL));
+      e.setData('hp', hp).setData('maxHp', hp).setData('thief', true).setData('elite', false);
+      e.setData('speed', ((e.getData('speed') as number | undefined) ?? 100) * THIEF_SPEED_MUL);
+      const inset = 30;
+      const spots: Record<string, { x: number; y: number }> = { up: { x: i.cx, y: i.y0 + inset }, down: { x: i.cx, y: i.y1 - inset }, left: { x: i.x0 + inset, y: i.cy }, right: { x: i.x1 - inset, y: i.cy } };
+      const door = thiefEscapeDoor(Object.keys(room.doors).map((d) => spots[d]), this.player);
+      if (!door) return this.finishEvent(room);
+      this.thief = { sprite: e, door, stolen: 0, label: label(e.x, e.y - 50, '¡Ladrón!', 15, '#ffcc80') };
+      // Aviso fuera del centro (notify ya los coloca en su zona)
+      this.notify('¡Un ladrón! Si te toca, te roba monedas', { kind: 'danger', icon: 'coin' });
+      return;
+    }
+
     if (kind === 'merchant') {
       // Puesto con tres artículos; los poderes se copian para no gastar la bolsa si no compras
       const stock = merchantStock(rng, new Set(this.passives), [...this.movePool], this.passivePool(), this.floorNum);
@@ -1597,6 +1621,70 @@ export class GameScene extends Phaser.Scene {
     this.eventSpots = [];
     this.runaway?.label.destroy();
     this.runaway = undefined;
+    this.thief?.label.destroy();
+    this.thief = undefined;
+  }
+
+  /**
+   * T70: cada fotograma el ladrón va a por ti hasta robarte y luego corre hacia su puerta. Si llega, se escapa con
+   * las monedas (ya descontadas al robar) y la sala queda resuelta.
+   */
+  private updateThief() {
+    const t = this.thief;
+    if (!t) return;
+    const e = t.sprite;
+    if (!e.active) {
+      t.label.destroy();
+      this.thief = undefined;
+      return;
+    }
+    t.label.setPosition(e.x, e.y - 50).setText(t.stolen > 0 ? `¡Ladrón! (${t.stolen} monedas)` : '¡Ladrón!');
+    if (this.ended || this.transitioning) return;
+    // Antes de robar, la IA normal lo lleva hacia ti; después, huye a la puerta
+    if (t.stolen === 0) return;
+    if (thiefEscaped(e, t.door)) {
+      const room = this.current;
+      this.thief = undefined;
+      t.label.destroy();
+      dustBurst(this, e.x, e.y + 20);
+      e.destroy();
+      this.notify(`¡El ladrón ha escapado con ${t.stolen} monedas!`, { kind: 'warning', icon: 'coin' });
+      this.eventsDone.add(room.id);
+      this.checkClear();
+      return;
+    }
+    const dir = new Phaser.Math.Vector2(t.door.x - e.x, t.door.y - e.y);
+    if (dir.lengthSq() === 0) dir.set(1, 0);
+    dir.normalize();
+    const b = e.body as Body;
+    if (!b.blocked.none) dir.add(new Phaser.Math.Vector2(-dir.y, dir.x).scale(1.2)).normalize();
+    const speed = (e.getData('speed') as number | undefined) ?? 140;
+    e.setVelocity(dir.x * speed, dir.y * speed);
+  }
+
+  /** T70: el ladrón te toca. Solo roba una vez y nunca hace daño. */
+  private thiefTouch() {
+    const t = this.thief;
+    if (!t || t.stolen > 0) return;
+    const stolen = thiefSteal(this.coins);
+    if (stolen <= 0) return;
+    t.stolen = stolen;
+    this.coins = coinsAfterTheft(this.coins, stolen);
+    this.popup(this.player.x, this.player.y - 50, `−${stolen} monedas`, 0xffcc80);
+    // TODO(supervisor): efecto de monedas saliendo del jugador hacia el ladrón (respetando efectos bajos)
+    this.notify(`¡Te ha robado ${stolen} monedas!\nAbátelo antes de que salga de la sala`, { kind: 'danger', icon: 'coin' });
+  }
+
+  /** T70: abates al ladrón: te devuelve lo robado y un extra. */
+  private thiefDefeated() {
+    const t = this.thief;
+    if (!t) return;
+    this.thief = undefined;
+    t.label.destroy();
+    this.eventsDone.add(this.current.id);
+    const back = thiefRefund(t.stolen);
+    this.coins += back;
+    this.notify(t.stolen > 0 ? `¡Has atrapado al ladrón! +${back} monedas` : `¡Has ahuyentado al ladrón! +${back} monedas`, { kind: 'reward', icon: 'coin' });
   }
 
   /**
@@ -1765,7 +1853,7 @@ export class GameScene extends Phaser.Scene {
       legendary: id > 0 && (id === this.bossId || this.bossHistory.includes(id)),
       helper: !!e.getData('helper'),
       shinyBoss: !!e.getData('shiny') && !!(e.getData('ai') as EnemyAI | undefined)?.boss,
-      special: !!(e.getData('runaway') || e.getData('mimic') || e.getData('finale') || e.getData('rival')),
+      special: !!(e.getData('runaway') || e.getData('thief') || e.getData('mimic') || e.getData('finale') || e.getData('rival')),
     };
   }
 
@@ -1839,7 +1927,7 @@ export class GameScene extends Phaser.Scene {
     let bestD = 520;
     for (const c of this.enemies.getChildren()) {
       const e = c as Sprite;
-      if (!e.active || e.getData('runaway') || e.getData('capturing')) continue;
+      if (!e.active || e.getData('runaway') || e.getData('thief') || e.getData('capturing')) continue;
       const d = Phaser.Math.Distance.Between(s.x, s.y, e.x, e.y);
       if (d < bestD) {
         bestD = d;
@@ -3852,7 +3940,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       sfx('door');
       this.notify(`¡Sala de desafío!\nOleada 1/${CHALLENGE_WAVES}`, { kind: 'danger', icon: 'heart' });
       this.time.delayedCall(900, () => this.spawnChallengeWave(room.id));
-    } else if (this.roomEvent?.roomId === room.id && !this.eventsDone.has(room.id) && !this.cleared.has(room.id)) {
+    } else if (this.roomEvent?.roomId === room.id && !this.eventsDone.has(room.id) && !this.cleared.has(room.id) && (this.roomEvent.kind !== 'thief' || thiefCanAppear(this.coins))) {
+      // T70: sin monedas el ladrón no aparece y la sala se juega como una de combate normal (rama de abajo)
       this.startEvent(room, this.roomEvent.kind);
     } else if ((room.kind === 'combat' || room.kind === 'boss') && !this.cleared.has(room.id)) {
       if (room.kind === 'boss') this.spawnBoss();
@@ -5503,6 +5592,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     });
 
     this.updateRunaway(time);
+    this.updateThief();
     this.updateTimeTrial(time);
     this.updateAlly(time, delta);
 
@@ -5952,6 +6042,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (boss || mini) faintBoss(this, enemy, feetY, ecolor, (x, y) => typeImpact(this, x, y, etypes[0] ?? this.bossType, 1.4, 12));
     else faintEnemy(this, enemy, feetY, ecolor);
     if (enemy.getData('runaway') || enemy.getData('mimic')) this.eventFoeDefeated(enemy);
+    if (enemy.getData('thief')) this.thiefDefeated();
     if (mini) {
       // Premio del minijefe: un objeto y tickets
       const bonus = this.giveTickets(minibossTicketsFor(this.floorNum));
@@ -6751,6 +6842,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (ai && ai.behavior === 'hop' && ai.state !== 'walk') return;
     // El Pokémon raro solo quiere huir
     if (enemy.getData('runaway')) return;
+    // T70: el ladrón no hace daño, solo roba
+    if (enemy.getData('thief')) return this.thiefTouch();
     // Bajo tierra o escondido no hace daño al tocarte
     if (ai && (ai.behavior === 'burrow' || ai.behavior === 'ambush') && (ai.state === 'vanish' || ai.state === 'appear')) return;
     // T53: parry a tiempo. Va antes que la esquiva y el escudo para no gastarlos en un golpe que ya está parado.

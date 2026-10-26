@@ -102,7 +102,7 @@ import {
 } from '../src/level/roomEvents.ts';
 
 test('T48: los 9 eventos tienen nombre, descripción (premio y riesgo) y color distinto', () => {
-  assert.equal(ROOM_EVENTS.length, 9);
+  assert.equal(ROOM_EVENTS.length, 10);
   for (const k of ROOM_EVENTS) assert.ok(ROOM_EVENT_DESC[k], k);
   assert.equal(new Set(ROOM_EVENTS.map((k) => ROOM_EVENT_COLOR[k])).size, ROOM_EVENTS.length);
 });

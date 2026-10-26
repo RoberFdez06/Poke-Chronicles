@@ -517,7 +517,7 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
   pequeña aún, de Gyarados (reutiliza `easterEggs.ts`). Un máximo de lanzamientos por sala.
 - El dibujo de la laguna y la caña quedan como `// TODO(supervisor)`. Tests de la lógica pura: tabla de premios, ventana de tiempo y tope.
 
-## [ ] T70 — Equipo de ladrones
+## [x] T70 — Equipo de ladrones
 - Evento de sala: un ladrón (enemigo rápido, sin ataque) **te roba monedas al tocarte** y huye hacia una puerta; si lo abates antes de que
   salga de la sala te devuelve lo robado y un extra, y si escapa pierdes las monedas. Nunca te quita más de la mitad de las monedas ni
   deja la cuenta en negativo; si no llevas monedas, el evento no aparece. Aviso fuera del centro.
