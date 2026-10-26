@@ -51,7 +51,7 @@ export const BIOMES: readonly Biome[] = [
     id: 'volcan',
     name: 'Volcán',
     types: ['fire', 'rock'],
-    colors: { floor: 0xd8987a, wall: 0x5a2420, rock: 0x4a3a3a, rockTop: 0x6e5656, bush: 0xd89a6a, puddle: 0xff7a2a, hole: 0x200806 },
+    colors: { floor: 0x5a4440, wall: 0x5a2420, rock: 0x7a6660, rockTop: 0xa08a80, bush: 0xd89a6a, puddle: 0xff7a2a, hole: 0x200806 },
     puddleName: 'lava',
   },
   {

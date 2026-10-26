@@ -263,10 +263,14 @@ export function fallBackdrop(scene: Phaser.Scene, x: number, y: number, w: numbe
             ad(xx, yy + wy, row % 2 ? 0x8ad8ff : 0x4ab0ff, 0.22);
           }
         }
-        for (let arm = 0; arm < 3; arm++) for (let d = 10; d < 190; d += 6) {
-          const ang = arm * 2.094 + d * 0.03 - t / 500;
-          ad(cx + Math.cos(ang) * d, cy + Math.sin(ang) * d * 0.6, d < 60 ? 0xe8f8ff : 0x8ad8ff, 0.42 * (1 - d / 200));
+        // Torbellino: cada brazo lleva una estela oscura detrás (le da hondura) y la cresta clara delante
+        for (let arm = 0; arm < 4; arm++) for (let d = 8; d < 220; d += 5) {
+          const ang = arm * 1.571 + d * 0.028 - t / 500;
+          const fade = 1 - d / 230;
+          ad(cx + Math.cos(ang + 0.22) * d, cy + Math.sin(ang + 0.22) * d * 0.6, 0x04142e, 0.45 * fade, d < 80 ? P * 2 : P);
+          ad(cx + Math.cos(ang) * d, cy + Math.sin(ang) * d * 0.6, d < 70 ? 0xe8f8ff : 0x8ad8ff, 0.85 * fade, d < 120 ? P * 2 : P);
         }
+        disc(ad, cx, cy, 14, 0x04142e, 0.55, 0.6);
         for (let i = 0; i < 20; i++) {
           const ph = (t / 3200 + i / 20) % 1;
           ad(x + ((i * 89) % w) + Math.sin(ph * 10 + i) * 6, y + h - ph * h, 0xe8f8ff, 0.6 * (1 - ph), i % 3 ? P - 2 : P);
@@ -304,7 +308,7 @@ export function fallBackdrop(scene: Phaser.Scene, x: number, y: number, w: numbe
       ticker(scene, anim, 110, (t) => {
         paths.forEach((pts, c) => pts.forEach(([px0, py0], k) => {
           const glow = 0.5 + 0.5 * Math.sin(t / 300 - k * 0.4 + c);
-          ad(px0, py0, mixColor(0xff3a10, 0xffd54f, glow), 0.85);
+          ad(px0, py0, mixColor(0xc8300c, 0xff9a3a, glow), 0.55);
         }));
         for (let i = 0; i < 24; i++) {
           const ph = (t / 2600 + i / 24) % 1;
@@ -346,8 +350,8 @@ export function fallBackdrop(scene: Phaser.Scene, x: number, y: number, w: numbe
           const r = 420 - b * 14;
           for (let i = 0; i < 120; i++) {
             const ang = Math.PI + (i / 120) * Math.PI;
-            const shimmer = 0.16 + 0.12 * Math.sin(t / 250 - i * 0.2 + b);
-            ad(cx + Math.cos(ang) * r, y + h + 60 + Math.sin(ang) * r * 0.9, c, shimmer, P + 1);
+            const shimmer = 0.36 + 0.14 * Math.sin(t / 250 - i * 0.2 + b);
+            ad(cx + Math.cos(ang) * r, y + h + 60 + Math.sin(ang) * r * 0.9, c, shimmer, P * 2, P * 2);
           }
         });
         for (let i = 0; i < 16; i++) {
@@ -544,7 +548,10 @@ export function fallConceptFx(scene: Phaser.Scene, theme: FallTheme, x0: number,
           const ph = (t / 700 + i / 6) % 1;
           cloud(dot, x0 + ((i * 151) % w), y0 + h + 40 - ph * (h + 80), 26 + (i % 3) * 8, 0xffffff, 0.55 * k + 0.2);
         }
-        ring(dot, cx, cy, 60 + k * 30, 0x6aff8a, 0.5, 0.6, P, t / 60, 2);
+        // Anillo de Rayquaza: doble, grueso y con borde oscuro para que se lea sobre el cielo claro
+        ring(dot, cx, cy, 60 + k * 30, 0x0e4a2a, 0.55, 0.6, P * 2, t / 60, 2);
+        ring(dot, cx, cy, 60 + k * 30, 0x6aff8a, 0.95, 0.6, P, t / 60, 2);
+        ring(dot, cx, cy, 84 + k * 40, 0xb8ffc8, 0.7, 0.6, P, -t / 90, 3);
         if (Math.floor(t / 130) % 3 !== 2) bolt(dot, cx + Math.sin(t / 300) * 40, y0, cx, cy, 0x3aff6a, 0.9, Math.floor(t / 130));
         break;
       }

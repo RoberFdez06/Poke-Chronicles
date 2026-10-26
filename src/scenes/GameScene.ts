@@ -158,12 +158,12 @@ import { ballEscape, ballShake, ballSuccess, ballThrow, dayNightLayer, megaAura,
 import { adrenalineTrail, lootFlash, parryHit, parryStance, reviveBurst, bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
-import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
-import { decorateRoom } from '../ui/art/roomDecor';
+import { bakeBiomeTiles, bushKeyAt, shade, TILE as ART_TILE } from '../ui/art/tiles';
+import { decorateRoom, drawRoomRug } from '../ui/art/roomDecor';
 import { drawGlitchFigure, drawTruck, glitchFlash } from '../ui/art/easterArt';
 import { buildCenterArt, type CenterArt } from '../ui/art/centerArt';
 import { evolveMagikarp, GYARADOS, MAGIKARP, MAGIKARP_PRICE, MEW_CHANCE, OAK_LINE, secretVariant, sellsMagikarp } from '../data/easterEggs';
-import { drawPits, drawShapedWalls } from '../ui/art/roomShape';
+import { drawPits, drawPuddleLinks, drawShapedWalls } from '../ui/art/roomShape';
 import {
   SUPPLY_CHOICES, TOWER_HAZARD_LABEL, TOWER_MINIBOSS_DMG_MUL, TOWER_MINIBOSS_HP_MUL, towerFloor, towerFloorSpec, towerGrid, towerLevel,
   upcomingRule, type TowerFloorSpec,
@@ -3679,19 +3679,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     decorateRoom(this, this.biome, { x: room.gx * VIEW.w, y: room.gy * VIEW.h, w: VIEW.w, h: VIEW.h }, i, WALL, this.floorSeed * 31 + room.id, ts * 2.4, this.decorOpen(room));
     if (!plain) {
       // Salas especiales: alfombra de su color (Centro rosa, tienda verde, objeto dorado…) sobre el suelo del bioma
-      const rug = this.add.graphics().setDepth(0.2);
       const m = 70;
-      const rx = i.x0 + m;
-      const ry = i.y0 + m * 0.7;
-      const rw = ROOM.w - m * 2;
-      const rh = ROOM.h - m * 1.4;
-      rug.fillStyle(0x000000, 0.18).fillRect(rx + 6, ry + 8, rw, rh);
-      rug.fillStyle(shade(floorColor, -0.35), 1).fillRect(rx, ry, rw, rh);
-      rug.fillStyle(floorColor, 1).fillRect(rx + 8, ry + 8, rw - 16, rh - 16);
-      rug.lineStyle(4, shade(floorColor, 0.45), 1).strokeRect(rx + 18, ry + 18, rw - 36, rh - 36);
-      for (let k = 0; k < 4; k++) rug.fillStyle(shade(floorColor, -0.2), 1).fillRect(rx + 30 + k * 12, ry + rh / 2 - 2, 6, 4).fillRect(rx + rw - 36 - k * 12, ry + rh / 2 - 2, 6, 4);
-      // Flecos
-      for (let x = rx + 6; x < rx + rw - 6; x += 10) rug.fillStyle(shade(floorColor, 0.3), 1).fillRect(x, ry - 6, 4, 6).fillRect(x, ry + rh, 4, 6);
+      drawRoomRug(this, i.x0 + m, i.y0 + m * 0.7, ROOM.w - m * 2, ROOM.h - m * 1.4, floorColor, ts * 2.4);
     }
     g.setDepth(0.5);
 
@@ -5518,7 +5507,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             this.add.image(cx, cy, this.tiles.puddle).setScale(sc).setDepth(0.6);
             break;
           case 'B': {
-            const bush = this.bushes.create(cx, cy, this.tiles.bush) as Sprite;
+            const bush = this.bushes.create(cx, cy, bushKeyAt(this.tiles.bush, tx, ty)) as Sprite;
             bush.setScale(sc).refreshBody();
             bush.setDepth(2).setData('hp', 2).setData('room', room.id).setData('tile', [tx, ty]);
             break;
@@ -5532,6 +5521,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       drawShapedWalls(this, grid, i, TILE, WALL, this.biome, this.tiles.wall, sc, { x: room.gx * VIEW.w, y: room.gy * VIEW.h }, sc * 2.4);
     }
     if (grid.some((row) => row.includes('H'))) drawPits(this, grid, i, TILE, this.biome);
+    if (grid.some((row) => row.includes('W'))) drawPuddleLinks(this, grid, i, TILE, this.biome);
     this.obstacleObjs.set(room.id, this.children.list.slice(n0));
   }
 

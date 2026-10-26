@@ -146,3 +146,51 @@ export function drawPits(scene: Phaser.Scene, grid: Grid, room: { x0: number; y0
     }
   }
 }
+
+/**
+ * Une los charcos que se tocan (casillas 'W' vecinas) en una sola charca: rellena el hueco entre sus óvalos con el
+ * mismo borde y el mismo color. Solo dibujo, encima de los charcos (sus ondas siguen en el centro de cada casilla).
+ */
+export function drawPuddleLinks(scene: Phaser.Scene, grid: Grid, room: { x0: number; y0: number }, tile: number, b: BiomeLook) {
+  const wet = (x: number, y: number) => at(grid, x, y) === 'W';
+  const links: [number, number, boolean][] = [];
+  const blocks: [number, number][] = [];
+  grid.forEach((row, ty) =>
+    row.forEach((_, tx) => {
+      if (!wet(tx, ty)) return;
+      if (wet(tx + 1, ty)) links.push([tx, ty, true]);
+      if (wet(tx, ty + 1)) links.push([tx, ty, false]);
+      if (wet(tx + 1, ty) && wet(tx, ty + 1) && wet(tx + 1, ty + 1)) blocks.push([tx, ty]);
+    }),
+  );
+  if (!links.length) return undefined;
+  const g = scene.add.graphics().setDepth(0.61);
+  const c = b.colors.puddle;
+  const k = tile / 40;
+  // Medidas sacadas del charco (tiles.ts): borde, agua y centro, en px de pantalla para casillas de 40
+  const layers: [number, number, number][] = [
+    [shade(c, -0.4), 17 * k, 12 * k],
+    [shade(c, -0.12), 15 * k, 10 * k],
+    [c, 13 * k, 8 * k],
+  ];
+  for (const [col, hw, hh] of layers) {
+    for (const [tx, ty, horiz] of links) {
+      const cx = room.x0 + tx * tile + tile / 2;
+      const cy = room.y0 + ty * tile + tile / 2;
+      if (horiz) g.fillStyle(col, 1).fillRect(cx + 4 * k, cy - hh, tile - 8 * k, hh * 2 + 2 * k);
+      else g.fillStyle(col, 1).fillRect(cx - hw, cy + 2 * k, hw * 2, tile - 2 * k);
+    }
+    for (const [tx, ty] of blocks) {
+      const cx = room.x0 + tx * tile + tile / 2;
+      const cy = room.y0 + ty * tile + tile / 2;
+      g.fillStyle(col, 1).fillRect(cx, cy, tile, tile);
+    }
+  }
+  // Un brillo suelto en cada unión para que no quede plana
+  for (const [tx, ty, horiz] of links) {
+    const cx = room.x0 + tx * tile + tile / 2;
+    const cy = room.y0 + ty * tile + tile / 2;
+    g.fillStyle(shade(c, 0.4), 0.9).fillRect(horiz ? cx + tile / 2 - 4 * k : cx - 6 * k, horiz ? cy - 3 * k : cy + tile / 2, 6 * k, 2 * k);
+  }
+  return g;
+}
