@@ -103,6 +103,8 @@ export const NORMAL_ORDER = ['bosque', 'cueva', 'mar', 'volcan', 'torre'] as con
 export function biomeFor(mode: GameMode, n: number): Biome {
   const i = Math.max(1, Math.floor(n)) - 1;
   if (mode === 'normal') return biomeById(NORMAL_ORDER[Math.min(i, NORMAL_ORDER.length - 1)]);
+  // Torre: el bioma va por tramos de 10 pisos (la Torre con su semilla usa towerBiome de tower.ts)
+  if (mode === 'tower') return BIOMES[Math.floor(i / 10) % BIOMES.length];
   return BIOMES[i % BIOMES.length];
 }
 

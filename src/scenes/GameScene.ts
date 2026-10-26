@@ -143,6 +143,11 @@ import { drawGlitchFigure, drawTruck, glitchFlash } from '../ui/art/easterArt';
 import { buildCenterArt, type CenterArt } from '../ui/art/centerArt';
 import { evolveMagikarp, GYARADOS, MAGIKARP, MAGIKARP_PRICE, MEW_CHANCE, OAK_LINE, secretVariant, sellsMagikarp } from '../data/easterEggs';
 import { drawPits, drawShapedWalls } from '../ui/art/roomShape';
+import {
+  SUPPLY_CHOICES, TOWER_HAZARD_LABEL, TOWER_MINIBOSS_DMG_MUL, TOWER_MINIBOSS_HP_MUL, towerFloor, towerFloorSpec, towerGrid, towerLevel,
+  upcomingRule, type TowerFloorSpec,
+} from '../level/tower';
+import { towerArrive, towerAscend } from '../ui/art/towerFx';
 import { FINALE_BONUS, GIANT_HP_MUL, GIANT_RAGE_AT, GIANT_SIZE, isFinalFloor, isFinaleGate, pickFinale, TRIO_HP_MUL, type Finale } from '../data/finale';
 import type { FinalChoice } from './FinalPromptScene';
 import { castPattern, setMotion, updateShots, type AttackHost, type ShootOpts, type Side } from './attacks';
@@ -559,6 +564,10 @@ export class GameScene extends Phaser.Scene {
   private bossHistory: number[] = [];
   /** Trampilla al piso siguiente: aparece al vencer al jefe y se activa cuando te alejas de ella. */
   private trapdoor?: { x: number; y: number; armed: boolean; final?: boolean };
+  /** T72: cómo es el piso actual de la Torre (solo en ese modo) y la semilla de toda la subida. */
+  private towerSpec?: TowerFloorSpec;
+  private towerSeed = 0;
+  private hazardTickAt = 0;
   /** Objetos que hay en el suelo (para guardarlos). */
   private floorItems: FloorItemSave[] = [];
   private pauseKey!: Key;
@@ -894,10 +903,22 @@ export class GameScene extends Phaser.Scene {
     this.waveActive = false;
     this.difficulty = applyDifficulty(difficultyFor(this.level()), this.diff);
     this.biome = biomeFor(this.mode, this.mode === 'waves' ? this.level() : this.floorNum);
+    this.towerSpec = undefined;
+    this.hazardTickAt = 0;
     // Al continuar, el piso se regenera igual con la misma semilla; cada piso nuevo es más grande.
     // Oleadas y Rush de jefes se juegan en una sola sala
     this.floorSeed = r?.floorSeed ?? (this.daily ? dailyFloorSeed(this.daily.day, this.floorNum) : Phaser.Math.Between(0, 0x7fffffff));
-    if (this.mode === 'waves') this.floor = arenaFloor(this.floorSeed, 'combat');
+    if (this.mode === 'tower') {
+      // T72: la semilla de la subida es la misma en todos los pisos (así no se repiten forma, plantilla ni regla seguidas);
+      // la del piso se saca de ella y del número, y al continuar se recupera deshaciendo la mezcla (no cambia RunSave)
+      const mix = Math.imul(this.floorNum, 0x9e3779b1) >>> 0;
+      if (r) this.towerSeed = (r.floorSeed ^ mix) >>> 0;
+      else if (!this.carry || this.towerSeed === 0) this.towerSeed = Phaser.Math.Between(1, 0x7fffffff);
+      if (!r) this.floorSeed = (this.towerSeed ^ mix) >>> 0;
+      this.towerSpec = towerFloorSpec(this.floorNum, this.towerSeed);
+      this.biome = this.towerSpec.biome;
+      this.floor = towerFloor(this.towerSpec, this.floorSeed);
+    } else if (this.mode === 'waves') this.floor = arenaFloor(this.floorSeed, 'combat');
     else if (this.mode === 'bossrush' || isFinalFloor(this.mode, this.floorNum)) this.floor = arenaFloor(this.floorSeed, 'boss');
     else {
       this.layout = r?.layout ?? FLOOR_LAYOUT;
@@ -2088,6 +2109,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Nivel de dificultad: el piso, el jefe por el que vas o, en Oleadas, el que toca a la ronda. */
   private level(): number {
+    if (this.mode === 'tower') return towerLevel(this.floorNum); // T72: sube suave (100 pisos)
     return this.mode === 'waves' ? waveSpec(this.floorNum).level : this.floorNum;
   }
 
@@ -2234,6 +2256,8 @@ export class GameScene extends Phaser.Scene {
         .sort((a, b) => Math.abs(b.gx - st.gx) + Math.abs(b.gy - st.gy) - (Math.abs(a.gx - st.gx) + Math.abs(a.gy - st.gy)) || a.id - b.id)[0];
       this.minibossRoom = far?.id;
     }
+    // T72: en la Torre, el minijefe «chetado» ocupa la sala entera de su piso
+    if (this.towerSpec?.kind === 'miniboss') this.minibossRoom = 0;
     // Sala sorpresa (T39): con la semilla del piso (la misma al continuar), nunca la del minijefe ni las de cofre
     this.roomEvent =
       (this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)
@@ -2245,6 +2269,9 @@ export class GameScene extends Phaser.Scene {
       this.mode === 'normal' || this.mode === 'endless'
         ? pickRoomRules(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x6c8e9cf5), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...(this.roomEvent ? [this.roomEvent.roomId] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]))
         : new Map();
+    // T72: la regla del piso de la Torre vale para todas sus casillas (es una sola sala)
+    const tRule = this.towerSpec?.rule;
+    if (tRule) this.roomRules = new Map(this.floor.rooms.map((rm) => [rm.id, tRule]));
 
     // Al continuar: objetos, estado del jugador y sala donde estabas
     const r = this.resume;
@@ -2471,13 +2498,16 @@ export class GameScene extends Phaser.Scene {
       .setStroke('#1d2848', 5);
 
     // Si ya habías vencido al jefe, la trampilla sigue ahí
-    if (this.mode !== 'waves' && this.cleared.has(this.floor.bossId)) {
+    if (this.mode === 'tower') this.towerEnter();
+    else if (this.mode !== 'waves' && this.cleared.has(this.floor.bossId)) {
       if (isFinaleGate(this.mode, this.floorNum)) this.spawnTrapdoor(true);
       else if (!isLastStage(this.mode, this.floorNum)) this.spawnTrapdoor();
     }
 
     this.refreshInventory();
     this.cameras.main.centerOn(si.cx, si.cy);
+    // T72: llegada al piso nuevo de la Torre con su destello
+    if (this.mode === 'tower' && this.carry && !this.resume) towerArrive(this, this.player.x, this.player.y, { lift: this.player, low: lowFx() });
     // Música del bioma (la del jefe la pone spawnBoss); al salir de la partida, la del menú
     playTrack(trackForBiome(this.biome.id));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => playMenuMusic());
@@ -4190,7 +4220,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Dibuja y crea los cuerpos de los obstáculos de la sala. */
   private buildObstacles(room: Room) {
-    const grid = layoutFor(this.floorSeed, room.id, room.kind, this.groupIds(room).length > 1);
+    // T72: la Torre decide su plantilla (towerFloorSpec) para no repetirla en dos pisos seguidos
+    const grid = this.towerSpec ? towerGrid(this.towerSpec) : layoutFor(this.floorSeed, room.id, room.kind, this.groupIds(room).length > 1);
     this.grids.set(room.id, grid);
     const i = this.interior(room);
     grid.forEach((row, ty) =>
@@ -4415,6 +4446,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!e.getData('shiny')) this.applyPmd(e, id, size);
     const hp = Math.round((e.getData('maxHp') as number) * (6 + this.level() * 0.6));
     e.setData('hp', hp).setData('maxHp', hp).setData('dmg', Math.round((e.getData('dmg') as number) * 1.3)).setData('miniboss', true);
+    if (this.mode === 'tower') {
+      // T72: minijefe «chetado» de la Torre: más vida y daño. TODO: su ataque extra y el objeto épico al caer (ver BITACORA)
+      const thp = Math.round(hp * TOWER_MINIBOSS_HP_MUL);
+      e.setData('hp', thp).setData('maxHp', thp).setData('dmg', Math.round((e.getData('dmg') as number) * TOWER_MINIBOSS_DMG_MUL));
+    }
     const ai = e.getData('ai') as EnemyAI;
     ai.moves = bossStyles(kind.types, id);
     ai.eliteMove = ai.moves[0];
@@ -5397,10 +5433,119 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.time.delayedCall(FOE_SHOT_LIFE, () => s.active && s.destroy());
   }
 
+  // --- T72: Torre de 100 pisos (level/tower.ts) ---
+
+  /** Al cargar un piso de la Torre: peligros del suelo, y en los pisos tranquilos (o ya limpios) la columna de luz. */
+  private towerEnter() {
+    const spec = this.towerSpec;
+    if (!spec) return;
+    this.drawHazards(spec);
+    const room = this.floor.rooms[0];
+    const i = this.interior(room);
+    if (!this.cleared.has(0) && (spec.kind === 'rest' || spec.kind === 'supply')) {
+      for (const rm of this.floor.rooms) this.cleared.add(rm.id);
+      if (!this.resume) {
+        if (spec.kind === 'rest') {
+          // Descanso: el Centro Pokémon hace de fuente y cae un objeto (el altar de 3 objetos, la forja y la tienda
+          // con descuento quedan pendientes, ver BITACORA)
+          this.dropItem(room.id, i.cx + 170, i.cy);
+          this.notify(`Sala de descanso\nCúrate en el Centro y coge el objeto`, { kind: 'reward', icon: 'heart' });
+        } else {
+          // Suministros: una cosa (la elección entre las tres queda pendiente, ver BITACORA)
+          const pick = SUPPLY_CHOICES[Math.floor(mulberry32(this.floorSeed ^ 0x51ed270b)() * SUPPLY_CHOICES.length)];
+          this.dropLoot(i.cx - 80, i.cy + 40, pick);
+          this.notify('Sala de suministros', { kind: 'reward', icon: 'chest' });
+        }
+      }
+      this.saveNow();
+    }
+    if (this.cleared.has(0) && !isLastStage(this.mode, this.floorNum)) this.spawnTrapdoor();
+    if (spec.rule && !this.cleared.has(0)) this.notify(ruleNotice(spec.rule), { kind: 'danger', icon: 'star' });
+  }
+
+  /** Sala de la Torre limpia: récord, premio del jefe y la columna de luz (o la victoria en el piso 100). */
+  private towerCleared(room: Room) {
+    const record = submitRecord(this.mode, this.floorNum, undefined, this.diff);
+    if (record) this.counters.newRecord = true;
+    if (room.kind === 'boss') this.mission({ kind: 'boss' });
+    if (isLastStage(this.mode, this.floorNum)) {
+      this.mission({ kind: 'win' });
+      this.giveTickets(FINALE_BONUS);
+      this.finish(true, `¡Has subido los 100 pisos de la Torre!\n+${this.earned} tickets en total\nPulsa R, Start o haz clic para ver el resumen`);
+      return;
+    }
+    const i = this.interior(room);
+    if (room.kind === 'boss') this.dropItem(room.id, i.cx + 170, i.cy);
+    this.spawnTrapdoor();
+    // Cartel de lo que viene: la regla especial del piso siguiente, para que se sepa antes de subir
+    const next = upcomingRule(this.floorNum, this.towerSeed);
+    const sign = next ? `\nArriba: ${ruleNotice(next)}` : '';
+    const best = record ? '\n¡Nuevo récord!' : '';
+    this.notify(`¡Piso ${this.floorNum} superado!${best}\nPisa la columna de luz para subir${sign}`, { kind: 'reward', icon: 'star' });
+    this.saveNow();
+  }
+
+  /** Pisar la columna: animación del supervisor (towerFx) y, al acabar, el piso siguiente. */
+  private towerClimb() {
+    const t = this.trapdoor;
+    if (!t || this.transitioning) return;
+    this.trapdoor = undefined;
+    this.transitioning = true;
+    this.player.setVelocity(0, 0);
+    this.physics.pause();
+    let went = false;
+    const go = () => {
+      if (went) return;
+      went = true;
+      this.transitioning = false;
+      this.descend();
+    };
+    towerAscend(this, t.x, t.y, this.floorNum + 1, { lift: this.player, low: lowFx(), onDone: go });
+    // Por si el reloj del juego va lento, no quedarse a medias
+    window.setTimeout(go, 3000);
+  }
+
+  /** Peligros del suelo. TODO(supervisor): dibujo de pinchos, lava y hielo; ahora son casillas de color liso. */
+  private drawHazards(spec: TowerFloorSpec) {
+    const color = spec.hazard === 'lava' ? 0xff5a1f : spec.hazard === 'ice' ? 0xbfe8ff : 0x8a8f9c;
+    for (const h of spec.hazards) {
+      const i = this.interior(this.floor.rooms[h.cell]);
+      this.add.rectangle(i.x0 + h.tx * TILE + TILE / 2, i.y0 + h.ty * TILE + TILE / 2, TILE - 4, TILE - 4, color, 0.55).setDepth(0.5);
+    }
+  }
+
+  /**
+   * Pinchos y lava hacen un poco de daño cada cierto tiempo mientras los pisas (nunca te dejan por debajo de 1 PS,
+   * como el clima). El hielo de momento solo se ve: el resbalón queda pendiente (BITACORA).
+   */
+  private hazardTick(time: number) {
+    const spec = this.towerSpec;
+    if (!spec || spec.hazard === 'ice' || spec.hazards.length === 0 || this.ended || this.transitioning || this.hp <= 1) return;
+    if (time < this.hazardTickAt) return;
+    const room = this.current;
+    const i = this.interior(room);
+    const tx = Math.floor((this.player.x - i.x0) / TILE);
+    const ty = Math.floor((this.player.y - i.y0) / TILE);
+    if (!spec.hazards.some((h) => h.cell === room.id && h.tx === tx && h.ty === ty)) return;
+    this.hazardTickAt = time + 700;
+    const chip = Math.min(Math.max(1, Math.round(this.stats.maxHp * (spec.hazard === 'lava' ? 0.06 : 0.04))), Math.ceil(this.hp) - 1);
+    if (chip <= 0) return;
+    this.hp -= chip;
+    this.popup(this.player.x, this.player.y - 50, `-${chip} PS (${TOWER_HAZARD_LABEL[spec.hazard]})`, 0xff7a59);
+  }
+
   // --- Trampilla al piso siguiente ---
 
   private spawnTrapdoor(final = false) {
     const i = this.interior(this.floor.rooms[this.floor.bossId]);
+    if (this.mode === 'tower') {
+      // T72: columna de luz en el centro. TODO(supervisor): dibujo de la columna en reposo (ahora, un rectángulo liso)
+      const col = this.add.rectangle(i.cx, i.cy - 30, 36, 110, 0xfff2a8, 0.6).setDepth(1);
+      if (!lowFx()) this.tweens.add({ targets: col, alpha: 0.3, duration: 700, yoyo: true, repeat: -1 });
+      this.add.text(i.cx, i.cy - 100, 'Subir', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(0.5).setDepth(3);
+      this.trapdoor = { x: i.cx, y: i.cy, armed: false };
+      return;
+    }
     const img = this.add.image(i.cx, i.cy, iconKey('trapdoor')).setScale(5).setDepth(1);
     if (final) {
       // Dorada y con brillo: la del reto final
@@ -5446,7 +5591,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       return;
     }
     if (dist < 36) {
-      if (t.final) this.askFinal();
+      if (this.mode === 'tower') this.towerClimb();
+      else if (t.final) this.askFinal();
       else this.descend();
     }
   }
@@ -5555,6 +5701,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.weatherFx?.update(delta, this.player);
     if (!this.ended) this.counters.seconds += delta / 1000;
     this.weatherTick(time);
+    this.hazardTick(time);
     this.dayNightTick();
     // Curación por golpes: se recarga un 4 % de tus PS máximos por segundo (y no se acumula más)
     const healCap = this.stats.maxHp * 0.04;
@@ -6758,6 +6905,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       } else this.notify('Sala del tiempo superada', { kind: 'info', icon: 'clock' });
     }
     this.onRoomClearedT48();
+
+    if (this.mode === 'tower') return this.towerCleared(room);
 
     if (room.kind === 'boss') {
       // Récord: pisos completados (Normal, Infinito) o jefes vencidos (Rush)

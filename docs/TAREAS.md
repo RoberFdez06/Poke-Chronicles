@@ -560,6 +560,9 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
 - Guardado y continuar partida con su versión de `RunSave` y migración; puntos de control cada 10 pisos al morir (al volver a empezar
   puedes arrancar desde el último jefe vencido, con un coste en caramelos que decides en la lógica pura y pones en una constante).
 - Tests: qué piso es minijefe, jefe, descanso o final, escalado y récord. Es la tarea más grande: déjala la última.
+- **Estado (rama t72):** hecha la lógica pura (`src/level/tower.ts`) y el modo con la ruta básica; falta lo anotado en
+  `docs/BITACORA.md` (T72 — Pendiente): 2x2, altar/forja/tienda del descanso, elegir suministro, minijefe con ataque extra y
+  objeto épico, piso 100 con `finale.ts`, hielo, pantalla de puntos de control.
 
 ## Orden recomendado
 - T64 primero (arregla algo que Roberto notó), luego T65, T66 y T67, después T68-T70 (salas), T71 y por último T72.

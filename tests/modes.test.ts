@@ -23,8 +23,8 @@ function fakeStorage(): StorageLike & { data: Map<string, string> } {
   return { data, getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v) };
 }
 
-test('hay cuatro modos con nombre y descripción', () => {
-  assert.deepEqual([...MODES], ['normal', 'waves', 'endless', 'bossrush']);
+test('hay cinco modos con nombre y descripción', () => {
+  assert.deepEqual([...MODES], ['normal', 'waves', 'endless', 'bossrush', 'tower']);
   for (const m of MODES) assert.ok(modeDesc(m).length > 10);
   assert.ok(isMode('waves'));
   assert.ok(!isMode('otro'));
