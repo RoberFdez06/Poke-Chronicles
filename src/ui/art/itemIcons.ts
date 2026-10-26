@@ -48,6 +48,11 @@ const T: Record<string, string[]> = {
   // Varita de zahorí: rama en Y
   rod: ['', '..kk........kk', '.kLPk......kLPk', '.kLPk......kLPk', '..kLPk....kLPk', '...kLPk..kLPk', '....kLPkkLPk', '.....kLPPLk', '......kPPk', '......kPPk', '......kPpk', '......kPpk', '.......kk'],
   moon: ['', '.....kkkk', '...kkLLPk', '..kLWLkk', '.kLWLk', '.kLLk', 'kLLPk', 'kLPPk', 'kLPPk', 'kLPPPk......k', '.kPPPPkk..kkPk', '.kpPPPPPkkPPpk', '..kkpppppppkk', '....kkkkkkk'],
+  // Objetos de poder (T74/T75): piedra con hélice, brazalete con gema, cristal Tera y cristal Z
+  megastone: ['......kkkk', '....kkWLLkk', '...kWLLLLPPk', '..kWLLWLPPPPk', '.kLLLLWPWPPPPk', '.kLWLLPWPPPPpk', 'kLLLLPPWPPPPPpk', 'kLLLPPPWWWPPPpk', 'kLLPPPPPWPPPppk', '.kLPPPWPWPPPppk', '.kPPPPWPPPPPppk', '..kPPPWPPPPppk', '...kpPPPPPppk', '....kkpppkkk', '......kkkk'],
+  dynaband: ['', '', '..kkkkkkkkkkkk', '.kLLLLLLLLLLLLk', 'kLPPPPPPPPPPPPpk', 'kPPPPkkkkkkPPPpk', 'kPPPkWWWWWWkPPpk', 'kPPPkWPPPPWkPPpk', 'kPPPkWPppPWkPPpk', 'kPPPkWPPPPWkPPpk', 'kppPkWWWWWWkPpPk', '.kppPkkkkkkPPpk', '..kpppppppppppk', '...kkkkkkkkkkk'],
+  terashard: ['.......kk', '......kWWk', '.....kWLLPk', '..k.kWLLLPPk.k', '.kWkWLLLLPPPkWk', '..kLWLWLLPPPPLk', '..kLLLLWPPPPPpk', '..kLLLWWLPPPPpk', '...kLLLLPPPPpk', '....kLLPPPPpk', '.....kLPPPpk', '......kPPpk', '.......kpk', '........k'],
+  zcrystal: ['.....kkkkkk', '...kkLLLLLLkk', '..kLLLLLLLLLPk', '.kLWWWWWWWLLPPk', '.kLLLLLLWLLLPPk', 'kLLLLLLWLLLLPPpk', 'kLLLLLWLLLLLPPpk', 'kLLLLWLLLLLPPPpk', 'kLLLWWWWWWLPPPpk', '.kLLLLLLLLLPPpk', '.kPPLLLLLLPPPpk', '..kPPPPPPPPPpk', '...kkpppppkkk', '.....kkkkk'],
 };
 
 /** Qué dibujo lleva cada objeto (los que no salen aquí, una bola de su color). */
@@ -70,6 +75,7 @@ const SHAPE: Record<string, string> = {
   'hierba-mental': 'herb', 'pua-toxica': 'spike', 'piedra-lunar': 'moon',
   magikarp: 'fish', gyarados: 'serpent',
   zahori: 'rod',
+  'mega-piedra': 'megastone', 'banda-dinamax': 'dynaband', teragema: 'terashard', 'cristal-z': 'zcrystal',
 };
 
 const shade = (c: number, f: number) => {
