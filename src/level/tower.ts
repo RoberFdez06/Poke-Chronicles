@@ -4,7 +4,7 @@
 // Con extensión .ts para que los tests (node --test) puedan importarlo sin bundler
 import { mulberry32, type Dir, type Floor, type Room, type RoomKind } from './floorGen.ts';
 import {
-  allConnected, CENTER_TILES, COLS, DOOR_TILES, emptyGrid, isWalkable, OPEN_TEMPLATE_NAMES, parseTemplate, ROWS,
+  allConnected, CENTER_TILES, clearSpawnZones, COLS, DOOR_TILES, emptyGrid, isWalkable, OPEN_TEMPLATE_NAMES, parseTemplate, ROWS,
   TEMPLATE_NAMES, TEMPLATES, type Grid,
 } from './roomLayouts.ts';
 import { BIOMES, type Biome } from './biomes.ts';
@@ -126,7 +126,7 @@ export function towerGrid(spec: Pick<TowerFloorSpec, 'template' | 'flipX' | 'fli
   let g = parseTemplate(TEMPLATES[spec.template]);
   if (spec.flipX) g = g.map((row) => [...row].reverse());
   if (spec.flipY) g = [...g].reverse();
-  return g;
+  return clearSpawnZones(g);
 }
 
 /** Rejilla con los peligros que hacen daño marcados como no pisables (para comprobar que siempre hay paso). */

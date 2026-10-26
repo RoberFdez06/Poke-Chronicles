@@ -163,6 +163,7 @@ import { basicShotFor, bossStyles, foeStyleFor, styleForMove, TYPE_STYLES, type 
 import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, W } from '../ui/layout';
+import { hudLayout, itemGrid, nameFontSize, HUD_BADGE_MAX_W, HUD_ITEM_R, HUD_PROGRESS_FONT } from '../data/hudLayout';
 import {
   flowField,
   isWalkable,
@@ -285,6 +286,8 @@ import { accountInfo } from '../net/cloud';
 const VIEW = { w: 960, h: 640 };
 const ROOM = { x: 80, y: 80, w: 800, h: 480 };
 const WALL = 40;
+/** Radio máximo del cuerpo del jugador (px): menos de media casilla, para caber por pasillos de una casilla. */
+const PLAYER_BODY_R = 16;
 const DOOR = 120;
 const SLOT_COUNT = 4;
 /** Separación en radianes entre los proyectiles de un abanico. */
@@ -325,7 +328,9 @@ const SHOP_GREEN = 0x2ecc71;
 const NEAR = 120;
 const TOUCH = 46;
 /** T49: posición (desde el borde izquierdo de la franja) de los contadores de monedas, llaves, bombas y pociones. */
-const HUD_COUNT_X = { coin: 18, key: 70, bomb: 122, potion: 174 } as const;
+/** Panel izquierdo del HUD: posiciones de cada pieza (data/hudLayout.ts, con tests para que nada se pise). */
+const HL = hudLayout(HUD.left.w - HUD.pad * 2);
+const HUD_COUNT_X = HL.counterX;
 /** Posiciones de los 3 artículos de la tienda respecto al centro de la sala. */
 const SHOP_OFFSETS = [-200, 0, 200];
 
@@ -765,7 +770,7 @@ export class GameScene extends Phaser.Scene {
   /** Botón con el que se lanza cada poder (tecla o botón del mando, según con qué juegues). */
   private slotBadges: Phaser.GameObjects.Text[] = [];
   /** Botón de la bomba, la poción y el objeto activo (tecla o botón del mando), junto a cada uno en el HUD. */
-  private actionBadges: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; x: number; y: number; pad: string; action: 'active' | 'bomb' | 'potion' | 'parry' | 'ball' | 'mega' }[] = [];
+  private actionBadges: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; x: number; y: number; pad: string; action: 'active' | 'bomb' | 'potion' | 'parry' | 'ball' | 'mega'; maxW: number }[] = [];
   private badgeShown = '';
   private banner!: Phaser.GameObjects.Text;
   private toasts?: ToastStack;
@@ -1185,7 +1190,9 @@ export class GameScene extends Phaser.Scene {
     if (body) {
       // Cuerpo hacia los pies del Pokémon (los frames tienen aire por arriba)
       if (circle) {
-        const rad = Math.min(fw, fh) * 0.3;
+        // El del jugador nunca pasa de PLAYER_BODY_R px de radio: con frames grandes (Genesect…) medía más de una
+        // casilla y no cabía entre dos matas de hierba alta
+        const rad = Math.min(Math.min(fw, fh) * 0.3, PLAYER_BODY_R / pmdScale(size));
         sprite.setCircle(rad, fw / 2 - rad, fh * 0.62 - rad);
       } else body.setSize(fw * 0.6, fh * 0.55).setOffset(fw * 0.2, fh * 0.38);
     }
@@ -2416,7 +2423,8 @@ export class GameScene extends Phaser.Scene {
     this.player = this.physics.add.sprite(si.cx, si.cy, `${this.playerKey}-front`);
     this.player.setDisplaySize(84, 84).setDepth(5).setData('sheet', this.playerKey).setData('size', 84);
     const fw = this.player.width;
-    this.player.setCircle(fw * 0.3, fw * 0.2, fw * 0.2);
+    const pr = Math.min(fw * 0.3, PLAYER_BODY_R / this.player.scaleX);
+    this.player.setCircle(pr, fw / 2 - pr, fw / 2 - pr);
     if (!this.shiny) this.applyPmd(this.player, this.formId, 84, true);
     // T74: al continuar con la megaevolución a medias, vuelve a ponerse la forma
     // T75: al continuar con Dinamax/Gigamax, el tamaño o la forma Gigamax; la mega, su sprite; el Tera no cambia de sprite
@@ -2505,9 +2513,9 @@ export class GameScene extends Phaser.Scene {
     const RW = HUD.right.w - HUD.pad * 2;
 
     // Pausa (arriba a la izquierda), para jugar solo con ratón
-    hud(drawHudFrame(this.add.graphics(), LX, 16, 64, 64));
+    hud(drawHudFrame(this.add.graphics(), LX + HL.pause.x, HL.pause.y, HL.pause.w, HL.pause.h));
     const pb = over(
-      hud(this.add.text(LX + 32, 48, '❚❚', { fontFamily: FONT, fontSize: '28px', color: '#f8f8f8' }))
+      hud(this.add.text(LX + HL.pause.x + HL.pause.w / 2, HL.pause.y + HL.pause.h / 2, '❚❚', { fontFamily: FONT, fontSize: '28px', color: '#f8f8f8' }))
         .setOrigin(0.5)
         .setPadding(14, 12)
         .setInteractive({ useHandCursor: true }),
@@ -2515,34 +2523,38 @@ export class GameScene extends Phaser.Scene {
     // T53: cuadro del parry a la derecha de la pausa (la recarga se ve vaciándose); clic en él también hace parry,
     // aunque con ratón lo cómodo es el clic central, que no obliga a quitar el puntero de donde apuntas.
     {
-      const px = LX + 76;
-      const pw = LW - 76;
-      this.parryHud = { g: hud(this.add.graphics()), x: px, y: 16, w: pw, h: 30, shown: '' };
-      txt(px + 12, 31, 14, '#f8f8f8', true).setOrigin(0, 0.5).setText('Parry');
-      const parryBtn = over(hud(this.add.zone(px + pw / 2, 31, pw, 30).setInteractive({ useHandCursor: true })));
+      const { x: px0, y: py, w: pw, h: ph } = HL.parry;
+      const px = LX + px0;
+      this.parryHud = { g: hud(this.add.graphics()), x: px, y: py, w: pw, h: ph, shown: '' };
+      txt(px + 12, py + ph / 2, 14, '#f8f8f8', true).setOrigin(0, 0.5).setText('Parry');
+      const parryBtn = over(hud(this.add.zone(px + pw / 2, py + ph / 2, pw, ph).setInteractive({ useHandCursor: true })));
       parryBtn.on('pointerdown', () => this.doParry());
     }
     // T55: barra de adrenalina debajo del parry (se llena con bajas, esquivas y parrys; al llenarse, subidón)
     {
-      const ax = LX + 76;
+      const a = HL.adrenaline;
       const g = hud(this.add.graphics());
-      const text = txt(ax + (LW - 76) / 2, 66, 12, '#f8f8f8', true).setOrigin(0.5).setText('Adrenalina');
-      this.adrenalineHud = { g, text, x: ax, y: 50, w: LW - 76, h: 32, shown: '' };
+      const text = txt(LX + a.x + a.w / 2, a.y + a.h / 2, 12, '#f8f8f8', true).setOrigin(0.5).setText('Adrenalina');
+      this.adrenalineHud = { g, text, x: LX + a.x, y: a.y, w: a.w, h: a.h, shown: '' };
       // T75: medidor de poder, una tira fina entre la adrenalina y la ficha (solo con Banda Dinamax, Teragema o Cristal Z)
-      this.powerMeterHud = { g: hud(this.add.graphics()), x: ax + 4, y: 84, w: LW - 84, h: 9, shown: '' };
+      this.powerMeterHud = { g: hud(this.add.graphics()), x: LX + HL.meter.x, y: HL.meter.y, w: HL.meter.w, h: HL.meter.h, shown: '' };
     }
     // Ficha del Pokémon: nombre, progreso y PS
-    hud(drawHudFrame(this.add.graphics(), LX, 96, LW, 150));
-    this.nameText = txt(LX + 22, 124, 24, '#f8f8f8', true).setOrigin(0, 0.5);
-    this.progressHud = txt(LX + 22, 154, 16, '#b8c4e0').setOrigin(0, 0.5);
-    this.hpBar = addHpBar(this, LX + 16, 180, LW - 32, 14);
+    hud(drawHudFrame(this.add.graphics(), LX, HL.card.y, LW, HL.card.h));
+    this.nameText = txt(LX + HL.name.x, HL.name.y, 24, '#f8f8f8', true).setOrigin(0, 0.5);
+    // El progreso (piso, clima, huevo, enemigos…) puede ser largo: dos líneas como mucho, dentro de la ficha
+    this.progressHud = txt(LX + HL.progress.x, HL.progress.y, HUD_PROGRESS_FONT, '#b8c4e0')
+      .setOrigin(0, 0)
+      .setWordWrapWidth(HL.progress.w, true)
+      .setMaxLines(2);
+    this.hpBar = addHpBar(this, LX + HL.hpBar.x, HL.hpBar.y, HL.hpBar.w, HL.hpBar.h);
     this.hpBar.objects.forEach((o) => hud(o));
-    this.hpText = txt(LX + LW - 22, 222, 20, '#f8f8f8', true).setOrigin(1, 0.5);
+    this.hpText = txt(LX + HL.hpText.x, HL.hpText.y, 20, '#f8f8f8', true).setOrigin(1, 0.5);
     // Monedas, llaves y bombas (clic en la bomba para soltar una)
-    hud(drawHudFrame(this.add.graphics(), LX, 258, LW, 60));
+    hud(drawHudFrame(this.add.graphics(), LX, HL.counters.y, LW, HL.counters.h));
     const count = (iconKey: string, x: number) => {
-      hud(this.add.image(x, 288, iconKey).setScale(2));
-      return txt(x + 16, 288, 20, '#f8f8f8', true).setOrigin(0, 0.5);
+      hud(this.add.image(x, HL.counterIconY, iconKey).setScale(2));
+      return txt(x + 15, HL.counterIconY, 16, '#f8f8f8', true).setOrigin(0, 0.5);
     };
     {
       // Esquina superior izquierda de la sala, en coordenadas reales de pantalla
@@ -2554,14 +2566,12 @@ export class GameScene extends Phaser.Scene {
     this.keysHud = count(iconKey('key'), LX + HUD_COUNT_X.key);
     this.bombsHud = count(iconKey('bomb'), LX + HUD_COUNT_X.bomb);
     this.potionsHud = count(iconKey('potion'), LX + HUD_COUNT_X.potion);
-    const bombBtn = over(hud(this.add.zone(LX + HUD_COUNT_X.bomb + 10, 288, 50, 52).setInteractive({ useHandCursor: true })));
+    const bombBtn = over(hud(this.add.zone(LX + HUD_COUNT_X.bomb + 12, HL.counterIconY + 8, 50, 60).setInteractive({ useHandCursor: true })));
     bombBtn.on('pointerdown', () => this.placeBomb());
-    const potionBtn = over(hud(this.add.zone(LX + HUD_COUNT_X.potion + 10, 288, 50, 52).setInteractive({ useHandCursor: true })));
+    const potionBtn = over(hud(this.add.zone(LX + HUD_COUNT_X.potion + 12, HL.counterIconY + 8, 50, 60).setInteractive({ useHandCursor: true })));
     potionBtn.on('pointerdown', () => this.drinkPotion());
     // Objetos pasivos
-    this.invText = hud(
-      this.add.text(LX, 334, '', { fontFamily: FONT, fontSize: '15px', color: '#ffffff', wordWrap: { width: LW }, lineSpacing: 4 }),
-    );
+    this.invText = hud(this.add.text(LX + 2, HL.itemsTitleY, '', { fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: '#ffffff' }));
     // Objeto activo: abajo a la izquierda (clic para usarlo)
     this.activeHud = {
       g: hud(this.add.graphics()),
@@ -2570,24 +2580,24 @@ export class GameScene extends Phaser.Scene {
     };
     const activeBtn = over(hud(this.add.zone(LX + LW / 2, H - 71, LW, 110).setInteractive({ useHandCursor: true })));
     // Con qué se usa cada cosa (se redibuja al cambiar de teclado a mando): bomba, poción y objeto activo
-    const badge = (x: number, y: number, pad: string, action: 'active' | 'bomb' | 'potion' | 'parry' | 'ball' | 'mega') =>
-      this.actionBadges.push({ g: hud(this.add.graphics()), t: txt(x, y, 11, '#1d2848', true).setOrigin(0.5), x, y, pad, action });
-    badge(LX + HUD_COUNT_X.bomb + 6, 316, 'RB', 'bomb');
-    badge(LX + HUD_COUNT_X.potion + 6, 316, 'L3', 'potion');
+    const badge = (x: number, y: number, pad: string, action: 'active' | 'bomb' | 'potion' | 'parry' | 'ball' | 'mega', maxW = 60) =>
+      this.actionBadges.push({ g: hud(this.add.graphics()), t: txt(x, y, 11, '#1d2848', true).setOrigin(0.5), x, y, pad, action, maxW });
+    badge(LX + HUD_COUNT_X.bomb + 6, HL.counterBadgeY, 'RB', 'bomb', HUD_BADGE_MAX_W.counter);
+    badge(LX + HUD_COUNT_X.potion + 6, HL.counterBadgeY, 'L3', 'potion', HUD_BADGE_MAX_W.counter);
     badge(LX + LW - 36, H - HUD.pad - 110 + 18, 'LB', 'active');
-    badge(LX + LW - 22, 31, 'RT', 'parry');
+    badge(LX + HL.parryBadge.x, HL.parryBadge.y, 'RT', 'parry', 36);
     // T65: Poké Ball arriba a la derecha del cuadro del nombre (clic para lanzarla)
-    this.ballHud = { g: hud(this.add.graphics()), x: LX + LW - 34, y: 124, shown: '' };
-    const ballBtn = over(hud(this.add.zone(LX + LW - 34, 130, 50, 52).setInteractive({ useHandCursor: true })));
+    this.ballHud = { g: hud(this.add.graphics()), x: LX + HL.ball.x, y: HL.ball.y, shown: '' };
+    const ballBtn = over(hud(this.add.zone(LX + HL.ball.x, HL.ball.y + 10, 42, 56).setInteractive({ useHandCursor: true })));
     ballBtn.on('pointerdown', () => this.throwBall());
-    badge(LX + LW - 34, 152, 'R3', 'ball');
+    badge(LX + HL.ball.x, HL.ball.badgeY, 'R3', 'ball', HUD_BADGE_MAX_W.ball);
     // T74: Mega Piedra a la izquierda de la Poké Ball (clic para megaevolucionar). Solo se ve si se ofrece (paintMega)
-    this.megaHud = { g: hud(this.add.graphics()), x: LX + LW - 88, y: 124, shown: '' };
-    const megaZone = this.add.zone(LX + LW - 88, 130, 50, 52).setInteractive({ useHandCursor: true });
+    this.megaHud = { g: hud(this.add.graphics()), x: LX + HL.mega.x, y: HL.mega.y, shown: '' };
+    const megaZone = this.add.zone(LX + HL.mega.x, HL.mega.y + 10, 42, 56).setInteractive({ useHandCursor: true });
     over(hud(megaZone));
     megaZone.on('pointerdown', () => this.powerButton());
     this.megaZone = megaZone;
-    badge(LX + LW - 88, 152, 'Cruz ↑', 'mega');
+    badge(LX + HL.mega.x, HL.mega.badgeY, '↑', 'mega', HUD_BADGE_MAX_W.mega);
     activeBtn.on('pointerdown', () => this.useActive());
     // Poderes: cuatro cuadros abajo a la derecha (clic para lanzar)
     for (let i = 0; i < SLOT_COUNT; i++) {
@@ -2856,7 +2866,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     p.setData('pmd', undefined).setData('sheet', sheet).setData('size', size).setData('facing', undefined);
     p.setTexture(`${sheet}-front`).setFlipX(false).setScale(1).setDisplaySize(size, size);
     const fw = p.width;
-    p.setCircle(fw * 0.3, fw * 0.2, fw * 0.2);
+    const pr = Math.min(fw * 0.3, PLAYER_BODY_R / p.scaleX);
+    p.setCircle(pr, fw / 2 - pr, fw / 2 - pr);
     this.face(p, this.aim);
   }
 
@@ -4016,7 +4027,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const LX = HUD.left.x + HUD.pad;
       const LW = HUD.left.w - HUD.pad * 2;
       const [tx, ty] =
-        item.kind === 'move' ? [HUD.right.x + HUD.right.w / 2, this.slotY(0) + 32] : item.kind === 'active' ? [LX + LW / 2, H - 71] : [LX + LW / 2, 345];
+        item.kind === 'move' ? [HUD.right.x + HUD.right.w / 2, this.slotY(0) + 32] : item.kind === 'active' ? [LX + LW / 2, H - 71] : [LX + LW / 2, HL.itemsY];
       this.flyToHud(sprite.texture.key, sprite.frame.name, sprite.x, sprite.y, tx, ty);
     }
     (sprite.getData('label') as Phaser.GameObjects.Text | undefined)?.destroy();
@@ -4850,7 +4861,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       }
       const pad = device === 'gamepad';
       const label = pad ? b.pad : keyLabel(keys[b.action]);
-      const w = Math.max(22, 10 + label.length * 7);
+      // Nunca más ancho que su hueco (las teclas de nombre largo encogen el texto)
+      const want = Math.max(22, 10 + label.length * 7);
+      const w = Math.min(want, b.maxW);
+      b.t.setScale(want > w ? Math.max(0.6, (w - 6) / (want - 10)) : 1);
       b.g.fillStyle(0x101828, 1).fillRoundedRect(b.x - w / 2 - 2, b.y - 10, w + 4, 20, 6);
       b.g.fillStyle(pad ? 0x4a5468 : 0xe8e8f0, 1).fillRoundedRect(b.x - w / 2, b.y - 8, w, 16, 5);
       if (!pad) b.g.fillStyle(0xb8bcc8, 1).fillRect(b.x - w / 2 + 2, b.y + 5, w - 4, 2);
@@ -4899,11 +4913,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.invText.setText(`Objetos ${slotsLabel(this.passives, this.bossesBeaten)}`);
     const LX = HUD.left.x + HUD.pad;
     const LW = HUD.left.w - HUD.pad * 2;
-    const cols = Math.max(1, Math.floor(LW / 46));
+    // Rejilla de data/hudLayout.ts: debajo del título, repartida en todo el ancho (4 por fila)
+    const cells = itemGrid(counts.size, LW);
     [...counts].forEach(([id, n], k) => {
-      const x = LX + 22 + (k % cols) * 46;
-      const y = 352 + Math.floor(k / cols) * 46;
-      const objs: Phaser.GameObjects.GameObject[] = [this.add.circle(x, y, 20, 0x000000, 0.35), this.add.image(x, y, this.textures.exists(itemIconKey(id)) ? itemIconKey(id) : iconKey('bag')).setScale(2.2)];
+      const x = LX + cells[k].x;
+      const y = cells[k].y;
+      const key = this.textures.exists(itemIconKey(id)) ? itemIconKey(id) : iconKey('bag');
+      const img = this.add.image(x, y, key);
+      // El icono cabe en su círculo sea cual sea el tamaño de su textura
+      img.setScale(Math.min(2.2, (HUD_ITEM_R * 2 - 6) / Math.max(1, img.width, img.height)));
+      const objs: Phaser.GameObjects.GameObject[] = [this.add.circle(x, y, HUD_ITEM_R, 0x000000, 0.35), img];
       if (n > 1) objs.push(this.add.text(x + 18, y + 16, `x${n}`, { fontFamily: FONT, fontSize: '14px', fontStyle: 'bold', color: '#ffffff' }).setOrigin(1, 1).setStroke('#101828', 4));
       for (const o of objs) {
         this.hudLayer.add(o);
@@ -5041,7 +5060,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       left: [n.x0 + inset, n.cy],
       right: [n.x1 - inset, n.cy],
     };
-    const [x, y] = pos[OPPOSITE[dir]];
+    let [x, y] = pos[OPPOSITE[dir]];
+    // Nunca aparecer encima de un obstáculo (la zona de aparición va libre, pero por si acaso)
+    const ng = this.grids.get(next.id);
+    if (ng) {
+      const [tx, ty] = [Math.floor((x - n.x0) / TILE), Math.floor((y - n.y0) / TILE)];
+      if (!isWalkable(ng[ty]?.[tx] ?? '.')) {
+        const [fx, fy] = nearestWalkable(ng, tx, ty);
+        [x, y] = [n.x0 + fx * TILE + TILE / 2, n.y0 + fy * TILE + TILE / 2];
+      }
+    }
     (this.player.body as Body).reset(x, y);
 
     this.showRooms([this.current.id, next.id]);
@@ -6777,7 +6805,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.fpsText.setData('at', time).setText(`${Math.round(this.game.loop.actualFps)} FPS`);
     }
     const foes = this.enemies.countActive(true);
-    this.nameText.setText(this.starterName.charAt(0).toUpperCase() + this.starterName.slice(1));
+    {
+      const nm = this.starterName.charAt(0).toUpperCase() + this.starterName.slice(1);
+      // Nombre largo: más pequeño para no pisar la Poké Ball ni la Mega Piedra
+      const maxW = this.powerButtonOffered() ? HL.name.maxWMega : HL.name.maxW;
+      if (this.nameText.text !== nm || this.nameText.getData('maxW') !== maxW) {
+        this.nameText.setFontSize(nameFontSize(nm, maxW)).setText(nm).setData('maxW', maxW);
+        while (this.nameText.width > maxW && Number(this.nameText.style.fontSize.toString().replace('px', '')) > 12) {
+          this.nameText.setFontSize(Number(this.nameText.style.fontSize.toString().replace('px', '')) - 1);
+        }
+      }
+    }
     this.progressHud.setText(`${progressText(this.mode, this.floorNum)}${this.weather ? ` · ${WEATHER_LABEL[this.weather]}` : ''}${this.eggLeft > 0 ? ` · Huevo (${this.eggLeft})` : ''}${this.tiredRooms > 0 ? ' · Cansado' : ''}${foes ? ` · ${foes} enem.` : ''}`);
     this.hpText.setText(`${Math.max(0, Math.ceil(this.hp))}/${this.stats.maxHp}`);
     this.hpBar.set(this.hp / this.stats.maxHp);
@@ -7432,9 +7470,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const LX = HUD.left.x + HUD.pad;
       const LW = HUD.left.w - HUD.pad * 2;
       const target: [number, number, Phaser.GameObjects.Text | undefined] =
-        drop.kind === 'coin' ? [LX + HUD_COUNT_X.coin, 288, this.coinsHud] : drop.kind === 'key' ? [LX + HUD_COUNT_X.key, 288, this.keysHud]
-          : drop.kind === 'bomb' ? [LX + HUD_COUNT_X.bomb, 288, this.bombsHud]
-          : drop.kind === 'potion' ? [LX + HUD_COUNT_X.potion, 288, this.potionsHud] : [LX + LW / 2, 186, this.hpText];
+        drop.kind === 'coin' ? [LX + HUD_COUNT_X.coin, HL.counterIconY, this.coinsHud] : drop.kind === 'key' ? [LX + HUD_COUNT_X.key, HL.counterIconY, this.keysHud]
+          : drop.kind === 'bomb' ? [LX + HUD_COUNT_X.bomb, HL.counterIconY, this.bombsHud]
+          : drop.kind === 'potion' ? [LX + HUD_COUNT_X.potion, HL.counterIconY, this.potionsHud] : [LX + LW / 2, HL.hpBar.y + 6, this.hpText];
       // Adorno: con efectos bajos (o si ya hay muchas partículas) no sale
       if (this.fxBudget.take(this.time.now)) lootFlash(this, sprite.x, sprite.y, (sprite.tintTopLeft || 0xffe066) as number);
       this.flyToHud(sprite.texture.key, sprite.frame.name, sprite.x, sprite.y, target[0], target[1], target[2]);

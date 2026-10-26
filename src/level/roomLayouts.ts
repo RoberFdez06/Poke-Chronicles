@@ -34,6 +34,26 @@ export const CENTER_TILES: [number, number][] = [
   [8, 7], [9, 7], [10, 7], [11, 7],
 ];
 
+/**
+ * Zona de aparición junto a cada puerta: al entrar por una puerta el jugador aparece a 70 px de la pared,
+ * centrado en ella, y su cuerpo ocupa las tres primeras casillas de fondo y las dos de ancho de la puerta.
+ * Ahí nunca puede haber obstáculo (antes la hierba alta o una roca podían caer encima y atrapar al jugador).
+ */
+export const SPAWN_TILES: [number, number][] = [
+  ...[0, 1, 2].flatMap((d): [number, number][] => [
+    [9, d], [10, d],
+    [9, ROWS - 1 - d], [10, ROWS - 1 - d],
+    [d, 5], [d, 6],
+    [COLS - 1 - d, 5], [COLS - 1 - d, 6],
+  ]),
+];
+
+/** Quita los obstáculos de la zona de aparición (los muros X que dan forma a la sala ya dejan ese margen). */
+export function clearSpawnZones(grid: Grid): Grid {
+  for (const [x, y] of SPAWN_TILES) if (grid[y][x] !== 'X') grid[y][x] = '.';
+  return grid;
+}
+
 /** Plantillas de 20 × 12. Todas dejan libres las entradas de las puertas y el centro (lo comprueban los tests). */
 export const TEMPLATES: Readonly<Record<string, readonly string[]>> = {
   rocasEsquinas: [
@@ -342,7 +362,7 @@ export function layoutFor(floorSeed: number, roomId: number, kind: RoomKind, big
   let g = parseTemplate(TEMPLATES[names[Math.floor(rng() * names.length)]]);
   if (rng() < 0.5) g = g.map((row) => [...row].reverse());
   if (rng() < 0.5) g = [...g].reverse();
-  return g;
+  return clearSpawnZones(g);
 }
 
 const inside = (x: number, y: number) => x >= 0 && y >= 0 && x < COLS && y < ROWS;
