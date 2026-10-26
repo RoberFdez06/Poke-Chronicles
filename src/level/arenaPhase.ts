@@ -16,9 +16,9 @@ export const ARENA_WARN_MS = 1500;
 /** Margen entre dos sucesos del jefe (fase de arena y megaevolución) para que se aprecien por separado, ms. */
 export const EVENT_GAP_MS = 1000;
 /** Derrumbe de la fase 2: temblor, fundido a negro, cambio de arena y vuelta (todo dentro de FALL_TOTAL_MS). */
-export const FALL_SHAKE_MS = 500;
-export const FALL_FADE_MS = 300;
-export const FALL_HOLD_MS = 200;
+export const FALL_SHAKE_MS = 1500;
+export const FALL_FADE_MS = 400;
+export const FALL_HOLD_MS = 300;
 export const FALL_TOTAL_MS = FALL_SHAKE_MS + FALL_FADE_MS * 2 + FALL_HOLD_MS;
 
 /** Fase de la arena según la vida: 0 (entera), 1 (por debajo del 67 %), 2 (por debajo del 34 %). */

@@ -132,5 +132,5 @@ test('margen de un segundo entre sucesos', () => {
   assert.equal(nextBossEvent(st({ ratio: 0.45, arenaDone: 1, now: end + EVENT_GAP_MS, busyUntil: end })), 'mega');
   assert.equal(nextBossEvent(st({ ratio: 0.2, arenaDone: 1, megaDone: true, now: end + 500, busyUntil: end })), null);
   assert.equal(EVENT_GAP_MS, 1000);
-  assert.ok(FALL_TOTAL_MS <= 1500);
+  assert.ok(FALL_TOTAL_MS <= 3000);
 });

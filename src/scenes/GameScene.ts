@@ -144,7 +144,7 @@ import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuf
 import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
-import { arenaBackdrop, arenaCollapse, arenaCrack, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
+import { arenaBackdrop, arenaCrack, arenaLanding, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
 import { dynamaxBurst, teraBurst, zMoveFx } from '../ui/art/formsFx';
 import { buildClue, buildNpc, drawBallIcon } from '../ui/art/worldArt';
 import { buildShopArt, type ShopArt } from '../ui/art/shopArt';
@@ -6176,17 +6176,25 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const fall = arenaFall({ bossTypes: (b.getData('btypes') as string[] | undefined) ?? this.bossTypes, seed, player, boss });
     sfx('enrage');
     this.notify(FALL_WARNING, { kind: 'danger', icon: 'star' });
-    this.cameras.main.shake(FALL_SHAKE_MS + FALL_FADE_MS, 0.012);
-    // TODO(supervisor): el suelo se resquebraja y se hunde; ahora unas placas oscuras de color liso que aparecen
-    const i = this.interior(room);
-    const rng = mulberry32(seed ^ 0x5bd1e995);
-    for (let k = 0; k < 14; k++) {
-      this.arenaObjs.push(arenaCollapse(this, i.x0 + (0.5 + Math.floor(rng() * 20)) * TILE, i.y0 + (0.5 + Math.floor(rng() * 12)) * TILE, FALL_SHAKE_MS));
-    }
     const cam = this.cameras.main;
+    // Derrumbe épico: el temblor crece, la cámara se acerca, salen grietas desde el jefe y las losas caen (arenaQuake)
+    cam.shake(FALL_SHAKE_MS + FALL_FADE_MS, 0.014);
+    if (!lowFx()) {
+      this.tweens.add({ targets: cam, zoom: 1.06, duration: FALL_SHAKE_MS, ease: 'Cubic.easeIn' });
+      this.time.delayedCall(FALL_SHAKE_MS * 0.55, () => cam.flash(140, 255, 220, 160));
+      this.time.delayedCall(FALL_SHAKE_MS * 0.85, () => cam.flash(140, 255, 220, 160));
+    }
+    const i = this.interior(room);
+    this.arenaObjs.push(...arenaQuake(this, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS));
     this.time.delayedCall(FALL_SHAKE_MS, () => cam.fadeOut(FALL_FADE_MS, 0, 0, 0));
     this.time.delayedCall(FALL_SHAKE_MS + FALL_FADE_MS, () => this.swapArena(room, fall));
-    this.time.delayedCall(FALL_SHAKE_MS + FALL_FADE_MS + FALL_HOLD_MS, () => cam.fadeIn(FALL_FADE_MS, 0, 0, 0));
+    this.time.delayedCall(FALL_SHAKE_MS + FALL_FADE_MS + FALL_HOLD_MS, () => {
+      cam.setZoom(1);
+      cam.fadeIn(FALL_FADE_MS, 0, 0, 0);
+      cam.shake(320, 0.018);
+      sfx('boom');
+      arenaLanding(this, this.player.x, this.player.y + 10, FALL_TINT[fall.theme] === undefined ? 0xffffff : 0xffd8a0);
+    });
     this.time.delayedCall(FALL_TOTAL_MS, () => {
       this.arenaFallAt = undefined;
       for (const c of this.enemies.getChildren()) (c as Sprite).setData('fallHp', undefined);

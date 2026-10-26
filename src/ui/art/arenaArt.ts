@@ -202,3 +202,143 @@ export function arenaBackdrop(scene: Phaser.Scene, x: number, y: number, w: numb
   }
   return g;
 }
+
+/**
+ * Derrumbe épico de la fase 2: grietas que se abren en rayos desde el jefe (con borde de luz), losas que se hunden y
+ * caen girando, polvo, escombros que llueven y un oscurecimiento de los bordes que se cierra. Dura `ms` y devuelve los
+ * objetos creados para que la escena los limpie al cambiar de arena.
+ */
+export function arenaQuake(scene: Phaser.Scene, x0: number, y0: number, w: number, h: number, cx: number, cy: number, ms: number, glow = 0xff9a4a, tile = 40): Phaser.GameObjects.GameObject[] {
+  const out: Phaser.GameObjects.GameObject[] = [];
+  let s = (Math.round(cx * 31 + cy) ^ 0x9e3779b9) >>> 0;
+  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  // 1) grietas radiales que crecen
+  const rays = 9;
+  const paths: [number, number][][] = [];
+  for (let r = 0; r < rays; r++) {
+    let a = (r / rays) * Math.PI * 2 + rnd() * 0.5;
+    let x = cx;
+    let y = cy;
+    const pts: [number, number][] = [[x, y]];
+    for (let k = 0; k < 26; k++) {
+      a += (rnd() - 0.5) * 0.7;
+      x += Math.cos(a) * 18;
+      y += Math.sin(a) * 18 * 0.8;
+      pts.push([x, y]);
+    }
+    paths.push(pts);
+  }
+  const cracks = scene.add.graphics().setDepth(0.7);
+  out.push(cracks);
+  const t0 = scene.time.now;
+  const ev = scene.time.addEvent({
+    delay: lowFx() ? 120 : 50,
+    loop: true,
+    callback: () => {
+      if (!cracks.active) return ev.remove();
+      const k = Math.min(1, (scene.time.now - t0) / (ms * 0.8));
+      cracks.clear();
+      for (const pts of paths) {
+        const n = pts.length * Phaser.Math.Easing.Cubic.Out(k);
+        let drawn = 0;
+        for (let i = 1; i < pts.length && i <= Math.ceil(n); i++) {
+          const [ax, ay] = pts[i - 1];
+          const [bx, by] = pts[i];
+          const frac = i <= n ? 1 : n - (i - 1);
+          const steps = Math.max(1, Math.floor((Math.hypot(bx - ax, by - ay) * frac) / P));
+          for (let j = 0; j < steps; j++) {
+            const tt = (j / steps) * frac;
+            const qx = Math.round((ax + (bx - ax) * tt) / P) * P;
+            const qy = Math.round((ay + (by - ay) * tt) / P) * P;
+            if (qx < x0 || qx > x0 + w || qy < y0 || qy > y0 + h) continue;
+            const wdt = Math.max(P, (1 - i / pts.length) * P * 2.4);
+            px(cracks, qx - wdt / 2 - 2, qy - 2, OUT, 1, wdt + 4, P + 4);
+            px(cracks, qx - wdt / 2, qy, (drawn++ % 5 === 0) ? 0xffe9a0 : glow, 0.6 + 0.4 * Math.sin(scene.time.now / 90 + drawn), wdt, P);
+          }
+        }
+      }
+    },
+  });
+  cracks.once(Phaser.GameObjects.Events.DESTROY, () => ev.remove());
+  // 2) losas que se hunden: se oscurecen, tiemblan y caen girando
+  const chunks = lowFx() ? 6 : 26;
+  for (let i = 0; i < chunks; i++) {
+    const tx = x0 + Math.floor(rnd() * (w / tile)) * tile;
+    const ty = y0 + Math.floor(rnd() * (h / tile)) * tile;
+    const delay = ms * (0.25 + rnd() * 0.55);
+    const g = scene.add.graphics().setDepth(0.75);
+    g.fillStyle(0x120c08, 0.95).fillRect(-tile / 2, -tile / 2, tile, tile);
+    g.lineStyle(3, glow, 0.9).strokeRect(-tile / 2 + 2, -tile / 2 + 2, tile - 4, tile - 4);
+    for (let k = 0; k < 5; k++) px(g, -tile / 2 + 6 + ((k * 13) % (tile - 14)), -tile / 2 + 6 + ((k * 17) % (tile - 14)), 0x3a2418, 1);
+    g.setPosition(tx + tile / 2, ty + tile / 2).setAlpha(0);
+    out.push(g);
+    scene.tweens.add({ targets: g, alpha: 1, duration: 120, delay });
+    scene.tweens.add({ targets: g, y: g.y + 90 + rnd() * 60, angle: (rnd() - 0.5) * 70, scale: 0.55, alpha: 0, duration: 520, delay: delay + 260, ease: 'Quad.easeIn' });
+  }
+  if (lowFx()) return out;
+  // 3) polvo y escombros que llueven por toda la sala
+  const dust = scene.add.graphics().setDepth(4);
+  out.push(dust);
+  const dev = scene.time.addEvent({
+    delay: 60,
+    loop: true,
+    callback: () => {
+      if (!dust.active) return dev.remove();
+      const t = scene.time.now - t0;
+      const k = Math.min(1, t / ms);
+      dust.clear();
+      for (let i = 0; i < 46; i++) {
+        const ph = ((t / 700 + i * 0.137) % 1);
+        const dx = x0 + ((i * 97) % w);
+        const dy = y0 - 30 + ph * (h + 40);
+        px(dust, dx, dy, i % 3 ? 0x6b5a48 : 0x9a8a74, (0.5 + k * 0.5) * (1 - ph * 0.4), i % 4 === 0 ? P * 1.5 : P);
+      }
+      for (let i = 0; i < 9; i++) {
+        const ph = ((t / 1100 + i / 9) % 1);
+        const bx = x0 + ((i * 211) % w);
+        const by = y0 + h - ph * (h * 0.5);
+        px(dust, bx, by, 0xb8a98f, k * 0.5 * (1 - ph), P * (2 + ph * 4));
+      }
+    },
+  });
+  dust.once(Phaser.GameObjects.Events.DESTROY, () => dev.remove());
+  // 4) viñeta que se cierra: bordes oscuros que avanzan hacia el centro
+  const vig = scene.add.graphics().setDepth(4.5).setAlpha(0);
+  for (let b = 0; b < 6; b++) {
+    vig.fillStyle(0x000000, 0.1).fillRect(x0, y0, w, (b + 1) * 12).fillRect(x0, y0 + h - (b + 1) * 12, w, (b + 1) * 12).fillRect(x0, y0, (b + 1) * 16, h).fillRect(x0 + w - (b + 1) * 16, y0, (b + 1) * 16, h);
+  }
+  out.push(vig);
+  scene.tweens.add({ targets: vig, alpha: 1, duration: ms });
+  return out;
+}
+
+/** Aterrizaje en la arena nueva: golpe de polvo desde el punto de caída, anillos de choque, grietas cortas y destello. */
+export function arenaLanding(scene: Phaser.Scene, x: number, y: number, color: number, depth = 12) {
+  const g = scene.add.graphics().setDepth(depth);
+  const t0 = scene.time.now;
+  const ev = scene.time.addEvent({
+    delay: lowFx() ? 100 : 40,
+    loop: true,
+    callback: () => {
+      const k = Math.min(1, (scene.time.now - t0) / 900);
+      g.clear();
+      const r = Phaser.Math.Easing.Cubic.Out(k) * 210;
+      for (let i = 0; i < 36; i++) {
+        const a = (i / 36) * Math.PI * 2;
+        px(g, x + Math.cos(a) * r, y + Math.sin(a) * r * 0.55, i % 2 ? 0xffffff : color, 1 - k, P * (1.5 + (1 - k) * 1.5));
+      }
+      if (!lowFx()) {
+        for (let i = 0; i < 14; i++) {
+          const a = (i / 14) * Math.PI * 2 + 0.2;
+          const d = r * (0.4 + (i % 3) * 0.2);
+          px(g, x + Math.cos(a) * d, y + Math.sin(a) * d * 0.55 - k * 26, 0x9a8a74, (1 - k) * 0.8, P * (2 + k * 3));
+        }
+        px(g, x, y, 0xffffff, Math.max(0, 0.9 - k * 3), P * 22 * (1 - k));
+      }
+      if (k >= 1) {
+        ev.remove();
+        g.destroy();
+      }
+    },
+  });
+}
