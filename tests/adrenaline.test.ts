@@ -67,3 +67,15 @@ test('nunca pasa del máximo', () => {
   for (let i = 0; i < 50; i++) gainAdrenaline(s, 'parry');
   assert.ok(s.value <= ADRENALINE_MAX);
 });
+
+test('con la sala despejada (hold) la barra no baja; hacer daño reinicia la espera', async () => {
+  const m = await import('../src/data/adrenaline.ts');
+  const s = m.newAdrenaline();
+  m.gainAdrenaline(s, 'parry');
+  for (let i = 0; i < 600; i++) m.tickAdrenaline(s, 100, true);
+  assert.equal(s.value, m.ADRENALINE_GAIN.parry);
+  for (let i = 0; i < m.ADRENALINE_IDLE_MS / 100 - 5; i++) m.tickAdrenaline(s, 100);
+  m.touchAdrenaline(s);
+  for (let i = 0; i < m.ADRENALINE_IDLE_MS / 100 - 5; i++) m.tickAdrenaline(s, 100);
+  assert.equal(s.value, m.ADRENALINE_GAIN.parry);
+});

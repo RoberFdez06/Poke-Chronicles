@@ -274,7 +274,7 @@ import { drawMinimap } from './minimap';
 import { cancelCharge, chargedShapeFor, CHARGE_DAMAGE_MUL, CHARGE_MOVE_MUL, CHARGE_SOURCES, isCharging, newCharge, stepCharge, type ChargeSource, type ChargeState } from '../data/charge.ts';
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
-import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineFull, adrenalineSpeedMul, gainAdrenaline, spendAdrenaline, newAdrenaline, tickAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
+import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineFull, adrenalineSpeedMul, gainAdrenaline, spendAdrenaline, newAdrenaline, tickAdrenaline, touchAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
 import { MEGA_STONE_ID, MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState, absorbWithShield, gmaxFormName, pickPower, pickTeraType, POWER_BLOCK_TEXT, powerCost, powerFormSizeMul, powerFormTeraType, useZMove, Z_MOVE_DAMAGE_MUL, type PowerChoice, type PowerContext } from '../data/powerForm';
 import { meterOnDamage, meterOnParry, newPowerMeter, powerMeterFill, spendPowerMeter, tickPowerMeter, type PowerMeterState } from '../data/powerMeter';
 import { canCapture, canThrow, CAPTURE_RANGE, newCaptureState, nextFloorCapture, resolveThrow, rollCapture, type CaptureState } from '../data/capture';
@@ -5042,6 +5042,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private transition(dir: Dir) {
     const next = this.floor.rooms[this.current.doors[dir]!];
     this.transitioning = true;
+    touchAdrenaline(this.adrenaline);
     this.clearEventObjs();
     this.player.setVelocity(0, 0);
     this.shots.clear(true, true);
@@ -6727,7 +6728,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.stats.homing > 0) this.steerShots(delta);
     this.stepLootAll(time, delta);
     this.updateDarkness();
-    if (tickAdrenaline(this.adrenaline, delta)) this.adrenalineHud && (this.adrenalineHud.shown = '');
+    if (tickAdrenaline(this.adrenaline, delta, this.cleared.has(this.current.id))) this.adrenalineHud && (this.adrenalineHud.shown = '');
     this.updatePowerForm();
     const ltNow = hasPad && (pad!.buttons[6]?.value ?? 0) > 0.5;
     const rtNow = hasPad && (pad!.buttons[7]?.value ?? 0) > 0.5;
@@ -7198,6 +7199,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private countDamage(e: Sprite, dmg: number) {
     const done = Math.max(0, Math.min(dmg, e.getData('hp') as number));
     this.counters.damage += done;
+    if (done > 0) touchAdrenaline(this.adrenaline);
     // T75: el daño que haces llena el medidor de poder
     meterOnDamage(this.powerMeter, done);
   }

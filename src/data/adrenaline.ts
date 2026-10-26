@@ -11,7 +11,7 @@ export const ADRENALINE_MAX = 100;
 export const ADRENALINE_GAIN = { kill: 8, dodge: 10, parry: 20 } as const;
 export type AdrenalineSource = keyof typeof ADRENALINE_GAIN;
 /** Tiempo sin sumar antes de que empiece a bajar (ms) y cuánto baja luego (por segundo). */
-export const ADRENALINE_IDLE_MS = 2500;
+export const ADRENALINE_IDLE_MS = 5000;
 export const ADRENALINE_DECAY_PER_S = 14;
 /** Duración del subidón (ms) y lo que da: velocidad y daño extra. */
 export const ADRENALINE_ACTIVE_MS = 6000;
@@ -47,7 +47,7 @@ export function gainAdrenaline(s: AdrenalineState, source: AdrenalineSource): bo
 }
 
 /** Avanza `dtMs`. Devuelve true si en este paso se acaba el subidón. */
-export function tickAdrenaline(s: AdrenalineState, dtMs: number): boolean {
+export function tickAdrenaline(s: AdrenalineState, dtMs: number, hold = false): boolean {
   const dt = Math.max(0, Math.min(dtMs, ADRENALINE_MAX_STEP_MS));
   if (adrenalineActive(s)) {
     s.activeLeft = Math.max(0, s.activeLeft - dt);
@@ -57,9 +57,16 @@ export function tickAdrenaline(s: AdrenalineState, dtMs: number): boolean {
     s.idleMs = 0;
     return true;
   }
+  // Con la sala despejada la barra se queda como está: no baja hasta que entras en otra y pasas un rato sin hacer daño
+  if (hold) return false;
   s.idleMs += dt;
   if (s.idleMs > ADRENALINE_IDLE_MS) s.value = Math.max(0, s.value - (ADRENALINE_DECAY_PER_S * dt) / 1000);
   return false;
+}
+
+/** Hacer daño (o entrar en una sala nueva) reinicia la espera antes de que la barra empiece a bajar. */
+export function touchAdrenaline(s: AdrenalineState) {
+  s.idleMs = 0;
 }
 
 /** Cuánto se ve lleno (0-1): mientras está activa, lo que queda del subidón. */
