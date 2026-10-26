@@ -57,6 +57,8 @@ function sample(): RunSave {
     secondChance: false,
     captureDone: false,
     capturePrevAlly: -1,
+    slotSpins: [],
+    fishCasts: [],
   };
 }
 
@@ -268,4 +270,18 @@ test('T65: v16 sin captura se migra (sin capturar) y se valida', () => {
   assert.equal(run.capturePrevAlly, -1);
   assert.equal(parseRun(JSON.stringify({ ...sample(), captureDone: true, capturePrevAlly: 7 }))?.capturePrevAlly, 7);
   assert.equal(parseRun(JSON.stringify({ ...sample(), capturePrevAlly: -2 })), null);
+});
+
+test('T68/T69: v17 sin contadores se migra a cero y los contadores hacen la ida y vuelta', () => {
+  const { slotSpins: _s, fishCasts: _f, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 17 }))!;
+  assert.equal(run.version, RUN_VERSION);
+  assert.deepEqual(run.slotSpins, []);
+  assert.deepEqual(run.fishCasts, []);
+  const full = { ...sample(), slotSpins: [[3, 2], [5, 1]], fishCasts: [[4, 3]] };
+  const back = parseRun(JSON.stringify(full))!;
+  assert.deepEqual(new Map(back.slotSpins), new Map([[3, 2], [5, 1]]));
+  assert.deepEqual(new Map(back.fishCasts), new Map([[4, 3]]));
+  assert.equal(parseRun(JSON.stringify({ ...sample(), slotSpins: [[1, -1]] })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), fishCasts: 'x' })), null);
 });

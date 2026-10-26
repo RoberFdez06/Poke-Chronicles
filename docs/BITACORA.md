@@ -1188,3 +1188,12 @@ Pendiente (T72 sigue `[ ]`):
 - Música por bioma en la Torre (usa la del bioma si GameScene ya la saca de `this.biome`; sin comprobar en juego).
 - Puntos de control al morir: la lógica está, falta la pantalla para elegir el punto y cobrar los caramelos.
 - Probar en el navegador (solo verificado con `tsc` y `npm test`).
+## Arreglos: desafío diario estable y contadores de sala guardados
+- **Desafío diario**: `pickRoomEvent` y `pickEventKind` aceptan una lista opcional de eventos (`kinds`, por defecto
+  `ROOM_EVENTS`). El diario pasa `DAILY_EVENTS`, una tabla CONGELADA con los ocho de antes de T68 (runaway, merchant,
+  altar, trapChest, rival, fountain, timeTrial, egg), así que slots, thief y fishing no salen en el diario y no alteran
+  su azar. **Añadir eventos nuevos a `ROOM_EVENTS` no obliga a tocar `DAILY_EVENTS`**: solo hay que actualizarla (y
+  asumir que cambia el reto) si se quiere versionar el desafío a propósito. Si se cambian los pesos de `eventWeights`
+  de uno de los ocho, también cambia el diario: el test con la copia literal de los pesos antiguos avisa.
+- **Guardado v18**: `RunSave.slotSpins` y `fishCasts` (pares `[sala, cantidad]`) guardan las tiradas de la tragaperras y
+  los lanzamientos de pesca; los v17 migran con ambos vacíos. Al continuar en la misma sala ya no se reinician.

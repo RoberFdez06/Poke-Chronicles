@@ -25,8 +25,9 @@ export const RUN_SLOTS = 3;
  * v13: salas sorpresa ya resueltas en el piso y PS máximos dados en altares (los v12 no tenían).
  * v14: huevo misterioso, ayudante y cansancio de la fuente (T48; los v13 no tenían).
  * v15: pociones que llevas y pociones en el suelo (T49; los v14 no tenían).
+ * v18: tiradas de la tragaperras y lanzamientos de pesca por sala (T68/T69; los v17 no tenían).
  */
-export const RUN_VERSION = 17;
+export const RUN_VERSION = 18;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -123,6 +124,9 @@ export interface RunSave {
    *  `allyId` hasta cambiar de piso); -1 = no hay aliado capturado. */
   captureDone: boolean;
   capturePrevAlly: number;
+  /** T68/T69: tiradas de la tragaperras y lanzamientos de pesca ya hechos, como pares [sala, cantidad]. */
+  slotSpins: [number, number][];
+  fishCasts: [number, number][];
 }
 
 export interface DailyRun {
@@ -132,6 +136,9 @@ export interface DailyRun {
 
 const isInt = (n: unknown): n is number => Number.isInteger(n);
 const isIntArray = (a: unknown): a is number[] => Array.isArray(a) && a.every(isInt);
+
+const isPairs = (a: unknown): a is [number, number][] =>
+  Array.isArray(a) && a.every((p) => Array.isArray(p) && p.length === 2 && isInt(p[0]) && isInt(p[1]) && p[1] >= 0);
 
 function isMove(m: unknown): m is MovePower {
   const o = m as MovePower;
@@ -240,6 +247,11 @@ function migrateV16(d: RunSave): RunSave {
   return { ...d, version: 17, captureDone: false, capturePrevAlly: -1 };
 }
 
+/** v17 no guardaba las tiradas ni los lanzamientos (T68/T69): empiezan a cero. */
+function migrateV17(d: RunSave): RunSave {
+  return { ...d, version: 18, slotSpins: [], fishCasts: [] };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -266,6 +278,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 14) d = migrateV14(d);
   if (d.version === 15) d = migrateV15(d);
   if (d.version === 16) d = migrateV16(d);
+  if (d.version === 17) d = migrateV17(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
@@ -286,7 +299,8 @@ export function parseRun(raw: string | null): RunSave | null {
     (d.daily === null || (!!d.daily && isInt(d.daily.day) && typeof d.daily.counts === 'boolean')) &&
     isDifficulty(d.difficulty) && isIntArray(d.eventsDone) && isInt(d.hpSacrificed) && d.hpSacrificed >= 0 &&
     isInt(d.eggLeft) && d.eggLeft >= 0 && isInt(d.allyId) && d.allyId >= 0 && isInt(d.tiredRooms) && d.tiredRooms >= 0 && isInt(d.potions) && d.potions >= 0 &&
-    typeof d.secondChance === 'boolean' && typeof d.captureDone === 'boolean' && isInt(d.capturePrevAlly) && d.capturePrevAlly >= -1;
+    typeof d.secondChance === 'boolean' && typeof d.captureDone === 'boolean' && isInt(d.capturePrevAlly) && d.capturePrevAlly >= -1 &&
+    isPairs(d.slotSpins) && isPairs(d.fishCasts);
   return ok ? d : null;
 }
 
