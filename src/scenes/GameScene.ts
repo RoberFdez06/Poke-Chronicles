@@ -2163,6 +2163,8 @@ export class GameScene extends Phaser.Scene {
     const key = `foe-${this.allyId}`;
     if (!this.allyId || !this.textures.exists(`${key}-front`) || !this.player) return;
     const sprite = this.add.sprite(this.player.x - 50, this.player.y + 20, `${key}-front`).setDisplaySize(44, 44).setDepth(4) as Sprite;
+    // Con hoja de movimiento (la del enemigo capturado) se ve en las 8 direcciones, como los demás
+    this.applyPmd(sprite, this.allyId, 44);
     const type = this.foeKinds.find((k) => k.key === key)?.type ?? 'normal';
     this.ally = { sprite, type, nextAt: this.time.now + HELPER_ATTACK_MS };
   }
@@ -2175,7 +2177,12 @@ export class GameScene extends Phaser.Scene {
     const tx = this.player.x - 50;
     const ty = this.player.y + 20;
     const f = Math.min(1, (delta / 1000) * 6);
-    s.setPosition(s.x + (tx - s.x) * f, s.y + (ty - s.y) * f + Math.sin(time / 180) * 0.6);
+    const mx = tx - s.x;
+    const my = ty - s.y;
+    s.setPosition(s.x + mx * f, s.y + my * f + Math.sin(time / 180) * 0.6);
+    // Mira hacia donde camina; parado, hacia el jugador
+    if (s.getData('pmd')) this.face(s, Math.hypot(mx, my) > 6 ? { x: mx, y: my } : { x: this.player.x - s.x, y: this.player.y - s.y });
+    else s.setFlipX(this.player.x > s.x);
     if (this.ended || this.transitioning || time < a.nextAt) return;
     a.nextAt = time + HELPER_ATTACK_MS;
     let best: Sprite | undefined;
@@ -2193,7 +2200,8 @@ export class GameScene extends Phaser.Scene {
     const target = best;
     const color = typeColor(a.type);
     const ball = this.add.circle(s.x, s.y, 7, color).setStrokeStyle(2, 0xffffff, 0.9).setDepth(6);
-    s.setFlipX(target.x > s.x);
+    if (s.getData('pmd')) this.face(s, { x: target.x - s.x, y: target.y - s.y });
+    else s.setFlipX(target.x > s.x);
     this.tweens.add({
       targets: ball, x: target.x, y: target.y, duration: Math.max(120, bestD * 0.9),
       onComplete: () => {
