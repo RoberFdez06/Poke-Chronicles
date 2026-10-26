@@ -669,3 +669,45 @@ sprites como `// TODO(supervisor)`, efectos bajos respetados, un commit por tare
 
 ## Orden recomendado de la Tanda 10
 - T76 y T77 (sensación de combate), luego T79 y T80 (variedad), T82 y T81 (compartir) y por último T78 (la más delicada con los jefes).
+
+# Tanda 11 — Mundo Pokémon (formas regionales, shiny, baya, gimnasios, misiones, legendarios)
+Antes de empezar cada tarea: consulta graphify y busca lo que ya existe (`shiny.ts` ya tiene probabilidades y enemigo shiny; `regions.ts`
+tiene las regiones; `medals.ts` las medallas de bioma; `MissionsScene` las misiones). Amplía, no dupliques. Todo en español; teclado,
+ratón y mando funcionan cada uno por separado. Lo visual nuevo, `// TODO(supervisor)`.
+
+## [ ] T83 — Formas regionales
+- Variantes de Alola, Galar, Hisui y Paldea de especies que ya salen (p. ej. Vulpix de Alola, Meowth de Galar, Growlithe de Hisui).
+  Cada forma cambia **tipos, ataques y estadísticas**, y su ficha dice la región. Datos en un archivo nuevo `src/data/regionalForms.ts`
+  (lógica pura, import con `.ts`, tests: toda forma apunta a una especie válida, tipos válidos, sin duplicados).
+- Salen como enemigos del bioma que encaje (probabilidad baja y ajustable), se pueden capturar (T65), cuentan en el Pokédex y en el gacha
+  como entrada propia. Sprites: reutiliza los de PokeAPI cuando existan; si no, `// TODO(supervisor)`.
+
+## [ ] T84 — Cadena shiny
+- Derrotar o capturar seguidos enemigos de **la misma especie** sube una cadena; cada eslabón multiplica la probabilidad de shiny
+  (`SHINY_ODDS.enemy`) hasta un tope. Cambiar de especie o perder vida de golpe rompe la cadena. Lógica pura en `shiny.ts`
+  (`chainOdds(n)`) con tests: sube, respeta el tope y se reinicia. Contador visible en el HUD solo cuando la cadena es 2 o más.
+  No afecta al desafío diario (mismas condiciones para todos).
+
+## [ ] T85 — Huerto de bayas
+- En el menú principal, un huerto con parcelas: plantas una baya (las consigues en cofres y tiendas), crece **por partidas jugadas**
+  (no por reloj) y la recoges para llevarla a la run: curan, dan escudo o adrenalina. Datos y crecimiento en `src/data/berries.ts`,
+  guardado en `save.ts` (clave en `PROGRESS_KEYS`), tests de crecimiento y de cosecha. Escena `GardenScene` con teclado, ratón y mando.
+
+## [ ] T86 — Gimnasios con puzzles
+- Cada 10 pisos de la Torre y al final de cada bioma, una sala de **gimnasio** con un puzzle de su tipo antes del líder: Roca (empujar
+  bloques), Eléctrico (interruptores en orden), Hielo (suelo que resbala), Fantasma (puertas falsas), etc. Resolverlo abre el paso al
+  líder y da una medalla/objeto. Generador de puzzles en `src/level/gymPuzzles.ts`, puro y determinista por semilla, con tests: todo
+  puzzle generado tiene solución. Lo visual del suelo y las piezas, `// TODO(supervisor)`.
+
+## [ ] T87 — Misiones de NPC
+- NPC en el Centro Pokémon y en salas especiales que piden cosas concretas (derrota 3 Pokémon de agua, llega al piso 8 sin curarte,
+  entrega una baya) y dan premio. Se amplía `missions.ts`/`MissionsScene` con un tipo «de NPC» con texto de diálogo. Máximo 3 activas.
+  Tests de progreso y de caducidad. Los invitados pueden hacerlas pero no se guardan.
+
+## [ ] T88 — Cacería legendaria
+- Rastro de pistas (huellas, ruido, plumas) repartidas por varios pisos de una run que, si las sigues todas, abren una sala con un
+  legendario **capturable** de forma especial (más difícil, con fases). Probabilidad y legendario según bioma (coherente con T64).
+  Lógica de pistas pura con tests; el efecto de las pistas y la sala, `// TODO(supervisor)`.
+
+## Orden recomendado de la Tanda 11
+- T84 y T83 (sobre lo que ya existe), luego T87 y T85, y al final T86 y T88.
