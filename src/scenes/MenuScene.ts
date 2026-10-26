@@ -60,6 +60,7 @@ export class MenuScene extends Phaser.Scene {
       { label: 'Gacha', action: () => this.openGacha() },
       { label: 'Pokédex', action: () => goTo(this, 'Pokedex') },
       { label: 'Mejoras', action: () => goTo(this, 'Upgrades') },
+      { label: 'Huerto', action: () => goTo(this, 'Garden') },
       { label: 'Controles', action: () => openControls(this) },
       { label: 'Ajustes', action: () => goTo(this, 'Settings') },
     ];

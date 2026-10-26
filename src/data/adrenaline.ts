@@ -46,6 +46,16 @@ export function gainAdrenaline(s: AdrenalineState, source: AdrenalineSource): bo
   return true;
 }
 
+/** T85: la Baya Aslac del huerto llena la barra de golpe y activa el subidón. Devuelve false si ya estaba activa. */
+export function fillAdrenaline(s: AdrenalineState): boolean {
+  if (adrenalineActive(s)) return false;
+  s.value = ADRENALINE_MAX;
+  s.idleMs = 0;
+  s.activeLeft = ADRENALINE_ACTIVE_MS;
+  s.activations++;
+  return true;
+}
+
 /** Avanza `dtMs`. Devuelve true si en este paso se acaba el subidón. */
 export function tickAdrenaline(s: AdrenalineState, dtMs: number, hold = false): boolean {
   const dt = Math.max(0, Math.min(dtMs, ADRENALINE_MAX_STEP_MS));

@@ -79,7 +79,7 @@ import {
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
-import { acceptNpcMission, addRunHistory, loadKeys, loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMissionEvent, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
+import { acceptNpcMission, gainSeed, takeGardenBerries, updateGarden, addRunHistory, loadKeys, loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMissionEvent, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
 import { disableTips, markTipSeen, shouldShowTip, TIPS, type TipId } from '../data/tutorial';
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
 import { closeFloor, emptyCounters, floorTimes, noteParry, notePickup, noteRoomTime, openFloor, type RunCounters, type RunRecord } from '../data/runHistory';
@@ -254,6 +254,7 @@ import {
   slotsLabel,
 } from '../data/forge';
 import { canAfford, describeEffects, optionLabel, pickStory, resolveChoice, type ChoiceEffects, type ChoiceState, type ChoiceStory } from '../level/choiceEvents';
+import { GARDEN_BERRIES, GARDEN_HEAL, GARDEN_SHIELD, growGarden, rollSeed, SEED_CHANCE, shouldAutoHeal, useCarried, type GardenBerryId } from '../data/berries';
 import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
 import { biomeBossPool, biomeById, biomeEnemyPool, biomeFor, Biome, BIOMES, pickBossWeighted, pickMixedFoes } from '../level/biomes';
 import { forcedEventRng, hasRoutes, ROUTE_EVENT, routeLabel, routeMul, routeOptions, type RouteOption } from '../level/routes';
@@ -276,7 +277,7 @@ import { drawMinimap } from './minimap';
 import { cancelCharge, chargedShapeFor, CHARGE_DAMAGE_MUL, CHARGE_MOVE_MUL, CHARGE_SOURCES, isCharging, newCharge, stepCharge, type ChargeSource, type ChargeState } from '../data/charge.ts';
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
-import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineFull, adrenalineSpeedMul, gainAdrenaline, spendAdrenaline, newAdrenaline, tickAdrenaline, touchAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
+import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineFull, adrenalineSpeedMul, fillAdrenaline, gainAdrenaline, spendAdrenaline, newAdrenaline, tickAdrenaline, touchAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
 import { MEGA_STONE_ID, MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState, absorbWithShield, gmaxFormName, pickPower, pickTeraType, POWER_BLOCK_TEXT, powerCost, powerFormSizeMul, powerFormTeraType, useZMove, Z_MOVE_DAMAGE_MUL, type PowerChoice, type PowerContext } from '../data/powerForm';
 import { meterOnDamage, meterOnParry, newPowerMeter, powerMeterFill, spendPowerMeter, tickPowerMeter, type PowerMeterState } from '../data/powerMeter';
 import { canCapture, canThrow, CAPTURE_RANGE, newCaptureState, nextFloorCapture, resolveThrow, rollCapture, type CaptureState } from '../data/capture';
@@ -347,7 +348,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed' | 'reactionsFound' | 'storiesSeen' | 'route' | 'routesTaken'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed' | 'reactionsFound' | 'storiesSeen' | 'route' | 'routesTaken' | 'gardenBerries'
 >;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
@@ -715,6 +716,8 @@ export class GameScene extends Phaser.Scene {
   private rbPrev = false;
   /** T49: pociones que llevas, su tecla, el stick izquierdo pulsado (L3) del fotograma anterior y su contador. */
   private potions = 0;
+  /** T85: bayas del huerto que llevas (se usan solas, ver berries.ts). */
+  private gardenBerries: GardenBerryId[] = [];
   private potionKey!: Key;
   private l3Prev = false;
   private potionsHud?: Phaser.GameObjects.Text;
@@ -1011,6 +1014,12 @@ export class GameScene extends Phaser.Scene {
     this.megaZone = undefined;
     this.tiredRooms = r?.tiredRooms ?? this.carry?.tiredRooms ?? 0;
     this.potions = r?.potions ?? this.carry?.potions ?? 0;
+    // T85: al empezar partida (no al bajar de piso ni al continuar) te llevas bayas de la cesta del huerto
+    this.gardenBerries = r ? [...r.gardenBerries] : this.carry ? [...this.carry.gardenBerries] : this.codeRun ? [] : takeGardenBerries();
+    if (!r && !this.carry && this.gardenBerries.length > 0) {
+      const names = this.gardenBerries.map((b) => GARDEN_BERRIES[b].name).join(', ');
+      this.time.delayedCall(1500, () => !this.ended && this.notify(`Del huerto llevas:\n${names}`, { kind: 'reward', icon: 'heart' }));
+    }
     this.buffMul = 1;
     if (r) {
       this.floorNum = r.floor;
@@ -3232,6 +3241,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       allyId: this.allyId,
       tiredRooms: this.tiredRooms,
       potions: this.potions,
+      gardenBerries: [...this.gardenBerries],
       secondChance: this.secondChanceUsed,
       bossesBeaten: this.bossesBeaten,
       captureDone: this.capture.done,
@@ -3773,6 +3783,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       prize.drops.forEach((d, k) => this.dropLoot(chest.x + (k - (prize.drops.length - 1) / 2) * 26, chest.y + 56, d));
     }
     this.notify('¡Cofre abierto!', { kind: 'reward', icon: 'chestOpen' });
+    this.maybeSeed(SEED_CHANCE.chest, roomId);
     this.saveNow();
   }
 
@@ -4128,9 +4139,59 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.npcOffered || this.codeRun || this.ended) return;
     this.npcOffered = true;
     const m = acceptNpcMission((this.floorSeed ^ Math.imul(room.id + 1, 0x9e3779b1)) >>> 0);
-    if (!m) return;
+    if (!m) return this.deliverBerry();
     sfx('buy');
+    this.time.delayedCall(800, () => this.deliverBerry());
     this.notify(`${m.npc}: «${m.dialog}»\nEncargo: ${m.text} (${m.runs === 1 ? '1 partida' : `${m.runs} partidas`})`, { kind: 'mission', ms: 6000 });
+  }
+
+  /** T87 + T85: si un NPC te ha pedido una baya y llevas una del huerto, se la das (la que menos falta haga). */
+  private deliverBerry() {
+    if (this.ended || this.codeRun || !loadMissions().npc.some((a) => a.id === 'npc-baya')) return;
+    const berry = (['aslac', 'gonlan', 'aranja'] as const).find((b) => this.gardenBerries.includes(b));
+    if (!berry) return;
+    this.gardenBerries = useCarried(this.gardenBerries, berry) ?? this.gardenBerries;
+    this.notify(`Le das una ${GARDEN_BERRIES[berry].name} a la granjera`, { kind: 'reward', icon: 'heart' });
+    this.mission({ kind: 'berry' });
+    this.saveNow();
+  }
+
+  /** T85: Baya Aranja del huerto: se come sola con pocos PS. */
+  private gardenAutoHeal() {
+    if (this.hp <= 0 || !shouldAutoHeal(this.hp, this.stats.maxHp)) return;
+    const left = useCarried(this.gardenBerries, 'aranja');
+    if (!left) return;
+    this.gardenBerries = left;
+    const amount = scaleHeal(GARDEN_HEAL, this.diff);
+    this.hp = healed(this.hp, this.stats.maxHp, amount);
+    sfx('heal');
+    this.popup(this.player.x, this.player.y - 50, `Baya Aranja +${amount} PS`, GARDEN_BERRIES.aranja.color);
+  }
+
+  /** T85: al entrar en la sala del jefe, la Gonlan da escudo y la Aslac llena la adrenalina. */
+  private gardenBossBerries() {
+    const shield = useCarried(this.gardenBerries, 'gonlan');
+    if (shield) {
+      this.gardenBerries = shield;
+      this.shieldLeft += GARDEN_SHIELD;
+      this.notify(`Baya Gonlan\nEscudo para ${GARDEN_SHIELD} golpes`, { kind: 'reward', icon: 'star' });
+    }
+    const adr = useCarried(this.gardenBerries, 'aslac');
+    if (adr && fillAdrenaline(this.adrenaline)) {
+      this.gardenBerries = adr;
+      this.notify('Baya Aslac\n¡Adrenalina a tope!', { kind: 'reward', icon: 'star' });
+      sfx('levelup');
+    }
+  }
+
+  /** T85: semilla para el huerto (cofres y tiendas). Las partidas con código no dan. */
+  private maybeSeed(chance: number, salt: number) {
+    if (this.codeRun) return;
+    const rng = mulberry32((this.floorSeed ^ Math.imul(salt + 11, 0x85ebca6b)) >>> 0);
+    if (rng() >= chance) return;
+    const berry = rollSeed(rng);
+    gainSeed(berry);
+    this.notify(`¡Semilla de ${GARDEN_BERRIES[berry].name}!\nPlántala en el huerto`, { kind: 'reward', icon: 'heart' });
   }
 
   /** Pone en cola un consejo del tutorial si aún no se ha visto (y no están desactivados). */
@@ -4998,6 +5059,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else if (room.kind === 'center') this.tip('center');
     else if (room.kind === 'shop') this.tip('shop');
     if (room.kind === 'center' || room.kind === 'shop') this.npcEncounter(room);
+    if (room.kind === 'boss' && !this.cleared.has(room.id)) this.gardenBossBerries();
     if (!this.cleared.has(room.id) && (this.mode === 'waves' || room.kind === 'combat' || room.kind === 'boss' || room.kind === 'challenge')) this.tip('shoot');
     if (this.chests.has(room.id)) this.tip('chest');
 
@@ -6691,6 +6753,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       allyId: nextFloorCapture(this.capture, this.allyId).allyId,
       tiredRooms: this.tiredRooms,
       potions: this.potions,
+      gardenBerries: [...this.gardenBerries],
       secondChance: this.secondChanceUsed,
       bossesBeaten: this.bossesBeaten,
       powerMeter: this.powerMeter.value,
@@ -7779,6 +7842,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const item = passiveById(g.id);
       if (item) this.gainItem({ kind: 'passive', item });
     }
+    this.maybeSeed(SEED_CHANCE.shop, 1000 + k);
     this.refreshInventory();
     this.saveNow();
   }
@@ -8363,6 +8427,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.hp = Math.min(this.stats.maxHp, this.hp + this.stats.lowHpHeal);
       this.popup(this.player.x, this.player.y - 50, `Hierba Blanca +${this.stats.lowHpHeal} PS`, 0xf0f0e0);
     }
+    this.gardenAutoHeal();
     this.hurtFeedback(enemy, taken);
 
     if (this.hp <= 0) {
@@ -8444,6 +8509,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.codeRun && code) submitSeedBest(code, won ? this.floorNum : this.floorNum - 1);
     // T87: los encargos de NPC caducan contando partidas terminadas
     this.mission({ kind: 'runEnd' });
+    // T85: el huerto crece por partidas jugadas
+    updateGarden(growGarden);
     this.ended = true;
     this.endedAt = this.time.now;
     this.physics.pause();

@@ -9,6 +9,7 @@ import { activeStorage, type StorageLike } from './storage.ts';
 import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } from './modes.ts';
 import { applyMissionEvent, offerNpcMission, parseMissions, type Completed, type MissionEvent, type MissionState, type NpcMission } from './missions.ts';
 import { dayNumber } from './gacha.ts';
+import { addSeed, parseGarden, takeBasket, type GardenBerryId, type GardenState } from './berries.ts';
 import { awardMedal, parseMedals, type MedalAward } from './medals.ts';
 import { KONAMI_KEY } from './easterEggs.ts';
 import { parseDefeated } from './runDex.ts';
@@ -469,6 +470,44 @@ export function acceptNpcMission(seed: number, day = dayNumber(), storage: Stora
   return r.mission;
 }
 
+// --- Huerto de bayas (T85, ver berries.ts) ---
+
+export const GARDEN_KEY = 'pokeisaac.garden';
+
+export function loadGarden(storage: StorageLike | null = browserStorage()): GardenState {
+  try {
+    return parseGarden(storage?.getItem(GARDEN_KEY) ?? null);
+  } catch {
+    return parseGarden(null);
+  }
+}
+
+export function saveGarden(state: GardenState, storage: StorageLike | null = browserStorage()) {
+  try {
+    storage?.setItem(GARDEN_KEY, JSON.stringify(state));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+}
+
+/** Cambia el huerto con `f` y lo guarda. */
+export function updateGarden(f: (g: GardenState) => GardenState, storage: StorageLike | null = browserStorage()): GardenState {
+  const next = f(loadGarden(storage));
+  saveGarden(next, storage);
+  return next;
+}
+
+/** Semilla conseguida en la partida (cofre o tienda): va directa al huerto. */
+export const gainSeed = (berry: GardenBerryId, storage: StorageLike | null = browserStorage()) =>
+  updateGarden((g) => addSeed(g, berry), storage);
+
+/** Al empezar partida: saca de la cesta las bayas que te llevas. */
+export function takeGardenBerries(storage: StorageLike | null = browserStorage()): GardenBerryId[] {
+  const r = takeBasket(loadGarden(storage));
+  if (r.berries.length > 0) saveGarden(r.state, storage);
+  return r.berries;
+}
+
 // --- Tutorial: consejos vistos (ver tutorial.ts) ---
 
 export const TUTORIAL_KEY = 'pokeisaac.tutorial';
@@ -549,6 +588,7 @@ export const PROGRESS_KEYS: readonly string[] = [
   UPGRADES_KEY,
   SHINIES_KEY,
   MISSIONS_KEY,
+  GARDEN_KEY,
   MEDALS_KEY,
   KONAMI_KEY,
   TUTORIAL_KEY,

@@ -11,6 +11,7 @@ import { SettingsScene } from './scenes/SettingsScene';
 import { PokedexScene } from './scenes/PokedexScene';
 import { UpgradeScene } from './scenes/UpgradeScene';
 import { MissionsScene } from './scenes/MissionsScene';
+import { GardenScene } from './scenes/GardenScene';
 import { RunDexScene } from './scenes/RunDexScene';
 import { SummaryScene } from './scenes/SummaryScene';
 import { HistoryScene } from './scenes/HistoryScene';
@@ -97,7 +98,7 @@ function startGame() {
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     // La primera escena es la que arranca; añade las nuevas (p. ej. GachaScene) al final
     // PauseScene va la última para dibujarse encima de la partida
-    scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, RunDexScene, SummaryScene, HistoryScene, KeysScene, BossIntroScene, FloorIntroScene, FinalPromptScene, RouteScene, SlotSwapScene, ItemChoiceScene, ControlsScene, SecondChanceScene, SeedCodeScene, PauseScene, AccountScene, PadLegendScene],
+    scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, GardenScene, RunDexScene, SummaryScene, HistoryScene, KeysScene, BossIntroScene, FloorIntroScene, FinalPromptScene, RouteScene, SlotSwapScene, ItemChoiceScene, ControlsScene, SecondChanceScene, SeedCodeScene, PauseScene, AccountScene, PadLegendScene],
   });
   lockEscapeInFullscreen(game);
   // T43: un error no deja el juego colgado: pantalla "Algo ha fallado" con vuelta al menú

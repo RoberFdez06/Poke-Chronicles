@@ -702,7 +702,7 @@ ratón y mando funcionan cada uno por separado. Lo visual nuevo, `// TODO(superv
   (`chainOdds(n)`) con tests: sube, respeta el tope y se reinicia. Contador visible en el HUD solo cuando la cadena es 2 o más.
   No afecta al desafío diario (mismas condiciones para todos).
 
-## [ ] T85 — Huerto de bayas
+## [x] T85 — Huerto de bayas
 - En el menú principal, un huerto con parcelas: plantas una baya (las consigues en cofres y tiendas), crece **por partidas jugadas**
   (no por reloj) y la recoges para llevarla a la run: curan, dan escudo o adrenalina. Datos y crecimiento en `src/data/berries.ts`,
   guardado en `save.ts` (clave en `PROGRESS_KEYS`), tests de crecimiento y de cosecha. Escena `GardenScene` con teclado, ratón y mando.

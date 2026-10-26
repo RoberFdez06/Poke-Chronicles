@@ -68,6 +68,7 @@ function sample(): RunSave {
     route: { biomeId: 'cueva', diffPct: 20, reward: 'shop' },
     routesTaken: [{ biomeId: 'cueva', diffPct: 20, reward: 'shop' }],
     seeded: { seed: 123456, fromCode: true },
+    gardenBerries: ['aranja', 'gonlan'],
   };
 }
 
@@ -403,5 +404,19 @@ test('T81: v24 se migra sin semilla; la semilla hace la ida y vuelta y las corru
   assert.equal(parseRun(JSON.stringify({ ...sample(), seeded: null }))!.seeded, null);
   for (const bad of [{ seed: -1, fromCode: false }, { seed: 2 ** 31, fromCode: false }, { seed: 1.5, fromCode: true }, { seed: 5 }, 5, 'x']) {
     assert.equal(parseRun(JSON.stringify({ ...sample(), seeded: bad })), null);
+  }
+});
+
+test('v25 se migra a v26 sin bayas del huerto; las bayas raras invalidan el guardado', () => {
+  const { gardenBerries: _g, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 25 }))!;
+  assert.equal(run.version, RUN_VERSION);
+  assert.deepEqual(run.gardenBerries, []);
+  assert.equal(parseRun(JSON.stringify(old)), null);
+  const st = fakeStorage();
+  assert.ok(saveRun(1, sample(), st));
+  assert.deepEqual(loadRun(1, st)!.gardenBerries, ['aranja', 'gonlan']);
+  for (const bad of [['nada'], 'aranja', [1], null]) {
+    assert.equal(parseRun(JSON.stringify({ ...sample(), gardenBerries: bad })), null);
   }
 });
