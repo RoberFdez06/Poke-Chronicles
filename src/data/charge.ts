@@ -1,10 +1,11 @@
-// T77: Ataque cargado. Mantener el botón de disparo carga un golpe; a los 0,8 s sale solo un disparo grande (doble de
-// daño, atraviesa y cambia según el tipo). Soltar antes dispara el normal. Lógica pura, sin Phaser.
+// T77: Ataque cargado. Es una entrada propia (tecla, botón del ratón, gatillo del mando): se mantiene pulsada para cargar y
+// al soltarla con la carga completa (0,8 s) sale un disparo grande (doble de daño, atraviesa y cambia según el tipo). Soltar
+// antes no dispara nada. El disparo básico no pasa por aquí: mantener el botón de disparar sigue siendo ráfaga automática.
+// Lógica pura, sin Phaser.
 //
-// Cada fuente de disparo (teclado, ratón, mando, táctil) lleva su propia carga, para que cualquiera pueda cargar sola.
-// El reloj es el del bucle del juego (`game.loop.time`), como la recarga del parry: avanza también en pausa, y al
-// pausar o cambiar de sala la carga se cancela y queda bloqueada hasta soltar el botón (así no sale un disparo
-// fantasma al volver ni se encadenan dos cargados manteniendo pulsado).
+// Cada fuente de carga (teclado, ratón, mando) lleva la suya, para que cualquiera pueda cargar sola. El reloj es el del
+// bucle del juego (`game.loop.time`), como la recarga del parry: avanza también en pausa, y al pausar o cambiar de sala la
+// carga se cancela y queda bloqueada hasta soltar el botón (así no sale un disparo fantasma al volver).
 
 /** Tiempo de carga (ms). */
 export const CHARGE_MS = 800;
@@ -12,27 +13,27 @@ export const CHARGE_MS = 800;
 export const CHARGE_DAMAGE_MUL = 2;
 /** Velocidad de movimiento mientras cargas (un 40 % más lento). */
 export const CHARGE_MOVE_MUL = 0.6;
-/** Por debajo de esto no se cuenta como carga y no frena (un toque rápido es un disparo normal). */
+/** Por debajo de esto no se cuenta como carga y no frena (un toque rápido no estorba). */
 export const CHARGE_MIN_MS = 120;
 
-export type ChargeSource = 'teclado' | 'raton' | 'mando' | 'tactil';
-export const CHARGE_SOURCES: readonly ChargeSource[] = ['teclado', 'raton', 'mando', 'tactil'];
+export type ChargeSource = 'teclado' | 'raton' | 'mando';
+export const CHARGE_SOURCES: readonly ChargeSource[] = ['teclado', 'raton', 'mando'];
 
 export interface ChargeState {
   /** Desde cuándo (reloj del bucle) se mantiene pulsado; null si no se está cargando. */
   heldSince: number | null;
-  /** Ya salió un disparo (o se canceló) en esta pulsación: no sale nada más hasta soltar. */
+  /** Se canceló en esta pulsación (pausa, sala, activo): no carga ni dispara hasta soltar. */
   locked: boolean;
 }
 
 export const newCharge = (): ChargeState => ({ heldSince: null, locked: false });
 
-export type ChargeAction = 'nada' | 'normal' | 'cargado';
+export type ChargeAction = 'nada' | 'cargado';
 
 /**
- * Un paso: `held` es si el botón de esta fuente está pulsado ahora. Devuelve qué disparo sale en este instante.
- * - Al llegar a CHARGE_MS con el botón pulsado sale el cargado (una sola vez por pulsación).
- * - Al soltar antes de tiempo sale el normal.
+ * Un paso: `held` es si el botón de carga de esta fuente está pulsado ahora. Devuelve qué sale en este instante.
+ * - Mantener solo carga (nunca dispara mientras está pulsado).
+ * - Al soltar con la carga completa (CHARGE_MS) sale el cargado, una vez. Al soltar antes, nada.
  */
 export function stepCharge(s: ChargeState, held: boolean, loopNow: number): ChargeAction {
   if (!held) {
@@ -40,14 +41,9 @@ export function stepCharge(s: ChargeState, held: boolean, loopNow: number): Char
     const locked = s.locked;
     s.heldSince = null;
     s.locked = false;
-    return was !== null && !locked ? 'normal' : 'nada';
+    return was !== null && !locked && loopNow - was >= CHARGE_MS ? 'cargado' : 'nada';
   }
-  if (s.locked) return 'nada';
-  if (s.heldSince === null) s.heldSince = loopNow;
-  if (loopNow - s.heldSince >= CHARGE_MS) {
-    s.locked = true;
-    return 'cargado';
-  }
+  if (!s.locked && s.heldSince === null) s.heldSince = loopNow;
   return 'nada';
 }
 

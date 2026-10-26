@@ -93,13 +93,19 @@ test('T65: la Poké Ball tiene su tecla (G), va detrás del parry y sale en los 
   assert.equal(new Set(Object.values(k)).size, ACTIONS.length);
 });
 
-test('T74: megaevolucionar tiene su tecla (M), es la última acción y sale en los controles', () => {
+test('T74: megaevolucionar tiene su tecla (M), va justo antes de la de carga y sale en los controles', () => {
   assert.equal(DEFAULT_KEYS.mega, 'M');
-  assert.equal(ACTIONS[ACTIONS.length - 1], 'mega');
+  assert.equal(ACTIONS[ACTIONS.length - 2], 'mega');
   assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([what, how]) => what === 'Megaevolución' && how.includes('M') && how.includes('cruceta')));
   // Un guardado de antes con la M en otra acción no pierde sus teclas
   const k = parseKeys(JSON.stringify({ ...DEFAULT_KEYS, mega: undefined, bomb: 'M' }));
   assert.equal(k.bomb, 'M');
   assert.notEqual(k.mega, 'M');
   assert.equal(new Set(Object.values(k)).size, ACTIONS.length);
+});
+
+test('T77: el ataque cargado tiene su tecla (V), es la última acción y sale en los controles', () => {
+  assert.equal(DEFAULT_KEYS.charge, 'V');
+  assert.equal(ACTIONS[ACTIONS.length - 1], 'charge');
+  assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([n]) => n === 'Ataque cargado'));
 });

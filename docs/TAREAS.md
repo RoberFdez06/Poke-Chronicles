@@ -629,12 +629,15 @@ sprites como `// TODO(supervisor)`, efectos bajos respetados, un commit por tare
   de reacciones descubiertas. Los jefes aguantan la mitad del daño de las reacciones. Efectos visuales como `// TODO(supervisor)`.
 
 ## [x] T77 — Ataque cargado
-- Mantener pulsado el botón de disparo (teclado, ratón o gatillo/botón del mando) carga un golpe: a los 0,8 s se suelta un disparo más
-  grande, con el doble de daño, que atraviesa y cambia de forma según el tipo del movimiento (por ejemplo, fuego deja un rastro, agua
-  empuja, eléctrico salta). Mientras cargas te mueves un 40 % más despacio, y soltar antes de tiempo dispara el normal.
-- Cuida que no choque con el parry (T53), el objeto activo ni la pausa: comprobar el botón al pausar y al cambiar de sala (como pasó con
-  la recarga del parry: usa `this.game.loop.time`). Lógica pura (`charge.ts`) con tests: tiempo de carga, cancelar, daño según carga y
-  que con autodisparo o mantener sin soltar no hace dos disparos. El brillo de carga y el disparo cargado, `// TODO(supervisor)`.
+- Entrada propia, aparte del disparo: se mantiene pulsada para cargar y al soltarla con la carga completa (0,8 s) sale un disparo más
+  grande, con el doble de daño, que atraviesa y cambia de forma según el tipo (fuego deja rastro, agua empuja, eléctrico salta). Soltar
+  antes no dispara nada. Mientras cargas te mueves un 40 % más despacio. Entradas: tecla V (configurable, `charge`), botón lateral del
+  ratón (atrás o adelante; el derecho mueve y el central es el parry) y LT del mando. Cada una carga sola. En táctil no hay carga.
+- El disparo básico NO cambia: mantener el botón de disparo (flechas, clic izquierdo, stick derecho) sigue siendo ráfaga automática.
+  (Una primera versión metió la carga en el botón de disparo y obligaba a pulsar cada disparo; se corrigió.)
+- No choca con el parry (T53), el objeto activo ni la pausa: se cancela al pausar, cambiar de sala o usar el activo (como la recarga del
+  parry: usa `this.game.loop.time`). Lógica pura (`charge.ts`) con tests: tiempo de carga, cancelar, fuentes independientes, daño según
+  carga y que el autodisparo no da cargados. El brillo de carga y el disparo cargado, `// TODO(supervisor)`.
 
 ## [ ] T78 — Arenas que cambian en los jefes
 - En los jefes (no en los minijefes), al bajar al 66 % y al 33 % de PS la arena cambia de **fase** con aviso previo de 1,5 s: el suelo
