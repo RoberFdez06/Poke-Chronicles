@@ -456,3 +456,91 @@ necesita un efecto visual nuevo, déjalo con un hueco claro (`// TODO(supervisor
 
 ## Orden recomendado
 - T53, T54, T55 primero (sensación inmediata), luego T56-T59, y al final T60-T63 (colección y comodidad).
+
+# Tanda 9 (pedida por Roberto el 26/10: capturar, megaevolución, más salas, día y noche, torre de 100 pisos)
+
+Reglas de siempre: español, teclado/ratón/mando cada uno por separado (los botones nuevos entran en `keybinds.ts`, en la pantalla de
+controles y en los avisos de botón del HUD), avisos nunca en el centro, los invitados no guardan, tickets/monedas/caramelos separados.
+Cada tarea con tests de lógica pura (`node --test`) y `tsc` + `npm test` en verde. Comenta el código explicando el porqué.
+Antes de tocar una zona, consulta el grafo de graphify y mira si ya existe algo parecido: en la Tanda 8 tres tareas repetían cosas que
+ya estaban hechas. No toques los ficheros del supervisor (arte, menús, `attacks.ts`, `pixelFx.ts`, `combatFx.ts`, `movePatterns.ts`,
+`finale.ts`, etc.): si una tarea necesita un efecto visual o un sprite nuevo, déjalo con un hueco claro (`// TODO(supervisor): ...`).
+Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un commit por tarea sin firmas ni mención a Claude, sin push.
+
+## [ ] T64 — Jefes legendarios de todas las generaciones (el bioma solo da un poco más de probabilidad)
+- Roberto no ha visto salir legendarios como Lunala, Solgaleo, Kyurem, Necrozma, Zacian, Eternatus, Koraidon o Miraidon. Causa:
+  `biomeBossPool` (`src/level/biomes.ts`) reparte los 94 legendarios y singulares entre los biomas por su tipo y solo deja los del
+  tipo del bioma. Cámbialo: el jefe sale de **todos** los legendarios y singulares, y el tipo del bioma solo sube su probabilidad
+  (peso ×3 si comparte tipo, ×1 si no). Lógica pura `pickBossWeighted(pool, rng, seen, biome)` en `progression.ts`/`biomes.ts`, con tests:
+  que salen los de cualquier tipo, que el del tipo del bioma es más probable, que no se repite mientras queden otros, y que sin conexión
+  (`onlyBundled`) se mantiene el filtro de los que están guardados.
+- Mira también `finale.ts` (reto final): comprueba que su lista incluye legendarios de todas las generaciones (Gen 7, 8 y 9) y, si no,
+  propón la lista ampliada en la bitácora (ese fichero es del supervisor; no lo cambies).
+- Lo mismo para los **minijefes**: que no estén atados al tipo del bioma más allá de un pequeño peso.
+
+## [ ] T65 — Capturar enemigos (uno por piso)
+- Botón de Poké Ball (teclado, ratón y mando, con su etiqueta). Con un enemigo normal con **25 % de PS o menos** al alcance, lanzas una
+  Poké Ball: probabilidad según los PS que le quedan (más baja, más fácil), con animación de sacudidas (el dibujo queda como
+  `// TODO(supervisor)`). Si sale bien, el enemigo se vuelve **aliado hasta que acabes el piso** (reutiliza el sistema de ayudante/aliado
+  del huevo de T48: `allyId`) y cuenta en el registro de combate (T63).
+- **Solo una captura por piso.** No se pueden capturar: **minijefes, jefes, legendarios y singulares, élites ni shinies de jefe**
+  (los ayudantes que invoca un jefe tampoco). Un intento fallido no gasta la captura del piso, pero hay 3 s de espera antes de volver
+  a lanzar. Avisos fuera del centro: «¡X capturado!» / «Se ha escapado».
+- Lógica pura con tests: quién se puede capturar, probabilidad por PS, un solo éxito por piso, la espera y que se reinicia al cambiar de
+  piso. Guardar y continuar partida: el aliado y si ya capturaste en ese piso van en `RunSave` (versión nueva con migración).
+
+## [ ] T66 — Megaevolución de jefes
+- A mitad de la pelea (por ejemplo al bajar al 50 % de PS) el jefe cambia de forma: aviso previo de 1,5 s fuera del centro, invulnerable
+  mientras dura, y desde ahí tiene más daño y velocidad, un patrón de ataque nuevo (añádelo en `bossPatterns.ts` con aviso previo y que sea
+  esquivable) y más ayudantes. Los legendarios sin megaevolución real usan una «forma furia» con la misma lógica. Solo jefes, no minijefes.
+- Los efectos (destello, aura nueva, cambio de color) quedan como `// TODO(supervisor)`; usa los ya existentes (`evolveBurst`) mientras tanto.
+- Tests de la lógica pura: cuándo se activa (una sola vez por jefe), multiplicadores y que no pasa de lo esquivable.
+
+## [ ] T67 — Día y noche cada pocos minutos
+- Un ciclo que alterna **día y noche cada 6 minutos de partida** (constante fácil de cambiar entre 5 y 10; cuenta el tiempo jugado, sin
+  la pausa, no la hora real). De noche salen más y con más daño los tipos Fantasma, Siniestro y Psíquico; de día, Planta, Fuego y Normal
+  (pequeño peso, nunca ocultar el resto). Aviso fuera del centro al cambiar («Se hace de noche»). El ciclo se guarda con la partida.
+- El tinte de pantalla y el cielo quedan como `// TODO(supervisor)`; con efectos bajos, solo el aviso y los efectos de juego.
+- Tests de la lógica pura: fase según el tiempo, multiplicadores y que continuar partida mantiene la fase.
+
+## [ ] T68 — Sala de juegos
+- Un evento de sala nuevo en `roomEvents.ts` (como los de T48, con etiqueta, color de minimapa y peso por piso): una tragaperras que se
+  juega con **monedas de la partida** (nunca tickets ni caramelos). Apuestas fijas (3, 6 o 12 monedas), tres rodillos, premios por
+  combinaciones (nada, par, trío, trío de la suerte) y un 5 % de que salga un objeto. Teclado, ratón y mando. Un máximo de tiradas por sala.
+- El dibujo de la máquina queda como `// TODO(supervisor)`. Tests de la lógica pura: premios, probabilidades (el valor esperado tiene
+  que ser algo menor que la apuesta para que no sea una mina de monedas) y el tope de tiradas.
+
+## [ ] T69 — Safari y pesca
+- Un evento de sala nuevo: **laguna de pesca** (solo en biomas con agua o al azar con poco peso en el resto). Botón de acción para lanzar
+  la caña, ventana de tiempo corta para pulsar cuando pica (accesible con teclado, ratón y mando, dificultad suave). Premios: monedas,
+  bayas, un objeto o un Pokémon acuático raro que sale a combatir con más botín. Hay una probabilidad muy pequeña de Magikarp y, más
+  pequeña aún, de Gyarados (reutiliza `easterEggs.ts`). Un máximo de lanzamientos por sala.
+- El dibujo de la laguna y la caña quedan como `// TODO(supervisor)`. Tests de la lógica pura: tabla de premios, ventana de tiempo y tope.
+
+## [ ] T70 — Equipo de ladrones
+- Evento de sala: un ladrón (enemigo rápido, sin ataque) **te roba monedas al tocarte** y huye hacia una puerta; si lo abates antes de que
+  salga de la sala te devuelve lo robado y un extra, y si escapa pierdes las monedas. Nunca te quita más de la mitad de las monedas ni
+  deja la cuenta en negativo; si no llevas monedas, el evento no aparece. Aviso fuera del centro.
+- El sprite del ladrón queda como `// TODO(supervisor)` (usa un enemigo normal mientras tanto). Tests: cuánto roba, tope, devolución y
+  que no sale sin monedas.
+
+## [ ] T71 — Árbol de mejoras con caramelos
+- Hoy «Mejoras» (`UpgradeScene`, `upgrades.ts`) son mejoras sueltas. Conviértelo en un **árbol** con nodos que se desbloquean al
+  comprar el anterior (ramas: ataque, defensa, botín, utilidad), con objetivos a largo plazo (nodos finales caros). Conserva todo lo ya
+  comprado: migra el guardado para que cada mejora actual sea un nodo del árbol sin perder lo comprado ni gastar caramelos.
+- Se navega con teclado (flechas), ratón y mando por separado, con el coste y el efecto de cada nodo a la vista. Lógica del árbol
+  (requisitos, coste, qué está disponible) pura y con tests, incluido el de la migración del guardado. El dibujo de los nodos y las ramas
+  queda como `// TODO(supervisor)`: haz primero una versión funcional con las formas de `theme.ts`.
+
+## [ ] T72 — Modo Torre de 100 pisos
+- Modo nuevo «Torre» en `modes.ts` (con su récord propio, su botón en el menú de modos y su texto en el resumen): **100 pisos seguidos**.
+  Cada **5 pisos hay un minijefe «chetado»** (mucha más vida y daño que un minijefe normal, un ataque extra y un objeto épico al caerse) y
+  cada **10 pisos un jefe** (los legendarios de T64, con megaevolución de T66). El piso 100 es el reto final (`finale.ts`).
+- La dificultad escala de forma suave y continua con el piso (revisa `balance.ts`/`balance.test.ts` para que no se dispare ni se
+  quede plano: a partir del piso 30 hay que seguir pudiendo esquivar todo). Cada 10 pisos hay una sala de descanso con tienda y fuente.
+- Guardado y continuar partida con su versión de `RunSave` y migración; puntos de control cada 10 pisos al morir (al volver a empezar
+  puedes arrancar desde el último jefe vencido, con un coste en caramelos que decides en la lógica pura y pones en una constante).
+- Tests: qué piso es minijefe, jefe, descanso o final, escalado y récord. Es la tarea más grande: déjala la última.
+
+## Orden recomendado
+- T64 primero (arregla algo que Roberto notó), luego T65, T66 y T67, después T68-T70 (salas), T71 y por último T72.
