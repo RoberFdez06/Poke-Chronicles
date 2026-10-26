@@ -503,7 +503,7 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
 - El tinte de pantalla y el cielo quedan como `// TODO(supervisor)`; con efectos bajos, solo el aviso y los efectos de juego.
 - Tests de la lógica pura: fase según el tiempo, multiplicadores y que continuar partida mantiene la fase.
 
-## [ ] T68 — Sala de juegos
+## [x] T68 — Sala de juegos
 - Un evento de sala nuevo en `roomEvents.ts` (como los de T48, con etiqueta, color de minimapa y peso por piso): una tragaperras que se
   juega con **monedas de la partida** (nunca tickets ni caramelos). Apuestas fijas (3, 6 o 12 monedas), tres rodillos, premios por
   combinaciones (nada, par, trío, trío de la suerte) y un 5 % de que salga un objeto. Teclado, ratón y mando. Un máximo de tiradas por sala.

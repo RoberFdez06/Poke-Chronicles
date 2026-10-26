@@ -46,6 +46,7 @@ import {
   timeTrialExtra,
   timeTrialSize,
 } from '../level/roomEvents';
+import { SLOT_BETS, SLOT_MAX_SPINS, SLOT_OUTCOME_LABEL, canSpin, spinSlot } from '../level/slotMachine';
 import { applyDifficulty, scaleHeal, scaleTickets, withDifficulty, type Difficulty } from '../data/difficulty';
 import { loadSpeciesIndex } from '../data/speciesIndex';
 import {
@@ -528,6 +529,8 @@ export class GameScene extends Phaser.Scene {
   private tiredRooms = 0;
   /** Lo dibujado del evento de la sala actual y los sitios donde se usa con Enter / A / clic. */
   private eventObjs: Phaser.GameObjects.GameObject[] = [];
+  /** T68: tiradas hechas en cada sala de juegos del piso (sala -> tiradas). */
+  private slotSpins = new Map<number, number>();
   private eventSpots: { x: number; y: number; prompt: () => string; use: () => void }[] = [];
   /** Pokémon raro que huye: hasta cuándo se queda y su cuenta atrás. */
   private runaway?: { sprite: Sprite; until: number; label: Phaser.GameObjects.Text; name: string };
@@ -853,6 +856,7 @@ export class GameScene extends Phaser.Scene {
     this.hpSacrificed = r?.hpSacrificed ?? this.carry?.hpSacrificed ?? 0;
     this.secondChanceUsed = r?.secondChance ?? this.carry?.secondChance ?? false;
     this.eventsDone = new Set(r?.eventsDone ?? []);
+    this.slotSpins = new Map();
     this.eventObjs = [];
     this.eventSpots = [];
     this.runaway = undefined;
@@ -1405,6 +1409,32 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (kind === 'slots') {
+      // T68: sala de juegos. Tres apuestas fijas; cada una es un punto de uso (Enter / A cerca, o clic)
+      // TODO(supervisor): dibujo de la tragaperras (cuerpo, palanca, luces); ahora, cajas y texto con las formas básicas
+      const g = keep(this.add.graphics().setDepth(2));
+      g.fillStyle(0x3a2a2a, 1).fillRect(i.cx - 130, i.cy - 110, 260, 130);
+      g.fillStyle(0xff7043, 1).fillRect(i.cx - 130, i.cy - 110, 260, 14);
+      g.fillStyle(0xfdf6e3, 1).fillRect(i.cx - 108, i.cy - 82, 216, 60);
+      const reelTxt = [-72, 0, 72].map((dx) => label(i.cx + dx, i.cy - 52, '?', 22, '#101828'));
+      const status = label(i.cx, i.cy - 128, 'Sala de juegos', 18, '#ffccbc');
+      const spinsLeft = () => SLOT_MAX_SPINS - (this.slotSpins.get(room.id) ?? 0);
+      SLOT_BETS.forEach((bet, k) => {
+        const x = i.cx + (k - 1) * 150;
+        const y = i.cy + 70;
+        const play = () => this.playSlots(room, bet, reelTxt, status);
+        clickable(keep(this.add.zone(x, y, 130, 50)), play);
+        label(x, y, `Apostar ${bet}`, 15, '#ffd34d');
+        this.eventSpots.push({
+          x,
+          y,
+          prompt: () => (spinsLeft() <= 0 ? 'La máquina se ha parado' : `Enter / A / clic: apostar ${bet} monedas (tienes ${this.coins}, quedan ${spinsLeft()} tiradas)`),
+          use: play,
+        });
+      });
+      return;
+    }
+
     if (kind === 'egg') {
       // Huevo misterioso: se lleva y eclosiona tras unas salas limpiadas
       const g = keep(this.add.graphics().setDepth(3));
@@ -1597,6 +1627,33 @@ export class GameScene extends Phaser.Scene {
     }
     this.notify(paid ? `¡Fuente curativa! +${amount} PS` : `¡Fuente curativa! +${amount} PS\nCansado: más lento ${FOUNTAIN_TIRED_ROOMS} salas`, { kind: 'heal', icon: 'heart' });
     this.finishEvent(room);
+  }
+
+  /** T68: una tirada de la tragaperras (la lógica, el premio y el tope están en slotMachine.ts). */
+  private playSlots(room: Room, bet: number, reels: Phaser.GameObjects.Text[], status: Phaser.GameObjects.Text) {
+    if (this.ended || this.transitioning || this.eventsDone.has(room.id)) return;
+    const done = this.slotSpins.get(room.id) ?? 0;
+    if (done >= SLOT_MAX_SPINS) return this.notify('La máquina se ha parado', { kind: 'warning', icon: 'coin' });
+    if (!canSpin(this.coins, bet, done)) return this.notify(`Te faltan monedas (${this.coins}/${bet})`, { kind: 'warning', icon: 'coin' });
+    this.slotSpins.set(room.id, done + 1);
+    this.coins -= bet;
+    const res = spinSlot(bet, Math.random);
+    this.coins += res.payout;
+    reels.forEach((t, k) => t.setText(res.reels[k] === 'siete' ? '7' : res.reels[k].slice(0, 2).replace(/^./, (c) => c.toUpperCase())));
+    status.setText(`${SLOT_OUTCOME_LABEL[res.outcome]}${res.payout > 0 ? ` · +${res.payout}` : ''}`);
+    sfx(res.payout > bet ? 'pickup' : 'buy');
+    if (res.payout > bet) this.popup(this.player.x, this.player.y - 50, `+${res.payout - bet} monedas`, 0xffd34d);
+    if (res.item) {
+      const p = this.freeSpot(this.player.x, this.player.y + 60);
+      this.dropItem(room.id, p.x, p.y);
+      this.notify('¡Premio extra!\nLa máquina suelta un objeto', { kind: 'item', icon: 'star' });
+    }
+    if (done + 1 >= SLOT_MAX_SPINS) {
+      this.notify('Fin de la sala de juegos\nLa máquina se apaga', { kind: 'info', icon: 'coin' });
+      this.finishEvent(room);
+    } else {
+      this.saveNow();
+    }
   }
 
   private takeEgg(room: Room) {
