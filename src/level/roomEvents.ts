@@ -203,6 +203,47 @@ export function pickMegaStoneRoom(floor: Floor, seed: number, exclude: ReadonlyS
   return pool[Math.min(pool.length - 1, Math.floor(x * pool.length))].id;
 }
 
+/** Salas normales que debe tener un piso como mínimo: una por si el minijefe se queda con otra y una para el santuario. */
+export const MEGA_STONE_MIN_PLAIN = 2;
+
+/**
+ * Garantiza sitio para el santuario sin cambiar la generación base del piso: si hay menos de MEGA_STONE_MIN_PLAIN salas
+ * de combate normales, convierte salas de cofre en salas normales (se les quita el cofre), empezando por la más aislada
+ * (menos puertas, luego la más lejana). Es determinista a partir del piso, así que al continuar una partida sale igual.
+ * Hay que llamarla justo tras generar el piso, ANTES de construir las salas (los cofres se construyen desde `chestRooms`).
+ */
+export function reserveSanctuaryRoom(floor: Floor): Floor {
+  const count = (f: Floor) => f.rooms.filter((r) => isPlainCombatRoom(f, r)).length;
+  let cur = floor;
+  if (count(cur) >= MEGA_STONE_MIN_PLAIN) return floor;
+  const isolation = (f: Floor, id: number) => Object.keys(f.rooms[id].doors).length * 1000 - f.rooms[id].depth;
+  // 1) Salas de cofre: se les quita el cofre (la más aislada primero)
+  const chests = [...(cur.chestRooms ?? [])].sort((a, b) => isolation(cur, a) - isolation(cur, b) || a - b);
+  while (chests.length > 0 && count(cur) < MEGA_STONE_MIN_PLAIN) {
+    const id = chests.shift()!;
+    cur = { ...cur, chestRooms: (cur.chestRooms ?? []).filter((x) => x !== id) };
+  }
+  // 2) Salas grandes: se deshace la más aislada (sus salas vuelven a ser normales y separadas)
+  while (count(cur) < MEGA_STONE_MIN_PLAIN && (cur.groups?.length ?? 0) > 0) {
+    const groups = cur.groups!;
+    let best = 0;
+    groups.forEach((g, i) => {
+      const score = (grp: number[]) => Math.min(...grp.map((id) => isolation(cur, id)));
+      if (score(g) < score(groups[best])) best = i;
+    });
+    const members = new Set(groups[best]);
+    const rooms = cur.rooms.map((r) => {
+      if (members.has(r.id)) {
+        const { group: _g, ...rest } = r;
+        return rest as Room;
+      }
+      return r.group !== undefined && r.group > best ? { ...r, group: r.group - 1 } : r;
+    });
+    cur = { ...cur, rooms, groups: groups.filter((_, i) => i !== best) };
+  }
+  return cur;
+}
+
 export interface MegaStonePlan {
   roomId: number;
   /** Hay que quitarle la regla de sala (la sala se «convierte» en normal). */

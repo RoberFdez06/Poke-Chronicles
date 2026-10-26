@@ -19,6 +19,7 @@ import {
   megaStoneDoneKey,
   pickMegaStoneRoom,
   planMegaStoneRoom,
+  reserveSanctuaryRoom,
   isPlainCombatRoom,
 } from '../src/level/roomEvents.ts';
 import { generateFloor, mulberry32, addBigRooms, type Floor } from '../src/level/floorGen.ts';
@@ -358,6 +359,7 @@ test('Mega Piedra: en muchas semillas, pisos y tamaños nunca cae en ninguna sal
     for (let seed = 1; seed <= 150; seed++) {
       let f = generateFloor({ seed, roomCount, special: true, extra: true });
       if (seed % 2 === 0) f = addBigRooms(f);
+      f = reserveSanctuaryRoom(f);
       for (const floorNum of [2, 3, 5, 8, 12]) {
         const { miniboss, event, rules, plan } = buildFloorLike(f, floorNum, seed * 7 + floorNum);
         if (!plan) {
@@ -374,7 +376,7 @@ test('Mega Piedra: en muchas semillas, pisos y tamaños nunca cae en ninguna sal
       }
     }
   }
-  assert.ok(planes > 2500, `solo ${planes} santuarios`);
+  assert.equal(planes, 5 * 150 * 5);
 });
 
 test('Mega Piedra: sin salas normales libres convierte la menos especial (primero regla, luego evento) y nunca una especial', () => {
@@ -410,5 +412,24 @@ test('Mega Piedra: un piso sin salas de combate no lo coloca en inicio, jefe, ti
     assert.equal(planMegaStoneRoom(soloEspeciales, seed), null);
     const soloCofres: Floor = { ...f, rooms: f.rooms.filter((r) => r.kind !== 'combat' || (f.chestRooms ?? []).includes(r.id)) };
     assert.equal(pickMegaStoneRoom(soloCofres, seed), null);
+  }
+});
+
+test('Mega Piedra obligatoria: TODO piso de 8, 10, 12, 16 y 24 salas (150 semillas, con y sin salas grandes) tiene santuario sin tocar la generación base', () => {
+  for (const roomCount of [8, 10, 12, 16, 24]) {
+    for (let seed = 1; seed <= 150; seed++) {
+      for (const big of [false, true]) {
+        const base = generateFloor({ seed, roomCount, special: true, extra: true, big });
+        const f = reserveSanctuaryRoom(base);
+        assert.equal(f.rooms.length, base.rooms.length);
+        assert.deepEqual(f.rooms.map((r) => [r.id, r.kind, r.doors]), base.rooms.map((r) => [r.id, r.kind, r.doors]), 'misma estructura');
+        assert.deepEqual(f, reserveSanctuaryRoom(base)); // determinista
+        assert.ok(f.rooms.filter((r) => isPlainCombatRoom(f, r)).length >= 1, `sin sala normal (${roomCount}/${seed}/${big})`);
+        for (const id of f.chestRooms ?? []) assert.ok((base.chestRooms ?? []).includes(id)); // solo se quitan cofres
+        const plan = planMegaStoneRoom(f, seed);
+        assert.ok(plan, `sin santuario (${roomCount}/${seed}/${big})`);
+        assert.ok(isPlainCombatRoom(f, f.rooms[plan!.roomId]));
+      }
+    }
   }
 });

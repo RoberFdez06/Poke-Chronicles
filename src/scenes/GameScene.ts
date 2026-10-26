@@ -22,6 +22,7 @@ import {
   DAILY_EVENTS,
   ROOM_EVENTS,
   planMegaStoneRoom,
+  reserveSanctuaryRoom,
   megaStoneDoneKey,
   runawayTickets,
   trapChestOutcome,
@@ -1007,6 +1008,8 @@ export class GameScene extends Phaser.Scene {
         extra: this.layout >= 3,
         big: this.layout >= 4,
       });
+      // Santuario obligatorio: si el piso no tiene sala normal para él, una sala de cofre pasa a ser normal
+      this.floor = reserveSanctuaryRoom(this.floor);
     }
     this.weather =
       (this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)
