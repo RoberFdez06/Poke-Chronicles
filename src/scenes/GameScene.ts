@@ -141,10 +141,11 @@ import { shotSfx } from '../data/sounds';
 import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
-import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
+import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_GLOW, FALL_HAZARD, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
-import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, FALL_STYLE_GLOW, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
+import { fallConceptFx, sacredFlame } from '../ui/art/fallArt';
+import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
 import { dynamaxBurst, teraBurst, zMoveFx } from '../ui/art/formsFx';
 import { buildClue, buildNpc, drawBallIcon } from '../ui/art/worldArt';
 import { buildShopArt, type ShopArt } from '../ui/art/shopArt';
@@ -6190,7 +6191,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.playerKnockUntil = Math.max(this.playerKnockUntil, now + FALL_SHAKE_MS + FALL_FADE_MS + FALL_HOLD_MS);
     this.player.setVelocity(0, 0);
     this.clearArenaShots();
-    const fall = arenaFall({ bossTypes: (b.getData('btypes') as string[] | undefined) ?? this.bossTypes, seed, player, boss });
+    const fall = arenaFall({ bossTypes: (b.getData('btypes') as string[] | undefined) ?? this.bossTypes, speciesId: b.getData('speciesId') as number | undefined, seed, player, boss });
     sfx('enrage');
     this.notify(FALL_WARNING, { kind: 'danger', icon: 'star' });
     const cam = this.cameras.main;
@@ -6206,10 +6207,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!lowFx()) {
       // Cinemática corta: bandas de cine, gran grieta que parte la sala por el jefe, rugido con cámara lenta y sacudida del jefe
       arenaLetterbox(this, this.scale.width, this.scale.height, 260, FALL_SHAKE_MS - 260 + FALL_FADE_MS, 300);
-      // Derrumbe propio de cada jefe: Dialga con relojes, Moltres con fuego, Kyogre con la marea, Palkia con el espacio…
+      // Derrumbe propio de cada jefe según su concepto (Dialga rebobina el tiempo, Palkia rasga el espacio, Giratina voltea
+      // el suelo…); los de un solo elemento y los demás, el de su tipo (Moltres fuego, Articuno ventisca…)
+      this.arenaObjs.push(arenaChasm(this, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS, FALL_GLOW[fall.theme]));
       const style = fallStyleOf(b.getData('speciesId') as number | undefined, (b.getData('btypes') as string[] | undefined) ?? this.bossTypes);
-      this.arenaObjs.push(arenaChasm(this, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS, FALL_STYLE_GLOW[style]));
-      this.arenaObjs.push(arenaFallFx(this, style, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS));
+      this.arenaObjs.push(fallConceptFx(this, fall.theme, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS) ?? arenaFallFx(this, style, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS));
       this.time.delayedCall(FALL_SHAKE_MS * 0.3, () => {
         sfx('enrage');
         cam.flash(180, 255, 255, 255);
@@ -6225,7 +6227,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       cam.fadeIn(FALL_FADE_MS, 0, 0, 0);
       cam.shake(320, 0.018);
       sfx('boom');
-      arenaLanding(this, this.player.x, this.player.y + 10, FALL_TINT[fall.theme] === undefined ? 0xffffff : 0xffd8a0);
+      arenaLanding(this, this.player.x, this.player.y + 10, FALL_GLOW[fall.theme]);
     });
     this.time.delayedCall(FALL_TOTAL_MS, () => {
       this.arenaFallAt = undefined;
@@ -6250,7 +6252,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.arenaObjs = [];
     for (const k of [...this.arenaCracks.keys()]) if (k.startsWith(`${room.id}:`)) this.arenaCracks.delete(k);
     const i = this.interior(room);
-    // TODO(supervisor): fondo de cada arena (cueva de lava, sala inundada, caverna helada, raíces, ruinas); ahora un tinte liso
+    // Fondo animado de la arena: el de su tipo o el del concepto del legendario (cámara del tiempo, vacío estelar…)
     this.arenaObjs.push(arenaBackdrop(this, i.x0, i.y0, ROOM.w, ROOM.h, fall.theme, FALL_TINT[fall.theme]));
     // TODO(supervisor): las raíces usan de momento la hierba alta ('B'); el agua, los charcos de siempre
     this.renderObstacles(room, fall.grid);
@@ -6258,13 +6260,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const k = `${room.id}:${tx},${ty}`;
       const cx = i.x0 + tx * TILE + TILE / 2;
       const cy = i.y0 + ty * TILE + TILE / 2;
-      // TODO(supervisor): lava y placas de hielo; ahora color liso
-      if (fall.theme === 'lava') {
+      const hz = FALL_HAZARD[fall.theme];
+      if (hz === 'lava') {
         this.arenaCracks.set(k, 'lava');
-        this.arenaObjs.push(arenaLava(this, cx - TILE / 2, cy - TILE / 2, TILE));
-      } else if (fall.theme === 'hielo') {
+        // Ho-Oh y Reshiram: fuego sagrado; el resto (cueva de lava, magma de Groudon), lava
+        this.arenaObjs.push(fall.theme === 'arcoiris' ? sacredFlame(this, cx - TILE / 2, cy - TILE / 2, TILE) : arenaLava(this, cx - TILE / 2, cy - TILE / 2, TILE));
+      } else if (hz === 'hielo') {
         this.arenaIce.add(k);
-        this.arenaObjs.push(arenaIce(this, cx - TILE / 2, cy - TILE / 2, TILE));
+        this.arenaObjs.push(arenaIce(this, cx - TILE / 2, cy - TILE / 2, TILE, 0.5, fall.theme === 'psique' ? 0xe8a8f8 : 0xcfeeff));
       }
     }
     this.flow = undefined;

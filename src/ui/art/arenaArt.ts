@@ -4,11 +4,14 @@
 import Phaser from 'phaser';
 import { lowFx } from '../theme';
 import { darkOf, lightOf, mixColor } from './pixelFx';
+import type { FallTheme } from '../../level/arenaPhase';
+import { CONCEPT_THEMES, fallBackdrop } from './fallArt';
 
 const OUT = 0x18202c;
 const P = 5; // píxel de las casillas (40 px = 8×8 píxeles)
 
-export type ArenaTheme = 'lava' | 'inundada' | 'hielo' | 'raices' | 'ruinas';
+/** Tema de la arena (los de siempre por tipo y los de concepto de los legendarios, que pinta fallArt). */
+export type ArenaTheme = FallTheme;
 
 const px = (g: Phaser.GameObjects.Graphics, x: number, y: number, c: number, a = 1, w = P, h = P) => g.fillStyle(c, a).fillRect(x, y, w, h);
 
@@ -138,10 +141,10 @@ export function arenaLava(scene: Phaser.Scene, x: number, y: number, size: numbe
 }
 
 /** Placa de hielo: brillo que cruza en diagonal y bordes claros. */
-export function arenaIce(scene: Phaser.Scene, x: number, y: number, size: number, depth = 0.5) {
+export function arenaIce(scene: Phaser.Scene, x: number, y: number, size: number, depth = 0.5, base = 0xcfeeff) {
   const g = scene.add.graphics().setDepth(depth);
   return live(scene, g, 180, (t) => {
-    px(g, x, y, 0xcfeeff, 0.75, size, size);
+    px(g, x, y, base, 0.75, size, size);
     px(g, x, y, 0xffffff, 0.8, size, P / 2);
     px(g, x, y, 0xffffff, 0.8, P / 2, size);
     px(g, x, y + size - P / 2, 0x7fb6d8, 0.8, size, P / 2);
@@ -166,6 +169,7 @@ export function arenaCollapse(scene: Phaser.Scene, x: number, y: number, ms: num
 
 /** Fondo de la arena nueva: tinte + trama de píxeles propia del tema (lava con brasas, agua con ondas, hielo con grietas…). */
 export function arenaBackdrop(scene: Phaser.Scene, x: number, y: number, w: number, h: number, theme: ArenaTheme, tint: number, depth = 0.33) {
+  if (CONCEPT_THEMES.includes(theme)) return fallBackdrop(scene, x, y, w, h, theme, tint, depth);
   const g = scene.add.graphics().setDepth(depth);
   g.fillStyle(tint, theme === 'hielo' ? 0.45 : 0.6).fillRect(x, y, w, h);
   let s = 12345;
