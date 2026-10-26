@@ -10,6 +10,8 @@ export const ACTIONS = [
   'parry',
   // T65: la Poké Ball, también al final por lo mismo
   'ball',
+  // T74: megaevolución (y las formas de poder de T75), también al final
+  'mega',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 export type KeyMap = Record<Action, string>;
@@ -35,6 +37,7 @@ export const ACTION_LABEL: Readonly<Record<Action, string>> = {
   back: 'Volver',
   parry: 'Parry (bloquear)',
   ball: 'Lanzar Poké Ball',
+  mega: 'Megaevolucionar',
 };
 
 export const DEFAULT_KEYS: Readonly<KeyMap> = {
@@ -44,6 +47,7 @@ export const DEFAULT_KEYS: Readonly<KeyMap> = {
   active: 'SPACE', bomb: 'E', potion: 'C', pause: 'P', accept: 'ENTER', back: 'ESC',
   parry: 'F',
   ball: 'G',
+  mega: 'M',
 };
 
 /**
@@ -51,7 +55,7 @@ export const DEFAULT_KEYS: Readonly<KeyMap> = {
  * bomba en F antes de que existiera el parry). Sin esto, parseKeys vería dos acciones con la misma tecla y le
  * devolvería todas las teclas por defecto, borrando lo que había configurado. R, T y N no: las usa la partida.
  */
-const SPARE_KEYS = ['F', 'Q', 'G', 'V', 'X', 'Z', 'B', 'H', 'J', 'K', 'L', 'SHIFT'];
+const SPARE_KEYS = ['F', 'Q', 'G', 'M', 'V', 'X', 'Z', 'B', 'H', 'J', 'K', 'L', 'SHIFT'];
 
 /** Nombres de tecla válidos: letras, números, flechas, F1-F12, teclado numérico y las especiales de Phaser. */
 const VALID = /^([A-Z]|ZERO|ONE|TWO|THREE|FOUR|FIVE|SIX|SEVEN|EIGHT|NINE|NUMPAD_[A-Z]+|F([1-9]|1[0-2])|UP|DOWN|LEFT|RIGHT|SPACE|ENTER|ESC|BACKSPACE|TAB|SHIFT|CTRL|ALT|CAPS_LOCK|INSERT|DELETE|HOME|END|PAGE_UP|PAGE_DOWN|COMMA|PERIOD|MINUS|PLUS|SEMICOLON|OPEN_BRACKET|CLOSED_BRACKET|BACK_SLASH|FORWARD_SLASH|QUOTES|BACKTICK)$/;
@@ -123,6 +127,7 @@ export function controlsFor(k: KeyMap): [string, string][] {
     ['Pausa', `${L('pause')} o ${L('back')} · botón ❚❚ de arriba a la izquierda · Start`],
     ['Parry', `${L('parry')} · clic central · RT (justo antes de que te den: bloquea y tu siguiente golpe es crítico)`],
     ['Poké Ball', `${L('ball')} · clic en la Poké Ball del HUD · R3 (pulsar el stick derecho) con un enemigo débil cerca`],
+    ['Megaevolución', `${L('mega')} · clic en la Mega Piedra del HUD · cruceta arriba (con Mega Piedra y la adrenalina llena)`],
     ['Usar · Bomba · Poción', `Usar: ${L('accept')} · clic · A    Bomba: ${L('bomb')} · clic en la bomba del HUD · RB    Poción: ${L('potion')} · clic en la poción del HUD · stick izq. (pulsar)`],
   ];
 }

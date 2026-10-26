@@ -10,9 +10,9 @@ import { NavInput } from '../ui/nav';
 import { drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
 
-// T53: 10 filas por columna (19 acciones con el parry), algo más bajas para que quepan Restablecer y Volver
-const COL_ROWS = 10;
-const ROW = { w: 420, h: 38, gap: 5, top: 90, x: [50, 490] };
+// T53: filas algo más bajas para que quepan Restablecer y Volver. T74: 11 por columna (21 acciones con la megaevolución)
+const COL_ROWS = 11;
+const ROW = { w: 420, h: 34, gap: 4, top: 88, x: [50, 490] };
 /** Opciones: todas las acciones, "Restablecer" y "Volver". */
 const RESET = ACTIONS.length;
 const BACK = ACTIONS.length + 1;

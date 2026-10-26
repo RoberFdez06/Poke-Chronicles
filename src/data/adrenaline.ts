@@ -68,3 +68,16 @@ export const adrenalineFill = (s: AdrenalineState): number =>
 
 export const adrenalineSpeedMul = (s: AdrenalineState): number => (adrenalineActive(s) ? ADRENALINE_SPEED_MUL : 1);
 export const adrenalineDamageMul = (s: AdrenalineState): number => (adrenalineActive(s) ? ADRENALINE_DAMAGE_MUL : 1);
+
+/**
+ * T74: la barra está llena. Al llenarse se activa sola, así que «llena» es también mientras dura el subidón (la
+ * barra sigue al máximo hasta que se acaba): ese es el momento para megaevolucionar.
+ */
+export const adrenalineFull = (s: AdrenalineState): boolean => s.value >= ADRENALINE_MAX;
+
+/** T74: gasta la barra entera (la megaevolución la consume): se vacía y se corta el subidón si lo había. */
+export function spendAdrenaline(s: AdrenalineState) {
+  s.value = 0;
+  s.idleMs = 0;
+  s.activeLeft = 0;
+}

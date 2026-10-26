@@ -8,6 +8,7 @@ import { isMode, type GameMode } from './modes.ts';
 import { isDifficulty, type Difficulty } from './difficulty.ts';
 import { emptyCounters, isCounters, type RunCounters } from './runHistory.ts';
 import { BERRIES, POTIONS, type ShopSlot } from './loot.ts';
+import { isPowerFormSave, type PowerFormSave } from './powerForm.ts';
 
 export const RUN_SLOTS = 3;
 /**
@@ -28,8 +29,9 @@ export const RUN_SLOTS = 3;
  * v18: tiradas de la tragaperras y lanzamientos de pesca por sala (T68/T69; los v17 no tenían).
  * v19: jefes vencidos, que dan huecos de objetos (T73). Los v18 se migran contando los jefes que ya habían salido
  *      menos el actual; no se les quita ningún objeto aunque lleven más que huecos.
+ * v20: forma de poder (megaevolución, T74): cuánto le queda y si ya se usó en el piso. Los v19 no la tenían.
  */
-export const RUN_VERSION = 19;
+export const RUN_VERSION = 20;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -131,6 +133,8 @@ export interface RunSave {
   fishCasts: [number, number][];
   /** T73: jefes vencidos en la partida (cada uno da un hueco de objeto más, ver items.ts). */
   bossesBeaten: number;
+  /** T74: forma de poder activa (megaevolución), lo que le queda (ms) y si ya se ha usado en este piso. */
+  powerForm: PowerFormSave;
 }
 
 export interface DailyRun {
@@ -265,6 +269,11 @@ function migrateV18(d: RunSave): RunSave {
   return { ...d, version: 19, bossesBeaten: Math.max(0, seen - 1) };
 }
 
+/** v19 no tenía formas de poder (T74): sin forma activa y sin usar en el piso. */
+function migrateV19(d: RunSave): RunSave {
+  return { ...d, version: 20, powerForm: { active: null, leftMs: 0, used: false } };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -293,6 +302,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 16) d = migrateV16(d);
   if (d.version === 17) d = migrateV17(d);
   if (d.version === 18) d = migrateV18(d);
+  if (d.version === 19) d = migrateV19(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
@@ -314,7 +324,8 @@ export function parseRun(raw: string | null): RunSave | null {
     isDifficulty(d.difficulty) && isIntArray(d.eventsDone) && isInt(d.hpSacrificed) && d.hpSacrificed >= 0 &&
     isInt(d.eggLeft) && d.eggLeft >= 0 && isInt(d.allyId) && d.allyId >= 0 && isInt(d.tiredRooms) && d.tiredRooms >= 0 && isInt(d.potions) && d.potions >= 0 &&
     typeof d.secondChance === 'boolean' && typeof d.captureDone === 'boolean' && isInt(d.capturePrevAlly) && d.capturePrevAlly >= -1 &&
-    isPairs(d.slotSpins) && isPairs(d.fishCasts) && isInt(d.bossesBeaten) && d.bossesBeaten >= 0;
+    isPairs(d.slotSpins) && isPairs(d.fishCasts) && isInt(d.bossesBeaten) && d.bossesBeaten >= 0 &&
+    isPowerFormSave(d.powerForm);
   return ok ? d : null;
 }
 

@@ -252,3 +252,24 @@ export function fetchAbility(id: number): Promise<{ id: string; nameEs?: string 
     }
   }).catch(() => null);
 }
+
+const formSpriteCache = new Map<string, Promise<PokemonSprites | null>>();
+
+/**
+ * T74: sprites de una forma alternativa por su nombre en PokeAPI (`charizard-mega-x`, `kyogre-primal`…; allí tienen
+ * id desde 10000 y sprite propio). null si no hay red o la forma no trae sprite pixel: la escena deja el de siempre.
+ */
+export function fetchFormSprites(name: string): Promise<PokemonSprites | null> {
+  if (!formSpriteCache.has(name)) {
+    formSpriteCache.set(
+      name,
+      getJson(`${BASE}/pokemon/${name}`)
+        .then((p: any) => (p?.sprites?.front_default ? spritesOf(p) : null))
+        .catch(() => {
+          formSpriteCache.delete(name); // se podrá reintentar en la próxima
+          return null;
+        }),
+    );
+  }
+  return formSpriteCache.get(name)!;
+}
