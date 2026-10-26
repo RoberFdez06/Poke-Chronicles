@@ -3,6 +3,7 @@ import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetch
 import { evolveFloors, pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
+import { GYM_PUZZLE_TICKETS, gymPuzzleKind, gymTier, hasGym } from '../level/gymPuzzles';
 import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal, loadCandies, loadDaily, loadDefeated, loadTickets, saveDefeated, spendCandies, spendTickets, submitSeedBest } from '../data/save';
 import { buildDexIndex, registerDefeat, type DexIndex } from '../data/runDex';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
@@ -5078,7 +5079,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // T70: sin monedas el ladrón no aparece y la sala se juega como una de combate normal (rama de abajo)
       this.startEvent(room, this.roomEvent.kind);
     } else if ((room.kind === 'combat' || room.kind === 'boss') && !this.cleared.has(room.id)) {
-      if (room.kind === 'boss') this.spawnBoss();
+      if (room.kind === 'boss') this.gymThenBoss(room.id);
       else if (room.id === this.minibossRoom) {
         this.spawnMiniboss();
         this.spawnEnemies(1);
@@ -5527,6 +5528,30 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const dir = new Phaser.Math.Vector2(this.player.x - e.x, this.player.y - e.y).normalize();
       castPattern(this.host, 'foe', e, dir, style.pattern, dmg, type, 0.55);
     });
+  }
+
+  /** T86: antes del líder, el puzzle del gimnasio (en pausa encima). Resolverlo da tickets; rendirse abre el paso sin premio. */
+  private gymThenBoss(roomId: number) {
+    if (!hasGym(this.mode, 'boss', !!this.finale && this.finaleMembers.length > 0) || !this.scene.manager.keys['GymPuzzle'] || this.floorIntroOn) {
+      return this.spawnBoss();
+    }
+    const seed = (this.floorSeed ^ Math.imul(roomId + 1, 0x9e3779b1)) >>> 0;
+    this.scene.launch('GymPuzzle', {
+      kind: gymPuzzleKind(this.biome.id, seed),
+      seed,
+      tier: gymTier(this.mode, this.floorNum),
+      onDone: (solved: boolean) => {
+        this.scene.stop('GymPuzzle');
+        this.scene.resume();
+        this.input.keyboard?.resetKeys();
+        if (solved) {
+          const n = this.giveTickets(GYM_PUZZLE_TICKETS);
+          this.notify(`¡Puzzle del gimnasio resuelto!${n > 0 ? `\n+${n} tickets` : ''}`, { kind: 'reward', icon: 'star' });
+        }
+        this.spawnBoss();
+      },
+    });
+    this.scene.pause();
   }
 
   private spawnBoss() {
