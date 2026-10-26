@@ -145,6 +145,7 @@ import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_HOLD_MS, FALL_
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
 import { arenaBackdrop, arenaCollapse, arenaCrack, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
+import { dynamaxBurst, teraBurst, zMoveFx } from '../ui/art/formsFx';
 import { buildClue, buildNpc, drawBallIcon } from '../ui/art/worldArt';
 import { buildShopArt, type ShopArt } from '../ui/art/shopArt';
 import { buildForgeArt, buildLagoonArt, buildSlotArt } from '../ui/art/eventArt';
@@ -3228,11 +3229,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const secs = Math.round(POWER_FORMS[choice].durationMs / 1000);
     const name = this.niceName();
     if (choice === 'tera') {
-      // TODO(supervisor): cristal Tera encima del sprite (mismo sprite, con la corona/joya del tipo) y destello al empezar.
+      teraBurst(this, this.player.x, this.player.y, typeColor(tera!));
       if (!lowFx()) evolveGlow(this, this.player, 900);
       this.notify(`¡${name} se teracristaliza!\nTus ataques son de tipo ${typeNameEs(tera!)} durante ${secs} s`, { kind: 'item', icon: 'pokeball' });
     } else {
-      // TODO(supervisor): efecto de Dinamax (nubes rojas, energía de la banda) y aura gigante. Con efectos bajos, nada.
+      dynamaxBurst(this, this.player.x, this.player.y, this.player.y + this.player.displayHeight / 2);
       if (!lowFx()) this.cameras.main.flash(250, 232, 56, 79);
       const label = choice === 'gigamax' ? `${name} Gigamax` : `${name} Dinamax`;
       this.notify(`¡${label}!\nGigante, con escudo y ataques más grandes durante ${secs} s`, { kind: 'item', icon: 'pokeball' });
@@ -3303,7 +3304,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       anim: basic.anim,
     };
     sfx('evolve');
-    // TODO(supervisor): pose y rayo del movimiento Z (cristal brillando, gran onda de su tipo). Con efectos bajos, sin flash.
+    zMoveFx(this, this.player.x, this.player.y, typeColor(type));
     if (!lowFx()) this.cameras.main.flash(300, 255, 230, 120);
     for (let k = 0; k < 16; k++) {
       const a = (k / 16) * Math.PI * 2;
