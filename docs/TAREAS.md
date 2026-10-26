@@ -718,7 +718,7 @@ ratón y mando funcionan cada uno por separado. Lo visual nuevo, `// TODO(superv
   entrega una baya) y dan premio. Se amplía `missions.ts`/`MissionsScene` con un tipo «de NPC» con texto de diálogo. Máximo 3 activas.
   Tests de progreso y de caducidad. Los invitados pueden hacerlas pero no se guardan.
 
-## [ ] T88 — Cacería legendaria
+## [x] T88 — Cacería legendaria
 - Rastro de pistas (huellas, ruido, plumas) repartidas por varios pisos de una run que, si las sigues todas, abren una sala con un
   legendario **capturable** de forma especial (más difícil, con fases). Probabilidad y legendario según bioma (coherente con T64).
   Lógica de pistas pura con tests; el efecto de las pistas y la sala, `// TODO(supervisor)`.
