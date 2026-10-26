@@ -198,6 +198,11 @@ export class MenuList {
     });
   }
 
+  /** Apaga (semitransparente) una opción: sigue en la lista, pero quien la usa decide no hacer nada (T79). */
+  setDimmed(i: number, dim: boolean) {
+    this.items[i]?.box.setAlpha(dim ? 0.45 : 1);
+  }
+
   move(d: number) {
     const n = this.items.length;
     if (d !== 0 && n > 0) this.select((this.selected + Math.sign(d) + n) % n);

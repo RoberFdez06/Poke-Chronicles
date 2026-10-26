@@ -644,7 +644,7 @@ sprites como `// TODO(supervisor)`, efectos bajos respetados, un commit por tare
 - Con la megaevolución del jefe (T66) la arena también cambia: mejor coordínalo para que las dos cosas no se pisen en el mismo instante.
   El dibujo de las zonas y su aviso (grietas, agua, bloques) lo hace el supervisor; deja `// TODO(supervisor)` y usa un color liso.
 
-## [ ] T79 — Eventos con decisiones
+## [x] T79 — Eventos con decisiones
 - Evento de sala nuevo en `roomEvents.ts` (etiqueta, color de minimapa y peso por piso): una **pequeña historia con 2 o 3 elecciones** y
   consecuencias (como los eventos de los roguelikes). Escribe **10 historias originales** en español de temática Pokémon (una mochila
   abandonada, un Pokémon herido, un viajero que ofrece un trato, una cueva con eco…), cada una con sus opciones y resultados: premio, riesgo,
