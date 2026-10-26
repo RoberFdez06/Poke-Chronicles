@@ -628,7 +628,7 @@ sprites como `// TODO(supervisor)`, efectos bajos respetados, un commit por tare
 - Aviso corto sobre el enemigo con el nombre de la reacción («¡Vapor!»), nunca en el centro, y una línea nueva en la pausa con la lista
   de reacciones descubiertas. Los jefes aguantan la mitad del daño de las reacciones. Efectos visuales como `// TODO(supervisor)`.
 
-## [ ] T77 — Ataque cargado
+## [x] T77 — Ataque cargado
 - Mantener pulsado el botón de disparo (teclado, ratón o gatillo/botón del mando) carga un golpe: a los 0,8 s se suelta un disparo más
   grande, con el doble de daño, que atraviesa y cambia de forma según el tipo del movimiento (por ejemplo, fuego deja un rastro, agua
   empuja, eléctrico salta). Mientras cargas te mueves un 40 % más despacio, y soltar antes de tiempo dispara el normal.
