@@ -93,6 +93,12 @@ export function withDailyResult(s: DailyState, day: number, floors: number): { s
   return { state: { ...s, todayBest: v, best: Math.max(s.best, v) }, newBest: v > s.best };
 }
 
+/** Tickets extra al completar el desafío de hoy cuando la racha llega a estos días (premio de racha, T58). */
+export const STREAK_TICKETS: Readonly<Record<number, number>> = { 3: 10, 7: 25, 14: 50, 30: 100 };
+
+/** Tickets de premio por la racha de hoy (0 si no es un día de premio). Solo se da una vez: la racha de hoy sube una sola vez. */
+export const streakReward = (streak: number): number => STREAK_TICKETS[streak] ?? 0;
+
 /** Texto del panel del modo: récord de hoy o si aún se puede jugar, y la racha. */
 export function dailyText(s: DailyState, day: number, floorCount: number): string {
   const streak = currentStreak(s, day);

@@ -425,7 +425,7 @@ necesita un efecto visual nuevo, déjalo con un hueco claro (`// TODO(supervisor
   te revive con media vida en la misma sala con 2 s de inmunidad. Se ofrece en la pantalla de muerte con botones para teclado, ratón y
   mando. Los invitados pueden usarla pero no guardan nada. Tests: coste, una sola vez por run y que no pueda pagar sin saldo.
 
-## [ ] T58 — Retos diarios con semilla
+## [x] T58 — Retos diarios con semilla (ya existía como Desafío diario de T34; añadido el premio por racha, hecho por el supervisor)
 - Una run por día con la misma semilla para todos (semilla derivada de la fecha, no de la hora, en lógica pura con test). Pantalla o
   botón en el menú de modos (pide al supervisor el hueco visual si lo necesitas), una sola participación diaria con su resultado
   guardado (piso alcanzado y tiempo) y una **medalla** nueva en `medals.ts` por completarlo. Los invitados no guardan.
@@ -435,12 +435,12 @@ necesita un efecto visual nuevo, déjalo con un hueco claro (`// TODO(supervisor
   salen de uno en uno (el siguiente entra cuando cae el anterior), con su aviso de «¡X te desafía!» fuera del centro y premio de
   tickets + objeto. El equipo se genera por piso y bioma en lógica pura con test; el sprite del entrenador queda como `// TODO(supervisor)`.
 
-## [ ] T60 — Sinergias por tipo con aviso
+## [x] T60 — Sinergias por tipo con aviso (ya existían el aviso al activarse y la lista en la pausa; las reglas por tipo están en T52 y synergies.ts)
 - Reglas nuevas en `synergies.ts` que potencian objetos del mismo tipo (fuego + planta, agua + eléctrico…) además de las de T52, y un
   **aviso al activarse** una sinergia (arriba, nunca en el centro) con su nombre. Listado de sinergias activas en la pantalla de pausa.
   Tests de que las existentes siguen pasando y de las nuevas.
 
-## [ ] T61 — Clima por piso
+## [x] T61 — Clima por piso (ya existía desde T38: lluvia, sol, arena, granizo y niebla con su multiplicador por tipo)
 - Cada piso puede tener un clima (lluvia, sol, tormenta de arena, niebla) elegido por semilla; cambia el daño según el tipo (lluvia
   potencia agua y debilita fuego, sol al revés, etc., multiplicadores en constantes). Tabla y selección en lógica pura con tests. Aviso
   del clima al empezar el piso; las partículas y el fondo quedan como `// TODO(supervisor)`. Respeta el modo de efectos bajos.

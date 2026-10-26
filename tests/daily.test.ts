@@ -97,3 +97,13 @@ test('texto del panel', () => {
   assert.match(dailyText(withDailyResult(s, DAY, 5).state, DAY, 5), /completado/);
   assert.match(dailyText(s, DAY, 5), /Racha: 1 día /);
 });
+
+test('T58: la racha da tickets solo en los días de premio', async () => {
+  const { streakReward, STREAK_TICKETS } = await import('../src/data/daily.ts');
+  assert.equal(streakReward(1), 0);
+  assert.equal(streakReward(2), 0);
+  assert.equal(streakReward(3), STREAK_TICKETS[3]);
+  assert.equal(streakReward(7), 25);
+  assert.equal(streakReward(30), 100);
+  assert.equal(streakReward(31), 0);
+});

@@ -3,10 +3,10 @@ import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetch
 import { evolveFloors, pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
-import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal, loadCandies, loadDefeated, loadTickets, saveDefeated, spendCandies, spendTickets } from '../data/save';
+import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal, loadCandies, loadDaily, loadDefeated, loadTickets, saveDefeated, spendCandies, spendTickets } from '../data/save';
 import { buildDexIndex, registerDefeat, type DexIndex } from '../data/runDex';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
-import { dailyFloorSeed, dailyRng } from '../data/daily';
+import { dailyFloorSeed, dailyRng, streakReward } from '../data/daily';
 import { damageMul, effectOf, EFFECT_COLOR, EFFECT_LABEL } from '../data/typeChart';
 import { weatherChip, weatherFor, weatherHurts, weatherPowerMul, WEATHER_DESC, WEATHER_LABEL, WEATHER_TICK_MS, type Weather } from '../data/weather';
 import { WeatherFx } from '../ui/weatherFx';
@@ -6528,6 +6528,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     clearRun(this.slot);
     // Desafío diario: la partida que cuenta apunta los pisos completados
     if (this.daily?.counts && submitDaily(this.daily.day, won ? this.floorNum : this.floorNum - 1)) this.counters.newRecord = true;
+    // T58: completar el desafío con la racha en un día redondo (3, 7, 14, 30) da tickets de más
+    if (this.daily?.counts && won) {
+      const bonus = streakReward(loadDaily().streak);
+      if (bonus > 0) {
+        addTickets(bonus);
+        this.notify(`¡Racha de ${loadDaily().streak} días!\n+${bonus} tickets`, { kind: 'reward', icon: 'ticket' });
+      }
+    }
     this.ended = true;
     this.endedAt = this.time.now;
     this.physics.pause();
