@@ -3,6 +3,7 @@
 import Phaser from 'phaser';
 import type { Rarity } from '../../data/gacha';
 import { drawPixelGrid, type PixelIcon } from './icons';
+import { lowFx } from '../theme';
 
 /** Poké Ball de cada rareza: Poké Ball, Super Ball, Ultra Ball, Ente Ball y Master Ball. */
 export const RARITY_BALLS: Record<Rarity, PixelIcon> = {
@@ -198,6 +199,56 @@ export function bakeGachaArt(scene: Phaser.Scene) {
   bake(MACHINE_KEY, MACHINE.w, MACHINE.h, drawMachine);
   bake(CRANK_KEY, 16, 16, drawCrank);
   (Object.keys(RARITY_BALLS) as Rarity[]).forEach((r) => bake(ballKey(r), 16, 16, (g) => drawPixelGrid(g, RARITY_BALLS[r])));
+}
+
+/**
+ * Vida en reposo de la máquina (encima de su imagen): un brillo que cruza la cúpula de cristal, bombillas que
+ * corren por la franja dorada y la ranura de tickets que parpadea. Un solo Graphics que sigue a la máquina
+ * (aunque flote o tiemble); se borra solo al destruirla. Con efectos bajos queda una sola pose quieta.
+ */
+export function addMachineIdle(scene: Phaser.Scene, machine: Phaser.GameObjects.Image, s: number) {
+  const g = scene.add.graphics().setDepth(machine.depth + 0.01);
+  let k = 0;
+  const p = (ox: number, oy: number, c: number, x: number, y: number, w = 1, h = 1, a = 1) =>
+    g.fillStyle(c, a).fillRect(ox + x * s, oy + y * s, w * s, h * s);
+  const draw = () => {
+    g.clear();
+    const ox = Math.round(machine.x - (MACHINE.w * s) / 2);
+    const oy = Math.round(machine.y - (MACHINE.h * s) / 2);
+    // Brillo diagonal de 2 px que cruza la cúpula cada ~4 s (recortado al círculo del cristal)
+    const t = k % 44;
+    if (t < 18) {
+      const bx = 2 + t * 3.4;
+      for (let y = -24; y <= 24; y++) {
+        const half = Math.floor(Math.sqrt(25 * 25 - y * y));
+        const x = Math.round(bx + y * 0.55);
+        for (let i = 0; i < 3; i++) {
+          const xx = x + i;
+          if (xx > 32 - half && xx < 32 + half) p(ox, oy, 0xffffff, xx, 30 + y, 1, 1, i === 1 ? 0.55 : 0.28);
+        }
+      }
+    }
+    // Bombillas que corren por la franja dorada
+    for (let i = 0; i < 6; i++) {
+      const on = (i + Math.floor(k / 3)) % 3 === 0;
+      p(ox, oy, on ? 0xfff6b0 : 0xb8860b, 11 + i * 8, 58, 3, 2);
+      if (on) p(ox, oy, 0xffffff, 12 + i * 8, 58, 1, 1);
+    }
+    // Ranura de tickets: luz que respira
+    p(ox, oy, 0xfff6b0, 18, 67, 4, 2, 0.25 + 0.6 * Math.abs(Math.sin(k * 0.18)));
+    // Una bola de dentro se mueve un píxel de vez en cuando, como si la máquina vibrara
+    if (k % 30 < 3) p(ox, oy, 0xffffff, 34, 33, 1, 1, 0.9);
+  };
+  draw();
+  if (lowFx()) return g;
+  const ev = scene.time.addEvent({ delay: 90, loop: true, callback: () => {
+    if (!machine.active || !g.active) { ev.remove(); if (g.active) g.destroy(); return; }
+    g.setDepth(machine.depth + 0.01);
+    k++;
+    draw();
+  } });
+  g.once(Phaser.GameObjects.Events.DESTROY, () => ev.remove());
+  return g;
 }
 
 /** Rayos de luz que giran detrás de (x, y), del color de la rareza. Devuelve el objeto para destruirlo. */

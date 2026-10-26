@@ -5,6 +5,7 @@
 // Todo es dibujo: no choca con nada. Se repite igual en cada visita a la sala (semilla por sala).
 import Phaser from 'phaser';
 import { shade, TILE, type BiomeLook } from './tiles';
+import { lowFx } from '../theme';
 
 type G = Phaser.GameObjects.Graphics;
 
@@ -185,7 +186,8 @@ export function decorateRoom(
     }
   }
 
-  // Detalles sueltos (más los de vegetación)
+  // Detalles sueltos (más los de vegetación); los que brillan (cristal, concha, brasa, runa) destellan a ratos
+  const shiny: [number, number][] = [];
   const set = DECALS[b.id] ?? DECALS.bosque;
   const n = 26 + Math.floor(r() * 12);
   for (let i = 0; i < n; i++) {
@@ -195,7 +197,9 @@ export function decorateRoom(
     const img = scene.add.image(x, y, `decal-${b.id}-${k}`).setScale(scale).setDepth(0.1);
     if (set[k] === CRACK) img.setAlpha(0.25);
     if (r() < 0.5) img.setFlipX(true);
+    if (set[k] === CRYSTAL || set[k] === SHELL || set[k] === EMBER || set[k] === RUNE) shiny.push([x, y]);
   }
+  addRoomAmbient(scene, OUTSIDE[b.id] ?? 'trees', cell, room, wall, scale, shiny);
 
   // En una sala grande, cada casilla pinta también el hueco que la une con la de la derecha o la de abajo
   // (`extR`, `extD`) y no pinta nada en los lados unidos: así sombras, viñeta y paredes siguen sin cortes.
@@ -322,4 +326,95 @@ export function decorateRoom(
     edge.fillStyle(shade(b.colors.wall, 0.3), 1).fillRect(cx + 3, cy + 3, wall - 6, 3);
     edge.fillStyle(shade(b.colors.wall, -0.4), 1).fillRect(cx + 3, cy + wall - 6, wall - 6, 3);
   }
+}
+
+/**
+ * Vida en reposo de la sala (un solo Graphics y un temporizador por sala, se para al destruirlo): destellos sobre
+ * el agua, burbujas en la lava y el pantano, copos sobre los pinos, estrellas que titilan, luciérnagas en el
+ * bosque y brillos en los detalles del suelo. Solo se redibuja si la sala está en pantalla; con efectos bajos, nada.
+ */
+function addRoomAmbient(
+  scene: Phaser.Scene,
+  kind: Outside,
+  cell: { x: number; y: number; w: number; h: number },
+  room: { x0: number; y0: number; x1: number; y1: number },
+  wall: number,
+  u: number,
+  shiny: [number, number][],
+) {
+  if (lowFx()) return;
+  const g = scene.add.graphics().setDepth(0.12);
+  const parts: { x: number; y: number; t: number }[] = [];
+  const life = kind === 'pines' ? 22 : kind === 'trees' ? 16 : 7;
+  const max = kind === 'roofs' || kind === 'rocks' ? 0 : 10;
+  // Un punto al azar fuera de la sala (en el paisaje de alrededor), alineado a la rejilla del píxel gordo
+  const outside = () => {
+    for (let n = 0; n < 6; n++) {
+      const x = cell.x + Math.random() * cell.w;
+      const y = cell.y + Math.random() * cell.h;
+      if (x > room.x0 - wall - u && x < room.x1 + wall + u && y > room.y0 - wall - u && y < room.y1 + wall + u) continue;
+      return { x: Math.round(x / u) * u, y: Math.round(y / u) * u, t: 0 };
+    }
+    return undefined;
+  };
+  let sparkle = -1;
+  let k = 0;
+  const ev = scene.time.addEvent({ delay: 140, loop: true, callback: () => {
+    if (!g.active) return ev.remove();
+    const v = scene.cameras.main.worldView;
+    if (v.width > 0 && (v.right < cell.x || v.x > cell.x + cell.w || v.bottom < cell.y || v.y > cell.y + cell.h)) return;
+    k++;
+    g.clear();
+    for (let i = parts.length - 1; i >= 0; i--) if (++parts[i].t > life) parts.splice(i, 1);
+    if (parts.length < max && Math.random() < 0.6) {
+      const p = outside();
+      if (p) parts.push(p);
+    }
+    for (const p of parts) {
+      const t = p.t;
+      const fade = 1 - t / life;
+      switch (kind) {
+        case 'water': {
+          const w = t < 3 ? t + 1 : 7 - t;
+          if (w > 0) g.fillStyle(0xffffff, 0.8).fillRect(p.x - w * u, p.y, w * 2 * u, u);
+          break;
+        }
+        case 'lava':
+        case 'swamp': {
+          const c = kind === 'lava' ? (t < 4 ? 0xffa030 : 0xffe08a) : t < 4 ? 0x7a9a5a : 0xb8d890;
+          const sz = t < 2 ? 1 : t < 5 ? 2 : 0;
+          if (sz) g.fillStyle(c, 0.9).fillRect(p.x, p.y - t * (u / 2), sz * u, sz * u);
+          else if (t === 5) g.fillStyle(c, 0.6).fillRect(p.x - u, p.y - 3 * u, u, u).fillRect(p.x + 2 * u, p.y - 3 * u, u, u);
+          break;
+        }
+        case 'pines':
+          g.fillStyle(0xffffff, 0.9 * fade + 0.1).fillRect(p.x + Math.round(Math.sin((t + p.x) / 3)) * u, p.y + t * u, u, u);
+          break;
+        case 'stars':
+          g.fillStyle(0xffffff, Math.sin((t / life) * Math.PI)).fillRect(p.x, p.y, u, u);
+          if (t === 3 || t === 4) g.fillStyle(0xd8c8ff, 0.7).fillRect(p.x - u, p.y, 3 * u, u).fillRect(p.x, p.y - u, u, 3 * u);
+          break;
+        case 'trees':
+          // Luciérnagas: punto amarillo que se enciende y deriva despacio
+          g.fillStyle(0xfff38a, Math.sin((t / life) * Math.PI)).fillRect(p.x + Math.round(Math.sin(t / 2) * 2) * u, p.y - Math.floor(t / 3) * u, u, u);
+          break;
+      }
+    }
+    // Brillo de cuatro puntas en uno de los detalles que brillan
+    if (shiny.length) {
+      if (sparkle < 0 && k % 9 === 0) sparkle = Math.floor(Math.random() * shiny.length);
+      if (sparkle >= 0) {
+        const [sx, sy] = shiny[sparkle];
+        const f = k % 9;
+        const a = f < 2 ? 0.6 : f < 4 ? 1 : f < 6 ? 0.5 : 0;
+        if (a > 0) {
+          const x = Math.round((sx - u) / u) * u;
+          const y = Math.round((sy - 2 * u) / u) * u;
+          g.fillStyle(0xffffff, a).fillRect(x, y - u, u, 3 * u).fillRect(x - u, y, 3 * u, u);
+        }
+        if (f === 8) sparkle = -1;
+      }
+    }
+  } });
+  g.once(Phaser.GameObjects.Events.DESTROY, () => ev.remove());
 }
