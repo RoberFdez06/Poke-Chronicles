@@ -478,7 +478,7 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
   propón la lista ampliada en la bitácora (ese fichero es del supervisor; no lo cambies).
 - Lo mismo para los **minijefes**: que no estén atados al tipo del bioma más allá de un pequeño peso.
 
-## [ ] T65 — Capturar enemigos (uno por piso)
+## [x] T65 — Capturar enemigos (uno por piso)
 - Botón de Poké Ball (teclado, ratón y mando, con su etiqueta). Con un enemigo normal con **25 % de PS o menos** al alcance, lanzas una
   Poké Ball: probabilidad según los PS que le quedan (más baja, más fácil), con animación de sacudidas (el dibujo queda como
   `// TODO(supervisor)`). Si sale bien, el enemigo se vuelve **aliado hasta que acabes el piso** (reutiliza el sistema de ayudante/aliado

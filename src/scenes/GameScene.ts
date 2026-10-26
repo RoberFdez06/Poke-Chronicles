@@ -230,6 +230,7 @@ import { drawMinimap } from './minimap';
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
 import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineSpeedMul, gainAdrenaline, newAdrenaline, tickAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
+import { canCapture, canThrow, CAPTURE_RANGE, newCaptureState, nextFloorCapture, resolveThrow, rollCapture, type CaptureState } from '../data/capture';
 import { DARK_RADIUS, darkEdge, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, ruleDamageMul, ruleNotice, shouldMultiply, speedRoomBonus, MULTIPLY_HP, MULTIPLY_SIZE, SPEED_ROOM_MUL, type RoomRule } from '../level/roomRules';
 import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data/secondChance';
 import type { SecondChanceChoice } from './SecondChanceScene';
@@ -515,6 +516,12 @@ export class GameScene extends Phaser.Scene {
   private eggLeft = 0;
   private allyId = 0;
   private ally?: { sprite: Sprite; type: string; nextAt: number };
+  /** T65: captura del piso (una por piso, espera tras fallar) y la Poké Ball del HUD; `capturing` = hay una en el aire. */
+  private capture: CaptureState = newCaptureState();
+  private capturing = false;
+  private ballKey!: Key;
+  private r3Prev = false;
+  private ballHud?: { g: Phaser.GameObjects.Graphics; x: number; y: number; shown: string };
   private tiredRooms = 0;
   /** Lo dibujado del evento de la sala actual y los sitios donde se usa con Enter / A / clic. */
   private eventObjs: Phaser.GameObjects.GameObject[] = [];
@@ -662,7 +669,7 @@ export class GameScene extends Phaser.Scene {
   /** Botón con el que se lanza cada poder (tecla o botón del mando, según con qué juegues). */
   private slotBadges: Phaser.GameObjects.Text[] = [];
   /** Botón de la bomba, la poción y el objeto activo (tecla o botón del mando), junto a cada uno en el HUD. */
-  private actionBadges: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; x: number; y: number; pad: string; action: 'active' | 'bomb' | 'potion' | 'parry' }[] = [];
+  private actionBadges: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; x: number; y: number; pad: string; action: 'active' | 'bomb' | 'potion' | 'parry' | 'ball' }[] = [];
   private badgeShown = '';
   private banner!: Phaser.GameObjects.Text;
   private toasts?: ToastStack;
@@ -851,6 +858,10 @@ export class GameScene extends Phaser.Scene {
     this.ally = undefined;
     this.eggLeft = r?.eggLeft ?? this.carry?.eggLeft ?? 0;
     this.allyId = r?.allyId ?? this.carry?.allyId ?? 0;
+    // T65: al continuar, lo guardado; en un piso nuevo, la captura recargada (el aliado capturado ya se quitó al bajar)
+    this.capture = r ? { ...newCaptureState(), done: r.captureDone, prevAllyId: r.capturePrevAlly >= 0 ? r.capturePrevAlly : null } : newCaptureState();
+    this.capturing = false;
+    this.r3Prev = false;
     this.tiredRooms = r?.tiredRooms ?? this.carry?.tiredRooms ?? 0;
     this.potions = r?.potions ?? this.carry?.potions ?? 0;
     this.buffMul = 1;
@@ -1608,6 +1619,121 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * T65: lanza una Poké Ball al enemigo capturable más cercano (normal, al 25 % de PS o menos y a tiro). Mientras se
+   * sacude el enemigo queda dentro (invisible y sin cuerpo) para que nadie le pegue; luego se decide con captureChance.
+   */
+  private throwBall() {
+    if (this.ended || this.transitioning || this.capturing || !this.player) return;
+    const now = this.time.now;
+    const check = canThrow(this.capture, now);
+    if (check === 'done') return this.notify('Ya has capturado en este piso', { kind: 'warning', icon: 'star' });
+    if (check === 'cooldown') return this.notify('Espera un momento para lanzar otra Poké Ball', { kind: 'warning', icon: 'clock' });
+    let best: Sprite | undefined;
+    let bestD = CAPTURE_RANGE;
+    let weakFarOrBad = false;
+    for (const c of this.enemies.getChildren()) {
+      const e = c as Sprite;
+      if (!e.active || e.getData('capturing')) continue;
+      const ok = canCapture(this.captureTarget(e));
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
+      if (ok && d <= bestD) {
+        best = e;
+        bestD = d;
+      } else if (!ok && d <= CAPTURE_RANGE) weakFarOrBad = true;
+    }
+    if (!best) {
+      return this.notify(weakFarOrBad ? 'Ese no se puede capturar\nDebilítalo al 25 % (jefes y élites, nunca)' : 'No hay ningún enemigo débil cerca', { kind: 'warning', icon: 'star' });
+    }
+    const target = best;
+    const hp = target.getData('hp') as number;
+    const max = (target.getData('maxHp') as number | undefined) ?? hp;
+    const success = rollCapture(hp, max, Math.random());
+    this.capturing = true;
+    target.setData('capturing', true).setVisible(false).setVelocity(0, 0);
+    const body = target.body as Body | null;
+    if (body) body.enable = false;
+    (target.getData('bar') as Phaser.GameObjects.Graphics | undefined)?.setVisible(false);
+    // TODO(supervisor): dibujo de la Poké Ball (vuelo, sacudidas y el destello de captura o la apertura al escaparse).
+    // Hasta entonces: un círculo rojo y blanco que vuela, se sacude tres veces (dos si se escapa) y desaparece.
+    const ball = this.add.circle(this.player.x, this.player.y, 9, 0xe8423c).setStrokeStyle(3, 0xffffff, 1).setDepth(7);
+    const shakes = success ? 3 : 2;
+    const low = lowFx();
+    this.tweens.add({
+      targets: ball, x: target.x, y: target.y, duration: 260,
+      onComplete: () => {
+        this.tweens.add({
+          targets: ball, angle: low ? 0 : 25, duration: 160, yoyo: true, repeat: shakes - 1, delay: 120,
+          onComplete: () => {
+            ball.destroy();
+            this.finishCapture(target, success);
+          },
+        });
+      },
+    });
+  }
+
+  /** Lo que mira captureTarget: tipo de enemigo y vida (jefes, minijefes, élites, legendarios y los de evento no). */
+  private captureTarget(e: Sprite) {
+    const id = (e.getData('speciesId') as number | undefined) ?? 0;
+    return {
+      hp: e.getData('hp') as number,
+      maxHp: (e.getData('maxHp') as number | undefined) ?? 1,
+      boss: !!(e.getData('ai') as EnemyAI | undefined)?.boss,
+      miniboss: !!e.getData('miniboss'),
+      elite: !!e.getData('elite'),
+      // Los legendarios y singulares de la partida son los jefes que salen (los de este piso y los ya vistos)
+      legendary: id > 0 && (id === this.bossId || this.bossHistory.includes(id)),
+      helper: !!e.getData('helper'),
+      shinyBoss: !!e.getData('shiny') && !!(e.getData('ai') as EnemyAI | undefined)?.boss,
+      special: !!(e.getData('runaway') || e.getData('mimic') || e.getData('finale') || e.getData('rival')),
+    };
+  }
+
+  private finishCapture(target: Sprite, success: boolean) {
+    this.capturing = false;
+    if (!target.active) return;
+    const name = this.foeKinds.find((k) => k.key === `foe-${target.getData('speciesId')}`)?.name;
+    const nice = name ? name.charAt(0).toUpperCase() + name.slice(1) : 'El Pokémon';
+    const caughtId = (target.getData('speciesId') as number | undefined) ?? 0;
+    const r = resolveThrow(this.capture, this.time.now, success, this.allyId, caughtId);
+    this.capture = r.state;
+    if (!success || this.ended) {
+      // Se escapa: vuelve a la sala tal cual estaba
+      target.setData('capturing', false).setVisible(true);
+      const body = target.body as Body | null;
+      if (body) body.enable = true;
+      if (!this.ended) this.notify(`Se ha escapado\n${nice} ha salido de la Poké Ball`, { kind: 'warning', icon: 'star' });
+      return;
+    }
+    // Capturado: cuenta en el registro de combate (T63) y pasa a ser el ayudante hasta acabar el piso
+    this.counters.kills++;
+    this.registerDex(target);
+    (target.getData('bar') as Phaser.GameObjects.Graphics | undefined)?.destroy();
+    if (!lowFx()) sparkle(this, target.x, target.y);
+    target.destroy();
+    this.allyId = r.allyId;
+    this.spawnAlly();
+    this.notify(`¡${nice} capturado!\nTe ayuda hasta el final del piso`, { kind: 'reward', icon: 'star' });
+    this.checkClear();
+  }
+
+  /** Poké Ball del HUD: a color si se puede lanzar, apagada si ya capturaste o estás esperando. */
+  private paintBall(time: number) {
+    const h = this.ballHud;
+    if (!h) return;
+    const state = canThrow(this.capture, time);
+    if (h.shown === state) return;
+    h.shown = state;
+    const a = state === 'ok' ? 1 : 0.3;
+    // TODO(supervisor): icono de Poké Ball de verdad (y otro para «ya capturado en este piso»).
+    h.g.clear();
+    h.g.fillStyle(0xe8423c, a).slice(h.x, h.y, 14, Math.PI, 0, false).fillPath();
+    h.g.fillStyle(0xf8f8f8, a).slice(h.x, h.y, 14, 0, Math.PI, false).fillPath();
+    h.g.lineStyle(3, 0x101828, a).strokeCircle(h.x, h.y, 14).lineBetween(h.x - 14, h.y, h.x + 14, h.y);
+    h.g.fillStyle(0xf8f8f8, a).fillCircle(h.x, h.y, 4).lineStyle(2, 0x101828, a).strokeCircle(h.x, h.y, 4);
+  }
+
   /** Ayudante del huevo: sigue al jugador y ataca al enemigo más cercano. Se crea si su dibujo está cargado. */
   private spawnAlly() {
     this.ally?.sprite.destroy();
@@ -1634,7 +1760,7 @@ export class GameScene extends Phaser.Scene {
     let bestD = 520;
     for (const c of this.enemies.getChildren()) {
       const e = c as Sprite;
-      if (!e.active || e.getData('runaway')) continue;
+      if (!e.active || e.getData('runaway') || e.getData('capturing')) continue;
       const d = Phaser.Math.Distance.Between(s.x, s.y, e.x, e.y);
       if (d < bestD) {
         bestD = d;
@@ -1895,6 +2021,7 @@ export class GameScene extends Phaser.Scene {
     this.bombKey = key('bomb');
     this.potionKey = key('potion');
     this.parryKey = key('parry');
+    this.ballKey = key('ball');
     this.activeKey = key('active');
     this.escKey = key('back');
     this.pauseKey = key('pause');
@@ -1995,12 +2122,17 @@ export class GameScene extends Phaser.Scene {
     };
     const activeBtn = over(hud(this.add.zone(LX + LW / 2, H - 71, LW, 110).setInteractive({ useHandCursor: true })));
     // Con qué se usa cada cosa (se redibuja al cambiar de teclado a mando): bomba, poción y objeto activo
-    const badge = (x: number, y: number, pad: string, action: 'active' | 'bomb' | 'potion' | 'parry') =>
+    const badge = (x: number, y: number, pad: string, action: 'active' | 'bomb' | 'potion' | 'parry' | 'ball') =>
       this.actionBadges.push({ g: hud(this.add.graphics()), t: txt(x, y, 11, '#1d2848', true).setOrigin(0.5), x, y, pad, action });
     badge(LX + HUD_COUNT_X.bomb + 6, 316, 'RB', 'bomb');
     badge(LX + HUD_COUNT_X.potion + 6, 316, 'L3', 'potion');
     badge(LX + LW - 36, H - HUD.pad - 110 + 18, 'LB', 'active');
     badge(LX + LW - 22, 31, 'RT', 'parry');
+    // T65: Poké Ball arriba a la derecha del cuadro del nombre (clic para lanzarla)
+    this.ballHud = { g: hud(this.add.graphics()), x: LX + LW - 34, y: 124, shown: '' };
+    const ballBtn = over(hud(this.add.zone(LX + LW - 34, 130, 50, 52).setInteractive({ useHandCursor: true })));
+    ballBtn.on('pointerdown', () => this.throwBall());
+    badge(LX + LW - 34, 152, 'R3', 'ball');
     activeBtn.on('pointerdown', () => this.useActive());
     // Poderes: cuatro cuadros abajo a la derecha (clic para lanzar)
     for (let i = 0; i < SLOT_COUNT; i++) {
@@ -2267,6 +2399,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       tiredRooms: this.tiredRooms,
       potions: this.potions,
       secondChance: this.secondChanceUsed,
+      captureDone: this.capture.done,
+      capturePrevAlly: this.capture.prevAllyId ?? -1,
     });
   }
 
@@ -3930,7 +4064,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Su especie es la que le tocó en el equipo (si por lo que sea no está, una del piso)
     const e = this.spawnEnemy(this.rivalKinds[member - 1]);
     const maxHp = Math.round((e.getData('maxHp') as number) * rivalMemberHpMul(this.floorNum, member));
-    e.setData('hp', maxHp).setData('maxHp', maxHp);
+    e.setData('hp', maxHp).setData('maxHp', maxHp).setData('rival', true);
   }
 
   private spawnEnemies(n: number) {
@@ -4971,7 +5105,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       counters: { ...this.counters },
       hpSacrificed: this.hpSacrificed,
       eggLeft: this.eggLeft,
-      allyId: this.allyId,
+      // T65: el capturado solo ayuda en su piso; al bajar vuelve el ayudante del huevo si lo había
+      allyId: nextFloorCapture(this.capture, this.allyId).allyId,
       tiredRooms: this.tiredRooms,
       potions: this.potions,
       secondChance: this.secondChanceUsed,
@@ -5129,6 +5264,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const l3Now = hasPad && !!pad!.buttons[10]?.pressed;
     if (Phaser.Input.Keyboard.JustDown(this.potionKey) || (l3Now && !this.l3Prev) || this.touch?.consume('potion')) this.drinkPotion();
     this.l3Prev = l3Now;
+    // T65: Poké Ball con su tecla, pulsando el stick derecho (R3) o con clic en la del HUD
+    const r3Now = hasPad && !!pad!.buttons[11]?.pressed;
+    if (Phaser.Input.Keyboard.JustDown(this.ballKey) || (r3Now && !this.r3Prev)) this.throwBall();
+    this.r3Prev = r3Now;
     this.rbPrev = rbNow;
     // Objeto activo: Espacio o LB (el clic va en su cuadro)
     const lbNow = hasPad && !!pad!.buttons[4]?.pressed;
@@ -5166,7 +5305,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Copia: un enemigo puede caer por quemadura o veneno mientras se recorre
     [...this.enemies.getChildren()].forEach((c) => {
       const e = c as Sprite;
-      if (!e.active || this.tickEnemyStatus(e, time)) return;
+      // T65: dentro de la Poké Ball no se mueve, no ataca y no le afectan los estados
+      if (!e.active || e.getData('capturing') || this.tickEnemyStatus(e, time)) return;
       this.updateEnemy(e, time);
       // T51: la mina puede estallar (y desaparecer) en su propio turno
       if (!e.active) return;
@@ -5222,6 +5362,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.keysHud.setText(String(this.keys));
     this.bombsHud.setText(String(this.bombs));
     this.potionsHud?.setText(String(this.potions));
+    this.paintBall(time);
     this.slots.forEach((m, i) => this.paintSlot(i, m, !m || time >= this.slotReady[i]));
 
     if (this.combo.count > 0 && !comboAlive(this.combo, time)) this.comboLose();

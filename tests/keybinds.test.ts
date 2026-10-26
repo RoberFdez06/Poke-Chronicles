@@ -63,9 +63,9 @@ test('T49: usar poción tiene su tecla (C) y sale en los controles', async () =>
   assert.ok(ACTIONS.length <= 20);
 });
 
-test('T53: el parry tiene su tecla (F), sale en los controles y es la última acción', () => {
+test('T53: el parry tiene su tecla (F), sale en los controles y va detrás de las de antes', () => {
   assert.equal(DEFAULT_KEYS.parry, 'F');
-  assert.equal(ACTIONS[ACTIONS.length - 1], 'parry');
+  assert.ok(ACTIONS.indexOf('parry') > ACTIONS.indexOf('back'));
   assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([what, how]) => what === 'Parry' && how.includes('F') && how.includes('RT')));
 });
 
@@ -77,4 +77,16 @@ test('T53: un guardado de antes con la F en otra acción no pierde sus teclas', 
   // El resto se queda como estaba
   assert.equal(k.up, 'W');
   assert.equal(k.potion, 'C');
+});
+
+test('T65: la Poké Ball tiene su tecla (G), es la última acción y sale en los controles', () => {
+  assert.equal(DEFAULT_KEYS.ball, 'G');
+  assert.equal(ACTIONS[ACTIONS.length - 1], 'ball');
+  assert.ok(ACTIONS.length <= 20);
+  assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([what, how]) => what === 'Poké Ball' && how.includes('G') && how.includes('R3')));
+  // Un guardado de antes con la G en otra acción no pierde sus teclas
+  const k = parseKeys(JSON.stringify({ ...DEFAULT_KEYS, ball: undefined, bomb: 'G' }));
+  assert.equal(k.bomb, 'G');
+  assert.notEqual(k.ball, 'G');
+  assert.equal(new Set(Object.values(k)).size, ACTIONS.length);
 });
