@@ -69,6 +69,7 @@ function sample(): RunSave {
     routesTaken: [{ biomeId: 'cueva', diffPct: 20, reward: 'shop' }],
     seeded: { seed: 123456, fromCode: true },
     gardenBerries: ['aranja', 'gonlan'],
+    legendHunt: { active: true, floors: [2, 4, 5], kinds: ['huella', 'ruido', 'pluma'], found: 1, lost: false, legendId: 150, done: false },
   };
 }
 
@@ -418,5 +419,20 @@ test('v25 se migra a v26 sin bayas del huerto; las bayas raras invalidan el guar
   assert.deepEqual(loadRun(1, st)!.gardenBerries, ['aranja', 'gonlan']);
   for (const bad of [['nada'], 'aranja', [1], null]) {
     assert.equal(parseRun(JSON.stringify({ ...sample(), gardenBerries: bad })), null);
+  }
+});
+
+test('v26 se migra a v27 sin cacería legendaria; una cacería rara invalida el guardado', () => {
+  const { legendHunt: _h, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 26 }))!;
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.legendHunt.active, false);
+  assert.equal(parseRun(JSON.stringify(old)), null);
+  const st = fakeStorage();
+  assert.ok(saveRun(1, sample(), st));
+  assert.deepEqual(loadRun(1, st)!.legendHunt, sample().legendHunt);
+  const h = sample().legendHunt;
+  for (const bad of [null, 5, { ...h, found: 9 }, { ...h, kinds: ['garra', 'ruido', 'pluma'] }, { ...h, floors: [2, 4] }, { ...h, legendId: -1 }]) {
+    assert.equal(parseRun(JSON.stringify({ ...sample(), legendHunt: bad })), null);
   }
 });

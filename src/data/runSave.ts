@@ -13,6 +13,7 @@ import { isPowerFormSave, type PowerFormSave } from './powerForm.ts';
 import { isRouteOption, type RouteOption } from '../level/routes.ts';
 import type { SeedRun } from './seedCode.ts';
 import { isGardenBerry, type GardenBerryId } from './berries.ts';
+import { isLegendHunt, noHunt, type LegendHunt } from './legendHunt.ts';
 
 export const RUN_SLOTS = 3;
 /**
@@ -41,7 +42,7 @@ export const RUN_SLOTS = 3;
  * v25: semilla de la partida y si se empezó con un código (T81). Los v24 no tienen semilla (ni código que compartir).
  * v26: bayas del huerto que llevas en la partida (T85). Los v25 no llevan ninguna.
  */
-export const RUN_VERSION = 26;
+export const RUN_VERSION = 27;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -159,6 +160,8 @@ export interface RunSave {
   seeded: SeedRun | null;
   /** T85: bayas del huerto que llevas y aún no se han usado. */
   gardenBerries: GardenBerryId[];
+  /** T88: cacería legendaria de la partida (pistas encontradas, legendario, sala ya peleada). */
+  legendHunt: LegendHunt;
 }
 
 export interface DailyRun {
@@ -328,6 +331,11 @@ function migrateV25(d: RunSave): RunSave {
   return { ...d, version: 26, gardenBerries: [] };
 }
 
+/** v26 no llevaba cacería legendaria (T88): la partida sigue sin ella. */
+function migrateV26(d: RunSave): RunSave {
+  return { ...d, version: 27, legendHunt: noHunt() };
+}
+
 const isSeedRun = (s: unknown): s is SeedRun => {
   const o = s as SeedRun;
   return !!o && typeof o === 'object' && isInt(o.seed) && o.seed >= 0 && o.seed <= 0x7fffffff && typeof o.fromCode === 'boolean';
@@ -378,6 +386,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 23) d = migrateV23(d);
   if (d.version === 24) d = migrateV24(d);
   if (d.version === 25) d = migrateV25(d);
+  if (d.version === 26) d = migrateV26(d);
   if (d.version !== RUN_VERSION) return null;
   const reactions = cleanReactions(d.reactionsFound);
   if (!reactions) return null;
@@ -408,7 +417,8 @@ export function parseRun(raw: string | null): RunSave | null {
     Array.isArray(d.storiesSeen) && d.storiesSeen.every((k) => typeof k === 'string') &&
     (d.route === null || isRouteOption(d.route)) && Array.isArray(d.routesTaken) && d.routesTaken.every(isRouteOption) &&
     (d.seeded === null || isSeedRun(d.seeded)) &&
-    Array.isArray(d.gardenBerries) && d.gardenBerries.length <= 10 && d.gardenBerries.every(isGardenBerry);
+    Array.isArray(d.gardenBerries) && d.gardenBerries.length <= 10 && d.gardenBerries.every(isGardenBerry) &&
+    isLegendHunt(d.legendHunt);
   return ok ? d : null;
 }
 

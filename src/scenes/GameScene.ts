@@ -280,7 +280,12 @@ import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, st
 import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineFull, adrenalineSpeedMul, fillAdrenaline, gainAdrenaline, spendAdrenaline, newAdrenaline, tickAdrenaline, touchAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
 import { MEGA_STONE_ID, MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState, absorbWithShield, gmaxFormName, pickPower, pickTeraType, POWER_BLOCK_TEXT, powerCost, powerFormSizeMul, powerFormTeraType, useZMove, Z_MOVE_DAMAGE_MUL, type PowerChoice, type PowerContext } from '../data/powerForm';
 import { meterOnDamage, meterOnParry, newPowerMeter, powerMeterFill, spendPowerMeter, tickPowerMeter, type PowerMeterState } from '../data/powerMeter';
-import { canCapture, canThrow, CAPTURE_RANGE, newCaptureState, nextFloorCapture, resolveThrow, rollCapture, type CaptureState } from '../data/capture';
+import {
+  canCaptureLegend, CLUE_NAMES, clueOnFloor, finishLair, HUNT, huntText, lairOnFloor, leaveFloor, legendCaptureChance, legendPhase,
+  noHunt, pickHuntRoom, rollHunt, takeClue, type LegendHunt,
+} from '../data/legendHunt';
+import { unlockPokemon } from '../data/save';
+import { canCapture, canThrow, CAPTURE_RANGE, CAPTURE_RETRY_MS, newCaptureState, nextFloorCapture, resolveThrow, rollCapture, type CaptureState } from '../data/capture';
 import { DARK_RADIUS, darkEdge, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, ruleDamageMul, ruleNotice, shouldMultiply, speedRoomBonus, MULTIPLY_HP, MULTIPLY_SIZE, SPEED_ROOM_MUL, type RoomRule } from '../level/roomRules';
 import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data/secondChance';
 import type { SecondChanceChoice } from './SecondChanceScene';
@@ -348,7 +353,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed' | 'reactionsFound' | 'storiesSeen' | 'route' | 'routesTaken' | 'gardenBerries'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed' | 'reactionsFound' | 'storiesSeen' | 'route' | 'routesTaken' | 'gardenBerries' | 'legendHunt'
 >;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
@@ -718,6 +723,11 @@ export class GameScene extends Phaser.Scene {
   private potions = 0;
   /** T85: bayas del huerto que llevas (se usan solas, ver berries.ts). */
   private gardenBerries: GardenBerryId[] = [];
+  /** T88: cacería legendaria (rastro de pistas por pisos y sala del legendario). */
+  private hunt: LegendHunt = noHunt();
+  /** T88: especie del legendario si este piso tiene su sala, y lo dibujado de la pista o la guarida. */
+  private legendKind?: FoeKind;
+  private huntObjs: Phaser.GameObjects.GameObject[] = [];
   private potionKey!: Key;
   private l3Prev = false;
   private potionsHud?: Phaser.GameObjects.Text;
@@ -984,6 +994,9 @@ export class GameScene extends Phaser.Scene {
     this.fishLine = undefined;
     this.eventObjs = [];
     this.eventSpots = [];
+    this.huntObjs = [];
+    this.visitedHuntStart = false;
+    this.legendKind = undefined;
     this.runaway = undefined;
     this.rivalWave = 0;
     this.timeTrial = undefined;
@@ -1112,6 +1125,13 @@ export class GameScene extends Phaser.Scene {
       this.bossHistory.push(bossId);
     }
     this.bossId = bossId;
+    // T88: la cacería se sortea al empezar (solo Normal; nunca con código ni en el desafío diario) y pasa de piso en piso
+    this.hunt = r ? r.legendHunt : this.carry ? this.carry.legendHunt
+      : this.mode === 'normal' && !this.daily && !this.codeRun
+        ? rollHunt(Math.random, this.biome, onlyBundled(biomeBossPool(index, this.biome)), index, FLOOR_COUNT - 1, this.bossHistory)
+        : noHunt();
+    const legendCard = lairOnFloor(this.hunt, this.floorNum) ? await fetchPokemonCard(this.hunt.legendId).catch(() => null) : null;
+    this.legendKind = legendCard ? this.toFoeKinds([legendCard], index)[0] : undefined;
     // Enemigos del piso: más fuertes cuanto más hondo; la semilla del piso los fija (no hace falta guardarlos)
     // Una especie del tipo del bioma y el resto de cualquier tipo (biomes.ts)
     // T83: alguno puede salir en su forma regional (más si encaja con el bioma)
@@ -1166,7 +1186,7 @@ export class GameScene extends Phaser.Scene {
       [this.playerKey, pickSprites(starter.sprites, this.shiny)],
       [this.bossKey, pickSprites(boss.sprites, false)],
       ...(await Promise.all(this.finaleMembers.slice(1).map(async (m) => [m.key, pickSprites((await fetchPokemon(m.id)).sprites, false)] as [string, { front: string; back: string }]))),
-      ...[...foes, ...summonCards.filter((c) => !foes.some((f) => f.id === c.id))].flatMap((c) => [
+      ...[...foes, ...summonCards.filter((c) => !foes.some((f) => f.id === c.id)), ...(legendCard ? [legendCard] : [])].flatMap((c) => [
         [`foe-${c.id}`, pickSprites(c.sprites, false)] as [string, { front: string; back: string }],
         [`foe-${c.id}-s`, pickSprites(c.sprites, true)] as [string, { front: string; back: string }],
       ]),
@@ -1184,7 +1204,7 @@ export class GameScene extends Phaser.Scene {
         }
       }
       // Sprites animados de 8 direcciones (T31). El shiny se queda con el de PokeAPI (SpriteCollab no lo tiene igual)
-      const pmdIds = [bossId!, ...this.finaleMembers.map((m) => m.id), ...foes.map((c) => c.id), ...summonCards.map((c) => c.id), ...(this.shiny ? [] : [this.formId])];
+      const pmdIds = [bossId!, ...this.finaleMembers.map((m) => m.id), ...foes.map((c) => c.id), ...summonCards.map((c) => c.id), ...(legendCard ? [legendCard.id] : []), ...(this.shiny ? [] : [this.formId])];
       loadPmd(this, pmdIds)
         .catch(() => new Map<number, PmdSheet>())
         .then((m) => {
@@ -2087,6 +2107,9 @@ export class GameScene extends Phaser.Scene {
     if (this.ended || this.transitioning || this.capturing || !this.player) return;
     const now = this.time.now;
     const check = canThrow(this.capture, now);
+    // T88: al legendario de la cacería se le puede lanzar aunque ya hayas capturado en el piso
+    const legend = this.enemies.getChildren().find((c) => (c as Sprite).active && (c as Sprite).getData('legendHunt')) as Sprite | undefined;
+    if (legend && check !== 'cooldown') return this.throwLegendBall(legend);
     if (check === 'done') return this.notify('Ya has capturado en este piso', { kind: 'warning', icon: 'star' });
     if (check === 'cooldown') return this.notify('Espera un momento para lanzar otra Poké Ball', { kind: 'warning', icon: 'clock' });
     let best: Sprite | undefined;
@@ -2143,6 +2166,149 @@ export class GameScene extends Phaser.Scene {
       shinyBoss: !!e.getData('shiny') && !!(e.getData('ai') as EnemyAI | undefined)?.boss,
       special: !!(e.getData('runaway') || e.getData('thief') || e.getData('mimic') || e.getData('finale') || e.getData('rival')),
     };
+  }
+
+  /** T88: Poké Ball al legendario: solo en su última fase y al 15 % o menos; si falla, se escapa y sigue la pelea. */
+  private throwLegendBall(target: Sprite) {
+    const hp = target.getData('hp') as number;
+    const max = (target.getData('maxHp') as number | undefined) ?? hp;
+    if (Phaser.Math.Distance.Between(this.player.x, this.player.y, target.x, target.y) > CAPTURE_RANGE * 1.5) {
+      return this.notify('Acércate más al legendario', { kind: 'warning', icon: 'star' });
+    }
+    if (!canCaptureLegend(hp, max)) {
+      return this.notify('Aún no se deja capturar\nDebilítalo hasta su última fase (15 %)', { kind: 'warning', icon: 'star' });
+    }
+    const success = Math.random() < legendCaptureChance(hp, max);
+    this.capturing = true;
+    target.setData('capturing', true).setVisible(false).setVelocity(0, 0);
+    const body = target.body as Body | null;
+    if (body) body.enable = false;
+    (target.getData('bar') as Phaser.GameObjects.Graphics | undefined)?.setVisible(false);
+    const to = { x: target.x, y: target.y };
+    const flyMs = ballThrow(this, { x: this.player.x, y: this.player.y }, to);
+    this.time.delayedCall(flyMs, () => {
+      const shakeMs = ballShake(this, to.x, to.y, success ? 3 : 2);
+      this.time.delayedCall(shakeMs, () => {
+        this.capturing = false;
+        if (!target.active) return;
+        if (!success || this.ended) {
+          ballEscape(this, to.x, to.y);
+          this.capture = { ...this.capture, readyAt: this.time.now + CAPTURE_RETRY_MS };
+          target.setData('capturing', false).setVisible(true);
+          if (body) body.enable = true;
+          (target.getData('bar') as Phaser.GameObjects.Graphics | undefined)?.setVisible(true);
+          if (!this.ended) this.notify('¡Se ha escapado!\nSigue intentándolo', { kind: 'warning', icon: 'star' });
+          return;
+        }
+        ballSuccess(this, to.x, to.y);
+        this.counters.kills++;
+        this.registerDex(target);
+        (target.getData('bar') as Phaser.GameObjects.Graphics | undefined)?.destroy();
+        if (!lowFx()) sparkle(this, to.x, to.y);
+        target.destroy();
+        const id = this.hunt.legendId;
+        if (!this.codeRun) unlockPokemon(id);
+        this.hunt = finishLair(this.hunt);
+        this.notify(`¡${this.legendName()} capturado!\nYa puedes elegirlo como inicial`, { kind: 'reward', icon: 'star' });
+        sfx('evolve');
+        this.checkClear();
+        this.saveNow();
+      });
+    });
+  }
+
+  private legendName(): string {
+    const n = this.legendKind?.name ?? 'El legendario';
+    return n.charAt(0).toUpperCase() + n.slice(1);
+  }
+
+  /** T88: sala de la pista o de la guarida en este piso (una de combate, nunca la del minijefe ni la sorpresa). */
+  private huntRoomId(): number | undefined {
+    const ids = this.floor.rooms
+      .filter((rm) => rm.kind === 'combat' && rm.group === undefined && rm.id !== this.minibossRoom && rm.id !== this.roomEvent?.roomId)
+      .map((rm) => rm.id);
+    return pickHuntRoom(ids, this.floorSeed);
+  }
+
+  /** T88: al entrar en una sala, la pista del rastro (si toca aquí) y el texto del rastro en la columna de avisos. */
+  private huntEnterRoom(room: Room) {
+    this.huntObjs.forEach((o) => o.destroy());
+    this.huntObjs = [];
+    if (room.kind === 'start' && !this.visitedHuntStart) {
+      this.visitedHuntStart = true;
+      const t = huntText(this.hunt);
+      if (t) this.time.delayedCall(2200, () => !this.ended && this.notify(t, { kind: 'info', icon: 'star' }));
+    }
+    if (!clueOnFloor(this.hunt, this.floorNum) || room.id !== this.huntRoomId()) return;
+    const kind = this.hunt.kinds[this.hunt.found];
+    const i = this.interior(room);
+    const x = i.x0 + 70;
+    const y = i.y0 + 70;
+    // TODO(supervisor): dibujo de la pista (huella, ruido o pluma); de momento, un círculo de color liso
+    const color = kind === 'huella' ? 0x8a5a2b : kind === 'ruido' ? 0x9ad7ff : 0xffd34d;
+    const mark = this.add.circle(x, y, 14, color).setDepth(3);
+    const z = this.add.zone(x, y, 48, 48).setInteractive({ useHandCursor: true });
+    z.on('pointerover', () => (this.overHud = true));
+    z.on('pointerout', () => (this.overHud = false));
+    const take = () => {
+      if (!clueOnFloor(this.hunt, this.floorNum) || this.current?.id !== room.id) return;
+      this.hunt = takeClue(this.hunt, this.floorNum);
+      this.huntObjs.forEach((o) => o.destroy());
+      this.huntObjs = [];
+      this.overHud = false;
+      this.eventSpots = this.eventSpots.filter((sp) => sp.use !== take);
+      sfx('pickup');
+      this.notify(`${CLUE_NAMES[kind]}\n${huntText(this.hunt)}`, { kind: 'reward', icon: 'star' });
+      this.saveNow();
+    };
+    z.on('pointerdown', take);
+    this.huntObjs.push(mark, z);
+    this.eventSpots.push({ x, y, prompt: () => (clueOnFloor(this.hunt, this.floorNum) ? 'Enter / A / clic: seguir el rastro' : ''), use: take });
+  }
+
+  private visitedHuntStart = false;
+
+  /** T88: ¿esta sala es la guarida del legendario (aún sin pelear)? */
+  private isLairRoom(room: Room): boolean {
+    return !!this.legendKind && lairOnFloor(this.hunt, this.floorNum) && !this.cleared.has(room.id) && room.id === this.huntRoomId();
+  }
+
+  /** T88: el legendario de la cacería: más vida (HUNT.hpMul), fases que lo enfurecen y captura solo al final. */
+  private spawnLegend(room: Room) {
+    const k = this.legendKind!;
+    const id = this.hunt.legendId;
+    this.setGroupDoorsLocked(room, true, true);
+    sfx('door');
+    const e = this.spawnEnemy(k, k.behavior);
+    const size = 130;
+    e.setDisplaySize(size, size).setData('size', size).setData('sheet', k.key).setData('shiny', false).setData('elite', false);
+    this.applyPmd(e, id, size);
+    const st = bossStats(k.stats, this.difficulty);
+    const hp = Math.round(st.hp * HUNT.hpMul);
+    e.setData('hp', hp).setData('maxHp', hp).setData('dmg', st.damage).setData('speed', st.speed).setData('legendHunt', true);
+    const ai = e.getData('ai') as EnemyAI;
+    ai.moves = bossStyles(k.types, id);
+    ai.eliteMove = ai.moves[0];
+    ai.eliteAt = Number.POSITIVE_INFINITY;
+    // TODO(supervisor): aura propia del legendario de la cacería; de momento, la dorada de los minijefes
+    this.glowAura(e, 0xffd34d);
+    void cry(id);
+    this.notify(`¡Sala oculta!\n${this.legendName()} te esperaba`, { kind: 'danger', icon: 'star' });
+    this.showBossIntro(ai, { boss: { texture: `${k.key}-front`, name: this.legendName(), types: k.types }, tier: 'mini', subtitle: 'Cacería legendaria · Fase 1/3' });
+    let phase = 0;
+    const timer = this.time.addEvent({
+      delay: 250, loop: true,
+      callback: () => {
+        if (!e.active || this.ended) return timer.remove();
+        const p = legendPhase(e.getData('hp') as number, e.getData('maxHp') as number);
+        if (p <= phase) return;
+        phase = p;
+        e.setData('speed', (e.getData('speed') as number) * 1.2).setData('dmg', Math.round((e.getData('dmg') as number) * 1.2));
+        ai.eliteAt = this.time.now + 600;
+        this.cameras.main.shake(200, 0.006);
+        this.notify(p === 2 ? `¡${this.legendName()} está agotado! Fase 3/3\nLánzale la Poké Ball` : `¡${this.legendName()} se enfurece! Fase 2/3`, { kind: 'danger', icon: 'star' });
+      },
+    });
   }
 
   private finishCapture(target: Sprite, success: boolean) {
@@ -3242,6 +3408,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       tiredRooms: this.tiredRooms,
       potions: this.potions,
       gardenBerries: [...this.gardenBerries],
+      legendHunt: { ...this.hunt, floors: [...this.hunt.floors], kinds: [...this.hunt.kinds] },
       secondChance: this.secondChanceUsed,
       bossesBeaten: this.bossesBeaten,
       captureDone: this.capture.done,
@@ -5054,6 +5221,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.setRoomCamera(room);
     this.shieldLeft = this.stats.shieldPerRoom;
     this.visited.add(room.id);
+    this.huntEnterRoom(room);
     // Tutorial: la primera vez que pasa cada cosa
     if (room.kind === 'start') this.tip('move');
     else if (room.kind === 'center') this.tip('center');
@@ -5077,6 +5245,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     } else if (this.roomEvent?.roomId === room.id && !this.eventsDone.has(room.id) && !this.cleared.has(room.id) && (this.roomEvent.kind !== 'thief' || thiefCanAppear(this.coins))) {
       // T70: sin monedas el ladrón no aparece y la sala se juega como una de combate normal (rama de abajo)
       this.startEvent(room, this.roomEvent.kind);
+    } else if (this.isLairRoom(room)) {
+      this.spawnLegend(room);
     } else if ((room.kind === 'combat' || room.kind === 'boss') && !this.cleared.has(room.id)) {
       if (room.kind === 'boss') this.spawnBoss();
       else if (room.id === this.minibossRoom) {
@@ -6731,6 +6901,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.player.setVelocity(0, 0);
     // T62: el piso que se deja se apunta ya (la escena se reinicia y el siguiente empieza a contar en startFloor)
     closeFloor(this.counters);
+    // T88: si había pista en este piso y no la seguiste, se pierde el rastro
+    const hadClue = clueOnFloor(this.hunt, this.floorNum);
+    this.hunt = leaveFloor(this.hunt, this.floorNum);
+    if (hadClue) this.notify(huntText(this.hunt), { kind: 'warning', icon: 'star' });
     const carry: FloorCarry = {
       floor: this.floorNum + 1,
       bossHistory: [...this.bossHistory],
@@ -6754,6 +6928,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       tiredRooms: this.tiredRooms,
       potions: this.potions,
       gardenBerries: [...this.gardenBerries],
+      legendHunt: { ...this.hunt, floors: [...this.hunt.floors], kinds: [...this.hunt.kinds] },
       secondChance: this.secondChanceUsed,
       bossesBeaten: this.bossesBeaten,
       powerMeter: this.powerMeter.value,
@@ -7472,6 +7647,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   private killEnemy(enemy: Sprite) {
+    if (enemy.getData('legendHunt')) {
+      // T88: debilitado sin capturar: la cacería termina
+      this.hunt = finishLair(this.hunt);
+      this.notify(`${this.legendName()} se ha debilitado y huye\nLa próxima vez, lánzale la Poké Ball`, { kind: 'warning', icon: 'star' });
+    }
     const boss = !!(enemy.getData('ai') as EnemyAI | undefined)?.boss;
     this.counters.kills++;
     this.registerDex(enemy);

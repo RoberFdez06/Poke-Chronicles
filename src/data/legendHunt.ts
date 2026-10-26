@@ -135,6 +135,23 @@ export function legendCaptureChance(hp: number, maxHp: number): number {
   return 0.5 - 0.4 * r;
 }
 
-// TODO(supervisor): en GameScene, dibujar la pista (color liso), llamar a takeClue/leaveFloor al cambiar de piso,
-// generar la sala con lairOnFloor y el combate con legendPhase/canCaptureLegend. El estado no se guarda en RunSave
-// (si se reanuda la partida, el rastro se pierde).
+/** Sala del piso con la pista o la guarida: una de `candidates` (ids de salas de combate), fija con la semilla del piso. */
+export function pickHuntRoom(candidates: readonly number[], floorSeed: number): number | undefined {
+  if (candidates.length === 0) return undefined;
+  const sorted = [...candidates].sort((a, b) => a - b);
+  return sorted[(Math.abs(Math.imul(floorSeed ^ 0x5bd1e995, 0x27d4eb2f)) >>> 0) % sorted.length];
+}
+
+const isInt = (n: unknown): n is number => Number.isInteger(n);
+
+/** Valida la cacería de un guardado (RunSave v27). */
+export function isLegendHunt(h: unknown): h is LegendHunt {
+  const o = h as LegendHunt;
+  if (!o || typeof o !== 'object') return false;
+  return typeof o.active === 'boolean' && typeof o.lost === 'boolean' && typeof o.done === 'boolean' &&
+    Array.isArray(o.floors) && o.floors.every((f) => isInt(f) && f >= 1) &&
+    Array.isArray(o.kinds) && o.kinds.length === o.floors.length && o.kinds.every((k) => (KINDS as readonly string[]).includes(k)) &&
+    isInt(o.found) && o.found >= 0 && o.found <= o.floors.length && isInt(o.legendId) && o.legendId >= 0;
+}
+
+// El dibujo de las pistas y de la guarida (color liso) está en GameScene con TODO(supervisor).
