@@ -144,6 +144,7 @@ import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuf
 import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
+import { arenaBackdrop, arenaCollapse, arenaCrack, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
 import { buildShopArt, type ShopArt } from '../ui/art/shopArt';
 import { buildForgeArt, buildLagoonArt, buildSlotArt } from '../ui/art/eventArt';
 import { ballEscape, ballShake, ballSuccess, ballThrow, dayNightLayer, megaAura, megaEvolveFx } from '../ui/art/powerFx';
@@ -6095,10 +6096,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const i = this.interior(room);
     // TODO(supervisor): aviso de grietas, escombros que van a caer y agua que asoma; ahora casillas de color liso que parpadean
     const marks = phase.cells.map((c) => {
-      const color = c.kind === 'grieta' ? 0xff5a1f : c.kind === 'charco' ? 0x3a8ee6 : 0x8a7b68;
-      const r = this.add.rectangle(i.x0 + c.x * TILE + TILE / 2, i.y0 + c.y * TILE + TILE / 2, TILE - 8, TILE - 8, color, 0.3).setDepth(0.55);
-      this.tweens.add({ targets: r, alpha: 0.6, duration: 250, yoyo: true, repeat: -1 });
-      return r;
+      return arenaWarnTile(this, i.x0 + c.x * TILE, i.y0 + c.y * TILE, TILE, c.kind === 'grieta' ? 'grieta' : c.kind === 'charco' ? 'charco' : 'escombro');
     });
     this.arenaWarn = { at: time, roomId: room.id, phase, marks };
     this.cameras.main.shake(200, 0.003);
@@ -6122,15 +6120,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // TODO(supervisor): dibujo de las grietas, los escombros que caen y los charcos; ahora color liso
       if (c.kind === 'grieta') {
         this.arenaCracks.set(k, 'grieta');
-        this.arenaObjs.push(this.add.rectangle(x + TILE / 2, y + TILE / 2, TILE - 4, TILE - 4, 0xff5a1f, 0.5).setDepth(0.5));
+        this.arenaObjs.push(arenaCrack(this, x, y, TILE));
       } else if (c.kind === 'charco') {
         grid[c.y][c.x] = 'W';
-        this.arenaObjs.push(this.add.rectangle(x + TILE / 2, y + TILE / 2, TILE, TILE, 0x3a8ee6, 0.45).setDepth(0.6));
+        this.arenaObjs.push(arenaPuddle(this, x, y, TILE));
       } else {
         grid[c.y][c.x] = 'R';
         rocks = true;
-        const rock = this.add.rectangle(x + TILE / 2, y + TILE / 2 - 40, TILE - 4, TILE - 4, 0x8a7b68, 1).setDepth(1).setAlpha(0);
-        this.tweens.add({ targets: rock, y: y + TILE / 2, alpha: 1, duration: 220, ease: 'Quad.easeIn' });
+        const rock = arenaRubble(this, x, y, TILE);
         this.arenaObjs.push(rock);
         this.rocks.set(k, [rock, this.addWall(x, y, TILE, TILE)]);
       }
@@ -6188,9 +6185,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const i = this.interior(room);
     const rng = mulberry32(seed ^ 0x5bd1e995);
     for (let k = 0; k < 14; k++) {
-      const r = this.add.rectangle(i.x0 + (0.5 + Math.floor(rng() * 20)) * TILE, i.y0 + (0.5 + Math.floor(rng() * 12)) * TILE, TILE * 1.6, TILE * 0.5, 0x120c08, 0).setDepth(0.58).setAngle(rng() * 180);
-      this.tweens.add({ targets: r, fillAlpha: 0.75, duration: FALL_SHAKE_MS });
-      this.arenaObjs.push(r);
+      this.arenaObjs.push(arenaCollapse(this, i.x0 + (0.5 + Math.floor(rng() * 20)) * TILE, i.y0 + (0.5 + Math.floor(rng() * 12)) * TILE, FALL_SHAKE_MS));
     }
     const cam = this.cameras.main;
     this.time.delayedCall(FALL_SHAKE_MS, () => cam.fadeOut(FALL_FADE_MS, 0, 0, 0));
@@ -6220,7 +6215,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     for (const k of [...this.arenaCracks.keys()]) if (k.startsWith(`${room.id}:`)) this.arenaCracks.delete(k);
     const i = this.interior(room);
     // TODO(supervisor): fondo de cada arena (cueva de lava, sala inundada, caverna helada, raíces, ruinas); ahora un tinte liso
-    this.arenaObjs.push(this.add.rectangle(i.x0 + ROOM.w / 2, i.y0 + ROOM.h / 2, ROOM.w, ROOM.h, FALL_TINT[fall.theme], fall.theme === 'hielo' ? 0.45 : 0.6).setDepth(0.33));
+    this.arenaObjs.push(arenaBackdrop(this, i.x0, i.y0, ROOM.w, ROOM.h, fall.theme, FALL_TINT[fall.theme]));
     // TODO(supervisor): las raíces usan de momento la hierba alta ('B'); el agua, los charcos de siempre
     this.renderObstacles(room, fall.grid);
     for (const [tx, ty] of fall.hazards) {
@@ -6230,12 +6225,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // TODO(supervisor): lava y placas de hielo; ahora color liso
       if (fall.theme === 'lava') {
         this.arenaCracks.set(k, 'lava');
-        const r = this.add.rectangle(cx, cy, TILE, TILE, 0xff4a10, 0.75).setDepth(0.5);
-        this.tweens.add({ targets: r, fillAlpha: 0.5, duration: 700, yoyo: true, repeat: -1 });
-        this.arenaObjs.push(r);
+        this.arenaObjs.push(arenaLava(this, cx - TILE / 2, cy - TILE / 2, TILE));
       } else if (fall.theme === 'hielo') {
         this.arenaIce.add(k);
-        this.arenaObjs.push(this.add.rectangle(cx, cy, TILE, TILE, 0xe8f6ff, 0.55).setDepth(0.5));
+        this.arenaObjs.push(arenaIce(this, cx - TILE / 2, cy - TILE / 2, TILE));
       }
     }
     this.flow = undefined;
