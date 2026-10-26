@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { BIOMES, NORMAL_ORDER, biomeBossPool, biomeEnemyPool, biomeFor, MIN_BIOME_POOL, pickMixedFoes } from '../src/level/biomes.ts';
+import { BIOMES, NORMAL_ORDER, biomeBossPool, pickBossWeighted, biomeEnemyPool, biomeFor, MIN_BIOME_POOL, pickMixedFoes } from '../src/level/biomes.ts';
 import { TYPE_COLORS } from '../src/data/types.ts';
 import { enemyBstRange } from '../src/data/enemies.ts';
 import type { SpeciesFact } from '../src/data/gacha.ts';
@@ -46,19 +46,53 @@ test('los enemigos son del tipo del bioma y de una fuerza parecida a la del piso
   }
 });
 
-test('el jefe intenta ser del tipo del bioma y siempre es legendario o singular', () => {
+test('el jefe sale de todos los legendarios y singulares, sea cual sea el bioma', () => {
   for (const b of BIOMES) {
     const pool = biomeBossPool(index, b);
-    assert.ok(pool.length > 0);
+    assert.equal(pool.length, 94);
     for (const id of pool) assert.ok(byId.get(id)!.legendary || byId.get(id)!.mythical);
+    // Lunala, Solgaleo, Kyurem, Necrozma, Zacian, Eternatus, Koraidon y Miraidon pueden salir en cualquier bioma
+    for (const id of [792, 791, 646, 800, 888, 890, 1007, 1008]) assert.ok(pool.includes(id), `${b.id}: ${id}`);
   }
-  const fire = biomeBossPool(index, BIOMES.find((b) => b.id === 'volcan')!);
-  assert.ok(fire.includes(146)); // Moltres
-  assert.ok(fire.every((id) => byId.get(id)!.types!.some((t) => t === 'fire' || t === 'rock')));
   // Sin tipos en la lista (índice antiguo): los de siempre
   const old = index.map(({ types: _t, ...s }) => s);
   assert.ok(biomeEnemyPool(old, 1, BIOMES[0]).length > 0);
   assert.ok(biomeBossPool(old, BIOMES[0]).length > 0);
+});
+
+test('pickBossWeighted: el tipo del bioma pesa más, salen de todos los tipos y no se repite', async () => {
+  const { mulberry32 } = await import('../src/level/floorGen.ts');
+  const fire = BIOMES.find((b) => b.id === 'volcan')!;
+  const pool = biomeBossPool(index, fire);
+  const isFire = (id: number) => byId.get(id)!.types!.some((t) => fire.types.includes(t));
+  const rng = mulberry32(7);
+  const seen = new Set<number>();
+  let fireN = 0;
+  const N = 4000;
+  for (let i = 0; i < N; i++) {
+    const id = pickBossWeighted(pool, rng, [], fire, index);
+    seen.add(id);
+    if (isFire(id)) fireN++;
+  }
+  const share = pool.filter(isFire).length;
+  const expected = (share * 3) / (share * 3 + (pool.length - share));
+  assert.ok(Math.abs(fireN / N - expected) < 0.04, `${fireN / N} vs ${expected}`);
+  assert.ok(fireN / N > share / pool.length, 'más probable que sin peso');
+  assert.ok([...seen].some((id) => !isFire(id)), 'salen de otros tipos');
+  assert.ok(seen.size > 60, 'sale casi todo el grupo');
+  // No repite mientras queden otros
+  const hist: number[] = [];
+  for (let i = 0; i < pool.length; i++) hist.push(pickBossWeighted(pool, rng, hist, fire, index));
+  assert.equal(new Set(hist).size, pool.length);
+  // Vacío: el de reserva; extremos del azar válidos
+  assert.ok(pickBossWeighted([], () => 0.999999, [], fire, index) > 0);
+  assert.equal(pickBossWeighted([150, 151], () => 0, [], fire, index), 150);
+});
+
+test('sin conexión: el filtro de los guardados se mantiene (se aplica al grupo antes de pesar)', () => {
+  const bundled = new Set([150, 151, 1007]);
+  const pool = biomeBossPool(index, BIOMES[0]).filter((id) => bundled.has(id));
+  for (let i = 0; i < 50; i++) assert.ok(bundled.has(pickBossWeighted(pool, Math.random, [], BIOMES[0], index)));
 });
 
 test('los enemigos del piso mezclan tipos: uno del bioma y el resto de cualquiera', async () => {

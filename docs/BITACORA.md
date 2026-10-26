@@ -1150,3 +1150,14 @@ Arreglos (un commit cada uno):
 - «Una más» espera 700 ms antes de aceptar nada (un clic de disparo o un Espacio podían pagar o rendirse).
 Sin cambiar (decisiones del supervisor que tienen sentido): «objetos cogidos» cuenta solo pasivos (como la lista del
 resumen); el registro de combate es de la cuenta y no hay lista aparte «de esta partida».
+
+## T64 — Jefes legendarios de todas las generaciones
+- `biomeBossPool` ya no filtra por tipo: devuelve los 94 legendarios y singulares. La elección es `pickBossWeighted`
+  (biomes.ts): peso ×3 si comparte tipo con el bioma, ×1 si no, sin repetir mientras queden otros. `onlyBundled` se
+  sigue aplicando al grupo antes de pesar (sin conexión solo salen los guardados).
+- Minijefes: ya no dependen del tipo (es el de más BST de las especies del piso, de las que solo una es del bioma); sin cambios.
+- **Propuesta para `src/data/finale.ts` (supervisor, no tocado)**: el reto final llega a Gen 7 (Tapus, Solgaleo, Lunala,
+  Necrozma) y Gen 8 (Zacian, Zamazenta, Eternatus) pero **no tiene nada de Gen 9**. Añadir a `GIANTS`: 1007 (Koraidon),
+  1008 (Miraidon), 1024 (Terapagos), y de Gen 8 también 898 (Calyrex); y un trío nuevo `Tesoros de la ruina`
+  `[1001, 1002, 1003]` (Wo-Chien, Chien-Pao, Ting-Lu) con Chi-Yu (1004) como alternativa.
+

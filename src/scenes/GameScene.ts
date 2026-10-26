@@ -211,7 +211,7 @@ import {
   PlayerStats,
 } from '../data/items';
 import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
-import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES, pickMixedFoes } from '../level/biomes';
+import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES, pickBossWeighted, pickMixedFoes } from '../level/biomes';
 import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES,
   HEAL_EVERY_MS,
   HEAL_PART,
@@ -915,8 +915,8 @@ export class GameScene extends Phaser.Scene {
       this.finale = pickFinale(this.rng(RNG.boss), (id) => !okIds || okIds.has(id));
       bossId = this.finale.ids[0];
     } else if (bossId === undefined) {
-      // El jefe intenta ser de un tipo del bioma
-      bossId = pickBoss(onlyBundled(biomeBossPool(index, this.biome)), this.rng(RNG.boss), this.bossHistory);
+      // T64: sale de todos los legendarios y singulares; el tipo del bioma solo le da peso ×3
+      bossId = pickBossWeighted(onlyBundled(biomeBossPool(index, this.biome)), this.rng(RNG.boss), this.bossHistory, this.biome, index);
       this.bossHistory.push(bossId);
     }
     this.bossId = bossId;

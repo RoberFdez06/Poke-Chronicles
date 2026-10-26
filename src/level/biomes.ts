@@ -3,7 +3,7 @@
 // Con extensión .ts para que los tests (node --test) puedan importarlo sin bundler
 import { classifyRarity, type SpeciesFact } from '../data/gacha.ts';
 import { enemyBstRange, enemyPool, pickFloorEnemies, SPECIES_PER_FLOOR } from '../data/enemies.ts';
-import { bossPool } from './progression.ts';
+import { bossPool, FALLBACK_BOSSES } from './progression.ts';
 import type { GameMode } from '../data/modes.ts';
 
 export interface Biome {
@@ -133,12 +133,42 @@ export function biomeEnemyPool(index: readonly SpeciesFact[], floor: number, bio
   return wide.length > 0 ? wide : base;
 }
 
-/** Jefes legendarios o singulares del tipo del bioma; si no hay ninguno, cualquiera. */
-export function biomeBossPool(index: readonly SpeciesFact[], biome: Biome): number[] {
-  const all = bossPool(index);
-  const ids = new Set(all);
-  const typed = index.filter((s) => ids.has(s.id) && hasBiomeType(s, biome)).map((s) => s.id);
-  return typed.length > 0 ? typed : all;
+/**
+ * Todos los jefes posibles (legendarios y singulares de todas las generaciones). T64: antes solo quedaban los del tipo
+ * del bioma y por eso no salían Lunala, Solgaleo, Koraidon... Ahora el tipo del bioma solo sube la probabilidad.
+ */
+export function biomeBossPool(index: readonly SpeciesFact[], _biome?: Biome): number[] {
+  return bossPool(index);
+}
+
+/** Peso de un jefe del tipo del bioma frente a uno de otro tipo (×1). */
+export const BIOME_BOSS_WEIGHT = 3;
+
+/**
+ * Jefe al azar entre `pool` con peso ×3 si comparte tipo con el bioma y ×1 si no. No repite los `seen` mientras queden
+ * otros. Sin tipos en el índice (versión antigua) todos pesan igual.
+ */
+export function pickBossWeighted(
+  pool: readonly number[],
+  rng: () => number,
+  seen: readonly number[],
+  biome: Biome,
+  index: readonly SpeciesFact[],
+): number {
+  const list = pool.length > 0 ? pool : FALLBACK_BOSSES;
+  const fresh = list.filter((id) => !seen.includes(id));
+  const from = fresh.length > 0 ? fresh : list;
+  const byId = new Map(index.map((s) => [s.id, s]));
+  const weights = from.map((id) => {
+    const s = byId.get(id);
+    return s && hasBiomeType(s, biome) ? BIOME_BOSS_WEIGHT : 1;
+  });
+  let r = rng() * weights.reduce((a, w) => a + w, 0);
+  for (let i = 0; i < from.length; i++) {
+    r -= weights[i];
+    if (r < 0) return from[i];
+  }
+  return from[from.length - 1];
 }
 
 /**

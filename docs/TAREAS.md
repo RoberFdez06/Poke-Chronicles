@@ -467,7 +467,7 @@ ya estaban hechas. No toques los ficheros del supervisor (arte, menús, `attacks
 `finale.ts`, etc.): si una tarea necesita un efecto visual o un sprite nuevo, déjalo con un hueco claro (`// TODO(supervisor): ...`).
 Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un commit por tarea sin firmas ni mención a Claude, sin push.
 
-## [ ] T64 — Jefes legendarios de todas las generaciones (el bioma solo da un poco más de probabilidad)
+## [x] T64 — Jefes legendarios de todas las generaciones (el bioma solo da un poco más de probabilidad)
 - Roberto no ha visto salir legendarios como Lunala, Solgaleo, Kyurem, Necrozma, Zacian, Eternatus, Koraidon o Miraidon. Causa:
   `biomeBossPool` (`src/level/biomes.ts`) reparte los 94 legendarios y singulares entre los biomas por su tipo y solo deja los del
   tipo del bioma. Cámbialo: el jefe sale de **todos** los legendarios y singulares, y el tipo del bioma solo sube su probabilidad
