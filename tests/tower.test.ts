@@ -1,0 +1,121 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  hazardCount, SUPPLY_CHOICES, TOWER_FLOORS, towerBiome, towerCheckpoint, towerCheckpointCost, towerFloor, towerFloorKind,
+  towerFloorSpec, towerLevel, towerPlayable, upcomingRule,
+} from '../src/level/tower.ts';
+import { isLastStage, progressText, recordText, emptyRecords, withRecord, TOWER_FLOORS as MODES_TOWER } from '../src/data/modes.ts';
+import { difficultyFor } from '../src/level/progression.ts';
+
+const SEEDS = [1, 42, 977, 123456];
+
+test('qué piso es minijefe, jefe, descanso, suministros o final', () => {
+  assert.equal(TOWER_FLOORS, 100);
+  assert.equal(MODES_TOWER, TOWER_FLOORS);
+  assert.equal(towerFloorKind(5, 1), 'miniboss');
+  assert.equal(towerFloorKind(10, 1), 'boss');
+  assert.equal(towerFloorKind(15, 1), 'miniboss');
+  assert.equal(towerFloorKind(11, 1), 'rest');
+  assert.equal(towerFloorKind(1, 1), 'combat');
+  assert.equal(towerFloorKind(100, 1), 'final');
+  for (const s of SEEDS)
+    for (let f = 1; f <= TOWER_FLOORS; f++) {
+      const k = towerFloorKind(f, s);
+      if (k === 'supply') assert.ok(f % 5 === 3, `suministros solo en pisos que no son jefe ni minijefe (${f})`);
+    }
+  // Algún piso de suministros sale en una torre entera
+  assert.ok(Array.from({ length: 100 }, (_, i) => towerFloorKind(i + 1, 42)).includes('supply'));
+});
+
+test('todo piso es jugable y determinista por semilla', () => {
+  for (const s of SEEDS)
+    for (let f = 1; f <= TOWER_FLOORS; f++) {
+      const a = towerFloorSpec(f, s);
+      assert.ok(towerPlayable(a), `piso ${f} semilla ${s}`);
+      assert.deepEqual(towerFloorSpec(f, s), a);
+      const fl = towerFloor(a, s);
+      assert.equal(fl.rooms.length, a.cells.length);
+      assert.equal(fl.startId, 0);
+      // Las casillas de una sala grande están unidas entre sí y no hay puertas hacia fuera
+      for (const r of fl.rooms) for (const n of Object.values(r.doors)) assert.ok(n !== undefined && n < fl.rooms.length);
+    }
+});
+
+test('nunca dos pisos seguidos con la misma forma ni la misma plantilla; jefes en sala grande', () => {
+  for (const s of SEEDS) {
+    for (let f = 2; f <= TOWER_FLOORS; f++) {
+      const a = towerFloorSpec(f - 1, s);
+      const b = towerFloorSpec(f, s);
+      if (a.kind === 'combat' && b.kind === 'combat') assert.notEqual(a.shape, b.shape);
+      if (a.template && b.template) assert.notEqual(a.template, b.template);
+      if (b.kind === 'boss' || b.kind === 'miniboss' || b.kind === 'final') assert.ok(b.cells.length > 1);
+    }
+  }
+});
+
+test('el bioma cambia cada 10 pisos y el jefe es del bioma de su tramo', () => {
+  for (const s of SEEDS) {
+    for (let f = 1; f <= TOWER_FLOORS; f++) {
+      const seg = Math.floor((f - 1) / 10);
+      assert.equal(towerBiome(f, s).id, towerBiome(seg * 10 + 1, s).id);
+      if (f % 10 === 0) assert.equal(towerFloorSpec(f, s).biome.id, towerBiome(f - 9, s).id);
+    }
+    for (let seg = 1; seg < 10; seg++) assert.notEqual(towerBiome(seg * 10 + 1, s).id, towerBiome(seg * 10, s).id);
+  }
+});
+
+test('reglas especiales cada 6 o 7 pisos, solo en combate y con cartel antes', () => {
+  for (const s of SEEDS) {
+    const ruled: number[] = [];
+    for (let f = 1; f <= TOWER_FLOORS; f++) {
+      const sp = towerFloorSpec(f, s);
+      if (sp.rule) {
+        assert.equal(sp.kind, 'combat');
+        ruled.push(f);
+      }
+      if (f < TOWER_FLOORS) assert.equal(upcomingRule(f, s), towerFloorSpec(f + 1, s).rule);
+    }
+    assert.ok(ruled.length >= 10);
+    for (let i = 1; i < ruled.length; i++) assert.ok(ruled[i] - ruled[i - 1] >= 6);
+  }
+});
+
+test('más peligros cuanto más alto, nunca en descanso ni suministros', () => {
+  assert.equal(hazardCount(1), 0);
+  for (let f = 2; f <= TOWER_FLOORS; f++) assert.ok(hazardCount(f) >= hazardCount(f - 1));
+  for (const s of SEEDS)
+    for (let f = 1; f <= TOWER_FLOORS; f++) {
+      const sp = towerFloorSpec(f, s);
+      if (sp.kind === 'rest' || sp.kind === 'supply') assert.equal(sp.hazards.length, 0);
+    }
+  const volcan = Array.from({ length: 100 }, (_, i) => towerFloorSpec(i + 1, 1)).find((sp) => sp.biome.id === 'volcan');
+  assert.equal(volcan?.hazard, 'lava');
+});
+
+test('la dificultad sube suave y sin dispararse', () => {
+  assert.equal(towerLevel(1), 1);
+  for (let f = 2; f <= TOWER_FLOORS; f++) {
+    const d = towerLevel(f) - towerLevel(f - 1);
+    assert.ok(d === 0 || d === 1);
+  }
+  assert.ok(towerLevel(100) <= 13);
+  // A partir del piso 30 los enemigos no van más rápido que el tope de siempre (se puede esquivar)
+  for (let f = 30; f <= TOWER_FLOORS; f++) assert.ok(difficultyFor(towerLevel(f)).speed <= 1.6);
+});
+
+test('puntos de control, coste y récord', () => {
+  assert.equal(towerCheckpoint(0), 1);
+  assert.equal(towerCheckpoint(9), 1);
+  assert.equal(towerCheckpoint(10), 11);
+  assert.equal(towerCheckpoint(37), 31);
+  assert.equal(towerCheckpoint(100), 91);
+  assert.equal(towerCheckpointCost(1), 0);
+  assert.ok(towerCheckpointCost(31) > towerCheckpointCost(11));
+  assert.ok(isLastStage('tower', 100));
+  assert.ok(!isLastStage('tower', 99));
+  assert.equal(progressText('tower', 7), 'Piso 7/100');
+  const r = withRecord(emptyRecords(), 'tower', 23);
+  assert.ok(r.improved);
+  assert.equal(recordText('tower', 23), 'Récord: piso 23/100');
+  assert.equal(SUPPLY_CHOICES.length, 3);
+});

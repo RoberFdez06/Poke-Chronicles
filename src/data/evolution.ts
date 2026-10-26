@@ -38,6 +38,8 @@ export const EVOLVE_AT: Readonly<Record<GameMode, readonly number[]>> = {
   endless: [2, 4],
   waves: [6, 12],
   bossrush: [3, 6],
+  // Torre: tras los primeros jefes (pisos 11 y 31)
+  tower: [11, 31],
 };
 
 /**
@@ -49,6 +51,7 @@ export const EVOLVE_AT_SINGLE: Readonly<Record<GameMode, readonly number[]>> = {
   endless: [3],
   waves: [9],
   bossrush: [4],
+  tower: [21],
 };
 
 /** Cuántas evoluciones le quedan a `id` en su cadena como mucho (0 si es la última forma o no está). */

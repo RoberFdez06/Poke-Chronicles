@@ -1161,3 +1161,30 @@ resumen); el registro de combate es de la cuenta y no hay lista aparte «de esta
   1008 (Miraidon), 1024 (Terapagos), y de Gen 8 también 898 (Calyrex); y un trío nuevo `Tesoros de la ruina`
   `[1001, 1002, 1003]` (Wo-Chien, Chien-Pao, Ting-Lu) con Chi-Yu (1004) como alternativa.
 
+
+## T72 — Torre de 100 pisos (primer paso: lógica pura y modo con la ruta básica)
+Hecho:
+- `src/level/tower.ts` (tests en `tests/tower.test.ts`): `towerFloorKind` (combate, minijefe cada 5, jefe cada 10, descanso
+  tras cada jefe en 11, 21…, suministros a veces en los pisos x3/x8, final en el 100), `towerFloorSpec(piso, semilla)`
+  (forma pequeña/normal/2x1/1x2/L sin repetir seguida, plantilla sin repetir seguida, jefes y minijefes siempre en sala
+  grande, bioma por tramo de 10 con vueltas barajadas, regla de T56 cada 6-7 pisos solo en combate, peligros de pinchos,
+  lava o hielo según bioma que nunca cortan el paso ni caen en la zona de aparición), `towerFloor` (el `Floor` de una
+  sola sala con las casillas unidas), `towerLevel` (dificultad suave: nivel 13 en el piso 100), puntos de control
+  (`towerCheckpoint`, `towerCheckpointCost` con `TOWER_CHECKPOINT_CANDY`). Tests: los 100 pisos jugables con 4 semillas,
+  deterministas, sin repeticiones, biomas, reglas, peligros, escalado, récord.
+- Modo «Torre» en `modes.ts` (récord propio, botón en el menú de modos porque sale de `MODES`, texto en el resumen vía
+  `progressText`), `EVOLVE_AT` para la Torre y `biomeFor('tower')`.
+- GameScene: piso de una sala con la plantilla de la Torre, regla del piso en todas sus casillas, minijefe «chetado»
+  (×1,8 vida, ×1,35 daño sobre el minijefe normal), jefe legendario de T64 cada 10, columna de luz al limpiar con
+  `towerAscend`/`towerArrive` (towerFx), cartel de la regla del piso siguiente, daño de pinchos y lava, descanso con el
+  Centro Pokémon como fuente + un objeto, suministros con una cosa, victoria en el piso 100. La semilla de la subida se
+  recupera al continuar a partir de `floorSeed` (sin versión nueva de `RunSave`).
+Pendiente (T72 sigue `[ ]`):
+- Sala de 2x2: las salas grandes de `floorGen` son de 2-3 casillas; no la he metido para no arriesgar `buildJoin`.
+- Descanso completo: altar de 3 objetos (uno raro o mejor), forja (depende de T73) y tienda con descuento con artículo exclusivo.
+- Suministros a elegir entre poción, llave y baya (ahora cae una sola, decidida por la semilla).
+- Minijefe: ataque extra y objeto épico al caer. Piso 100 con `finale.ts` (ahora es un jefe normal; `isFinalFloor` es solo de Normal).
+- Hielo resbaladizo (ahora solo se ve). Dibujo de peligros y columna: `// TODO(supervisor)` con colores lisos.
+- Música por bioma en la Torre (usa la del bioma si GameScene ya la saca de `this.biome`; sin comprobar en juego).
+- Puntos de control al morir: la lógica está, falta la pantalla para elegir el punto y cobrar los caramelos.
+- Probar en el navegador (solo verificado con `tsc` y `npm test`).
