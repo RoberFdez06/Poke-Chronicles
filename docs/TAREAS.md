@@ -496,7 +496,7 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
 - Los efectos (destello, aura nueva, cambio de color) quedan como `// TODO(supervisor)`; usa los ya existentes (`evolveBurst`) mientras tanto.
 - Tests de la lógica pura: cuándo se activa (una sola vez por jefe), multiplicadores y que no pasa de lo esquivable.
 
-## [ ] T67 — Día y noche cada pocos minutos
+## [x] T67 — Día y noche cada pocos minutos
 - Un ciclo que alterna **día y noche cada 6 minutos de partida** (constante fácil de cambiar entre 5 y 10; cuenta el tiempo jugado, sin
   la pausa, no la hora real). De noche salen más y con más daño los tipos Fantasma, Siniestro y Psíquico; de día, Planta, Fuego y Normal
   (pequeño peso, nunca ocultar el resto). Aviso fuera del centro al cambiar («Se hace de noche»). El ciclo se guarda con la partida.

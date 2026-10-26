@@ -10,6 +10,7 @@ import { dailyFloorSeed, dailyRng, streakReward } from '../data/daily';
 import { damageMul, effectOf, EFFECT_COLOR, EFFECT_LABEL } from '../data/typeChart';
 import { weatherChip, weatherFor, weatherHurts, weatherPowerMul, WEATHER_DESC, WEATHER_LABEL, WEATHER_TICK_MS, type Weather } from '../data/weather';
 import { WeatherFx } from '../ui/weatherFx';
+import { phaseAtSeconds, phasePowerMul, pickByPhase, PHASE_DESC, PHASE_NOTICE, type Phase } from '../data/dayNight';
 import { TouchControls, type TouchButton } from '../ui/touchControls';
 import { touchOnlyDevice } from '../data/controls';
 import { FxBudget } from '../data/fxSettings';
@@ -480,6 +481,8 @@ export class GameScene extends Phaser.Scene {
   private comboHud?: ComboHud;
   private weatherFx?: WeatherFx;
   private weatherTickAt = 0;
+  /** Día o noche (T67), según el tiempo jugado; null hasta el primer fotograma (así al continuar no avisa). */
+  private phase: Phase | null = null;
   /** Tipos del Pokémon del jugador (cambian al evolucionar). */
   private playerTypes: string[] = ['normal'];
   /** Joysticks y botones táctiles (T35): solo en móvil o tableta. */
@@ -1204,6 +1207,19 @@ export class GameScene extends Phaser.Scene {
       this.dailyRngs.set(stream, r);
     }
     return r;
+  }
+
+  /**
+   * Día y noche (T67): la fase sale del tiempo jugado (counters.seconds, que se para en pausa y se guarda con la
+   * partida, así que al continuar sigue igual). Solo avisa cuando cambia mientras juegas.
+   */
+  private dayNightTick() {
+    const now = phaseAtSeconds(this.counters.seconds);
+    const before = this.phase;
+    this.phase = now;
+    if (before === null || before === now || this.ended) return;
+    // TODO(supervisor): tinte de pantalla y cielo (oscurecer de noche); con efectos bajos solo va el aviso.
+    this.notify(`${PHASE_NOTICE[now]}\n${PHASE_DESC[now]}`, { kind: 'info', icon: 'star' });
   }
 
   /**
@@ -3941,7 +3957,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   private spawnEnemy(
-    kind: FoeKind = Phaser.Utils.Array.GetRandom(this.foeKinds) as FoeKind,
+    kind: FoeKind = pickByPhase(this.foeKinds, this.phase ?? 'day', (k) => k.types, Math.random) as FoeKind,
     behavior: EnemyBehavior = kind.behavior,
     /** Ayudante invocado por el jefe: sale donde se le dice, con menos vida y sin botín. */
     helper?: { x: number; y: number },
@@ -5049,6 +5065,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.weatherFx?.update(delta, this.player);
     if (!this.ended) this.counters.seconds += delta / 1000;
     this.weatherTick(time);
+    this.dayNightTick();
     // Curación por golpes: se recarga un 4 % de tus PS máximos por segundo (y no se acumula más)
     const healCap = this.stats.maxHp * 0.04;
     this.healBudget = Math.min(healCap, this.healBudget + healCap * (delta / 1000));
@@ -6480,7 +6497,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const weak = enemy.getData('ai') ? enemyDamageMul((enemy.getData('statuses') as ActiveStatus[] | undefined) ?? [], now) : 1;
     // Lluvia y Sol también cambian los ataques de Agua y Fuego de los enemigos
     const foeType = ai?.type ?? (enemy.getData('ptype') as string | undefined);
-    const taken = Math.max(1, Math.round(((enemy.getData('dmg') as number | undefined) ?? 10) * weak * this.stats.damageTaken * weatherPowerMul(this.weather, foeType) * damageMul(foeType, this.playerTypes)));
+    const taken = Math.max(1, Math.round(((enemy.getData('dmg') as number | undefined) ?? 10) * weak * this.stats.damageTaken * weatherPowerMul(this.weather, foeType) * phasePowerMul(this.phase ?? 'day', foeType) * damageMul(foeType, this.playerTypes)));
     this.effectivenessPopup(effectOf(foeType, this.playerTypes), this.player.x, this.player.y - 70);
     if (this.hp - taken <= 0 && this.focusLeft > 0) {
       // Banda Focus: aguanta con 1 PS
