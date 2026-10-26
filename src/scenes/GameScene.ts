@@ -136,6 +136,7 @@ import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
+import { buildForgeArt, buildLagoonArt, buildSlotArt } from '../ui/art/eventArt';
 import { ballEscape, ballShake, ballSuccess, ballThrow, dayNightLayer, megaAura, megaEvolveFx } from '../ui/art/powerFx';
 import { adrenalineTrail, lootFlash, parryHit, parryStance, reviveBurst, bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
@@ -1500,12 +1501,8 @@ export class GameScene extends Phaser.Scene {
 
     if (kind === 'slots') {
       // T68: sala de juegos. Tres apuestas fijas; cada una es un punto de uso (Enter / A cerca, o clic)
-      // TODO(supervisor): dibujo de la tragaperras (cuerpo, palanca, luces); ahora, cajas y texto con las formas básicas
-      const g = keep(this.add.graphics().setDepth(2));
-      g.fillStyle(0x3a2a2a, 1).fillRect(i.cx - 130, i.cy - 110, 260, 130);
-      g.fillStyle(0xff7043, 1).fillRect(i.cx - 130, i.cy - 110, 260, 14);
-      g.fillStyle(0xfdf6e3, 1).fillRect(i.cx - 108, i.cy - 82, 216, 60);
-      const reelTxt = [-72, 0, 72].map((dx) => label(i.cx + dx, i.cy - 52, '?', 22, '#101828'));
+      keep(buildSlotArt(this, i.cx, i.cy));
+      const reelTxt = [-72, 0, 72].map((dx) => label(i.cx + dx, i.cy - 35, '?', 22, '#101828'));
       const status = label(i.cx, i.cy - 128, 'Sala de juegos', 18, '#ffccbc');
       const spinsLeft = () => SLOT_MAX_SPINS - (this.slotSpins.get(room.id) ?? 0);
       SLOT_BETS.forEach((bet, k) => {
@@ -1526,10 +1523,7 @@ export class GameScene extends Phaser.Scene {
 
     if (kind === 'fishing') {
       // T69: laguna de pesca. Un solo botón (Enter / A cerca, o clic en el agua): lanzar y, cuando pica, recoger
-      // TODO(supervisor): dibujo de la laguna (agua animada, orilla) y de la caña con su sedal y el corcho; ahora, formas básicas
-      const g = keep(this.add.graphics().setDepth(2));
-      g.fillStyle(0x0d47a1, 1).fillEllipse(i.cx, i.cy - 20, 300, 150);
-      g.fillStyle(0x29b6f6, 1).fillEllipse(i.cx, i.cy - 20, 280, 132);
+      keep(buildLagoonArt(this, i.cx, i.cy));
       const status = label(i.cx, i.cy - 120, 'Laguna de pesca', 18, '#b3e5fc');
       const castsLeft = () => FISH_MAX_CASTS - (this.fishCasts.get(room.id) ?? 0);
       const use = () => this.useFishingRod(room, status, rng);
@@ -3811,12 +3805,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Forja: yunque con dos puntos de uso (reciclar y fusionar). Un solo uso por forja. */
   private placeForge(room: Room, x: number, y: number) {
-    // TODO(supervisor): dibujo del yunque, el fuego de la fragua y las chispas al usarla (respetando efectos bajos);
-    // ahora, formas lisas
-    const g = this.add.graphics().setDepth(2);
-    g.fillStyle(0x3d3d46, 1).fillRect(x - 46, y - 8, 92, 18);
-    g.fillStyle(0x55555f, 1).fillRect(x - 30, y + 10, 60, 26);
-    g.fillStyle(0xe67e22, 0.9).fillRect(x - 20, y - 20, 40, 10);
+    const g = buildForgeArt(this, x, y);
     this.eventObjs.push(g);
     const label = (lx: number, ly: number, text: string, color = '#ffffff') => {
       const t = this.add.text(lx, ly, text, { fontFamily: FONT, fontSize: '15px', color, stroke: '#101828', strokeThickness: 4, align: 'center' }).setOrigin(0.5).setDepth(4);
