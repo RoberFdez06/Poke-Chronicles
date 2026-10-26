@@ -21,6 +21,8 @@ import {
   pickRoomEvent,
   DAILY_EVENTS,
   ROOM_EVENTS,
+  pickMegaStoneRoom,
+  megaStoneDoneKey,
   runawayTickets,
   trapChestOutcome,
   RoomEvent,
@@ -219,7 +221,7 @@ import type { PokemonCard } from '../data/pokeapi';
 import {
   BASE_STATS,
   computeStats,
-  PASSIVE_ITEMS,
+  RANDOM_PASSIVES,
   passiveById,
   passiveRarity,
   rollItem,
@@ -265,7 +267,7 @@ import { drawMinimap } from './minimap';
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
 import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineFull, adrenalineSpeedMul, gainAdrenaline, spendAdrenaline, newAdrenaline, tickAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
-import { MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState, absorbWithShield, gmaxFormName, pickPower, pickTeraType, POWER_BLOCK_TEXT, powerCost, powerFormSizeMul, powerFormTeraType, useZMove, Z_MOVE_DAMAGE_MUL, type PowerChoice, type PowerContext } from '../data/powerForm';
+import { MEGA_STONE_ID, MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState, absorbWithShield, gmaxFormName, pickPower, pickTeraType, POWER_BLOCK_TEXT, powerCost, powerFormSizeMul, powerFormTeraType, useZMove, Z_MOVE_DAMAGE_MUL, type PowerChoice, type PowerContext } from '../data/powerForm';
 import { meterOnDamage, meterOnParry, newPowerMeter, powerMeterFill, spendPowerMeter, tickPowerMeter, type PowerMeterState } from '../data/powerMeter';
 import { canCapture, canThrow, CAPTURE_RANGE, newCaptureState, nextFloorCapture, resolveThrow, rollCapture, type CaptureState } from '../data/capture';
 import { DARK_RADIUS, darkEdge, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, ruleDamageMul, ruleNotice, shouldMultiply, speedRoomBonus, MULTIPLY_HP, MULTIPLY_SIZE, SPEED_ROOM_MUL, type RoomRule } from '../level/roomRules';
@@ -538,6 +540,8 @@ export class GameScene extends Phaser.Scene {
   /** Sala sorpresa del piso (T39), las ya resueltas y los PS máximos dados en altares (toda la partida). */
   private roomEvent: RoomEvent | null = null;
   private eventsDone = new Set<number>();
+  /** Sala del Santuario de la Mega Piedra de este piso (se calcula al cargarlo; lo cogido va en eventsDone). */
+  private megaRoomId: number | undefined;
   private hpSacrificed = 0;
   /** T57: la segunda oportunidad («Una más») ya se usó en esta partida (pasa de piso a piso y se guarda). */
   private secondChanceUsed = false;
@@ -1379,7 +1383,7 @@ export class GameScene extends Phaser.Scene {
     const i = this.interior(room);
     // Mismo azar cada vez que entras en esta sala (y en el desafío diario, el de todos)
     const rng = mulberry32((this.floorSeed ^ Math.imul(room.id + 1, 0x9e3779b1)) >>> 0);
-    this.notify(`¡Sala sorpresa! ${ROOM_EVENT_LABEL[kind]}\n${ROOM_EVENT_DESC[kind]}`, { kind: 'info', icon: 'star' });
+    this.notify(kind === 'megaStone' ? `${ROOM_EVENT_LABEL[kind]}\n${ROOM_EVENT_DESC[kind]}` : `¡Sala sorpresa! ${ROOM_EVENT_LABEL[kind]}\n${ROOM_EVENT_DESC[kind]}`, { kind: 'info', icon: 'star' });
     const keep = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
       this.eventObjs.push(o);
       return o;
@@ -1392,6 +1396,13 @@ export class GameScene extends Phaser.Scene {
     };
     const label = (x: number, y: number, text: string, size = 15, color = '#ffffff') =>
       keep(this.add.text(x, y, text, { fontFamily: FONT, fontSize: `${size}px`, color, stroke: '#101828', strokeThickness: 4, align: 'center' }).setOrigin(0.5).setDepth(4));
+
+    if (kind === 'megaStone') {
+      // Sin enemigos ni puertas cerradas: solo el altar (ver placeMegaAltar)
+      this.cleared.add(room.id);
+      this.placeMegaAltar(room, i.cx, i.cy);
+      return;
+    }
 
     if (kind === 'runaway') {
       if (this.foeKinds.length === 0) return this.finishEvent(room);
@@ -2331,6 +2342,12 @@ export class GameScene extends Phaser.Scene {
       this.mode === 'normal' || this.mode === 'endless'
         ? pickRoomRules(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x6c8e9cf5), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...(this.roomEvent ? [this.roomEvent.roomId] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]))
         : new Map();
+    // Santuario de la Mega Piedra: una sala por piso (Normal, Infinito y diario), elegida DESPUÉS de lo demás y con su
+    // propia semilla para no alterar el resto del piso (ver pickMegaStoneRoom)
+    this.megaRoomId =
+      (this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)
+        ? (pickMegaStoneRoom(this.floor, this.floorSeed, new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...(this.roomEvent ? [this.roomEvent.roomId] : []), ...this.roomRules.keys()])) ?? undefined)
+        : undefined;
     // T72: la regla del piso de la Torre vale para todas sus casillas (es una sola sala)
     const tRule = this.towerSpec?.rule;
     if (tRule) this.roomRules = new Map(this.floor.rooms.map((rm) => [rm.id, tRule]));
@@ -3736,6 +3753,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Sala sorpresa: se marca al descubrirla, hasta resolverla
     const ev = this.roomEvent;
     if (ev && this.visited.has(ev.roomId) && !this.eventsDone.has(ev.roomId)) marks.set(ev.roomId, ROOM_EVENT_COLOR[ev.kind]);
+    // Santuario de la Mega Piedra: se marca al descubrirlo, hasta coger la piedra
+    if (this.megaRoomId !== undefined && this.visited.has(this.megaRoomId) && !this.eventsDone.has(megaStoneDoneKey(this.megaRoomId))) marks.set(this.megaRoomId, ROOM_EVENT_COLOR.megaStone);
     // T56: salas con regla, en cuanto se ven en el mapa y hasta limpiarlas
     for (const [id, rule] of this.roomRules) if (!this.cleared.has(id)) marks.set(id, ROOM_RULE_COLOR[rule]);
     const bottom = drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2, marks);
@@ -3955,7 +3974,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Pasivos que pueden salir: todos menos los que aún bloquea un logro (missions.ts). */
   private passivePool() {
     const locked = lockedItems(loadMissions());
-    return PASSIVE_ITEMS.filter((i) => !locked.has(i.id));
+    return RANDOM_PASSIVES.filter((i) => !locked.has(i.id));
   }
 
   /** Suma un suceso a las misiones y logros; lo que se cumpla se avisa abajo (los premios ya se han dado). */
@@ -4213,6 +4232,56 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       { x: x - 90, y: y + 70, prompt: () => 'Enter / A / clic: reciclar un objeto por monedas (libera su hueco)', use: actions[0][2] },
       { x: x + 90, y: y + 70, prompt: () => 'Enter / A / clic: fusionar dos objetos de la misma rareza en uno mejor', use: actions[1][2] },
     );
+  }
+
+  /**
+   * Altar de la Mega Piedra (una sola vez por piso). Si ya la llevas, el altar sale apagado y no la vuelve a dar.
+   * Usa su propia marca en eventsDone (megaStoneDoneKey) para convivir con la forja de la Torre.
+   */
+  private placeMegaAltar(room: Room, x: number, y: number) {
+    const mine: Phaser.GameObjects.GameObject[] = [];
+    const keep = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
+      mine.push(o);
+      this.eventObjs.push(o);
+      return o;
+    };
+    const have = this.passives.includes(MEGA_STONE_ID);
+    // TODO(supervisor): arte propio del santuario (pedestal con runas y la piedra con destello); de momento formas simples
+    const g = keep(this.add.graphics().setDepth(2));
+    g.fillStyle(have ? 0x3a3a46 : 0x4a4a5a, 1).fillRect(x - 40, y - 6, 80, 40);
+    g.fillStyle(have ? 0x55555f : 0x6e6e84, 1).fillRect(x - 52, y - 16, 104, 14);
+    g.fillStyle(have ? 0x555566 : 0x8fd3ff, have ? 0.4 : 0.85).fillRect(x - 30, y + 8, 60, 5);
+    const stone = keep(this.add.image(x, y - 50, iconKey('star')).setScale(3).setDepth(3).setTint(have ? 0x666677 : 0x8fd3ff).setAlpha(have ? 0.45 : 1));
+    if (!have) this.tweens.add({ targets: stone, y: y - 60, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    keep(
+      this.add
+        .text(x, y + 58, have ? 'Santuario de la Mega Piedra\nYa la llevas' : 'Santuario de la Mega Piedra', { fontFamily: FONT, fontSize: '15px', color: have ? '#9aa3b4' : '#c8ecff', stroke: '#101828', strokeThickness: 4, align: 'center' })
+        .setOrigin(0.5)
+        .setDepth(4),
+    );
+    const spot = { x, y, prompt: () => (have ? 'Ya llevas la Mega Piedra' : 'Enter / A / clic: coger la Mega Piedra'), use: () => take() };
+    const take = () => {
+      const key = megaStoneDoneKey(room.id);
+      if (have || this.ended || this.transitioning || this.eventsDone.has(key) || this.itemChoiceOpen || this.current?.id !== room.id) return;
+      this.eventsDone.add(key);
+      const item = passiveById(MEGA_STONE_ID);
+      if (item) this.gainItem({ kind: 'passive', item });
+      this.refreshInventory();
+      this.eventSpots = this.eventSpots.filter((sp) => sp !== spot);
+      this.prompt.setText('');
+      this.eventObjs = this.eventObjs.filter((o) => !mine.includes(o));
+      this.tweens.add({ targets: mine, alpha: 0, duration: 500, onComplete: () => mine.forEach((o) => o.destroy()) });
+      this.drawMap();
+      this.saveNow();
+    };
+    if (!have) {
+      const z = keep(this.add.zone(x, y + 10, 120, 80));
+      z.setInteractive({ useHandCursor: true });
+      z.on('pointerover', () => (this.overHud = true));
+      z.on('pointerout', () => (this.overHud = false));
+      z.on('pointerdown', () => this.current?.id === room.id && take());
+    }
+    this.eventSpots.push(spot);
   }
 
   private forgeUsable(room: Room) {
@@ -4705,6 +4774,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       sfx('door');
       this.notify(`¡Sala de desafío!\nOleada 1/${CHALLENGE_WAVES}`, { kind: 'danger', icon: 'heart' });
       this.time.delayedCall(900, () => this.spawnChallengeWave(room.id));
+    } else if (this.megaRoomId === room.id && !this.eventsDone.has(megaStoneDoneKey(room.id))) {
+      // Santuario de la Mega Piedra: se redibuja al volver mientras no la hayas cogido
+      this.startEvent(room, 'megaStone');
     } else if (this.roomEvent?.roomId === room.id && !this.eventsDone.has(room.id) && !this.cleared.has(room.id) && (this.roomEvent.kind !== 'thief' || thiefCanAppear(this.coins))) {
       // T70: sin monedas el ladrón no aparece y la sala se juega como una de combate normal (rama de abajo)
       this.startEvent(room, this.roomEvent.kind);
@@ -6085,6 +6157,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     // T73: el descanso siempre tiene forja (de un uso; al continuar sigue si no se había usado)
     if (spec.kind === 'rest' && !this.eventsDone.has(room.id)) this.placeForge(room, i.cx - 170, i.cy + 40);
+    // Mega Piedra en la Torre: en descansos y suministros (una vez por sala; en los demás pisos no, para no romper su estructura)
+    if ((spec.kind === 'rest' || spec.kind === 'supply') && !this.eventsDone.has(megaStoneDoneKey(room.id))) this.placeMegaAltar(room, i.cx, i.cy - 110);
     if (this.cleared.has(0) && !isLastStage(this.mode, this.floorNum)) this.spawnTrapdoor();
     if (spec.rule && !this.cleared.has(0)) this.notify(ruleNotice(spec.rule), { kind: 'danger', icon: 'star' });
   }
