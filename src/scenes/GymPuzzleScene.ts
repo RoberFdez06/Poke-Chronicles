@@ -3,6 +3,8 @@ import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { NavInput } from '../ui/nav';
 import { drawBox, FONT, HEX } from '../ui/theme';
 import { sfx } from '../ui/audio';
+import { lowFx } from '../ui/theme';
+import { addGymDoor, addGymSwitch, addPad, drawGymBlock, drawGymBoard, drawGymButton, drawGymTrainer } from '../ui/art/gymPuzzleArt';
 import {
   GYM_PUZZLE_LABEL, generateGymPuzzle, rockStep, rockSolved, iceSlide, pressSwitch, electricSolved, ghostClueText,
   isWall, type Board, type Cell, type Dir, type GymPuzzle, type GymPuzzleKind, type RockState,
@@ -24,7 +26,7 @@ const GY = 210;
  * T86: puzzle del gimnasio antes del líder. Se lanza en pausa sobre GameScene. Teclado (flechas/WASD, Enter, R, Esc),
  * ratón (clic en una casilla de la fila/columna, en un interruptor o en una puerta; botones de abajo) y mando
  * (cruceta/stick, A, Y reinicia, B se rinde) funcionan cada uno por separado.
- * TODO(supervisor): suelo, bloques, interruptores y puertas con arte; ahora son rectángulos de color liso.
+ * Arte: ui/art/gymPuzzleArt.ts (baldosas, rocas, bloque que desliza, interruptores que se hunden, puertas que se abren).
  */
 export class GymPuzzleScene extends Phaser.Scene {
   private args!: GymPuzzleData;
@@ -40,6 +42,9 @@ export class GymPuzzleScene extends Phaser.Scene {
   private triedDoors = new Set<number>();
   private showing = false;
   private padY = false;
+  /** Solo dibujo: última posición de cada ficha (para deslizarla) y puerta que se acaba de abrir. */
+  private lastAt = new Map<string, { x: number; y: number }>();
+  private openingDoor = -1;
 
   constructor() {
     super('GymPuzzle');
@@ -48,6 +53,8 @@ export class GymPuzzleScene extends Phaser.Scene {
   init(data: GymPuzzleData) {
     this.args = data;
     this.done = false;
+    this.lastAt.clear();
+    this.openingDoor = -1;
     this.sys.settings.data = {};
   }
 
@@ -70,9 +77,13 @@ export class GymPuzzleScene extends Phaser.Scene {
   }
 
   private button(x: number, y: number, label: string, cb: () => void) {
-    const r = this.add.rectangle(x, y, 210, 34, 0x283068).setStrokeStyle(2, 0xf8d030).setInteractive({ useHandCursor: true });
-    this.add.text(x, y, label, { fontFamily: FONT, fontSize: '14px', color: HEX.text }).setOrigin(0.5);
+    const g = this.add.graphics();
+    drawGymButton(g, x, y, 214, 38, false);
+    const r = this.add.rectangle(x, y, 214, 38, 0x000000, 0).setInteractive({ useHandCursor: true });
+    this.add.text(x, y - 1, label, { fontFamily: FONT, fontSize: '14px', color: HEX.text }).setOrigin(0.5);
     r.on('pointerdown', cb);
+    r.on('pointerover', () => drawGymButton(g, x, y, 214, 38, true));
+    r.on('pointerout', () => drawGymButton(g, x, y, 214, 38, false));
   }
 
   private reset() {
@@ -99,39 +110,58 @@ export class GymPuzzleScene extends Phaser.Scene {
   }
 
   private drawBoard(b: Board) {
+    const g = this.add.graphics();
+    drawGymBoard(g, GX, GY, CELL, b.w, b.h, (x, y) => isWall(b, x, y), this.args.kind === 'hielo');
+    this.layer.add(g);
     for (let y = 0; y < b.h; y++) for (let x = 0; x < b.w; x++) {
       const wall = isWall(b, x, y);
-      const r = this.add.rectangle(GX + x * CELL + CELL / 2, GY + y * CELL + CELL / 2, CELL - 4, CELL - 4, wall ? 0x5a4a3a : this.args.kind === 'hielo' ? 0xbfe8f8 : 0x3a3f58);
+      const r = this.add.rectangle(GX + x * CELL + CELL / 2, GY + y * CELL + CELL / 2, CELL - 4, CELL - 4, 0x000000, 0);
       if (!wall) r.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.clickCell(x, y));
       this.layer.add(r);
     }
   }
-  private piece(c: Cell, color: number, size = 0.7, circle = false) {
+  private pad(c: Cell, color: number, exit: boolean) {
+    this.layer.add(addPad(this, GX + c.x * CELL + CELL / 2, GY + c.y * CELL + CELL / 2, CELL, color, exit));
+  }
+  /** Ficha dibujada en (0, 0) que desliza desde donde estaba (sin efectos bajos). */
+  private token(key: string, c: Cell, draw: (g: Phaser.GameObjects.Graphics) => void) {
     const cx = GX + c.x * CELL + CELL / 2;
     const cy = GY + c.y * CELL + CELL / 2;
-    this.layer.add(circle ? this.add.circle(cx, cy, (CELL * size) / 2, color) : this.add.rectangle(cx, cy, CELL * size, CELL * size, color));
+    const g = this.add.graphics();
+    draw(g);
+    const was = this.lastAt.get(key);
+    this.lastAt.set(key, { x: cx, y: cy });
+    this.layer.add(g);
+    if (!was || lowFx() || (was.x === cx && was.y === cy)) return g.setPosition(cx, cy);
+    g.setPosition(was.x, was.y);
+    const steps = Math.max(Math.abs(cx - was.x), Math.abs(cy - was.y)) / CELL;
+    this.tweens.add({ targets: g, x: cx, y: cy, duration: Math.min(320, 70 + steps * 50), ease: key === 'ice' ? 'Quad.easeIn' : 'Quad.easeOut' });
+    return g;
   }
 
   private redraw(lit = -1) {
+    this.tweens.killTweensOf(this.layer.list);
     this.layer.removeAll(true);
     const p = this.puzzle;
     if (p.kind === 'roca' && this.rock) {
       this.drawBoard(p.board);
-      this.piece(p.target, 0xf8d030, 0.85);
-      this.piece(this.rock.block, 0x9e8b6b, 0.75);
-      this.piece(this.rock.player, 0xe04848, 0.5, true);
+      this.pad(p.target, 0xf8d030, false);
+      const on = rockSolved(p, this.rock);
+      this.token('block', this.rock.block, (g) => drawGymBlock(g, CELL, on));
+      this.token('player', this.rock.player, (g) => drawGymTrainer(g));
       this.info.setText('Flechas, WASD, cruceta o clic en tu fila/columna para moverte. Empuja el bloque marrón hasta la casilla amarilla.');
     } else if (p.kind === 'hielo' && this.ice) {
       this.drawBoard(p.board);
-      this.piece(p.goal, 0x4caf50, 0.85);
-      this.piece(this.ice, 0xe04848, 0.5, true);
+      this.pad(p.goal, 0x4caf50, true);
+      this.token('ice', this.ice, (g) => drawGymTrainer(g));
       this.info.setText('Resbalas hasta chocar con una roca. Llega a la casilla verde. Flechas, WASD, cruceta o clic en tu fila/columna.');
     } else if (p.kind === 'electrico') {
       const w = 96;
       const x0 = DCX - ((p.count - 1) * (w + 16)) / 2;
       for (let i = 0; i < p.count; i++) {
         const on = i === lit;
-        const r = this.add.rectangle(x0 + i * (w + 16), 330, w, 120, on ? 0xf5c518 : 0x40485e).setStrokeStyle(4, i === this.sel && !this.showing ? 0xffffff : 0x202838);
+        this.layer.add(addGymSwitch(this, x0 + i * (w + 16), 330, w, 120, { lit: on, sel: i === this.sel && !this.showing, sink: on }));
+        const r = this.add.rectangle(x0 + i * (w + 16), 330, w, 120, 0x000000, 0);
         r.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.choose(i));
         this.layer.add([r, this.add.text(r.x, 420, String(i + 1), { fontFamily: FONT, fontSize: '20px', color: HEX.text }).setOrigin(0.5)]);
       }
@@ -141,11 +171,14 @@ export class GymPuzzleScene extends Phaser.Scene {
       const x0 = DCX - ((p.doors - 1) * (w + 20)) / 2;
       for (let i = 0; i < p.doors; i++) {
         const tried = this.triedDoors.has(i);
-        const r = this.add.rectangle(x0 + i * (w + 20), 360, w, 150, tried ? 0x202430 : 0x6a4a8a).setStrokeStyle(4, i === this.sel ? 0xffffff : 0x202838);
+        const real = this.done && i === p.real;
+        this.layer.add(addGymDoor(this, x0 + i * (w + 20), 360, w, 150, { open: tried || real, opening: i === this.openingDoor, real, sel: i === this.sel }));
+        const r = this.add.rectangle(x0 + i * (w + 20), 360, w, 150, 0x000000, 0);
         if (!tried) r.setInteractive({ useHandCursor: true }).on('pointerdown', () => this.choose(i));
         this.layer.add([r, this.add.text(r.x, 455, String(i + 1), { fontFamily: FONT, fontSize: '20px', color: HEX.text }).setOrigin(0.5)]);
       }
       this.info.setText(`Pistas: ${p.clues.map(ghostClueText).join(' ')}\nElige con flechas + Enter/A, números o clic.`);
+      this.openingDoor = -1;
     }
   }
 
@@ -182,7 +215,11 @@ export class GymPuzzleScene extends Phaser.Scene {
       if (electricSolved(p, this.progress)) this.finish(true);
     } else if (p.kind === 'fantasma' && i < p.doors && !this.triedDoors.has(i)) {
       this.sel = i;
-      if (i === p.real) return this.finish(true);
+      this.openingDoor = i;
+      if (i === p.real) {
+        this.finish(true);
+        return this.redraw();
+      }
       sfx('hurt');
       this.triedDoors.add(i);
       this.cameras.main.shake(120, 0.004);
