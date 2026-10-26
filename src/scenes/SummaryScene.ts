@@ -121,10 +121,34 @@ export class SummaryScene extends Phaser.Scene {
       if (m) this.add.text(x + 14, y + 12, `x${m[1]}`, { fontFamily: FONT, fontSize: '12px', fontStyle: 'bold', color: '#ffffff' }).setOrigin(1, 1).setStroke('#101828', 3);
     });
 
+    // T62: más cifras de la partida (las guardadas antes no las tienen y se saltan)
+    this.moreStats(r);
+
     this.menu = new MenuList(this, 780, 230, ['Otra partida', 'Historial', 'Menú'], (i) => this.pick(i), { w: 280, h: 56, gap: 22 });
     this.add
       .text(480, 612, 'Flechas, ratón o mando para elegir · Enter, clic o A · Esc o B: menú', { fontFamily: FONT, fontSize: '15px', color: '#ffffff' })
       .setOrigin(0.5).setAlpha(0.6);
+  }
+
+  /** Cuadro de la derecha: parrys, objetos cogidos, sala más rápida y tiempo de cada piso. */
+  private moreStats(r: RunRecord) {
+    if (r.parries === undefined && r.picked === undefined && r.fastestRoom === undefined && !r.floorSeconds?.length) return;
+    drawBox(this.add.graphics(), 636, 452, 288, 146, { radius: 14 });
+    const line = (y: number, label: string, value: string) => {
+      this.add.text(654, y, label, { fontFamily: FONT, fontSize: '15px', color: HEX.textSoft }).setOrigin(0, 0.5);
+      this.add.text(906, y, value, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: HEX.text }).setOrigin(1, 0.5);
+    };
+    line(474, 'Parrys acertados', `${r.parries ?? 0}`);
+    line(498, 'Objetos cogidos', `${r.picked ?? 0}`);
+    line(522, 'Sala más rápida', r.fastestRoom ? formatDuration(r.fastestRoom) : '—');
+    const floors = r.floorSeconds ?? [];
+    if (floors.length > 0) {
+      // Hasta 8 pisos; si hay más se ven los últimos (en la partida infinita pueden ser muchos)
+      const first = Math.max(0, floors.length - 8);
+      const text = floors.slice(first).map((s, k) => `P${first + k + 1} ${formatDuration(s)}`).join('  ');
+      this.add.text(654, 548, 'Tiempo por piso', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0, 0.5);
+      this.add.text(654, 576, text, { fontFamily: FONT, fontSize: '13px', color: HEX.text, wordWrap: { width: 252 } }).setOrigin(0, 0.5);
+    }
   }
 
   /** Sprite del Pokémon (de PokeAPI, como los del menú). Si no carga, se queda solo el pedestal. */

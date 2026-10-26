@@ -445,7 +445,7 @@ necesita un efecto visual nuevo, déjalo con un hueco claro (`// TODO(supervisor
   potencia agua y debilita fuego, sol al revés, etc., multiplicadores en constantes). Tabla y selección en lógica pura con tests. Aviso
   del clima al empezar el piso; las partículas y el fondo quedan como `// TODO(supervisor)`. Respeta el modo de efectos bajos.
 
-## [ ] T62 — Resumen de run
+## [x] T62 — Resumen de run (hecho por el supervisor)
 - Al terminar (muerte o victoria) muestra estadísticas: daño total, kills, parrys acertados, objetos cogidos, sala más rápida y
   rango/tiempo por piso. Las cuentas se acumulan en la lógica pura durante la run con tests. Se puede navegar con teclado, ratón y mando.
 

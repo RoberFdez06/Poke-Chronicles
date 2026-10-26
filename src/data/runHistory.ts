@@ -21,12 +21,20 @@ export interface RunRecord {
   items: string[];
   tickets: number;
   newRecord: boolean;
+  /** T62 (las partidas antiguas no lo tienen): parrys acertados, objetos cogidos, sala más rápida (s) y tiempo de cada piso (s). */
+  parries?: number;
+  picked?: number;
+  fastestRoom?: number;
+  floorSeconds?: number[];
 }
 
 /** Cuántas partidas se guardan en el historial. */
 export const HISTORY_SIZE = 20;
 
 const isNum = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0;
+/** Un dato que puede faltar (partidas guardadas antes de T62) pero, si está, tiene que ser válido. */
+const optNum = (n: unknown) => n === undefined || isNum(n);
+const optNums = (a: unknown) => a === undefined || (Array.isArray(a) && a.every(isNum));
 
 function isRecord(r: unknown): r is RunRecord {
   const o = r as RunRecord;
@@ -34,7 +42,7 @@ function isRecord(r: unknown): r is RunRecord {
     !!o && isNum(o.endedAt) && Number.isInteger(o.starterId) && typeof o.starterName === 'string' && isMode(o.mode) &&
     Number.isInteger(o.floor) && o.floor >= 1 && typeof o.won === 'boolean' && isNum(o.seconds) && isNum(o.kills) &&
     isNum(o.damage) && Array.isArray(o.items) && o.items.every((i) => typeof i === 'string') && isNum(o.tickets) &&
-    typeof o.newRecord === 'boolean'
+    typeof o.newRecord === 'boolean' && optNum(o.parries) && optNum(o.picked) && optNum(o.fastestRoom) && optNums(o.floorSeconds)
   );
 }
 
@@ -68,11 +76,42 @@ export interface RunCounters {
   damage: number;
   /** Se ha batido el récord del modo en algún momento de la partida. */
   newRecord: boolean;
+  /** T62 (opcionales: las partidas guardadas antes no los tienen). */
+  parries?: number;
+  picked?: number;
+  /** La sala de combate que menos tardaste en limpiar (segundos; 0 o sin dato = ninguna). */
+  fastestRoom?: number;
+  /** Lo que tardaste en cada piso ya terminado (segundos). */
+  floorSeconds?: number[];
 }
 
 export const emptyCounters = (): RunCounters => ({ seconds: 0, kills: 0, damage: 0, newRecord: false });
 
 export const isCounters = (c: unknown): c is RunCounters => {
   const o = c as RunCounters;
-  return !!o && isNum(o.seconds) && isNum(o.kills) && isNum(o.damage) && typeof o.newRecord === 'boolean';
+  return !!o && isNum(o.seconds) && isNum(o.kills) && isNum(o.damage) && typeof o.newRecord === 'boolean' &&
+    optNum(o.parries) && optNum(o.picked) && optNum(o.fastestRoom) && optNums(o.floorSeconds);
 };
+
+/** Una sala limpiada en menos de esto no cuenta como «sala más rápida» (tienda, objeto… se limpian al entrar). */
+export const MIN_ROOM_SECONDS = 2;
+
+export function noteParry(c: RunCounters) {
+  c.parries = (c.parries ?? 0) + 1;
+}
+
+export function notePickup(c: RunCounters) {
+  c.picked = (c.picked ?? 0) + 1;
+}
+
+/** Anota lo que se tardó en limpiar una sala; se queda con la más rápida. */
+export function noteRoomTime(c: RunCounters, seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < MIN_ROOM_SECONDS) return;
+  c.fastestRoom = c.fastestRoom && c.fastestRoom > 0 ? Math.min(c.fastestRoom, seconds) : seconds;
+}
+
+/** Anota lo que se tardó en un piso ya terminado. */
+export function noteFloorTime(c: RunCounters, seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return;
+  c.floorSeconds = [...(c.floorSeconds ?? []), Math.round(seconds)];
+}
