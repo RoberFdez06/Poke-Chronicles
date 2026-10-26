@@ -140,7 +140,7 @@ import { shotSfx } from '../data/sounds';
 import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
-import { ARENA_WARN_MS, ARENA_WARNING, arenaCanStart, arenaPhase, arenaStage, megaCanStart, type ArenaPhase } from '../level/arenaPhase';
+import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
 import { buildForgeArt, buildLagoonArt, buildSlotArt } from '../ui/art/eventArt';
@@ -644,9 +644,18 @@ export class GameScene extends Phaser.Scene {
   /** T78: arena del jefe. Fase ya aplicada, aviso en curso y casillas con grietas (daño) de la sala del jefe. */
   private arenaDone: 0 | 1 | 2 = 0;
   private arenaWarn?: { at: number; roomId: number; phase: ArenaPhase; marks: Phaser.GameObjects.GameObject[] };
-  private arenaCracks = new Set<string>();
-  private arenaTaken: [number, number][] = [];
+  /** Casillas que queman al pisarlas ("sala:x,y"): grietas de la fase 1 (poco) y lava de la fase 2 (más). */
+  private arenaCracks = new Map<string, 'grieta' | 'lava'>();
+  /** Casillas de hielo de la fase 2 ("sala:x,y"): resbalan. */
+  private arenaIce = new Set<string>();
   private arenaTickAt = 0;
+  /** Hasta cuándo dura el último suceso del jefe (fase de arena o megaevolución): el siguiente espera EVENT_GAP_MS. */
+  private bossBusyUntil: number | undefined;
+  /** Derrumbe de la fase 2 en marcha: jugador y jefes invulnerables (se guarda la vida de cada jefe al empezar). */
+  private arenaFallAt: number | undefined;
+  /** Dibujos de la arena (fase 1 y 2) y obstáculos de cada sala, para poder quitarlos al caer a la arena nueva. */
+  private arenaObjs: Phaser.GameObjects.GameObject[] = [];
+  private obstacleObjs = new Map<number, Phaser.GameObjects.GameObject[]>();
   /** Objetos que hay en el suelo (para guardarlos). */
   private floorItems: FloorItemSave[] = [];
   private pauseKey!: Key;
@@ -1038,9 +1047,13 @@ export class GameScene extends Phaser.Scene {
     this.hazardTickAt = 0;
     this.arenaDone = 0;
     this.arenaWarn = undefined;
-    this.arenaCracks = new Set();
-    this.arenaTaken = [];
+    this.arenaCracks = new Map();
+    this.arenaIce = new Set();
     this.arenaTickAt = 0;
+    this.bossBusyUntil = undefined;
+    this.arenaFallAt = undefined;
+    this.arenaObjs = [];
+    this.obstacleObjs = new Map();
     // Al continuar, el piso se regenera igual con la misma semilla; cada piso nuevo es más grande.
     // Oleadas y Rush de jefes se juegan en una sola sala
     this.floorSeed = r?.floorSeed ?? (this.seeded ? seedFloorSeed(this.seeded.seed, this.floorNum) : Phaser.Math.Between(0, 0x7fffffff));
@@ -5223,7 +5236,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private buildObstacles(room: Room) {
     // T72: la Torre decide su plantilla (towerFloorSpec) para no repetirla en dos pisos seguidos
     const grid = this.towerSpec ? towerGrid(this.towerSpec) : layoutFor(this.floorSeed, room.id, room.kind, this.groupIds(room).length > 1);
+    this.renderObstacles(room, grid);
+  }
+
+  /**
+   * Dibuja los obstáculos de la cuadrícula y crea sus cuerpos. Todo lo que se crea aquí se apunta en obstacleObjs
+   * (T78: al caer a la arena nueva de la fase 2 se quita entero y se dibuja la nueva).
+   */
+  private renderObstacles(room: Room, grid: Grid) {
     this.grids.set(room.id, grid);
+    const n0 = this.children.list.length;
     const i = this.interior(room);
     grid.forEach((row, ty) =>
       row.forEach((c, tx) => {
@@ -5275,6 +5297,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       drawShapedWalls(this, grid, i, TILE, WALL, this.biome, this.tiles.wall, sc, { x: room.gx * VIEW.w, y: room.gy * VIEW.h }, sc * 2.4);
     }
     if (grid.some((row) => row.includes('H'))) drawPits(this, grid, i, TILE, this.biome);
+    this.obstacleObjs.set(room.id, this.children.list.slice(n0));
   }
 
   /** Un disparo rompe un poco la hierba alta: con dos golpes desaparece y deja pasar. */
@@ -5655,8 +5678,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const ratio = (b.getData('hp') as number) / (b.getData('maxHp') as number);
     // T66: megaevolución / forma furia (una vez por jefe, a la vez que la fase 2). Durante el aviso no ataca.
     if (this.updateMegaEvolution(b, ai, ratio, time)) return;
-    // T78: la arena cambia al 66 % y al 33 % (esperando a que acabe la megaevolución)
-    this.updateArena(b, ai, ratio, time);
+    // T78: la arena cambia al 67 % (desperfectos) y al 34 % (caída a otra arena), nunca a la vez que la megaevolución.
+    // Durante el derrumbe el jefe está quieto, no ataca y no recibe daño.
+    if (this.updateArena(b, ai, ratio, time)) return;
     if (ai.phase === 1 && bossPhase(ratio) === 2) {
       ai.phase = 2;
       sfx('enrage');
@@ -5743,8 +5767,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (startedAt === undefined) {
       const who = { boss: !!ai.boss, miniboss: !!b.getData('miniboss'), helper: !!b.getData('helper') };
       if (!shouldMegaEvolve({ done: !!b.getData('megaDone') }, who, ratio)) return false;
-      // T78: si la arena está avisando de un cambio, la megaevolución espera a que acabe
-      if (!megaCanStart(time, this.arenaWarn?.at)) return false;
+      // T78: va entre las dos fases de la arena, con un segundo de margen antes y después
+      if (this.bossEventFor(b, ai, ratio, time) !== 'mega') return false;
+      this.bossBusyUntil = time + MEGA_WARN_MS;
       b.setData('megaDone', true).setData('megaAt', time).setData('megaHp', b.getData('hp'));
       const id = (b.getData('speciesId') as number | undefined) ?? 0;
       const name = (b.getData('bname') as string | undefined) ?? this.bossName;
@@ -5779,77 +5804,100 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return false;
   }
 
+  /** T78: qué suceso del jefe toca ahora (fase de arena o megaevolución): siempre en orden, uno a uno y con margen. */
+  private bossEventFor(b: Sprite, ai: EnemyAI, ratio: number, time: number) {
+    const isBoss = !!ai.boss && !b.getData('miniboss') && !b.getData('helper');
+    return nextBossEvent({
+      ratio,
+      arenaDone: this.arenaDone,
+      megaDone: !!b.getData('megaDone'),
+      arena: isBoss && !this.ended,
+      mega: isBoss,
+      now: time,
+      busyUntil: this.arenaFallAt !== undefined ? Number.POSITIVE_INFINITY : this.bossBusyUntil,
+    });
+  }
+
   /**
-   * T78: cambio de fase de la arena (solo jefes, no minijefes ni ayudantes). Aviso de ARENA_WARN_MS marcando las
-   * casillas y luego se aplica: grietas (daño continuo), agua (más lento, como los charcos) o rocas (rompibles con bombas).
-   * Si la vida baja del 66 % y del 33 % de golpe, las fases van una detrás de otra, nunca juntas.
+   * T78: fases de la arena (solo jefes, no minijefes ni ayudantes).
+   * - Fase 1 (al bajar del 67 %): aviso de ARENA_WARN_MS marcando las casillas y luego grietas, escombros y charcos.
+   * - Fase 2 (al bajar del 34 %): el suelo se derrumba y se cae a otra arena según el tipo del jefe (startFall).
+   * Devuelve true mientras dura el derrumbe: el jefe está quieto, no ataca y no recibe daño.
    */
-  private updateArena(b: Sprite, ai: EnemyAI, ratio: number, time: number) {
-    if (!ai.boss || b.getData('miniboss') || b.getData('helper') || this.ended) return;
-    const w = this.arenaWarn;
-    if (w) {
-      if (time < w.at + ARENA_WARN_MS) return;
-      this.applyArena(w.roomId, w.phase);
-      w.marks.forEach((m) => m.destroy());
-      this.arenaWarn = undefined;
-      return;
+  private updateArena(b: Sprite, ai: EnemyAI, ratio: number, time: number): boolean {
+    if (!ai.boss || b.getData('miniboss') || b.getData('helper') || this.ended) return false;
+    if (this.arenaFallAt !== undefined) {
+      const hp0 = b.getData('fallHp') as number | undefined;
+      if (hp0 !== undefined) b.setData('hp', Math.max(b.getData('hp') as number, hp0));
+      b.setVelocity(0, 0);
+      return true;
     }
-    const next = (this.arenaDone + 1) as 1 | 2;
-    if (this.arenaDone >= 2 || arenaStage(ratio) < next) return;
-    if (!arenaCanStart(time, b.getData('megaAt') as number | undefined, MEGA_WARN_MS)) return;
+    if (this.arenaWarn) return false;
+    const ev = this.bossEventFor(b, ai, ratio, time);
+    if (ev !== 'arena1' && ev !== 'arena2') return false;
     const room = this.cellRoom(b.x, b.y);
     const grid = this.grids.get(room.id);
-    if (!grid || room !== this.current) return;
-    const phase = arenaPhase({
-      grid,
-      biomeId: this.biome.id,
-      bossTypes: (b.getData('btypes') as string[] | undefined) ?? this.bossTypes,
-      stage: next,
-      seed: (this.floorSeed ^ (room.id * 0x9e3779b1)) >>> 0,
-      player: this.tileOf(this.player.x, this.player.y, room),
-      taken: this.arenaTaken,
-    });
-    this.arenaDone = next;
-    if (phase.cells.length === 0) return;
+    if (!grid || room !== this.current) return false;
+    const seed = (this.floorSeed ^ Math.imul(room.id + 1, 0x9e3779b1)) >>> 0;
+    const player = this.tileOf(this.player.x, this.player.y, room);
+    const boss = this.tileOf(b.x, b.y, room);
+    if (ev === 'arena2') {
+      this.startFall(room, b, seed, player, boss, time);
+      return true;
+    }
+    this.arenaDone = 1;
+    this.bossBusyUntil = time + ARENA_WARN_MS;
+    const phase = arenaPhase({ grid, seed, player, boss });
+    if (phase.cells.length === 0) return false;
     const i = this.interior(room);
-    // TODO(supervisor): aviso de grietas, agua que sube y bloques que asoman; ahora casillas de color liso que parpadean
-    const color = phase.kind === 'grietas' ? 0xff5a1f : phase.kind === 'inundacion' ? 0x3a8ee6 : 0x8a7b68;
-    const marks = phase.cells.map(([tx, ty]) => {
-      const r = this.add.rectangle(i.x0 + tx * TILE + TILE / 2, i.y0 + ty * TILE + TILE / 2, TILE - 8, TILE - 8, color, 0.3).setDepth(0.55);
+    // TODO(supervisor): aviso de grietas, escombros que van a caer y agua que asoma; ahora casillas de color liso que parpadean
+    const marks = phase.cells.map((c) => {
+      const color = c.kind === 'grieta' ? 0xff5a1f : c.kind === 'charco' ? 0x3a8ee6 : 0x8a7b68;
+      const r = this.add.rectangle(i.x0 + c.x * TILE + TILE / 2, i.y0 + c.y * TILE + TILE / 2, TILE - 8, TILE - 8, color, 0.3).setDepth(0.55);
       this.tweens.add({ targets: r, alpha: 0.6, duration: 250, yoyo: true, repeat: -1 });
       return r;
     });
     this.arenaWarn = { at: time, roomId: room.id, phase, marks };
-    this.notify(ARENA_WARNING[phase.kind], { kind: 'danger', icon: 'star' });
+    this.cameras.main.shake(200, 0.003);
+    this.notify('¡El suelo empieza a resquebrajarse!', { kind: 'danger', icon: 'star' });
+    return false;
   }
 
+  /** T78: fase 1 aplicada: grietas (queman un poco), escombros (rocas que se rompen con bombas) y charcos. */
   private applyArena(roomId: number, phase: ArenaPhase) {
     const room = this.floor.rooms[roomId];
     const grid = this.grids.get(roomId);
     if (!room || !grid) return;
     const i = this.interior(room);
     this.cameras.main.shake(220, 0.005);
-    for (const [tx, ty] of phase.cells) {
-      if (grid[ty][tx] !== '.') continue;
-      this.arenaTaken.push([tx, ty]);
-      const x = i.x0 + tx * TILE;
-      const y = i.y0 + ty * TILE;
-      // TODO(supervisor): dibujo de las grietas, el agua y las rocas que se levantan; ahora color liso
-      if (phase.kind === 'grietas') {
-        this.arenaCracks.add(`${roomId}:${tx},${ty}`);
-        this.add.rectangle(x + TILE / 2, y + TILE / 2, TILE - 4, TILE - 4, 0xff5a1f, 0.5).setDepth(0.5);
-      } else if (phase.kind === 'inundacion') {
-        grid[ty][tx] = 'W';
-        this.add.rectangle(x + TILE / 2, y + TILE / 2, TILE, TILE, 0x3a8ee6, 0.45).setDepth(0.6);
+    let rocks = false;
+    for (const c of phase.cells) {
+      if (grid[c.y]?.[c.x] !== '.') continue;
+      const x = i.x0 + c.x * TILE;
+      const y = i.y0 + c.y * TILE;
+      const k = `${roomId}:${c.x},${c.y}`;
+      // TODO(supervisor): dibujo de las grietas, los escombros que caen y los charcos; ahora color liso
+      if (c.kind === 'grieta') {
+        this.arenaCracks.set(k, 'grieta');
+        this.arenaObjs.push(this.add.rectangle(x + TILE / 2, y + TILE / 2, TILE - 4, TILE - 4, 0xff5a1f, 0.5).setDepth(0.5));
+      } else if (c.kind === 'charco') {
+        grid[c.y][c.x] = 'W';
+        this.arenaObjs.push(this.add.rectangle(x + TILE / 2, y + TILE / 2, TILE, TILE, 0x3a8ee6, 0.45).setDepth(0.6));
       } else {
-        grid[ty][tx] = 'R';
-        const rock = this.add.rectangle(x + TILE / 2, y + TILE / 2, TILE - 4, TILE - 4, 0x8a7b68, 1).setDepth(1);
-        this.rocks.set(`${roomId}:${tx},${ty}`, [rock, this.addWall(x, y, TILE, TILE)]);
+        grid[c.y][c.x] = 'R';
+        rocks = true;
+        const rock = this.add.rectangle(x + TILE / 2, y + TILE / 2 - 40, TILE - 4, TILE - 4, 0x8a7b68, 1).setDepth(1).setAlpha(0);
+        this.tweens.add({ targets: rock, y: y + TILE / 2, alpha: 1, duration: 220, ease: 'Quad.easeIn' });
+        this.arenaObjs.push(rock);
+        this.rocks.set(k, [rock, this.addWall(x, y, TILE, TILE)]);
       }
     }
     this.flow = undefined;
-    if (phase.kind !== 'bloques') return;
-    // Nada se queda dentro de una roca nueva (el jugador ya está fuera por arenaPhase; por si se movió durante el aviso)
+    if (rocks) this.unstickAll();
+  }
+
+  /** Nada se queda dentro de un obstáculo nuevo (el jugador ya está fuera por arenaPhase; por si se movió). */
+  private unstickAll() {
     const unstick = (o: Sprite) => {
       if (this.freeAt(o.x, o.y)) return;
       const p = this.freeSpot(o.x, o.y);
@@ -5859,16 +5907,121 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.enemies.getChildren().forEach((c) => c.active && unstick(c as Sprite));
   }
 
-  /** T78: las grietas de la arena hacen un poco de daño mientras las pisas (nunca por debajo de 1 PS). */
+  /** T78: quita los disparos de todos (al empezar y al acabar la caída de la fase 2). */
+  private clearArenaShots() {
+    this.shots.clear(true, true);
+    this.foeShots.clear(true, true);
+  }
+
+  /**
+   * T78: fase 2. Tiembla todo, el suelo se derrumba y jugador y jefe caen a otra arena: temblor (FALL_SHAKE_MS),
+   * fundido a negro, cambio de sala (swapArena) y vuelta, en FALL_TOTAL_MS. Mientras tanto nadie recibe daño, los
+   * jefes no atacan y no quedan disparos. La sala es la misma (puertas y trampilla en su sitio) con otro suelo y
+   * otros obstáculos. La música y el estado del combate siguen igual.
+   */
+  private startFall(room: Room, b: Sprite, seed: number, player: [number, number], boss: [number, number], time: number) {
+    this.arenaDone = 2;
+    this.arenaFallAt = time;
+    this.bossBusyUntil = time + FALL_TOTAL_MS;
+    const now = this.time.now;
+    for (const c of this.enemies.getChildren()) {
+      const e = c as Sprite;
+      const eai = e.getData('ai') as EnemyAI | undefined;
+      if (!e.active || !eai?.boss) continue;
+      e.setData('fallHp', e.getData('hp'));
+      eai.knockUntil = Math.max(eai.knockUntil ?? 0, time + FALL_TOTAL_MS);
+      eai.nextAttack = Math.max(eai.nextAttack ?? 0, time + FALL_TOTAL_MS + 900);
+      e.setVelocity(0, 0);
+    }
+    this.invulnUntil = Math.max(this.invulnUntil, now + FALL_TOTAL_MS + 400);
+    this.playerKnockUntil = Math.max(this.playerKnockUntil, now + FALL_SHAKE_MS + FALL_FADE_MS + FALL_HOLD_MS);
+    this.player.setVelocity(0, 0);
+    this.clearArenaShots();
+    const fall = arenaFall({ bossTypes: (b.getData('btypes') as string[] | undefined) ?? this.bossTypes, seed, player, boss });
+    sfx('enrage');
+    this.notify(FALL_WARNING, { kind: 'danger', icon: 'star' });
+    this.cameras.main.shake(FALL_SHAKE_MS + FALL_FADE_MS, 0.012);
+    // TODO(supervisor): el suelo se resquebraja y se hunde; ahora unas placas oscuras de color liso que aparecen
+    const i = this.interior(room);
+    const rng = mulberry32(seed ^ 0x5bd1e995);
+    for (let k = 0; k < 14; k++) {
+      const r = this.add.rectangle(i.x0 + (0.5 + Math.floor(rng() * 20)) * TILE, i.y0 + (0.5 + Math.floor(rng() * 12)) * TILE, TILE * 1.6, TILE * 0.5, 0x120c08, 0).setDepth(0.58).setAngle(rng() * 180);
+      this.tweens.add({ targets: r, fillAlpha: 0.75, duration: FALL_SHAKE_MS });
+      this.arenaObjs.push(r);
+    }
+    const cam = this.cameras.main;
+    this.time.delayedCall(FALL_SHAKE_MS, () => cam.fadeOut(FALL_FADE_MS, 0, 0, 0));
+    this.time.delayedCall(FALL_SHAKE_MS + FALL_FADE_MS, () => this.swapArena(room, fall));
+    this.time.delayedCall(FALL_SHAKE_MS + FALL_FADE_MS + FALL_HOLD_MS, () => cam.fadeIn(FALL_FADE_MS, 0, 0, 0));
+    this.time.delayedCall(FALL_TOTAL_MS, () => {
+      this.arenaFallAt = undefined;
+      for (const c of this.enemies.getChildren()) (c as Sprite).setData('fallHp', undefined);
+    });
+  }
+
+  /** T78: cambia la sala por la arena nueva (con la pantalla en negro). */
+  private swapArena(room: Room, fall: ReturnType<typeof arenaFall>) {
+    this.clearArenaShots();
+    if (this.arenaWarn) {
+      this.arenaWarn.marks.forEach((m) => m.destroy());
+      this.arenaWarn = undefined;
+    }
+    for (const o of this.obstacleObjs.get(room.id) ?? []) o.destroy();
+    for (const k of [...this.rocks.keys()]) {
+      if (!k.startsWith(`${room.id}:`)) continue;
+      this.rocks.get(k)?.forEach((o) => o.destroy());
+      this.rocks.delete(k);
+    }
+    this.arenaObjs.forEach((o) => o.destroy());
+    this.arenaObjs = [];
+    for (const k of [...this.arenaCracks.keys()]) if (k.startsWith(`${room.id}:`)) this.arenaCracks.delete(k);
+    const i = this.interior(room);
+    // TODO(supervisor): fondo de cada arena (cueva de lava, sala inundada, caverna helada, raíces, ruinas); ahora un tinte liso
+    this.arenaObjs.push(this.add.rectangle(i.x0 + ROOM.w / 2, i.y0 + ROOM.h / 2, ROOM.w, ROOM.h, FALL_TINT[fall.theme], fall.theme === 'hielo' ? 0.45 : 0.6).setDepth(0.33));
+    // TODO(supervisor): las raíces usan de momento la hierba alta ('B'); el agua, los charcos de siempre
+    this.renderObstacles(room, fall.grid);
+    for (const [tx, ty] of fall.hazards) {
+      const k = `${room.id}:${tx},${ty}`;
+      const cx = i.x0 + tx * TILE + TILE / 2;
+      const cy = i.y0 + ty * TILE + TILE / 2;
+      // TODO(supervisor): lava y placas de hielo; ahora color liso
+      if (fall.theme === 'lava') {
+        this.arenaCracks.set(k, 'lava');
+        const r = this.add.rectangle(cx, cy, TILE, TILE, 0xff4a10, 0.75).setDepth(0.5);
+        this.tweens.add({ targets: r, fillAlpha: 0.5, duration: 700, yoyo: true, repeat: -1 });
+        this.arenaObjs.push(r);
+      } else if (fall.theme === 'hielo') {
+        this.arenaIce.add(k);
+        this.arenaObjs.push(this.add.rectangle(cx, cy, TILE, TILE, 0xe8f6ff, 0.55).setDepth(0.5));
+      }
+    }
+    this.flow = undefined;
+    this.unstickAll();
+    this.cameras.main.shake(200, 0.01);
+    this.notify(FALL_LANDING[fall.theme], { kind: 'danger', icon: 'star' });
+  }
+
+  /**
+   * T78: aplica la fase 1 al acabar su aviso (aunque el jefe ya no esté) y hace daño en las grietas (poco) y en la
+   * lava (más) mientras las pisas, nunca por debajo de 1 PS ni mientras eres invulnerable.
+   */
   private arenaTick(time: number) {
+    const w = this.arenaWarn;
+    if (w && time >= w.at + ARENA_WARN_MS) {
+      this.arenaWarn = undefined;
+      w.marks.forEach((m) => m.destroy());
+      this.applyArena(w.roomId, w.phase);
+    }
     if (this.arenaCracks.size === 0 || this.ended || this.transitioning || this.hp <= 1 || time < this.arenaTickAt) return;
+    if (this.time.now < this.invulnUntil) return;
     const [tx, ty] = this.tileOf(this.player.x, this.player.y, this.current);
-    if (!this.arenaCracks.has(`${this.current.id}:${tx},${ty}`)) return;
+    const kind = this.arenaCracks.get(`${this.current.id}:${tx},${ty}`);
+    if (!kind) return;
     this.arenaTickAt = time + 700;
-    const chip = Math.min(Math.max(1, Math.round(this.stats.maxHp * 0.05)), Math.ceil(this.hp) - 1);
+    const chip = Math.min(Math.max(1, Math.round(this.stats.maxHp * (kind === 'lava' ? 0.08 : 0.04))), Math.ceil(this.hp) - 1);
     if (chip <= 0) return;
     this.hp -= chip;
-    this.popup(this.player.x, this.player.y - 50, `-${chip} PS (grietas)`, 0xff7a59);
+    this.popup(this.player.x, this.player.y - 50, `-${chip} PS (${kind === 'lava' ? 'lava' : 'grietas'})`, 0xff7a59);
   }
 
   /** T66: estallido mega: rayos marcados desde el jefe que estallan a la vez, en dos olas giradas. Devuelve su duración. */
@@ -6890,7 +7043,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const loopNow = this.game.loop.time;
     const chargeSlow = CHARGE_SOURCES.some((k) => isCharging(this.charges[k], loopNow)) ? CHARGE_MOVE_MUL : 1;
     const spd = this.stats.speed * wade * chargeSlow * adrenalineSpeedMul(this.adrenaline) * powerFormSpeedMul(this.powerForm);
-    if (this.time.now >= this.playerKnockUntil) this.player.setVelocity(dir.x * spd, dir.y * spd);
+    if (this.time.now >= this.playerKnockUntil) {
+      // T78: en el hielo de la arena resbalas: la velocidad cambia poco a poco
+      const [itx, ity] = this.tileOf(this.player.x, this.player.y, this.current);
+      const pb = this.player.body as Body | null;
+      if (pb && this.arenaIce.size > 0 && this.arenaIce.has(`${this.current.id}:${itx},${ity}`)) {
+        const k = 1 - Math.pow(0.95, this.game.loop.delta / 16.7);
+        this.player.setVelocity(pb.velocity.x + (dir.x * spd - pb.velocity.x) * k, pb.velocity.y + (dir.y * spd - pb.velocity.y) * k);
+      } else this.player.setVelocity(dir.x * spd, dir.y * spd);
+    }
     if (this.player.getData('pmd')) {
       const moving = dir.length() > 0.2;
       if (this.player.getData('moving') !== moving) {
