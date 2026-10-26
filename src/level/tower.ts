@@ -24,8 +24,8 @@ export const TOWER_MINIBOSS_HP_MUL = 1.8;
 export const TOWER_MINIBOSS_DMG_MUL = 1.35;
 
 export type TowerFloorKind = 'combat' | 'miniboss' | 'boss' | 'final' | 'rest' | 'supply';
-/** Forma de la sala: pequeña (plantilla con muros), normal, grande 2x1, 1x2 o en L (3 casillas). */
-export type TowerShape = 'small' | 'normal' | 'wide' | 'tall' | 'ell';
+/** Forma de la sala: pequeña (plantilla con muros), normal, grande 2x1, 1x2, en L (3 casillas) o 2x2 (4 casillas). */
+export type TowerShape = 'small' | 'normal' | 'wide' | 'tall' | 'ell' | 'square';
 export type TowerHazard = 'spikes' | 'lava' | 'ice';
 
 export const TOWER_HAZARD_LABEL: Record<TowerHazard, string> = { spikes: 'pinchos', lava: 'lava', ice: 'hielo' };
@@ -59,9 +59,10 @@ const SHAPE_CELLS: Record<TowerShape, [number, number][]> = {
   wide: [[0, 0], [1, 0]],
   tall: [[0, 0], [0, 1]],
   ell: [[0, 0], [1, 0], [0, 1]],
+  square: [[0, 0], [1, 0], [0, 1], [1, 1]],
 };
-const BIG_SHAPES: readonly TowerShape[] = ['wide', 'tall', 'ell'];
-const ALL_SHAPES: readonly TowerShape[] = ['small', 'normal', 'wide', 'tall', 'ell'];
+const BIG_SHAPES: readonly TowerShape[] = ['wide', 'tall', 'ell', 'square'];
+const ALL_SHAPES: readonly TowerShape[] = ['small', 'normal', 'wide', 'tall', 'ell', 'square'];
 /** Plantillas con muros 'X' (salas pequeñas: los muros recortan la sala). */
 const WALLED_TEMPLATE_NAMES = TEMPLATE_NAMES.filter((n) => !OPEN_TEMPLATE_NAMES.includes(n));
 

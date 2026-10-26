@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { fitDesign } from '../ui/layout';
 import { emptyRecords, MODES, MODE_LABEL, modeDesc, recordText, Records } from '../data/modes';
-import { beginDaily, loadDaily, loadRecords } from '../data/save';
+import { beginDaily, loadCandies, loadDaily, loadRecords, spendCandies } from '../data/save';
+import { towerCheckpointOptions } from '../level/towerExtras';
 import { dailyStarter, dailyText } from '../data/daily';
 import { dayNumber } from '../data/gacha';
 import { fetchSpeciesName } from '../data/pokeapi';
@@ -130,7 +131,37 @@ export class ModeScene extends Phaser.Scene {
       goTo(this, 'Game', { starterId: dailyStarter(this.day), slot: this.args.slot, mode: 'normal', daily: { day: this.day, counts }, difficulty: 'normal' });
       return;
     }
+    if (MODES[i] === 'tower' && this.askTowerStart()) return;
     goTo(this, 'Game', { starterId: this.args.starterId, slot: this.args.slot, mode: MODES[i], difficulty: this.diff });
+  }
+
+  /**
+   * T72: puntos de control de la Torre. Si ya has vencido algún jefe, eliges desde qué descanso empiezas (pagando
+   * caramelos; el piso 1 es gratis). Usa la lista genérica de ItemChoiceScene (teclado, ratón y mando).
+   * Devuelve false si no hay nada que elegir.
+   */
+  private askTowerStart(): boolean {
+    const opts = towerCheckpointOptions(this.records.tower);
+    if (opts.length <= 1 || !this.scene.manager.keys['ItemChoice']) return false;
+    const candies = loadCandies();
+    this.scene.launch('ItemChoice', {
+      title: 'PUNTO DE CONTROL',
+      text: `¿Desde qué piso empiezas la Torre?\nTienes ${candies} caramelos`,
+      options: opts.map((o) => (o.cost > 0 ? `Piso ${o.floor} · ${o.cost} caramelos` : `Piso ${o.floor} · gratis`)),
+      cancel: 'Volver',
+      disabled: opts.map((o) => o.cost > candies),
+      onChoice: (k: number) => {
+        this.scene.stop('ItemChoice');
+        const o = opts[k];
+        if (!o || (o.cost > 0 && !spendCandies(o.cost))) {
+          this.leaving = false;
+          this.readyAt = this.time.now + INPUT_DELAY_MS;
+          return;
+        }
+        goTo(this, 'Game', { starterId: this.args.starterId, slot: this.args.slot, mode: 'tower', difficulty: this.diff, towerStart: o.floor });
+      },
+    });
+    return true;
   }
 
   private changeDiff(d: number) {
