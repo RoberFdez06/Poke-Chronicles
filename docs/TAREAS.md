@@ -532,7 +532,7 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
   (requisitos, coste, qué está disponible) pura y con tests, incluido el de la migración del guardado. El dibujo de los nodos y las ramas
   queda como `// TODO(supervisor)`: haz primero una versión funcional con las formas de `theme.ts`.
 
-## [ ] T72 — Modo Torre de 100 pisos
+## [x] T72 — Modo Torre de 100 pisos
 - **Cada piso es una sola sala** (sin mapa del piso, sin puertas internas, sin minimapa de salas): al limpiarla aparece una **columna de luz**
   en el centro; al pisarla subes al siguiente. Pero **no todos los pisos son iguales**. Lógica pura `towerFloorSpec(floor, seed)` en un
   fichero nuevo (`src/level/tower.ts`), determinista por piso y semilla, con tests, que decide:
@@ -563,6 +563,9 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
 - **Estado (rama t72):** hecha la lógica pura (`src/level/tower.ts`) y el modo con la ruta básica; falta lo anotado en
   `docs/BITACORA.md` (T72 — Pendiente): 2x2, altar/tienda del descanso (la forja ya está, T73), elegir suministro, minijefe con ataque extra y
   objeto épico, piso 100 con `finale.ts`, hielo, pantalla de puntos de control.
+- **Estado (rama torre2):** completa. Suministros a elegir (ItemChoiceScene), tienda del descanso sin repetidos, lote de objetos y huecos
+  al empezar desde un punto de control, sitios del descanso sin solapes y piso 100 con victoria (tests). Sin probar en el navegador ni
+  la música por bioma a oído; ver `docs/BITACORA.md` (T72 — cierre).
 
 ## Orden recomendado
 - T64 primero (arregla algo que Roberto notó), luego T65, T66 y T67, después T68-T70 (salas), T71 y por último T72.
