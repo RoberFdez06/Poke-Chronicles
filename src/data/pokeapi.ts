@@ -1,6 +1,6 @@
 import type { MoveInfo } from './items';
 import { isUsableMove, localName, pickMoveIds, typeMoveIds } from './moves';
-import { loadSpeciesIndex } from './speciesIndex';
+import { loadCollectionIndex, loadSpeciesIndex } from './speciesIndex';
 import { parseApiStats, type BaseStats } from './pokeStats';
 import { evolutionsLeft, nextEvolutionIds, type ChainLink } from './evolution';
 import { ABILITY_EFFECTS, pickAbility } from './abilities';
@@ -129,7 +129,7 @@ const speciesNameCache = new Map<number, Promise<string>>();
  */
 export function fetchSpeciesName(id: number): Promise<string> {
   return cached(speciesNameCache, id, async () => {
-    const index = await loadSpeciesIndex().catch(() => []);
+    const index = await loadCollectionIndex().catch(() => []);
     const fromIndex = index.find((s) => s.id === id)?.nameEs;
     if (fromIndex) return fromIndex;
     try {

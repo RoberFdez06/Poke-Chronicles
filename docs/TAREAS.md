@@ -689,7 +689,7 @@ Antes de empezar cada tarea: consulta graphify y busca lo que ya existe (`shiny.
 tiene las regiones; `medals.ts` las medallas de bioma; `MissionsScene` las misiones). Amplía, no dupliques. Todo en español; teclado,
 ratón y mando funcionan cada uno por separado. Lo visual nuevo, `// TODO(supervisor)`.
 
-## [ ] T83 — Formas regionales
+## [x] T83 — Formas regionales
 - Variantes de Alola, Galar, Hisui y Paldea de especies que ya salen (p. ej. Vulpix de Alola, Meowth de Galar, Growlithe de Hisui).
   Cada forma cambia **tipos, ataques y estadísticas**, y su ficha dice la región. Datos en un archivo nuevo `src/data/regionalForms.ts`
   (lógica pura, import con `.ts`, tests: toda forma apunta a una especie válida, tipos válidos, sin duplicados).

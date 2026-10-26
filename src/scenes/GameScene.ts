@@ -56,7 +56,8 @@ import { THIEF_HP_MUL, THIEF_SPEED_MUL, coinsAfterTheft, thiefCanAppear, thiefEs
 import { FISH_MAX_CASTS, FISH_PRIZE_LABEL, FISH_RARE_HP_MUL, canCast, fishBiteDelay, fishCoins, fishPrize, fishRareCoins, hookResult } from '../level/fishing';
 import { SLOT_BETS, SLOT_MAX_SPINS, SLOT_OUTCOME_LABEL, canSpin, spinSlot } from '../level/slotMachine';
 import { applyDifficulty, scaleHeal, scaleTickets, withDifficulty, type Difficulty } from '../data/difficulty';
-import { loadSpeciesIndex } from '../data/speciesIndex';
+import { loadCollectionIndex, loadSpeciesIndex } from '../data/speciesIndex';
+import { applyRegionalForms, regionalForm } from '../data/regionalForms';
 import {
   bossTicketsFor,
   difficultyFor,
@@ -834,7 +835,7 @@ export class GameScene extends Phaser.Scene {
     this.adrenalineHud = undefined;
     this.dexIndex = undefined;
     this.dexDefeated = new Set(loadDefeated());
-    loadSpeciesIndex().then((ix) => void (this.dexIndex = buildDexIndex(ix))).catch(() => undefined);
+    loadCollectionIndex().then((ix) => void (this.dexIndex = buildDexIndex(ix))).catch(() => undefined);
     this.darkness = undefined;
     this.nightLayer = undefined;
     this.roomRules = new Map();
@@ -1089,7 +1090,8 @@ export class GameScene extends Phaser.Scene {
     this.bossId = bossId;
     // Enemigos del piso: más fuertes cuanto más hondo; la semilla del piso los fija (no hace falta guardarlos)
     // Una especie del tipo del bioma y el resto de cualquier tipo (biomes.ts)
-    const foeIds = pickMixedFoes(index, this.level(), this.biome, this.foeRng(this.level()), onlyBundled);
+    // T83: alguno puede salir en su forma regional (más si encaja con el bioma)
+    const foeIds = applyRegionalForms(pickMixedFoes(index, this.level(), this.biome, this.foeRng(this.level()), onlyBundled), this.biome.types, this.foeRng(this.level() + 131));
     const [starter, boss, foeCards] = await Promise.all([
       fetchPokemon(this.formId),
       fetchPokemon(bossId),
@@ -2258,7 +2260,7 @@ export class GameScene extends Phaser.Scene {
     return cards.map((c) => ({
       key: `foe-${c.id}`,
       behavior: behaviorForSpecies(c.types, c.id),
-      bst: index.find((s) => s.id === c.id)?.bst ?? 300,
+      bst: index.find((s) => s.id === c.id)?.bst ?? regionalForm(c.id)?.bst ?? 300,
       type: c.types[0] ?? 'normal',
       types: c.types.length > 0 ? [...c.types] : ['normal'],
       stats: c.stats,
@@ -2270,7 +2272,7 @@ export class GameScene extends Phaser.Scene {
   private async reloadFoes(level: number) {
     const index = await loadSpeciesIndex().catch(() => [] as SpeciesFact[]);
     this.biome = biomeFor(this.mode, level);
-    const ids = pickMixedFoes(index, level, this.biome, this.foeRng(level));
+    const ids = applyRegionalForms(pickMixedFoes(index, level, this.biome, this.foeRng(level)), this.biome.types, this.foeRng(level + 131));
     const cards = (await Promise.all(ids.map((id) => fetchPokemonCard(id).catch(() => null)))).filter((c) => c !== null);
     if (cards.length === 0 || !this.scene.isActive()) return;
     await new Promise<void>((resolve) => {

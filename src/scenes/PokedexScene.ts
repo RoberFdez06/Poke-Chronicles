@@ -3,7 +3,7 @@ import { fitDesign } from '../ui/layout';
 import { classifyRarity, RARITY_LABEL } from '../data/gacha';
 import { countByRegion, filterCollection, type CollectionEntry } from '../data/regions';
 import { loadShinies, loadUnlocked } from '../data/save';
-import { loadSpeciesIndex } from '../data/speciesIndex';
+import { loadCollectionIndex, loadSpeciesIndex } from '../data/speciesIndex';
 import { typeNameEs } from '../data/types';
 import { cry } from '../ui/audio';
 import { addBackButton } from '../ui/cards';
@@ -92,7 +92,7 @@ export class PokedexScene extends Phaser.Scene {
   }
 
   private async boot(loading: Phaser.GameObjects.Text) {
-    const index = await loadSpeciesIndex();
+    const index = await loadCollectionIndex();
     const owned = new Set(loadUnlocked());
     const shinies = new Set(loadShinies());
     const all = index.map((s) => ({

@@ -2,6 +2,7 @@
 // direcciones. Si un Pokémon no tiene sprite allí o falla la descarga, no pasa nada: se queda el de PokeAPI.
 import Phaser from 'phaser';
 import { animDataUrl, animSheetUrl, parseAnimData, ticksToMs, type AnimInfo } from '../data/pmdAnim';
+import { isRegionalForm } from '../data/regionalForms';
 
 export interface PmdSheet {
   id: number;
@@ -32,7 +33,8 @@ export const pmdAnimKey = (id: number, anim: 'walk' | 'idle', row: number) => `p
 
 /** Carga lo que falte de estos Pokémon y devuelve los que se pueden animar (por id). */
 export async function loadPmd(scene: Phaser.Scene, ids: readonly number[]): Promise<Map<number, PmdSheet>> {
-  const unique = [...new Set(ids)];
+  // T83: las formas regionales usan el sprite de PokeAPI (sus hojas de SpriteCollab van en otra carpeta que no se lee)
+  const unique = [...new Set(ids)].filter((id) => !isRegionalForm(id));
   const datas = await Promise.all(unique.map((id) => fetchAnimData(id)));
   const sheets: PmdSheet[] = [];
   unique.forEach((id, i) => {

@@ -6,7 +6,7 @@ import {
   type PullResult, type Rarity, type RarityPools,
 } from '../data/gacha';
 import { loadHistory, pushHistory, type HistoryEntry } from '../data/gachaHistory';
-import { loadSpeciesIndex } from '../data/speciesIndex';
+import { loadCollectionIndex, loadSpeciesIndex } from '../data/speciesIndex';
 import { addShiny, addTickets, loadShinies, loadTickets, loadUnlocked, spendTickets, unlockPokemon } from '../data/save';
 import { rollShiny, SHINY_ODDS } from '../data/shiny';
 import { takeKonamiShiny } from '../data/easterEggs';
@@ -146,7 +146,7 @@ export class GachaScene extends Phaser.Scene {
   }
 
   private async loadIndex() {
-    this.pools = buildPools(await loadSpeciesIndex());
+    this.pools = buildPools(await loadCollectionIndex());
     if (!this.alive) return;
     this.message.setText('Gira la manivela: cada Poké Ball es una rareza');
     void this.buildShowcase();
