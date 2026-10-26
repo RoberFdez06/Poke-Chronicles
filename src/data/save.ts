@@ -10,6 +10,7 @@ import { applyMissionEvent, parseMissions, type Completed, type MissionEvent, ty
 import { dayNumber } from './gacha.ts';
 import { awardMedal, parseMedals, type MedalAward } from './medals.ts';
 import { KONAMI_KEY } from './easterEggs.ts';
+import { parseDefeated } from './runDex.ts';
 import { recordsKeyFor, type Difficulty } from './difficulty.ts';
 import { parseFx, type FxSettings } from './fxSettings.ts';
 import { emptyDaily, parseDaily, startDaily, withDailyResult, type DailyState } from './daily.ts';
@@ -188,6 +189,24 @@ export function spendTickets(amount: number, storage: StorageLike | null = brows
 }
 
 // --- Medallas de gimnasio (ver medals.ts) ---
+
+export const DEX_KEY = 'pokeisaac.dexdefeated';
+/** T63: ids de las especies que has derrotado alguna vez (registro de combate). */
+export function loadDefeated(storage: StorageLike | null = browserStorage()): number[] {
+  try {
+    return parseDefeated(storage?.getItem(DEX_KEY) ?? null);
+  } catch {
+    return [];
+  }
+}
+
+export function saveDefeated(ids: readonly number[], storage: StorageLike | null = browserStorage()) {
+  try {
+    storage?.setItem(DEX_KEY, JSON.stringify(parseDefeated(JSON.stringify(ids))));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+}
 
 export const MEDALS_KEY = 'pokeisaac.medals';
 
@@ -465,6 +484,7 @@ export function saveKeys(keys: KeyMap, storage: StorageLike | null = browserStor
 
 /** Todo lo que se pierde al borrar el progreso: desbloqueos, tickets, récords y partidas. El volumen se queda. */
 export const PROGRESS_KEYS: readonly string[] = [
+  DEX_KEY,
   UNLOCKED_KEY,
   TICKETS_KEY,
   CANDIES_KEY,

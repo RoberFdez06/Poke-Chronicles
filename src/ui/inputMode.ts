@@ -79,7 +79,7 @@ export const PAD_LEGENDS: Record<string, string> = {
 
 /** Escenas de menú que llevan la barra (en la partida no: ahí hay HUD). */
 export const LEGEND_SCENES = new Set([
-  'Title', 'Menu', 'Slots', 'Starter', 'FirstStarter', 'Mode', 'Settings', 'Pokedex', 'Upgrades', 'Missions', 'Summary', 'History',
+  'Title', 'Menu', 'Slots', 'Starter', 'FirstStarter', 'Mode', 'Settings', 'Pokedex', 'Upgrades', 'Missions', 'RunDex', 'Summary', 'History',
   'Keys', 'Gacha', 'Pause', 'Controls', 'Account', 'SlotSwap', 'FinalPrompt',
 ]);
 

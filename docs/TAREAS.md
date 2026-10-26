@@ -449,7 +449,7 @@ necesita un efecto visual nuevo, déjalo con un hueco claro (`// TODO(supervisor
 - Al terminar (muerte o victoria) muestra estadísticas: daño total, kills, parrys acertados, objetos cogidos, sala más rápida y
   rango/tiempo por piso. Las cuentas se acumulan en la lógica pura durante la run con tests. Se puede navegar con teclado, ratón y mando.
 
-## [ ] T63 — Pokédex de la run
+## [x] T63 — Pokédex de la run (registro de combate, hecho por el supervisor)
 - Registro de las especies derrotadas en la run (y acumuladas en la cuenta, sin guardar para invitados), con la lista por tipo en una
   pantalla accesible desde el menú y premio (caramelos o medalla) por completar un tipo entero. Datos en lógica pura con tests;
   reutiliza los iconos y nombres ya cargados de `species-index.json`.

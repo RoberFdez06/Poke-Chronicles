@@ -8,11 +8,12 @@ import { addHpBar, ARROW, drawBox, fadeIn, goTo, strokePixelFrame } from '../ui/
 import { addMenuBackdrop } from '../ui/art/landscape';
 
 const CARD = { w: 600, h: 120, gap: 22 };
-/** Botones "Misiones y logros" e "Historial" debajo de los huecos (opciones 3 y 4 con flechas o mando). */
+/** Botones "Misiones y logros", "Registro" e "Historial" debajo de los huecos (opciones 3, 4 y 5 con flechas o mando). */
 const EXTRA = { y: 566, w: 290, h: 48 };
 const EXTRA_BUTTONS: { label: string; scene: string; x: number }[] = [
-  { label: 'Misiones y logros', scene: 'Missions', x: 315 },
-  { label: 'Historial', scene: 'History', x: 645 },
+  { label: 'Misiones y logros', scene: 'Missions', x: 175 },
+  { label: 'Registro de combate', scene: 'RunDex', x: 480 },
+  { label: 'Historial', scene: 'History', x: 785 },
 ];
 const OPTIONS = 3 + EXTRA_BUTTONS.length;
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

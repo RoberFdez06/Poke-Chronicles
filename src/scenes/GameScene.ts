@@ -3,7 +3,8 @@ import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetch
 import { evolveFloors, pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
-import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal, loadCandies, loadTickets, spendCandies, spendTickets } from '../data/save';
+import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal, loadCandies, loadDefeated, loadTickets, saveDefeated, spendCandies, spendTickets } from '../data/save';
+import { buildDexIndex, registerDefeat, type DexIndex } from '../data/runDex';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
 import { dailyFloorSeed, dailyRng } from '../data/daily';
 import { damageMul, effectOf, EFFECT_COLOR, EFFECT_LABEL } from '../data/typeChart';
@@ -494,6 +495,9 @@ export class GameScene extends Phaser.Scene {
   private secondChanceUsed = false;
   /** T56: reglas de sala del piso (sala → regla) y la oscuridad de la sala a oscuras mientras dura. */
   private roomRules = new Map<number, RoomRule>();
+  /** T63: registro de combate. `dexIndex` llega cuando carga la lista de especies; `dexDefeated` es lo guardado hasta ahora. */
+  private dexIndex?: DexIndex;
+  private dexDefeated = new Set<number>();
   private darkness?: { hole: Phaser.GameObjects.Image; sides: Phaser.GameObjects.Rectangle[]; eyes: Phaser.GameObjects.Graphics };
   /** T48: oleada del entrenador rival (0 = no hay), sala del tiempo en marcha, huevo, ayudante y cansancio. */
   private rivalWave = 0;
@@ -700,6 +704,9 @@ export class GameScene extends Phaser.Scene {
     this.parryHud = undefined;
     this.adrenaline = newAdrenaline();
     this.adrenalineHud = undefined;
+    this.dexIndex = undefined;
+    this.dexDefeated = new Set(loadDefeated());
+    loadSpeciesIndex().then((ix) => void (this.dexIndex = buildDexIndex(ix))).catch(() => undefined);
     this.darkness = undefined;
     this.roomRules = new Map();
     this.ended = false;
@@ -3929,7 +3936,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.mission({ kind: 'shiny' });
     }
     const ai = this.newAI(behavior, kind.type, false);
-    e.setData('ai', ai).setData('types', kind.types);
+    e.setData('ai', ai).setData('types', kind.types).setData('speciesId', Number(kind.key.replace('foe-', '')));
     // Élites: cada piso salen más. Más vida, algo más rápidos, brillo de su tipo y un ataque extra de su tipo
     if (!helper && Math.random() < eliteChance(this.level())) {
       const light = (TYPE_STYLES[kind.type] ?? TYPE_STYLES.normal).filter((st) => !['dash', 'chain', 'orbit', 'mine'].includes(st.pattern.k));
@@ -5537,9 +5544,28 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.comboHud?.broke(was);
   }
 
+  /**
+   * T63: anota la especie derrotada en el registro de combate (se guarda al momento) y da los caramelos de los hitos
+   * que cruza. Los avisos van arriba, nunca en el centro. Si aún no ha cargado la lista de especies, no cuenta.
+   */
+  private registerDex(enemy: Sprite) {
+    const id = enemy.getData('speciesId') as number | undefined;
+    if (!id || !this.dexIndex) return;
+    const gain = registerDefeat(this.dexIndex, this.dexDefeated, id);
+    if (!gain.isNew) return;
+    saveDefeated([...this.dexDefeated]);
+    this.popup(enemy.x, enemy.y - 56, 'Registrado', 0x9ad7ff);
+    const candies = gain.rewards.reduce((n, r) => n + r.candies, 0);
+    if (candies <= 0) return;
+    addCandies(candies);
+    const best = gain.rewards[gain.rewards.length - 1];
+    this.notify(`Registro: ${typeNameEs(best.type)} al ${best.percent} %\n+${candies} caramelos`, { kind: 'reward', icon: 'star' });
+  }
+
   private killEnemy(enemy: Sprite) {
     const boss = !!(enemy.getData('ai') as EnemyAI | undefined)?.boss;
     this.counters.kills++;
+    this.registerDex(enemy);
     // T55: las bajas cargan la adrenalina (los ayudantes que invoca un jefe también cuentan: son enemigos de verdad)
     this.addAdrenaline('kill');
     this.comboKill(enemy);
