@@ -1131,3 +1131,22 @@ solo con tests, tipos y build. Lo que más conviene mirar:
   media vida e inmunidad en la misma sala, marca los botones del mando como pulsados y no cuenta como curarse.
   `TODO(supervisor)` para el efecto de revivir.
 - Tests: `tests/secondChance.test.ts` (5) y runSave (+1).
+
+## Revisión de calidad de la Tanda 8 (26/10)
+Arreglos (un commit cada uno):
+- **T62, tiempo por piso**: la escena se reinicia en cada piso y `floorStartSec` vivía en la escena, así que solo se
+  apuntaba el último piso; al continuar, además, contaba desde el segundo 0 de la partida. El inicio del piso va ahora
+  en `RunCounters.floorStartedAt` (opcional, viaja con el guardado y el cambio de piso): `openFloor`, `closeFloor` y
+  `floorTimes` en runHistory.ts, con tests.
+- **T63**: los jefes legendarios y los del reto final no llevaban `speciesId` y no contaban en el registro.
+- **Fin de partida doble**: `finish` y `checkClear` no miraban si la partida ya había acabado; un enemigo que muere
+  después que tú (Casco Dentado con `delayedCall`) podía dar la victoria y apuntar la partida dos veces. Al revivir se
+  vuelve a mirar si la sala quedó limpia (solo en salas de pelea).
+- **T58**: los tickets del premio de racha no sumaban en los de la partida (resumen e historial).
+- **T59**: el equipo del rival se elige al empezar con `pickRivalTeam` (lógica pura con test: especies del piso, sin
+  repetir); antes cada miembro era uno al azar al salir.
+- Barra del mando en «Una más» y en el registro de combate (que solo admite B).
+- Efectos bajos: sin brasas de adrenalina, destello de botín ni fogonazo de cámara al revivir.
+- «Una más» espera 700 ms antes de aceptar nada (un clic de disparo o un Espacio podían pagar o rendirse).
+Sin cambiar (decisiones del supervisor que tienen sentido): «objetos cogidos» cuenta solo pasivos (como la lista del
+resumen); el registro de combate es de la cuenta y no hay lista aparte «de esta partida».
