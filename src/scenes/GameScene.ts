@@ -134,6 +134,7 @@ import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
+import { ballEscape, ballShake, ballSuccess, ballThrow, dayNightLayer, megaAura, megaEvolveFx } from '../ui/art/powerFx';
 import { adrenalineTrail, lootFlash, parryHit, parryStance, reviveBurst, bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
@@ -498,6 +499,7 @@ export class GameScene extends Phaser.Scene {
   private weatherTickAt = 0;
   /** Día o noche (T67), según el tiempo jugado; null hasta el primer fotograma (así al continuar no avisa). */
   private phase: Phase | null = null;
+  private nightLayer?: ReturnType<typeof dayNightLayer>;
   /** Tipos del Pokémon del jugador (cambian al evolucionar). */
   private playerTypes: string[] = ['normal'];
   /** Joysticks y botones táctiles (T35): solo en móvil o tableta. */
@@ -753,6 +755,7 @@ export class GameScene extends Phaser.Scene {
     this.dexDefeated = new Set(loadDefeated());
     loadSpeciesIndex().then((ix) => void (this.dexIndex = buildDexIndex(ix))).catch(() => undefined);
     this.darkness = undefined;
+    this.nightLayer = undefined;
     this.roomRules = new Map();
     this.ended = false;
     this.endedAt = 0;
@@ -1268,8 +1271,9 @@ export class GameScene extends Phaser.Scene {
     const now = phaseAtSeconds(this.counters.seconds);
     const before = this.phase;
     this.phase = now;
+    if (!this.nightLayer) this.nightLayer = dayNightLayer(this);
+    this.nightLayer.setNight(now === 'night');
     if (before === null || before === now || this.ended) return;
-    // TODO(supervisor): tinte de pantalla y cielo (oscurecer de noche); con efectos bajos solo va el aviso.
     this.notify(`${PHASE_NOTICE[now]}\n${PHASE_DESC[now]}`, { kind: 'info', icon: 'star' });
   }
 
@@ -1955,22 +1959,17 @@ export class GameScene extends Phaser.Scene {
     const body = target.body as Body | null;
     if (body) body.enable = false;
     (target.getData('bar') as Phaser.GameObjects.Graphics | undefined)?.setVisible(false);
-    // TODO(supervisor): dibujo de la Poké Ball (vuelo, sacudidas y el destello de captura o la apertura al escaparse).
-    // Hasta entonces: un círculo rojo y blanco que vuela, se sacude tres veces (dos si se escapa) y desaparece.
-    const ball = this.add.circle(this.player.x, this.player.y, 9, 0xe8423c).setStrokeStyle(3, 0xffffff, 1).setDepth(7);
     const shakes = success ? 3 : 2;
-    const low = lowFx();
-    this.tweens.add({
-      targets: ball, x: target.x, y: target.y, duration: 260,
-      onComplete: () => {
-        this.tweens.add({
-          targets: ball, angle: low ? 0 : 25, duration: 160, yoyo: true, repeat: shakes - 1, delay: 120,
-          onComplete: () => {
-            ball.destroy();
-            this.finishCapture(target, success);
-          },
-        });
-      },
+    const from = { x: this.player.x, y: this.player.y };
+    const to = { x: target.x, y: target.y };
+    const flyMs = ballThrow(this, from, to);
+    this.time.delayedCall(flyMs, () => {
+      const shakeMs = ballShake(this, to.x, to.y, shakes);
+      this.time.delayedCall(shakeMs, () => {
+        if (success) ballSuccess(this, to.x, to.y);
+        else ballEscape(this, to.x, to.y);
+        this.finishCapture(target, success);
+      });
     });
   }
 
@@ -4745,7 +4744,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       sfx('enrage');
       ai.knockUntil = time + MEGA_WARN_MS;
       b.setVelocity(0, 0);
-      // TODO(supervisor): destello y aura de megaevolución propios (y sprite mega si existe); de momento evolveBurst.
+      const mbb = b.body as Body | null;
+      megaEvolveFx(this, b.x, b.y, mbb ? mbb.bottom : b.y + b.displayHeight / 2, 0xb388ff);
       b.setData('flashUntil', time + MEGA_WARN_MS).setTintFill(0xffffff);
       return true;
     }
@@ -4762,7 +4762,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const name = (b.getData('bname') as string | undefined) ?? this.bossName;
       b.setData('bname', megaName(id, name));
       const bb = b.body as Body | null;
-      if (!lowFx()) evolveBurst(this, b.x, b.y, bb ? bb.bottom : b.y + b.displayHeight / 2);
+      const stopAura = megaAura(this, b, 0xb388ff, () => { const q = b.body as Body | null; return q ? q.bottom : b.y + b.displayHeight / 2; });
+      b.once(Phaser.GameObjects.Events.DESTROY, stopAura);
       b.clearTint();
       this.notify(`¡${megaName(id, name)}!`, { kind: 'danger', icon: 'star' });
       ai.nextAttack = time + 700;
