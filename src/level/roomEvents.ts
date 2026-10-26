@@ -23,6 +23,13 @@ import type { ShopGoods, ShopSlot } from '../data/loot.ts';
 export const ROOM_EVENTS = ['runaway', 'merchant', 'altar', 'trapChest', 'rival', 'fountain', 'timeTrial', 'egg', 'slots', 'thief', 'fishing'] as const;
 export type RoomEventKind = (typeof ROOM_EVENTS)[number];
 
+/**
+ * Eventos del desafío diario: tabla CONGELADA con los que existían antes de T68 (mismo orden). Los pesos y las reglas
+ * son los de `eventWeights`, que para estos ocho no han cambiado. Añadir eventos nuevos a ROOM_EVENTS no toca esta
+ * lista, así que el reto del día sale igual en todas las versiones. Solo se cambia a propósito, para versionar el reto.
+ */
+export const DAILY_EVENTS: readonly RoomEventKind[] = ['runaway', 'merchant', 'altar', 'trapChest', 'rival', 'fountain', 'timeTrial', 'egg'];
+
 export interface RoomEvent {
   roomId: number;
   kind: RoomEventKind;
@@ -94,16 +101,16 @@ export function eventWeights(floorNum: number, biomeTypes: readonly string[] = [
   };
 }
 
-/** Elige evento con los pesos del piso; `x` en [0, 1). */
-export function pickEventKind(floorNum: number, x: number, biomeTypes: readonly string[] = []): RoomEventKind {
+/** Elige evento con los pesos del piso entre `kinds` (por defecto todos; el desafío diario pasa DAILY_EVENTS); `x` en [0, 1). */
+export function pickEventKind(floorNum: number, x: number, biomeTypes: readonly string[] = [], kinds: readonly RoomEventKind[] = ROOM_EVENTS): RoomEventKind {
   const w = eventWeights(floorNum, biomeTypes);
-  const total = ROOM_EVENTS.reduce((a, k) => a + w[k], 0);
+  const total = kinds.reduce((a, k) => a + w[k], 0);
   let r = Math.min(0.999999, Math.max(0, x)) * total;
-  for (const k of ROOM_EVENTS) {
+  for (const k of kinds) {
     if (r < w[k]) return k;
     r -= w[k];
   }
-  return ROOM_EVENTS.filter((k) => w[k] > 0).pop()!;
+  return kinds.filter((k) => w[k] > 0).pop()!;
 }
 
 /** Probabilidad de que un piso (desde el 2) tenga una sala sorpresa: más o menos uno de cada tres. */
@@ -111,9 +118,9 @@ export const EVENT_CHANCE = 0.35;
 
 /**
  * Sala sorpresa del piso (o null). Una sala de combate que no sea de las de `exclude` (minijefe, cofres…), mejor
- * sin salida. Siempre hace tres tiradas de `rng`.
+ * sin salida. Siempre hace tres tiradas de `rng`. `kinds` limita los eventos posibles (desafío diario: DAILY_EVENTS).
  */
-export function pickRoomEvent(floor: Floor, floorNum: number, rng: () => number, exclude: ReadonlySet<number> = new Set(), biomeTypes: readonly string[] = []): RoomEvent | null {
+export function pickRoomEvent(floor: Floor, floorNum: number, rng: () => number, exclude: ReadonlySet<number> = new Set(), biomeTypes: readonly string[] = [], kinds: readonly RoomEventKind[] = ROOM_EVENTS): RoomEvent | null {
   const roll = rng();
   const which = rng();
   const where = rng();
@@ -123,7 +130,7 @@ export function pickRoomEvent(floor: Floor, floorNum: number, rng: () => number,
   const ends = combat.filter((r) => Object.keys(r.doors).length === 1);
   const pool = ends.length > 0 ? ends : combat;
   const room = pool[Math.min(pool.length - 1, Math.floor(where * pool.length))];
-  return { roomId: room.id, kind: pickEventKind(floorNum, which, biomeTypes) };
+  return { roomId: room.id, kind: pickEventKind(floorNum, which, biomeTypes, kinds) };
 }
 
 // --- Pokémon raro que huye ---

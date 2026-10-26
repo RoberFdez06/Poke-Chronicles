@@ -2,7 +2,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DAILY_EVENTS,
   EVENT_CHANCE,
+  type RoomEventKind,
   MERCHANT_PRICES,
   ROOM_EVENTS,
   ROOM_EVENT_COLOR,
@@ -179,4 +181,63 @@ test('T59: el equipo del rival sale de las especies del piso, sin repetir mientr
   assert.deepEqual(pickRivalTeam([], 3, () => 0.5), []);
   // rng() que devuelve 1 (o casi) no se sale de la lista
   assert.equal(pickRivalTeam(pool, 2, () => 0.9999999).length, 2);
+});
+
+// Tabla del diario tal y como era antes de T68 (copia literal, para que el test no dependa del código nuevo).
+const OLD_KINDS = ['runaway', 'merchant', 'altar', 'trapChest', 'rival', 'fountain', 'timeTrial', 'egg'] as const;
+function oldPickKind(floorNum: number, x: number): RoomEventKind {
+  const f = Math.max(1, Math.floor(floorNum));
+  const deep = Math.min(1, (f - 2) / 3);
+  const w: Record<string, number> = {
+    runaway: 1, merchant: 1.2 - 0.4 * deep, altar: 0.6 + 0.4 * deep, trapChest: 1, rival: 0.6 + 0.8 * deep,
+    fountain: 1.2 - 0.4 * deep, timeTrial: f >= 3 ? 0.6 + 0.8 * deep : 0, egg: 1.2 - 0.6 * deep,
+  };
+  const total = OLD_KINDS.reduce((a, k) => a + w[k], 0);
+  let r = Math.min(0.999999, Math.max(0, x)) * total;
+  for (const k of OLD_KINDS) {
+    if (r < w[k]) return k;
+    r -= w[k];
+  }
+  return OLD_KINDS.filter((k) => w[k] > 0).pop()!;
+}
+
+test('desafío diario: tabla congelada con los ocho eventos de antes de T68', () => {
+  assert.deepEqual([...DAILY_EVENTS], [...OLD_KINDS]);
+});
+
+test('desafío diario: el evento es el de siempre para cada semilla, aunque ROOM_EVENTS tenga eventos nuevos', () => {
+  for (const biomes of [[], ['water'], ['water', 'ice']]) {
+    for (let floorNum = 1; floorNum <= 8; floorNum++) {
+      for (let i = 0; i < 200; i++) {
+        const x = i / 200;
+        assert.equal(pickEventKind(floorNum, x, biomes, DAILY_EVENTS), oldPickKind(floorNum, x));
+      }
+    }
+  }
+  for (let seed = 1; seed <= 60; seed++) {
+    const floor = floorFor(seed);
+    for (const fl of [2, 4, 6]) {
+      const ev = pickRoomEvent(floor, fl, mulberry32(seed * 31), new Set(), ['water'], DAILY_EVENTS);
+      const ref = mulberry32(seed * 31);
+      const roll = ref();
+      const which = ref();
+      if (ev) {
+        assert.ok(roll < EVENT_CHANCE);
+        assert.equal(ev.kind, oldPickKind(fl, which));
+      }
+    }
+  }
+});
+
+test('desafío diario: slots, thief y fishing nunca salen; en partidas normales sí', () => {
+  const nuevos = ['slots', 'thief', 'fishing'];
+  for (let fl = 1; fl <= 8; fl++) {
+    for (let i = 0; i < 300; i++) {
+      assert.ok(!nuevos.includes(pickEventKind(fl, i / 300, ['water'], DAILY_EVENTS)));
+    }
+  }
+  const vistos = new Set<string>();
+  for (let i = 0; i < 400; i++) vistos.add(pickEventKind(5, i / 400, ['water']));
+  for (const k of nuevos) assert.ok(vistos.has(k), k);
+  assert.ok(eventWeights(5, ['water']).fishing > 0);
 });

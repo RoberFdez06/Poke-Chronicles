@@ -19,6 +19,8 @@ import {
   canUseAltar,
   merchantStock,
   pickRoomEvent,
+  DAILY_EVENTS,
+  ROOM_EVENTS,
   runawayTickets,
   trapChestOutcome,
   RoomEvent,
@@ -869,8 +871,8 @@ export class GameScene extends Phaser.Scene {
     this.hpSacrificed = r?.hpSacrificed ?? this.carry?.hpSacrificed ?? 0;
     this.secondChanceUsed = r?.secondChance ?? this.carry?.secondChance ?? false;
     this.eventsDone = new Set(r?.eventsDone ?? []);
-    this.slotSpins = new Map();
-    this.fishCasts = new Map();
+    this.slotSpins = new Map(r?.slotSpins ?? []);
+    this.fishCasts = new Map(r?.fishCasts ?? []);
     this.fishLine = undefined;
     this.eventObjs = [];
     this.eventSpots = [];
@@ -2237,7 +2239,7 @@ export class GameScene extends Phaser.Scene {
     // Sala sorpresa (T39): con la semilla del piso (la misma al continuar), nunca la del minijefe ni las de cofre
     this.roomEvent =
       (this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)
-        ? pickRoomEvent(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x2545f491), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]), this.biome.types)
+        ? pickRoomEvent(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x2545f491), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]), this.biome.types, this.daily ? DAILY_EVENTS : ROOM_EVENTS)
         : null;
     // T56: reglas de sala, con otra semilla del piso; nunca en la del evento ni la del minijefe (ya tienen lo suyo) ni
     // en las salas grandes (se puede entrar por cualquiera de sus casillas y la regla quedaría en otra)
@@ -2681,6 +2683,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       secondChance: this.secondChanceUsed,
       captureDone: this.capture.done,
       capturePrevAlly: this.capture.prevAllyId ?? -1,
+      slotSpins: [...this.slotSpins],
+      fishCasts: [...this.fishCasts],
     });
   }
 
