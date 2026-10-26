@@ -524,7 +524,7 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
 - El sprite del ladrón queda como `// TODO(supervisor)` (usa un enemigo normal mientras tanto). Tests: cuánto roba, tope, devolución y
   que no sale sin monedas.
 
-## [ ] T71 — Árbol de mejoras con caramelos
+## [x] T71 — Árbol de mejoras con caramelos
 - Hoy «Mejoras» (`UpgradeScene`, `upgrades.ts`) son mejoras sueltas. Conviértelo en un **árbol** con nodos que se desbloquean al
   comprar el anterior (ramas: ataque, defensa, botín, utilidad), con objetivos a largo plazo (nodos finales caros). Conserva todo lo ya
   comprado: migra el guardado para que cada mejora actual sea un nodo del árbol sin perder lo comprado ni gastar caramelos.

@@ -4,6 +4,7 @@
 import { parseAudio, type AudioSettings } from './sounds.ts';
 import { parseShinies } from './shiny.ts';
 import { levelsFor, parseUpgrades, upgradeCost, type UpgradeBook, type UpgradeKind } from './upgrades.ts';
+import { nodeState } from './upgradeTree.ts';
 import { activeStorage, type StorageLike } from './storage.ts';
 import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } from './modes.ts';
 import { applyMissionEvent, parseMissions, type Completed, type MissionEvent, type MissionState } from './missions.ts';
@@ -343,13 +344,15 @@ export function loadUpgrades(storage: StorageLike | null = browserStorage()): Up
   }
 }
 
-export type BuyUpgradeResult = 'ok' | 'max' | 'poor';
+export type BuyUpgradeResult = 'ok' | 'max' | 'poor' | 'locked';
 
 /** Compra un nivel de una mejora de un Pokémon con caramelos. */
 export function buyUpgrade(id: number, kind: UpgradeKind, storage: StorageLike | null = browserStorage()): BuyUpgradeResult {
   const book = loadUpgrades(storage);
   const lv = levelsFor(book, id);
-  const cost = upgradeCost(lv[kind]);
+  // T71: un nodo del árbol solo se compra con su padre ya comprado
+  if (nodeState(kind, lv) === 'locked') return 'locked';
+  const cost = upgradeCost(lv[kind], kind);
   if (cost === null) return 'max';
   if (!spendCandies(cost, storage)) return 'poor';
   book[id] = { ...lv, [kind]: lv[kind] + 1 };
