@@ -533,6 +533,22 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
   queda como `// TODO(supervisor)`: haz primero una versión funcional con las formas de `theme.ts`.
 
 ## [ ] T72 — Modo Torre de 100 pisos
+- **Cada piso es una sola sala** (sin mapa del piso, sin puertas internas, sin minimapa de salas): al limpiarla aparece una **columna de luz**
+  en el centro; al pisarla subes al siguiente. Pero **no todos los pisos son iguales**. Lógica pura `towerFloorSpec(floor, seed)` en un
+  fichero nuevo (`src/level/tower.ts`), determinista por piso y semilla, con tests, que decide:
+  1. **Forma de sala:** pequeña, normal, grande (2x1, 1x2 o 2x2) o en L, con la misma lógica de salas grandes que ya existe
+     (`mergedSide`, `groupIds`, `layoutFor(..., big)`, `decorOpen`, `buildJoin`) y las mismas plantillas de obstáculos y huecos
+     (`roomLayouts.ts`, con el margen de 2 casillas junto a las puertas, que aquí hace de zona de aparición). Nunca dos pisos seguidos con
+     la misma forma ni la misma plantilla; los de jefe y minijefe usan siempre una sala grande.
+  2. **Bioma por tramos:** cada 10 pisos cambia el bioma (suelo, decorado, enemigos y música; si hay más tramos que biomas, se repiten
+     en otro orden), y el piso de jefe de cada tramo es de su bioma.
+  3. **Reglas especiales:** cada 6 o 7 pisos, una regla de sala de T56 (un solo tipo, plaga, a oscuras o velocidad), marcada con un
+     cartel antes de subir para que se sepa lo que viene.
+  4. **Peligros del suelo por tramo:** trampas de pinchos, lava o hielo resbaladizo repartidos por la sala según el bioma y el piso
+     (nunca bloquean el paso ni caen encima de la zona de aparición). Más peligros cuanto más alto.
+- **Animación de subir:** ya hecha por el supervisor en `src/ui/art/towerFx.ts`: llama a `towerAscend(scene, x, y, piso, { lift: sprite del
+  jugador, low: efectos bajos, onDone })` al pisar la columna (carga el piso nuevo en `onDone`, que salta a los `ascendMs(...)` ms) y a
+  `towerArrive(scene, x, y, { lift: sprite, low })` ya en la sala nueva. Cada 10 pisos es una columna más ancha y más larga sola.
 - Modo nuevo «Torre» en `modes.ts` (con su récord propio, su botón en el menú de modos y su texto en el resumen): **100 pisos seguidos**.
   Cada **5 pisos hay un minijefe «chetado»** (mucha más vida y daño que un minijefe normal, un ataque extra y un objeto épico al caerse) y
   cada **10 pisos un jefe** (los legendarios de T64, con megaevolución de T66). El piso 100 es el reto final (`finale.ts`).
@@ -577,4 +593,10 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
   especies que lo tienen y con ataque propio), **Teracristalización** (**Teragema**: durante unos segundos tu Pokémon cambia a un tipo
   elegido, con ventaja contra el tipo del bioma, y sus ataques pasan a ser de ese tipo) y **Cristal Z** (un único ataque devastador de tu
   tipo, una vez por partida). Empieza solo por Dinamax y Teracristalización; Gigamax y Cristal Z, si hay tiempo.
-- Tests de la lógica pura de cada forma. Efectos y sprites como `// TODO(supervisor)`.
+- **Requisitos de las formas de T75:** un **medidor de poder** propio (distinto de la adrenalina de T55, que sigue siendo lo de la
+  megaevolución) que se llena con el daño que haces y con los parrys acertados, y baja poco a poco si estás sin pelear. Cada forma gasta una
+  parte distinta (Dinamax y Gigamax, todo el medidor; Teracristalización, algo más de la mitad; Cristal Z, todo y solo una vez por partida).
+  **Dinamax y Gigamax solo se pueden usar con 50 % de PS o menos**: es el recurso del que va perdiendo y no un ataque más. El medidor se
+  guarda con la partida y se ve en el HUD sin tapar nada (el dibujo de la barra queda con las formas de `theme.ts`).
+- Tests de la lógica pura de cada forma y del medidor (subida, bajada, gasto por forma, el límite de PS del Dinamax). Efectos y sprites como
+  `// TODO(supervisor)`.
