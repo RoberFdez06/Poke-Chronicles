@@ -4025,7 +4025,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const ms = bossStats(m.stats, this.difficulty);
       const hp = Math.round(ms.hp * (trio ? TRIO_HP_MUL : GIANT_HP_MUL));
       b.setData('hp', hp).setData('maxHp', hp).setData('speed', ms.speed * (trio ? 0.9 : 0.8)).setData('dmg', ms.damage);
-      b.setData('bname', m.name).setData('btypes', m.types).setData('finale', true);
+      b.setData('bname', m.name).setData('btypes', m.types).setData('finale', true).setData('speciesId', m.id);
       const ai = this.newAI(behaviorFor([m.types[0]]), m.types[0], true);
       ai.attacks = [...new Set([...bossAttacksFor(m.types, this.biome.types), 'summon' as const])];
       ai.moves = bossStyles(m.types, m.id);
@@ -4078,6 +4078,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const st = bossStats(this.bossBase, d);
     b.setData('hp', st.hp).setData('speed', st.speed).setData('dmg', st.damage);
     b.setData('maxHp', b.getData('hp'));
+    // T63: el legendario también cuenta en el registro de combate al vencerlo
+    b.setData('speciesId', this.bossId);
     this.buildBossBar(b);
     // El jefe también se comporta según su tipo
     const ai = this.newAI(behaviorFor([this.bossType]), this.bossType, true);
