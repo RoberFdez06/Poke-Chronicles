@@ -315,6 +315,14 @@ const SPECIAL_ITEMS: PassiveItem[] = [
   // a los demás y para que, como todo pasivo, cambie alguna estadística
   { id: 'mega-piedra', name: 'Mega Piedra', description: 'Si tu Pokémon tiene megaevolución, con la adrenalina llena puedes megaevolucionar (una vez por piso). +5 PS máximos.', color: 0x8fd3ff,
     apply: (s) => void (s.maxHp += 5) },
+  // T75: formas de poder con el medidor de poder (ver powerForm.ts y powerMeter.ts). Cada una cambia algo pequeño
+  // para que valga también sin usarla.
+  { id: 'banda-dinamax', name: 'Banda Dinamax', description: 'Con el medidor de poder lleno y la mitad de PS o menos, Dinamax (o Gigamax si tu Pokémon lo tiene). +5 PS máximos.', color: 0xe8384f,
+    apply: (s) => void (s.maxHp += 5) },
+  { id: 'teragema', name: 'Teragema', description: 'Con algo más de medio medidor de poder, tus ataques pasan unos segundos a un tipo con ventaja en el bioma. +5 % de daño.', color: 0x7fe0ff,
+    apply: (s) => void (s.damage *= 1.05) },
+  { id: 'cristal-z', name: 'Cristal Z', description: 'Con el medidor de poder lleno, un único ataque Z devastador de tu tipo (una vez por partida). +5 % de daño.', color: 0xffd34d,
+    apply: (s) => void (s.damage *= 1.05) },
   ...TYPE_BOOSTERS.map(([id, name, type, color]) => ({
     id,
     name,
@@ -455,6 +463,8 @@ export const PASSIVE_RARITY: Readonly<Record<string, MoveRarity>> = {
   'cola-gemela': 'legendary', 'orbe-vital': 'legendary',
   // T74: objeto raro de verdad (sale poco en cofres, tienda y jefes)
   'mega-piedra': 'legendary',
+  // T75: también raros de verdad
+  'banda-dinamax': 'legendary', teragema: 'legendary', 'cristal-z': 'legendary',
 };
 export const passiveRarity = (id: string): MoveRarity => PASSIVE_RARITY[id] ?? 'rare';
 /** Precio en la tienda según la rareza (monedas de la partida). */
