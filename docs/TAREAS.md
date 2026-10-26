@@ -600,3 +600,72 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
   guarda con la partida y se ve en el HUD sin tapar nada (el dibujo de la barra queda con las formas de `theme.ts`).
 - Tests de la lógica pura de cada forma y del medidor (subida, bajada, gasto por forma, el límite de PS del Dinamax). Efectos y sprites como
   `// TODO(supervisor)`.
+
+# Tanda 10 (pedida por Roberto el 26/10: reacciones, ataque cargado, arenas, eventos con decisiones, rutas, semilla e imagen)
+
+Mismas reglas que la Tanda 9 (cabecera de arriba): español, teclado/ratón/mando por separado, avisos nunca en el centro, invitados sin
+guardado, tests de lógica pura, `tsc` + `npm test` en verde, grafo de graphify y comprobar qué existe ya antes de empezar, efectos y
+sprites como `// TODO(supervisor)`, efectos bajos respetados, un commit por tarea sin firmas ni mención a Claude, sin push. Haz esta tanda
+**después** de la Tanda 9 (algunas tareas usan cosas de ella: la Torre, los jefes con megaevolución y los huecos de objetos).
+
+## [ ] T76 — Reacciones de tipo
+- Hoy los estados (`status.ts`: quemar, congelar, paralizar, envenenar, mojar, etc.) actúan por separado. Haz que **combinar un estado ya
+  puesto con un ataque de otro tipo provoque una reacción**, en una tabla de lógica pura nueva (`src/data/reactions.ts`) con tests: por
+  ejemplo mojado + eléctrico = descarga que salta a los enemigos cercanos; mojado + hielo = congelación inmediata; quemado + agua = vapor
+  (aturde un momento); envenenado + fuego = explosión tóxica en área; congelado + fuego = derrite con daño extra. Propón 8 reacciones
+  repartidas entre los 18 tipos y no más de una por enemigo cada 1,5 s (para que no sea un caos de explosiones).
+- Aviso corto sobre el enemigo con el nombre de la reacción («¡Vapor!»), nunca en el centro, y una línea nueva en la pausa con la lista
+  de reacciones descubiertas. Los jefes aguantan la mitad del daño de las reacciones. Efectos visuales como `// TODO(supervisor)`.
+
+## [ ] T77 — Ataque cargado
+- Mantener pulsado el botón de disparo (teclado, ratón o gatillo/botón del mando) carga un golpe: a los 0,8 s se suelta un disparo más
+  grande, con el doble de daño, que atraviesa y cambia de forma según el tipo del movimiento (por ejemplo, fuego deja un rastro, agua
+  empuja, eléctrico salta). Mientras cargas te mueves un 40 % más despacio, y soltar antes de tiempo dispara el normal.
+- Cuida que no choque con el parry (T53), el objeto activo ni la pausa: comprobar el botón al pausar y al cambiar de sala (como pasó con
+  la recarga del parry: usa `this.game.loop.time`). Lógica pura (`charge.ts`) con tests: tiempo de carga, cancelar, daño según carga y
+  que con autodisparo o mantener sin soltar no hace dos disparos. El brillo de carga y el disparo cargado, `// TODO(supervisor)`.
+
+## [ ] T78 — Arenas que cambian en los jefes
+- En los jefes (no en los minijefes), al bajar al 66 % y al 33 % de PS la arena cambia de **fase** con aviso previo de 1,5 s: el suelo
+  se rompe en zonas con peligro (daño continuo), se inunda en parte (más lento y resbaladizo) o se levantan bloques que cambian por dónde
+  moverse. Qué pasa depende del bioma y del tipo del jefe, y siempre queda un camino libre por la sala y nunca se cubre la casilla del
+  jugador de golpe. Lógica pura `arenaPhase(...)` con tests (siempre hay camino, determinista por semilla, no solapa con las puertas).
+- Con la megaevolución del jefe (T66) la arena también cambia: mejor coordínalo para que las dos cosas no se pisen en el mismo instante.
+  El dibujo de las zonas y su aviso (grietas, agua, bloques) lo hace el supervisor; deja `// TODO(supervisor)` y usa un color liso.
+
+## [ ] T79 — Eventos con decisiones
+- Evento de sala nuevo en `roomEvents.ts` (etiqueta, color de minimapa y peso por piso): una **pequeña historia con 2 o 3 elecciones** y
+  consecuencias (como los eventos de los roguelikes). Escribe **10 historias originales** en español de temática Pokémon (una mochila
+  abandonada, un Pokémon herido, un viajero que ofrece un trato, una cueva con eco…), cada una con sus opciones y resultados: premio, riesgo,
+  ambos o nada. Teclado, ratón y mando. Las opciones que cuestan monedas o PS aparecen **apagadas** si no puedes pagarlas.
+- Lógica pura `resolveChoice(evento, opción, rng)` con tests: probabilidades que suman 100, nunca deja monedas ni PS en negativo, una
+  historia solo una vez por partida y que todas son válidas. El panel de texto con las formas de `theme.ts`; el dibujo, `// TODO(supervisor)`.
+
+## [ ] T80 — Rutas del piso
+- Al acabar un piso (modos Normal e Infinito; no en Torre) eliges el siguiente entre **2 o 3 rutas**, cada una con su carta: el bioma, la
+  dificultad (por ejemplo +20 %) y el premio (tienda extra, descanso con fuente, un evento con decisiones o mejor botín). Lógica pura
+  `routeOptions(piso, semilla)` con tests: siempre hay una ruta tranquila, no se repiten tipos de premio y es determinista.
+- La elección se guarda en `RunSave` (versión nueva con migración) y se ve en el resumen. En el **desafío diario** las rutas ofrecidas son
+  las mismas para todos (salen de la semilla del día) aunque la elección sea libre. Pantalla `RouteScene` con teclado, ratón y mando; sus
+  dibujos y el mapa de la ruta, `// TODO(supervisor)`.
+
+## [ ] T81 — Código de semilla
+- Al terminar una partida (resumen) y desde la pausa, un **código corto** (por ejemplo `PKI-7F3K-9QXA`) que lleva la semilla, el modo, la
+  dificultad y el Pokémon inicial. Otro jugador lo escribe en el menú de modos («Partida con código») y juega la misma partida: mismos pisos,
+  salas, jefes y objetos. Ese tipo de partida **no cuenta** para récords, desafío diario, misiones ni registro de combate, pero sí guarda su
+  mejor resultado por código para poder comparar.
+- Generaliza lo que hace el desafío diario con su semilla (`dailyRng`, `dailyFloorSeed` en `daily.ts`) para que sirva para cualquier
+  semilla. Lógica pura de codificar y decodificar con suma de control y tests: ida y vuelta, códigos mal escritos o de otra versión
+  rechazados, mayúsculas y minúsculas indistintas. Botón de copiar al portapapeles. **Con mando se puede escribir** (selector de letras
+  con arriba y abajo), con teclado y con ratón también.
+
+## [ ] T82 — Imagen de la partida
+- Botón «Guardar imagen» en el resumen (teclado, ratón y mando) que genera una **imagen PNG de 1200×630** con el Pokémon, el resultado
+  (piso o victoria), el tiempo, kills, parrys, objetos con sus iconos y el código de semilla (T81). Se descarga como archivo o, donde el
+  navegador lo permita, se comparte con el menú del sistema. Funciona también para invitados (no guarda nada).
+- Hazla componiendo con una `RenderTexture` de Phaser y sacándola con `snapshot` (los sprites ya cargados no ensucian el lienzo; no pidas
+  imágenes de fuera). Lógica pura del texto y los datos que salen en la tarjeta, con tests. El diseño final de la tarjeta lo dibuja el
+  supervisor: haz primero una versión funcional con las formas de `theme.ts` y deja `// TODO(supervisor)`.
+
+## Orden recomendado de la Tanda 10
+- T76 y T77 (sensación de combate), luego T79 y T80 (variedad), T82 y T81 (compartir) y por último T78 (la más delicada con los jefes).
