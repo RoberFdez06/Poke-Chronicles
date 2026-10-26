@@ -20,13 +20,21 @@ function rng(seed: number) {
   };
 }
 
+/** Luminosidad (0-1) de un color. */
+const lum = (c: number) => (0.299 * ((c >> 16) & 255) + 0.587 * ((c >> 8) & 255) + 0.114 * (c & 255)) / 255;
+
 /** Detalles 8x8: '.' vacío; letras = colores de su paleta. */
 interface Decal { rows: string[]; pal: Record<string, number> }
 const K = 0x18202c;
 const FLOWER_R: Decal = { rows: ['........', '...rr...', '..rWWr..', '..rWWr..', '...rr...', '...g....', '..gg....', '........'], pal: { r: 0xe8483a, W: 0xffe066, g: 0x2f8a3a } };
 const FLOWER_Y: Decal = { rows: ['........', '..y..y..', '...yy...', '..yOOy..', '...yy...', '..y.gy..', '....g...', '........'], pal: { y: 0xffe066, O: 0xe08a20, g: 0x2f8a3a } };
 const TUFT: Decal = { rows: ['........', '........', '.g...g..', '.gg.gg..', '..gGg.g.', '.gGgGgg.', '........', '........'], pal: { g: 0x2f7a2a, G: 0x58b848 } };
-const PEBBLE: Decal = { rows: ['........', '........', '...ddd..', '..dWRRd.', '..dRRrd.', '..drrrd.', '...ddd..', '........'], pal: { d: 0x5e544a, R: 0x9a8a7a, r: 0x7a6c5e, W: 0xd8ccb8 } };
+const PEBBLE_ROWS = ['........', '........', '...ddd..', '..dWRRd.', '..dRRrd.', '..drrrd.', '...ddd..', '........'];
+const PEBBLE: Decal = { rows: PEBBLE_ROWS, pal: { d: 0x5e544a, R: 0x9a8a7a, r: 0x7a6c5e, W: 0xd8ccb8 } };
+// Piedrecitas del color de cada sitio: gris azulado en la nieve, basalto en el volcán, lila en la cumbre
+const PEBBLE_ICE: Decal = { rows: PEBBLE_ROWS, pal: { d: 0x5a6a7c, R: 0x9aa8b8, r: 0x7a8898, W: 0xe8f0f8 } };
+const PEBBLE_BASALT: Decal = { rows: PEBBLE_ROWS, pal: { d: 0x1e1414, R: 0x4a3a38, r: 0x34282a, W: 0x7a6662 } };
+const PEBBLE_LILAC: Decal = { rows: PEBBLE_ROWS, pal: { d: 0x4a3a6a, R: 0x8a7aae, r: 0x6a5a8e, W: 0xd8ccf0 } };
 const CRYSTAL: Decal = { rows: ['....k...', '...kCk..', '..kCWk..', '..kCCk.k', '.k.kCkkC', 'kCk.kkCC', 'kCCkkCCk', '.kkkkkk.'], pal: { k: K, C: 0x8fd8ff, W: 0xffffff } };
 const SHELL: Decal = { rows: ['........', '...kkk..', '..kPWPk.', '.kPpPpPk', '.kPpPpPk', '..kPPPk.', '...kkk..', '........'], pal: { k: K, P: 0xf4b8c8, p: 0xd88aa0, W: 0xffffff } };
 const STAR: Decal = { rows: ['...k....', '..kOk...', 'kkkOOkkk', 'kOOOOOOk', '.kOOOOk.', '.kOkkOk.', 'kOk..kOk', 'kk....kk'], pal: { k: K, O: 0xf08a3a } };
@@ -42,12 +50,12 @@ const DECALS: Record<string, Decal[]> = {
   bosque: [FLOWER_R, FLOWER_Y, TUFT, TUFT, TUFT, PEBBLE],
   pantano: [MUSHROOM, LILY, TUFT, TUFT, PEBBLE],
   cueva: [PEBBLE, PEBBLE, CRYSTAL, CRACK],
-  volcan: [EMBER, EMBER, PEBBLE, CRACK],
-  mar: [SHELL, STAR, PEBBLE, PEBBLE],
-  torre: [RUNE, CRACK, PEBBLE],
+  volcan: [EMBER, EMBER, PEBBLE_BASALT, CRACK],
+  mar: [SHELL, STAR, SHELL],
+  torre: [RUNE, CRACK, CRACK],
   ciudad: [LEAF, LEAF, CRACK, TUFT],
-  nieve: [SNOWPILE, SNOWPILE, PEBBLE, CRACK],
-  cumbre: [PEBBLE, TUFT, FLOWER_Y, CRYSTAL],
+  nieve: [SNOWPILE, SNOWPILE, PEBBLE_ICE, CRACK],
+  cumbre: [PEBBLE_LILAC, TUFT, FLOWER_Y, CRYSTAL],
 };
 
 /** Qué hay fuera de la sala en cada bioma. */
@@ -76,6 +84,37 @@ function drawOutside(g: G, b: BiomeLook, kind: Outside) {
       g.fillStyle(base, 1).fillCircle(x + ox - 1, y + oy - 1, rad - 1);
       g.fillStyle(top, 1).fillCircle(x + ox - rad * 0.3, y + oy - rad * 0.35, rad * 0.45);
       if (hi !== undefined) g.fillStyle(hi, 1).fillRect(x + ox - rad * 0.45, y + oy - rad * 0.55, 2, 2);
+    });
+  const pt = (x: number, y: number) => new Phaser.Geom.Point(x, y);
+  // Peñasco: polígono irregular con cara de arriba clara, cara derecha oscura y contorno
+  const crag = (x: number, y: number, cw: number, chh: number, base: number, top: number) => {
+    const j = () => 0.75 + r() * 0.5;
+    const v = [[-0.5, 0.35], [-0.46, 0], [-0.3, -0.3], [-0.12, -0.36], [0.04, -0.55], [0.22, -0.3], [0.36, -0.22], [0.5, 0.08], [0.46, 0.35]].map(([a, c]) => [a * cw * j(), c * chh * j()]);
+    const m = [0.04 * cw, -0.04 * chh];
+    const bt = [0.1 * cw, 0.35 * chh];
+    wrap((ox, oy) => {
+      const P = (list: number[][]) => list.map(([a, c]) => pt(x + ox + a, y + oy + c));
+      g.fillStyle(0x000000, 0.3).fillEllipse(x + ox + 2, y + oy + chh * 0.36, cw * 1.05, chh * 0.24);
+      g.fillStyle(base, 1).fillPoints(P(v), true);
+      g.fillStyle(top, 1).fillPoints(P([v[1], v[2], v[3], v[4], v[5], m]), true);
+      g.fillStyle(shade(base, -0.35), 1).fillPoints(P([m, v[5], v[6], v[7], v[8], bt]), true);
+      g.fillStyle(shade(top, 0.35), 1).fillRect(x + ox + v[3][0], y + oy + v[3][1] + 1, Math.max(2, (v[4][0] - v[3][0]) * 0.8), 1);
+      g.fillStyle(shade(base, -0.5), 1).fillRect(x + ox - cw * 0.12, y + oy + chh * 0.08, 1, chh * 0.2);
+      g.lineStyle(1, K, 1).strokePoints(P(v), true, true);
+    });
+  };
+  // Racimo de cristales que salen del suelo: [desplazamiento, alto, ancho, color]
+  const shards = (x: number, y: number, list: [number, number, number, number][]) =>
+    wrap((ox, oy) => {
+      for (const [dx, sh, sw, c] of list) {
+        const cx = x + ox + dx;
+        const by = y + oy;
+        const P = [pt(cx - sw / 2, by), pt(cx - sw / 2, by - sh + sw / 2), pt(cx, by - sh), pt(cx + sw / 2, by - sh + sw / 2), pt(cx + sw / 2, by)];
+        g.fillStyle(c, 1).fillPoints(P, true);
+        g.fillStyle(shade(c, 0.45), 1).fillRect(cx - sw / 2 + 1, by - sh + sw / 2, Math.max(1, sw / 2 - 1), sh - sw / 2 - 1);
+        g.lineStyle(1, K, 1).strokePoints(P, true, true);
+        g.fillStyle(0xffffff, 1).fillRect(cx - 1, by - sh + 2, 1, 2);
+      }
     });
   switch (kind) {
     case 'trees':
@@ -134,12 +173,21 @@ function drawOutside(g: G, b: BiomeLook, kind: Outside) {
           g.fillStyle(0xffa030, 1).fillCircle(x - 1, y - 1, rad - 1);
         }
       }
-      const rocks: [number, number, number][] = kind === 'lava' ? [[20, 10, 8], [48, 12, 7], [8, 54, 7], [36, 58, 9], [60, 40, 5]] : [[12, 12, 9], [40, 8, 7], [56, 30, 8], [22, 38, 10], [46, 54, 8], [4, 58, 6], [32, 24, 4]];
-      for (const [x, y, rad] of rocks) blob(x, y, rad, b.colors.rock, b.colors.rockTop, shade(b.colors.rockTop, 0.4));
-      if (b.id === 'cumbre') for (const [x, y] of [[32, 32], [8, 36]] as const) {
-        g.fillStyle(K, 1).fillTriangle(x - 3, y + 2, x + 1, y - 7, x + 4, y + 2);
-        g.fillStyle(0xc8a8ff, 1).fillTriangle(x - 2, y + 1, x + 1, y - 5, x + 3, y + 1);
-        g.fillStyle(0xffffff, 1).fillRect(x, y - 3, 1, 2);
+      // Peñascos con caras (luz arriba a la izquierda, sombra a la derecha) en vez de bolas; en la cumbre, además,
+      // racimos de cristal
+      const rock = kind === 'lava' ? 0x3a2a28 : b.colors.rock;
+      const top = kind === 'lava' ? 0x5e4a46 : b.colors.rockTop;
+      const crags: [number, number, number, number][] =
+        kind === 'lava'
+          ? [[20, 12, 18, 14], [50, 14, 15, 12], [8, 56, 16, 13], [38, 60, 20, 15]]
+          : b.id === 'cumbre'
+            ? [[14, 16, 22, 18], [52, 38, 20, 17], [24, 52, 18, 15], [2, 62, 14, 11]]
+            : [[14, 16, 22, 18], [44, 12, 18, 15], [54, 40, 20, 17], [22, 46, 24, 20], [42, 62, 16, 12], [2, 60, 14, 11]];
+      crags.sort((a, c) => a[1] - c[1]);
+      for (const [x, y, cw, chh] of crags) crag(x, y, cw, chh, rock, top);
+      if (b.id === 'cumbre') {
+        shards(42, 22, [[-5, 10, 4, 0xc8a8ff], [0, 15, 5, 0x9fd8ff], [5, 9, 4, 0xc8a8ff]]);
+        shards(10, 40, [[-3, 8, 4, 0x9fd8ff], [2, 12, 4, 0xc8a8ff]]);
       }
       break;
     }
@@ -643,10 +691,13 @@ function addWallDecor(scene: Phaser.Scene, b: BiomeLook, room: Rect, wall: numbe
   // Charcos de luz en el suelo bajo cada luz (suman color, como un resplandor)
   let pool: Phaser.GameObjects.Graphics | undefined;
   if (lights.length) {
-    pool = scene.add.graphics().setDepth(0.28).setBlendMode(Phaser.BlendModes.ADD);
+    // Sobre un suelo muy claro (nieve) sumar luz no se ve: ahí se tiñe del color de la luz, algo más oscuro
+    const bright = lum(b.colors.floor) > 0.8;
+    pool = scene.add.graphics().setDepth(0.28).setBlendMode(bright ? Phaser.BlendModes.NORMAL : Phaser.BlendModes.ADD);
     for (const l of lights) {
       const ly = Math.max(l.y, room.y0) + 18;
-      for (let s = 0; s < 4; s++) stepBlob(pool, l.c[1], 0.05, l.x, ly, 110 - s * 24, 64 - s * 14, q * 2);
+      const c = bright ? l.c[0] : l.c[1];
+      for (let s = 0; s < 4; s++) stepBlob(pool, c, bright ? 0.06 : 0.05, l.x, ly, 110 - s * 24, 64 - s * 14, q * 2);
       // Halo sobre la pared, junto a la llama
       for (let s = 0; s < 3; s++) stepBlob(pool, l.c[1], 0.07, l.x, l.y, 30 - s * 8, 26 - s * 7, q);
     }
@@ -1099,4 +1150,73 @@ function addRoomAmbient(
     gw.destroy();
     gl.destroy();
   });
+}
+
+/**
+ * Alfombra de las salas especiales (Centro, tienda, objeto) en píxel gordo, como el resto del suelo: trama tejida,
+ * doble ribete, medallón en el centro, motivos en las esquinas y flecos. `q` = tamaño de un píxel del arte.
+ */
+export function drawRoomRug(scene: Phaser.Scene, x: number, y: number, w: number, h: number, color: number, q: number, depth = 0.2) {
+  const g = scene.add.graphics().setDepth(depth);
+  const sn = (v: number) => Math.round(v / q) * q;
+  x = sn(x);
+  y = sn(y);
+  w = sn(w);
+  h = sn(h);
+  // Los colores de sala son muy pálidos: la alfombra los oscurece un poco para que se lea sobre cualquier suelo
+  const body = shade(color, -0.1);
+  const edge = shade(color, -0.55);
+  const weave = shade(color, -0.17);
+  const hi = shade(color, 0.6);
+  const mid = shade(color, -0.36);
+  // Sombra y canto
+  g.fillStyle(0x000000, 0.22).fillRect(x + q * 2, y + q * 2, w, h);
+  g.fillStyle(edge, 1).fillRect(x, y, w, h);
+  g.fillStyle(body, 1).fillRect(x + q * 2, y + q * 2, w - q * 4, h - q * 4);
+  // Trama: hilos horizontales alternos y algún nudo
+  for (let yy = y + q * 3; yy < y + h - q * 3; yy += q * 3) g.fillStyle(weave, 1).fillRect(x + q * 2, yy, w - q * 4, q);
+  for (let k = 0; k < (w * h) / (q * q * 90); k++) {
+    const kx = x + q * 3 + Math.floor(((k * 7919) % 997) / 997 * (w / q - 6)) * q;
+    const ky = y + q * 3 + Math.floor(((k * 104729) % 991) / 991 * (h / q - 6)) * q;
+    g.fillStyle(k % 2 ? hi : mid, 0.5).fillRect(kx, ky, q, q);
+  }
+  // Doble ribete
+  const ring = (ins: number, c: number, t = q) => {
+    g.fillStyle(c, 1)
+      .fillRect(x + ins, y + ins, w - ins * 2, t)
+      .fillRect(x + ins, y + h - ins - t, w - ins * 2, t)
+      .fillRect(x + ins, y + ins, t, h - ins * 2)
+      .fillRect(x + w - ins - t, y + ins, t, h - ins * 2);
+  };
+  ring(q * 2, mid, q * 2);
+  ring(q * 5, hi, q * 2);
+  ring(q * 8, mid);
+  // Medallón: rombo escalonado en el centro
+  const cx = sn(x + w / 2);
+  const cy = sn(y + h / 2);
+  const dia = (r: number, c: number) => {
+    for (let k = -r; k <= r; k++) g.fillStyle(c, 1).fillRect(cx - (r - Math.abs(k)) * q, cy + k * q, (r - Math.abs(k)) * q * 2 + q, q);
+  };
+  dia(12, edge);
+  dia(11, mid);
+  dia(8, hi);
+  dia(6, body);
+  dia(3, mid);
+  dia(1, hi);
+  // Rombos pequeños hacia los lados y motivos en las esquinas
+  for (const dx of [-0.3, 0.3]) {
+    const mx = sn(cx + w * dx);
+    for (let k = -3; k <= 3; k++) g.fillStyle(mid, 1).fillRect(mx - (3 - Math.abs(k)) * q, cy + k * q, (3 - Math.abs(k)) * q * 2 + q, q);
+    g.fillStyle(hi, 1).fillRect(mx, cy, q, q);
+  }
+  for (const [ex, ey] of [[x + q * 11, y + q * 11], [x + w - q * 14, y + q * 11], [x + q * 11, y + h - q * 14], [x + w - q * 14, y + h - q * 14]]) {
+    g.fillStyle(mid, 1).fillRect(ex, ey + q, q * 3, q).fillRect(ex + q, ey, q, q * 3);
+    g.fillStyle(hi, 1).fillRect(ex + q, ey + q, q, q);
+  }
+  // Flecos arriba y abajo
+  for (let fx = x + q * 2; fx < x + w - q * 2; fx += q * 3) {
+    g.fillStyle(hi, 1).fillRect(fx, y - q * 2, q, q * 2).fillRect(fx, y + h, q, q * 2);
+    g.fillStyle(mid, 1).fillRect(fx, y - q * 3, q, q).fillRect(fx, y + h + q * 2, q, q);
+  }
+  return g;
 }

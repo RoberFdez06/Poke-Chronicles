@@ -97,6 +97,84 @@ function drawStones(g: G, r: () => number, S: number, rowH: number, minW: number
   return joints;
 }
 
+/**
+ * Losas irregulares sin filas (cueva, volcán, cumbre): cada losa es la zona más cercana a un punto sembrado al azar
+ * (Voronoi que da la vuelta por los bordes), en bloques de 2 px. Luz en el canto de arriba, sombra en el de abajo y
+ * junta oscura. Con `lava` > 0, esa parte de las juntas brilla como lava. Devuelve el centro de cada losa.
+ */
+function drawFlagstones(g: G, r: () => number, S: number, n: number, base: number, gap: number, opt: { jitter?: number; lava?: number } = {}) {
+  const seeds: { x: number; y: number; tone: number }[] = [];
+  // Puntos repartidos sin rejilla: se descartan los que caen demasiado cerca de otro
+  for (let tries = 0; seeds.length < n && tries < 400; tries++) {
+    const x = r() * S;
+    const y = r() * S;
+    const near = seeds.some((p) => {
+      const dx = Math.min(Math.abs(p.x - x), S - Math.abs(p.x - x));
+      const dy = Math.min(Math.abs(p.y - y), S - Math.abs(p.y - y));
+      return dx * dx + dy * dy < (S * S) / (n * 2.2);
+    });
+    if (!near) seeds.push({ x, y, tone: shade(base, (r() - 0.5) * (opt.jitter ?? 0.1)) });
+  }
+  // Qué juntas llevan lava: por pareja de losas vecinas
+  const hot = (a: number, c: number) => {
+    const k = Math.min(a, c) * 31 + Math.max(a, c);
+    return ((Math.imul(k, 2654435761) >>> 0) % 1000) / 1000 < (opt.lava ?? 0);
+  };
+  const wd = (a: number, c: number) => {
+    let d = c - a;
+    if (d > S / 2) d -= S;
+    if (d < -S / 2) d += S;
+    return d;
+  };
+  for (let y = 1; y < S; y += 2) for (let x = 1; x < S; x += 2) {
+    let i1 = 0;
+    let i2 = 0;
+    let d1 = Infinity;
+    let d2 = Infinity;
+    seeds.forEach((p, i) => {
+      const dx = wd(x, p.x);
+      const dy = wd(y, p.y);
+      const d = dx * dx + dy * dy;
+      if (d < d1) {
+        d2 = d1;
+        i2 = i1;
+        d1 = d;
+        i1 = i;
+      } else if (d < d2) {
+        d2 = d;
+        i2 = i;
+      }
+    });
+    const a = seeds[i1];
+    const c = seeds[i2];
+    const sep = Math.hypot(wd(a.x, c.x), wd(a.y, c.y)) || 1;
+    // Distancia a la junta (la mediatriz entre las dos losas más cercanas)
+    const e = (d2 - d1) / (2 * sep);
+    let col: number;
+    if (e < 1.6) {
+      col = gap;
+      if (opt.lava && hot(i1, i2)) col = e < 0.8 && (x + y) % 6 !== 0 ? 0xe8601e : 0xa02a14;
+    } else {
+      // Hacia qué lado queda la junta: arriba = canto con luz, abajo = sombra
+      const ny = wd(a.y, c.y) / sep;
+      col = a.tone;
+      if (e < 4.2 && ny < -0.45) col = shade(a.tone, 0.2);
+      else if (e < 4.2 && ny > 0.45) col = shade(a.tone, -0.2);
+      else if (e < 3.2) col = shade(a.tone, wd(a.x, c.x) < 0 ? 0.08 : -0.1);
+      else if (r() < 0.05) col = shade(a.tone, r() < 0.5 ? -0.12 : 0.12);
+      // Brillo de la lava sobre el borde de la losa
+      if (opt.lava && e < 2.8 && hot(i1, i2)) col = mix(col, 0xff6a1a, 0.22);
+    }
+    g.fillStyle(col, 1).fillRect(x - 1, y - 1, 2, 2);
+  }
+  return seeds.map((p) => [p.x, p.y] as [number, number]);
+}
+
+const mix = (a: number, b: number, t: number) => {
+  const ch = (s: number) => Math.round(((a >> s) & 255) * (1 - t) + ((b >> s) & 255) * t) << s;
+  return ch(16) | ch(8) | ch(0);
+};
+
 /** Ruido en bloques de 2 px: que el color base nunca sea una mancha plana. */
 function dither(g: G, r: () => number, S: number, cols: number[], n: number, size = 2) {
   for (let i = 0; i < n; i++) g.fillStyle(cols[Math.floor(r() * cols.length)], 1).fillRect(Math.floor((r() * S) / size) * size, Math.floor((r() * S) / size) * size, size, size);
@@ -124,24 +202,21 @@ function drawFloor(g: G, b: BiomeLook) {
     case 'cueva':
     case 'volcan':
     case 'cumbre': {
-      // Losas de piedra irregulares; en el volcán la junta es roca negra con vetas de lava
-      const gap = b.id === 'volcan' ? 0x3a1a14 : shade(base, -0.3);
-      const joints = drawStones(g, r, S, 32, 24, 56, base, gap, { jitter: 0.12, split: true });
-      if (b.id === 'volcan') {
-        for (const [x, y, w, jh] of joints) if (r() < 0.35) {
-          wrapRect(g, 0xd8401a, x, y + jh - 1, w, 1, S);
-          if (r() < 0.5) wrapRect(g, 0xffa030, x + Math.floor(w / 2), y + jh - 1, 3, 1, S);
-        }
-        dither(g, r, S, [shade(base, -0.25), 0x5a2a20], 30);
-      }
+      // Losas de piedra irregulares (sin filas: parten de puntos al azar); en el volcán, basalto oscuro con lava en
+      // algunas juntas
+      const volcano = b.id === 'volcan';
+      const gap = volcano ? 0x1e0c0a : shade(base, -0.32);
+      const cells = drawFlagstones(g, r, S, volcano ? 10 : 9, base, gap, { jitter: volcano ? 0.16 : 0.12, lava: volcano ? 0.14 : 0 });
+      if (volcano) dither(g, r, S, [shade(base, -0.2), shade(base, 0.1)], 50);
       if (b.id === 'cueva') dither(g, r, S, [darker, shade(base, -0.3)], 40);
       if (b.id === 'cumbre') {
         // Vetas de cristal en algunas losas
-        for (const [x, y, w] of joints) if (r() < 0.22) {
-          const cx = x + 3 + Math.floor(r() * (w - 8));
-          wrapRect(g, 0xffffff, cx, y + 5, 2, 2, S);
-          wrapRect(g, 0xc8b0ff, cx + 2, y + 7, 2, 2, S);
-          wrapRect(g, 0xc8b0ff, cx - 2, y + 9, 2, 2, S);
+        for (const [x, y] of cells) if (r() < 0.3) {
+          const cx = Math.round(x / 2) * 2;
+          const cy = Math.round(y / 2) * 2 - 4;
+          wrapRect(g, 0xffffff, cx, cy, 2, 2, S);
+          wrapRect(g, 0xc8b0ff, cx + 2, cy + 2, 2, 2, S);
+          wrapRect(g, 0xc8b0ff, cx - 2, cy + 4, 2, 2, S);
         }
       }
       break;
@@ -592,6 +667,15 @@ const PARTS: Record<TilePart, { w: number; h: number; draw: (g: G, b: BiomeLook,
   pillar: { w: TILE, h: 48, draw: drawPillar, frames: 4 },
 };
 
+/** Copias de la textura de hierba alta, cada una con la animación desfasada. */
+const BUSH_VARIANTS = 3;
+
+/** Textura de hierba alta para la casilla (tx, ty): reparte las copias desfasadas para que no se mezan todas a la vez. */
+export function bushKeyAt(key: string, tx: number, ty: number): string {
+  const v = (((tx * 7 + ty * 5) % BUSH_VARIANTS) + BUSH_VARIANTS) % BUSH_VARIANTS;
+  return v ? `${key}-${v}` : key;
+}
+
 /** Fotogramas (tira horizontal) de las piezas animadas: se copian por turnos a su textura de lienzo. */
 const stripKey = (key: string) => `${key}-strip`;
 /** Último bioma animado por escena (un solo temporizador vivo por escena). */
@@ -625,6 +709,14 @@ function animateTiles(scene: Phaser.Scene, biomeId: string) {
         tex.context.clearRect(0, 0, w, h);
         tex.context.drawImage(strip as CanvasImageSource, f * w, 0, w, h, 0, 0, w, h);
         tex.refresh();
+        // Las otras copias de la hierba van desfasadas: así no se mece toda la sala a la vez
+        if (part === 'bush') for (let v = 1; v < BUSH_VARIANTS; v++) {
+          const vt = scene.textures.get(`${key}-${v}`) as Phaser.Textures.CanvasTexture;
+          if (!vt?.context) continue;
+          vt.context.clearRect(0, 0, w, h);
+          vt.context.drawImage(strip as CanvasImageSource, ((f + v * 2 + (v > 1 ? 1 : 0)) % frames) * w, 0, w, h, 0, 0, w, h);
+          vt.refresh();
+        }
       }
     },
   });
@@ -655,11 +747,16 @@ export function bakeBiomeTiles(scene: Phaser.Scene, biome: BiomeLook): Record<Ti
         g.restore();
       }
       g.generateTexture(stripKey(key), w * frames, h);
-      const tex = scene.textures.createCanvas(key, w, h);
       const src = scene.textures.get(stripKey(key)).getSourceImage() as CanvasImageSource;
-      if (tex) {
-        tex.context.drawImage(src, 0, 0, w, h, 0, 0, w, h);
+      const copies = part === 'bush' ? BUSH_VARIANTS : 1;
+      for (let v = 0; v < copies; v++) {
+        const k = v ? `${key}-${v}` : key;
+        const tex = scene.textures.createCanvas(k, w, h);
+        if (!tex) continue;
+        const f0 = v ? (v * 2 + (v > 1 ? 1 : 0)) % frames : 0;
+        tex.context.drawImage(src, f0 * w, 0, w, h, 0, 0, w, h);
         tex.refresh();
+        if (v) tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
       }
     }
     g.destroy();
