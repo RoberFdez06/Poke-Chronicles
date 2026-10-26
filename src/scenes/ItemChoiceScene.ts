@@ -14,6 +14,8 @@ export interface ItemChoiceData {
   options: string[];
   /** Texto de la opción de salir (por defecto «Cancelar»). */
   cancel?: string;
+  /** T79: opciones apagadas (no se pueden pagar): se ven más tenues y al elegirlas no pasa nada. */
+  disabled?: boolean[];
   /** Índice elegido o -1 si cancelas (Esc, B o la última opción). */
   onChoice: (index: number) => void;
 }
@@ -54,6 +56,7 @@ export class ItemChoiceScene extends Phaser.Scene {
     // Hasta 16 objetos + cancelar: filas bajas para que quepan todas sin desplazar
     const many = labels.length > 8;
     this.menu = new MenuList(this, 480, 160, labels, (i) => this.pick(i), { w: 560, h: many ? 22 : 40, gap: many ? 3 : 8, fontSize: many ? 14 : 18 });
+    this.args.disabled?.forEach((off, i) => off && this.menu.setDimmed(i, true));
     this.add
       .text(480, 596, 'Flechas, ratón o mando · Enter, clic o A · 1-9 elige · Esc o B: cancelar', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft })
       .setOrigin(0.5);
@@ -65,6 +68,7 @@ export class ItemChoiceScene extends Phaser.Scene {
 
   private pick(i: number) {
     if (this.done) return;
+    if (this.args.disabled?.[i]) return sfx('hurt');
     this.done = true;
     this.args.onChoice(i >= this.args.options.length ? -1 : i);
   }
