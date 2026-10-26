@@ -7,6 +7,8 @@ import {
 } from '../data/gacha';
 import { loadHistory, pushHistory, type HistoryEntry } from '../data/gachaHistory';
 import { loadCollectionIndex, loadSpeciesIndex } from '../data/speciesIndex';
+import { openConfirm } from './ConfirmScene';
+import { confirmText } from '../data/confirm';
 import { addShiny, addTickets, loadShinies, loadTickets, loadUnlocked, spendTickets, unlockPokemon } from '../data/save';
 import { rollShiny, SHINY_ODDS } from '../data/shiny';
 import { takeKonamiShiny } from '../data/easterEggs';
@@ -70,6 +72,7 @@ export class GachaScene extends Phaser.Scene {
   }
 
   create() {
+    this.confirmOpen = false;
     this.pools = null;
     this.buttons = [];
     this.selected = 0;
@@ -288,13 +291,31 @@ export class GachaScene extends Phaser.Scene {
     return out;
   }
 
-  private doPull(n: 1 | 10) {
+  private confirmOpen = false;
+
+  private doPull(n: 1 | 10, confirmed = false) {
     if (this.phase !== 'menu' || this.leaving) return;
     if (!this.pools) {
       this.message.setText('La lista de Pokémon aún no está lista');
       return;
     }
     const cost = n === 1 ? PULL_COST : PULL10_COST;
+    if (loadTickets() < cost) {
+      this.message.setText(`Te faltan tickets (hacen falta ${cost}). Se ganan jugando partidas`);
+      return;
+    }
+    if (!confirmed) {
+      if (this.confirmOpen) return;
+      this.confirmOpen = true;
+      const ok = openConfirm(this, confirmText(n === 1 ? '1 tirada' : '10 tiradas', cost, 'tickets'), (yes) => {
+        this.confirmOpen = false;
+        // El mando que se usó en el cuadro no cuenta aquí como pulsación nueva
+        this.padPrev = { dir: 1, ok: true, back: true };
+        if (yes) this.doPull(n, true);
+      });
+      if (!ok) this.confirmOpen = false;
+      return;
+    }
     if (!spendTickets(cost)) {
       this.message.setText(`Te faltan tickets (hacen falta ${cost}). Se ganan jugando partidas`);
       return;

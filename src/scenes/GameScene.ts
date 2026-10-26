@@ -278,6 +278,8 @@ import { drawMinimap } from './minimap';
 import { cancelCharge, chargedShapeFor, CHARGE_DAMAGE_MUL, CHARGE_MOVE_MUL, CHARGE_SOURCES, isCharging, newCharge, stepCharge, type ChargeSource, type ChargeState } from '../data/charge.ts';
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
+import { openConfirm } from './ConfirmScene';
+import { confirmText } from '../data/confirm';
 import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineFull, adrenalineSpeedMul, fillAdrenaline, gainAdrenaline, spendAdrenaline, newAdrenaline, tickAdrenaline, touchAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
 import { MEGA_STONE_ID, MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState, absorbWithShield, gmaxFormName, pickPower, pickTeraType, POWER_BLOCK_TEXT, powerCost, powerFormSizeMul, powerFormTeraType, useZMove, Z_MOVE_DAMAGE_MUL, type PowerChoice, type PowerContext } from '../data/powerForm';
 import { meterOnDamage, meterOnParry, newPowerMeter, powerMeterFill, spendPowerMeter, tickPowerMeter, type PowerMeterState } from '../data/powerMeter';
@@ -677,6 +679,9 @@ export class GameScene extends Phaser.Scene {
   private bossesBeaten = 0;
   private itemChoiceOpen = false;
   private itemChoiceCooldownUntil = 0;
+  /** Confirmación de compra abierta, y hora real hasta la que no se reabre (que un Enter o clic de más no la repita). */
+  private confirmOpen = false;
+  private confirmCooldownUntil = 0;
   private swapCooldownUntil = 0;
   /** Tras coger un activo, 1 s sin poder coger otro (si no, el que sueltas y el nuevo se intercambian sin parar). */
   private activeSwapUntil = 0;
@@ -980,6 +985,7 @@ export class GameScene extends Phaser.Scene {
     this.secondChanceUsed = r?.secondChance ?? this.carry?.secondChance ?? false;
     this.bossesBeaten = r?.bossesBeaten ?? this.carry?.bossesBeaten ?? 0;
     this.itemChoiceOpen = false;
+    this.confirmOpen = false;
     this.eventsDone = new Set(r?.eventsDone ?? []);
     this.slotSpins = new Map(r?.slotSpins ?? []);
     this.fishCasts = new Map(r?.fishCasts ?? []);
@@ -1699,10 +1705,11 @@ export class GameScene extends Phaser.Scene {
     this.eventSpots.push({ x: i.cx, y: i.cy, prompt: () => 'Enter / A / clic: abrir el cofre', use: open });
   }
 
-  private buyFromMerchant(room: Room, slot: ShopSlot, name: string) {
+  private buyFromMerchant(room: Room, slot: ShopSlot, name: string, confirmed = false) {
     if (this.ended || this.transitioning || this.eventsDone.has(room.id)) return;
     if (this.coins < slot.price) return this.notify(`Te faltan monedas (${this.coins}/${slot.price})`, { kind: 'warning', icon: 'coin' });
-    if (slot.goods.kind === 'move' && this.chosenSlot === undefined && this.askSlot(slot.goods.move, (s) => { this.chosenSlot = s; this.buyFromMerchant(room, slot, name); }, () => undefined)) return;
+    if (!confirmed) return void this.askBuy(name, slot.price, () => this.buyFromMerchant(room, slot, name, true));
+    if (slot.goods.kind === 'move' && this.chosenSlot === undefined && this.askSlot(slot.goods.move, (s) => { this.chosenSlot = s; this.buyFromMerchant(room, slot, name, true); }, () => undefined)) return;
     this.coins -= slot.price;
     sfx('buy');
     const g = slot.goods;
@@ -1921,10 +1928,11 @@ export class GameScene extends Phaser.Scene {
 
   // --- Eventos de la T48: fuente, huevo, sala del tiempo y ayudante ---
 
-  private useFountain(room: Room, paid: boolean, price: number) {
+  private useFountain(room: Room, paid: boolean, price: number, confirmed = false) {
     if (this.ended || this.transitioning || this.eventsDone.has(room.id)) return;
     if (!canHeal(this.hp, this.stats.maxHp)) return this.notify('Ya tienes todos los PS', { kind: 'warning', icon: 'heart' });
     if (paid && this.coins < price) return this.notify(`Te faltan monedas (${this.coins}/${price})`, { kind: 'warning', icon: 'coin' });
+    if (paid && !confirmed) return void this.askBuy('la curación de la fuente', price, () => this.useFountain(room, true, price, true));
     if (paid) this.coins -= price;
     const amount = scaleHeal(fountainHeal(this.stats.maxHp), this.diff);
     this.hp = healed(this.hp, this.stats.maxHp, amount);
@@ -4032,6 +4040,26 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * Con las 4 ranuras llenas, pregunta cuál sustituir (o dejarlo). Devuelve true si ha abierto la pantalla:
    * entonces `then(ranura)` se llama al elegir y `cancel()` si lo dejas.
    */
+  /**
+   * Confirmación «¿Seguro que quieres comprar X por N monedas?» (Sí / No, foco en No). El juego queda en pausa y el
+   * jugador quieto hasta responder; `then` se llama ya reanudado y solo con Sí. Si no se puede preguntar, no se compra.
+   * Al cerrar, 0,4 s sin reabrir: seguir encima de un artículo tras decir No no vuelve a preguntar (la tienda solo
+   * pregunta una vez por pisada) y un Enter o clic de más no la repite.
+   */
+  private askBuy(name: string, price: number, then: () => void): boolean {
+    if (this.confirmOpen || this.swapOpen || this.itemChoiceOpen || this.game.loop.time < this.confirmCooldownUntil) return false;
+    this.confirmOpen = true;
+    this.player?.setVelocity(0, 0);
+    const ok = openConfirm(this, confirmText(name, price), (yes) => {
+      this.confirmOpen = false;
+      this.overHud = false; // el ratón pudo salir del artículo con el juego en pausa
+      this.confirmCooldownUntil = this.game.loop.time + 400;
+      if (yes) then();
+    });
+    if (!ok) this.confirmOpen = false;
+    return ok;
+  }
+
   private askSlot(move: MovePower, then: (slot: number) => void, cancel: () => void): boolean {
     if (this.slots.indexOf(null) !== -1 || this.swapOpen || !this.scene.manager.keys['SlotSwap']) return false;
     this.swapOpen = true;
@@ -7816,7 +7844,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return { x: i.cx + SHOP_OFFSETS[k], y: i.cy };
   }
 
-  private buy(k: number) {
+  private buy(k: number, confirmed = false) {
     if (this.ended || this.transitioning) return;
     const slot = this.shop[k];
     if (!slot) return;
@@ -7824,7 +7852,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (res === 'sold') return;
     if (res === 'poor') return this.notify(`Te faltan monedas\n(cuesta ${slot.price}, tienes ${this.coins})`, { kind: 'warning', icon: 'coin' });
     if (res === 'full') return this.notify('Ya tienes todos los PS', { kind: 'warning', icon: 'potion' });
-    if (slot.goods.kind === 'move' && this.chosenSlot === undefined && this.askSlot(slot.goods.move, (s) => { this.chosenSlot = s; this.buy(k); }, () => undefined)) return;
+    if (!confirmed) return void this.askBuy(this.goodsInfo(slot).name, slot.price, () => this.buy(k, true));
+    if (slot.goods.kind === 'move' && this.chosenSlot === undefined && this.askSlot(slot.goods.move, (s) => { this.chosenSlot = s; this.buy(k, true); }, () => undefined)) return;
     this.coins -= slot.price;
     sfx('buy');
     slot.sold = true;
