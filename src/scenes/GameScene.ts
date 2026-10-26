@@ -6175,6 +6175,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   private checkClear() {
+    // Tras caer ya no se limpia nada (ni con 0 PS mientras se abre «Una más»): un enemigo que cae después que tú
+    // no puede dar la victoria; ver también finish
+    if (this.ended || this.hp <= 0) return;
     const room = this.current;
     if (this.mode === 'waves') {
       if (this.enemies.countActive(true) === 0) this.onWaveCleared();
@@ -6534,6 +6537,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         sfx('heal');
         reviveBurst(this, this.player.x, this.player.y);
         this.saveNow();
+        // Si el último enemigo cayó mientras tenías 0 PS, checkClear no lo dio por limpio: se mira ahora
+        // (solo en salas de pelea: en la tienda o el Centro, donde puedes caer con tu propia bomba, no hay nada que limpiar)
+        if (this.mode === 'waves' || ['combat', 'boss', 'challenge'].includes(this.current.kind)) this.checkClear();
       },
     });
     this.scene.pause();
@@ -6541,6 +6547,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Fin de partida: congela el juego y deja salir con teclado (R), mando (Start / A) o ratón (clic). */
   private finish(won: boolean, message: string) {
+    // Una sola vez: un enemigo que cae después de ti (p. ej. por el Casco Dentado, con un delayedCall) no puede
+    // convertir la derrota en victoria ni apuntar la partida dos veces en el historial
+    if (this.ended) return;
     // Como en Isaac: al morir o ganar, la partida guardada se borra
     clearRun(this.slot);
     // Desafío diario: la partida que cuenta apunta los pisos completados
