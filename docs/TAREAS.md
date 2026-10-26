@@ -716,7 +716,7 @@ ratón y mando funcionan cada uno por separado. Lo visual nuevo, `// TODO(superv
   (no por reloj) y la recoges para llevarla a la run: curan, dan escudo o adrenalina. Datos y crecimiento en `src/data/berries.ts`,
   guardado en `save.ts` (clave en `PROGRESS_KEYS`), tests de crecimiento y de cosecha. Escena `GardenScene` con teclado, ratón y mando.
 
-## [ ] T86 — Gimnasios con puzzles
+## [x] T86 — Gimnasios con puzzles
 - Cada 10 pisos de la Torre y al final de cada bioma, una sala de **gimnasio** con un puzzle de su tipo antes del líder: Roca (empujar
   bloques), Eléctrico (interruptores en orden), Hielo (suelo que resbala), Fantasma (puertas falsas), etc. Resolverlo abre el paso al
   líder y da una medalla/objeto. Generador de puzzles en `src/level/gymPuzzles.ts`, puro y determinista por semilla, con tests: todo
