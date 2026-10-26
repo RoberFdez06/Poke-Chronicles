@@ -31,7 +31,9 @@ import {
   FOUNTAIN_TIRED_SPEED,
   HELPER_ATTACK_MS,
   HELPER_DAMAGE_MUL,
-  RIVAL_WAVES,
+  rivalMemberHpMul,
+  rivalTeamSize,
+  rivalTrainerName,
   ROOM_EVENT_DESC,
   TIME_TRIAL_SECONDS,
   eggHatch,
@@ -39,7 +41,6 @@ import {
   fountainHeal,
   fountainPrice,
   rivalBonus,
-  rivalWaveSize,
   timeTrialExtra,
   timeTrialSize,
 } from '../level/roomEvents';
@@ -504,6 +505,9 @@ export class GameScene extends Phaser.Scene {
   private darkness?: { hole: Phaser.GameObjects.Image; sides: Phaser.GameObjects.Rectangle[]; eyes: Phaser.GameObjects.Graphics };
   /** T48: oleada del entrenador rival (0 = no hay), sala del tiempo en marcha, huevo, ayudante y cansancio. */
   private rivalWave = 0;
+  /** T59: cuántos Pokémon tiene el entrenador rival y cómo se llama. */
+  private rivalTeam = 0;
+  private rivalName = '';
   private timeTrial?: { roomId: number; until: number; failed: boolean; label: Phaser.GameObjects.Text };
   private eggLeft = 0;
   private allyId = 0;
@@ -1320,11 +1324,13 @@ export class GameScene extends Phaser.Scene {
     if (kind === 'rival') {
       // Entrenador rival: oleadas cortas seguidas; al ganar, el doble de tickets de la sala (ver checkClear)
       this.rivalWave = 1;
-      label(i.cx, i.y0 + 40, '¡Entrenador rival!', 22, '#ff8a80');
+      this.rivalTeam = rivalTeamSize(this.floorNum);
+      this.rivalName = rivalTrainerName(Math.random);
+      label(i.cx, i.y0 + 40, this.rivalName, 22, '#ff8a80');
       this.setDoorsLocked(room, true, true);
       sfx('door');
-      this.notify(`¡Combate contra el rival!\nOleada 1/${RIVAL_WAVES}`, { kind: 'danger', icon: 'sword' });
-      this.time.delayedCall(700, () => !this.ended && this.current.id === room.id && this.spawnEnemies(rivalWaveSize(this.floorNum, 1)));
+      this.notify(`¡${this.rivalName} te desafía!\nTiene ${this.rivalTeam} Pokémon · 1/${this.rivalTeam}`, { kind: 'danger', icon: 'sword' });
+      this.time.delayedCall(700, () => !this.ended && this.current.id === room.id && this.spawnRivalMember(1));
       return;
     }
 
@@ -3916,6 +3922,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Varios enemigos del piso; al menos uno de cada tres dispara, sea del tipo que sea (T32). */
+  /** T59: un Pokémon del equipo del rival: uno solo, con más vida que uno normal y más cuanto más tarde sale. */
+  private spawnRivalMember(member: number) {
+    const e = this.spawnEnemy();
+    const maxHp = Math.round((e.getData('maxHp') as number) * rivalMemberHpMul(this.floorNum, member));
+    e.setData('hp', maxHp).setData('maxHp', maxHp);
+  }
+
   private spawnEnemies(n: number) {
     const kinds = Array.from({ length: n }, () => Phaser.Utils.Array.GetRandom(this.foeKinds) as FoeKind);
     // T51: algunos pasan a los comportamientos nuevos del bioma (más cuanto más hondo)
@@ -6167,11 +6180,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       return;
     }
     if (this.cleared.has(room.id) || this.enemies.countActive(true) > 0) return;
-    if (this.rivalWave > 0 && this.roomEvent?.roomId === room.id && this.rivalWave < RIVAL_WAVES) {
+    if (this.rivalWave > 0 && this.roomEvent?.roomId === room.id && this.rivalWave < this.rivalTeam) {
       this.rivalWave++;
       const w = this.rivalWave;
-      this.notify(`El rival saca otro Pokémon\nOleada ${w}/${RIVAL_WAVES}`, { kind: 'danger', icon: 'sword' });
-      this.time.delayedCall(900, () => !this.ended && this.current.id === room.id && this.spawnEnemies(rivalWaveSize(this.floorNum, w)));
+      this.notify(`${this.rivalName} saca otro Pokémon\n${w}/${this.rivalTeam}`, { kind: 'danger', icon: 'sword' });
+      this.time.delayedCall(900, () => !this.ended && this.current.id === room.id && this.spawnRivalMember(w));
       return;
     }
     if (room.kind === 'challenge' && this.challengeWave > 0 && this.challengeWave < CHALLENGE_WAVES) {
@@ -6205,7 +6218,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.rivalWave = 0;
       this.eventsDone.add(room.id);
       const bonus = this.giveTickets(rivalBonus(reward));
-      this.notify(`¡Has vencido al rival!\n+${bonus} tickets extra`, { kind: 'reward', icon: 'ticket' });
+      // T59: además de los tickets, el entrenador deja un objeto
+      const ri = this.interior(room);
+      this.dropItem(room.id, ri.cx, ri.cy);
+      this.notify(`¡Has vencido a ${this.rivalName}!\n+${bonus} tickets extra y un objeto`, { kind: 'reward', icon: 'ticket' });
     }
     const tt = this.timeTrial;
     if (tt && tt.roomId === room.id) {

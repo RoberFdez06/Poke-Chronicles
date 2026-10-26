@@ -145,3 +145,20 @@ test('T48: rival, fuente, sala del tiempo y huevo', () => {
   for (let i = 0; i < 1000; i++) if (eggHatch(rng) === 'helper') helpers++;
   assert.ok(helpers > 500 && helpers < 700, `${helpers}`);
 });
+
+test('T59: el rival tiene 2 o 3 Pokémon, cada uno más duro, y un nombre inventado', async () => {
+  const { rivalTeamSize, rivalMemberHpMul, rivalTrainerName, RIVAL_NAMES, RIVAL_TITLES } = await import('../src/level/roomEvents.ts');
+  assert.equal(rivalTeamSize(1), 2);
+  assert.equal(rivalTeamSize(2), 2);
+  assert.equal(rivalTeamSize(3), 3);
+  assert.equal(rivalTeamSize(9), 3);
+  assert.ok(rivalMemberHpMul(1, 1) > 1);
+  assert.ok(rivalMemberHpMul(1, 2) > rivalMemberHpMul(1, 1));
+  assert.ok(rivalMemberHpMul(5, 2) > rivalMemberHpMul(1, 2));
+  // Con cualquier valor del azar (también los extremos) sale un título y un nombre de las listas
+  for (const r of [0, 0.5, 0.999999]) {
+    const [title, name] = rivalTrainerName(() => r).split(' ');
+    assert.ok(RIVAL_TITLES.includes(title));
+    assert.ok(RIVAL_NAMES.includes(name));
+  }
+});

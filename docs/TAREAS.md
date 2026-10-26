@@ -430,7 +430,7 @@ necesita un efecto visual nuevo, déjalo con un hueco claro (`// TODO(supervisor
   botón en el menú de modos (pide al supervisor el hueco visual si lo necesitas), una sola participación diaria con su resultado
   guardado (piso alcanzado y tiempo) y una **medalla** nueva en `medals.ts` por completarlo. Los invitados no guardan.
 
-## [ ] T59 — Entrenadores rivales (ampliar el evento de T48)
+## [x] T59 — Entrenadores rivales (ampliar el evento de T48; hecho por el supervisor, el sprite del entrenador queda sin dibujar)
 - El «Entrenador rival» de T48 hoy es oleadas cortas. Conviértelo en un **combate de entrenador**: un entrenador con 2-3 Pokémon que
   salen de uno en uno (el siguiente entra cuando cae el anterior), con su aviso de «¡X te desafía!» fuera del centro y premio de
   tickets + objeto. El equipo se genera por piso y bioma en lógica pura con test; el sprite del entrenador queda como `// TODO(supervisor)`.

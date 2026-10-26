@@ -168,6 +168,17 @@ export const trapChestOutcome = (rng: () => number): 'item' | 'monster' => (rng(
 export const RIVAL_WAVES = 3;
 /** Enemigos de cada oleada: cortas, pero cada una algo mayor y más con el piso. */
 export const rivalWaveSize = (floorNum: number, wave: number): number => Math.min(6, 2 + Math.floor((Math.max(1, floorNum) - 1) / 2) + (wave - 1));
+// T59: el rival es un entrenador con un equipo de 2-3 Pokémon que salen de uno en uno.
+/** Pokémon del equipo: 2 en los dos primeros pisos y 3 desde el tercero. */
+export const rivalTeamSize = (floorNum: number): number => (floorNum >= 3 ? 3 : 2);
+/** Multiplicador de vida del Pokémon `member` (1, 2, 3…) del equipo: cada uno es más duro que el anterior, y más con el piso. */
+export const rivalMemberHpMul = (floorNum: number, member: number): number =>
+  1.5 + 0.3 * (Math.max(1, member) - 1) + 0.04 * Math.min(10, Math.max(1, floorNum));
+/** Nombres inventados: «<título> <nombre>». */
+export const RIVAL_TITLES: readonly string[] = ['Joven', 'Excursionista', 'Cazabichos', 'Campista', 'Pescador', 'Corredor', 'Granjero', 'Veterano'];
+export const RIVAL_NAMES: readonly string[] = ['Marcos', 'Lucía', 'Íker', 'Noa', 'Hugo', 'Sara', 'Leo', 'Irene', 'Pablo', 'Claudia'];
+export const rivalTrainerName = (rng: () => number): string =>
+  `${RIVAL_TITLES[Math.floor(rng() * RIVAL_TITLES.length) % RIVAL_TITLES.length]} ${RIVAL_NAMES[Math.floor(rng() * RIVAL_NAMES.length) % RIVAL_NAMES.length]}`;
 /** Tickets extra al ganar: otros tantos como da la sala (en total, el doble). */
 export const rivalBonus = (roomTickets: number): number => Math.max(1, roomTickets);
 
