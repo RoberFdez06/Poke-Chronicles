@@ -84,8 +84,9 @@ export function evolveMagikarp(passives: readonly string[]): { passives: string[
 // --- Salas secretas raras ---
 
 export type SecretVariant = 'normal' | 'missingno' | 'truck';
-export const MISSINGNO_CHANCE = 0.15;
-export const TRUCK_CHANCE = 0.15;
+// Raras de verdad (26/10: con un 15 % cada una, 3 de cada 10 salas secretas eran un huevo de pascua y se hacía pesado)
+export const MISSINGNO_CHANCE = 0.04;
+export const TRUCK_CHANCE = 0.06;
 /** Probabilidad de que debajo del camión haya un Mew (deja un objeto). */
 export const MEW_CHANCE = 0.12;
 

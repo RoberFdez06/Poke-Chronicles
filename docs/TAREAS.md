@@ -537,10 +537,44 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
   Cada **5 pisos hay un minijefe «chetado»** (mucha más vida y daño que un minijefe normal, un ataque extra y un objeto épico al caerse) y
   cada **10 pisos un jefe** (los legendarios de T64, con megaevolución de T66). El piso 100 es el reto final (`finale.ts`).
 - La dificultad escala de forma suave y continua con el piso (revisa `balance.ts`/`balance.test.ts` para que no se dispare ni se
-  quede plano: a partir del piso 30 hay que seguir pudiendo esquivar todo). Cada 10 pisos hay una sala de descanso con tienda y fuente.
+  quede plano: a partir del piso 30 hay que seguir pudiendo esquivar todo). Cada 10 pisos hay una **sala de descanso** sin enemigos y segura (aquí se guarda la partida) con cuatro cosas: **fuente** (cura toda la
+  vida y quita estados), **altar de 3 objetos** (eliges 1; uno es siempre raro o mejor), **forja** (T73) y **tienda con descuento** con un
+  artículo exclusivo de la Torre. Cada 5 pisos que no son jefe ni minijefe puede haber una **sala de suministros** pequeña (una poción,
+  una llave o una baya a elegir) para no ir tan justo.
 - Guardado y continuar partida con su versión de `RunSave` y migración; puntos de control cada 10 pisos al morir (al volver a empezar
   puedes arrancar desde el último jefe vencido, con un coste en caramelos que decides en la lógica pura y pones en una constante).
 - Tests: qué piso es minijefe, jefe, descanso o final, escalado y récord. Es la tarea más grande: déjala la última.
 
 ## Orden recomendado
 - T64 primero (arregla algo que Roberto notó), luego T65, T66 y T67, después T68-T70 (salas), T71 y por último T72.
+
+## [ ] T73 — Forja de objetos y huecos de objetos limitados (en cualquier modo)
+- **Huecos de objetos pasivos limitados.** Hoy no hay tope. Propuesta (constantes fáciles de cambiar en `items.ts`): **10 huecos** al empezar,
+  **+1 por cada jefe vencido hasta 16**; las copias del mismo objeto ocupan **un solo hueco** (el «x2» actual). Con los huecos llenos, al
+  coger un objeto nuevo eliges cuál soltar (teclado, ratón y mando) o lo dejas en el suelo. Los activos y consumibles no usan hueco.
+  Se muestran en la pausa y en el HUD como «7/10». Guardado: versión nueva de `RunSave` con migración (las partidas antiguas con más objetos
+  que huecos se quedan como están, sin quitarles nada).
+- **Forja** como evento de sala nuevo en `roomEvents.ts` (etiqueta, color de minimapa y peso por piso, más probable cuanto más hondo) y
+  siempre presente en los descansos de la Torre (T72). Tres acciones: **reciclar** (destruyes un objeto: te da monedas y libera el hueco),
+  **fusionar** (dos objetos distintos de la misma rareza se convierten en uno al azar de la rareza siguiente, ocupando un solo hueco) y,
+  si queda tiempo, **mejorar** (monedas para +25 % al efecto de un objeto, hasta nivel 3). Ven el coste y el resultado antes de aceptar.
+- Tests de la lógica pura: huecos disponibles, qué ocupa hueco, reciclado, fusión (rarezas y que nunca sale uno que ya tengas si hay
+  otros), y la migración. El dibujo del yunque y de la sala queda como `// TODO(supervisor)`.
+
+## [ ] T74 — Megaevolución del jugador (en cualquier modo)
+- Botón de megaevolución (teclado, ratón y mando, con su etiqueta). Requisitos, todos a la vez: llevar una **Mega Piedra** (objeto raro
+  nuevo que sale en cofres, tiendas y jefes), tener la **barra de adrenalina llena** (T55; gasta la barra) y que tu Pokémon **tenga
+  megaevolución en los juegos** (lista de ids en lógica pura; para el resto, sin megaevolución, la piedra no hace nada y no se ofrece).
+- Efecto: **temporal, unos 30 s y una vez por piso** (se recarga al cambiar de piso): más daño, velocidad y vida máxima temporal, un
+  ataque nuevo de su tipo y el aviso fuera del centro. Cambia el sprite si hay forma mega en los datos; si no, usa el actual con el brillo
+  de `evolveGlow` y deja el cambio de sprite como `// TODO(supervisor)`. Con efectos bajos, sin destellos.
+- Lógica pura con tests: requisitos, una vez por piso, duración (usa `this.game.loop.time`, no `Clock.now`), lista de especies y que el
+  guardado y continuar partida mantienen cuánto queda de megaevolución. Estructúralo con un tipo «forma de poder» para que T75 lo reutilice.
+
+## [ ] T75 — Otras formas de poder (propuesta; solo si T74 va bien)
+- Reutiliza la estructura de T74 con el mismo botón y la regla «solo una forma activa a la vez y una vez por piso». Cada una pide su objeto:
+  **Dinamax/Gigamax** (**Banda Dinamax**: tamaño ×1,5 con un escudo extra de vida y los ataques más grandes; Gigamax solo para las
+  especies que lo tienen y con ataque propio), **Teracristalización** (**Teragema**: durante unos segundos tu Pokémon cambia a un tipo
+  elegido, con ventaja contra el tipo del bioma, y sus ataques pasan a ser de ese tipo) y **Cristal Z** (un único ataque devastador de tu
+  tipo, una vez por partida). Empieza solo por Dinamax y Teracristalización; Gigamax y Cristal Z, si hay tiempo.
+- Tests de la lógica pura de cada forma. Efectos y sprites como `// TODO(supervisor)`.
