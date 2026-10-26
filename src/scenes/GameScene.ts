@@ -130,6 +130,7 @@ import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
 import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
 import { decorateRoom } from '../ui/art/roomDecor';
 import { drawGlitchFigure, drawTruck, glitchFlash } from '../ui/art/easterArt';
+import { buildCenterArt, type CenterArt } from '../ui/art/centerArt';
 import { evolveMagikarp, MAGIKARP, MAGIKARP_PRICE, MEW_CHANCE, OAK_LINE, secretVariant, sellsMagikarp } from '../data/easterEggs';
 import { drawPits, drawShapedWalls } from '../ui/art/roomShape';
 import { FINALE_BONUS, GIANT_HP_MUL, GIANT_RAGE_AT, GIANT_SIZE, isFinalFloor, isFinaleGate, pickFinale, TRIO_HP_MUL, type Finale } from '../data/finale';
@@ -578,7 +579,7 @@ export class GameScene extends Phaser.Scene {
   private shop: ShopSlot[] = [];
   private layout = FLOOR_LAYOUT;
   private loot!: Phaser.Physics.Arcade.Group;
-  private counter?: { x: number; y: number; g: Phaser.GameObjects.Graphics };
+  private counter?: { x: number; y: number; art: CenterArt };
   private shopViews: Phaser.GameObjects.GameObject[][] = [];
   /** Artículo de la tienda que estás pisando (para no repetir el aviso de "te faltan monedas"). */
   private shopTouch = -1;
@@ -743,6 +744,7 @@ export class GameScene extends Phaser.Scene {
     this.centerUsed = false;
     this.shop = [];
     this.layout = FLOOR_LAYOUT;
+    this.counter?.art.destroy();
     this.counter = undefined;
     this.shopViews = [];
     this.shopTouch = -1;
@@ -5848,15 +5850,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const i = this.interior(room);
     const x = i.cx;
     const y = i.cy - 60;
-    const g = this.add.graphics().setDepth(1);
-    this.counter = { x, y, g };
+    // Dibujo de la sala (centerArt.ts, del supervisor): mostrador, máquina de curación, sanadora, alfombra y bancos
+    this.counter?.art.destroy();
+    this.counter = { x, y, art: buildCenterArt(this, i, x, y) };
     this.paintCounter();
-    this.add
-      .text(x, y - 56, 'Centro Pokémon', { fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: '#c2185b' })
-      .setOrigin(0.5)
-      .setDepth(3);
     // Con ratón: clic en el mostrador
-    const hit = this.add.zone(x, y, 160, 70).setInteractive({ useHandCursor: true });
+    const hit = this.add.zone(x, y, 240, 90).setInteractive({ useHandCursor: true });
     hit.on('pointerover', () => (this.overHud = true));
     hit.on('pointerout', () => (this.overHud = false));
     hit.on('pointerdown', () => this.current?.id === room.id && this.useCenter());
@@ -5865,10 +5864,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private paintCounter() {
     const c = this.counter;
     if (!c) return;
-    const g = c.g.clear();
-    drawBox(g, c.x - 80, c.y - 35, 160, 70, { radius: 12, border: this.centerUsed ? 0x9aa5b1 : CENTER_PINK });
-    const cross = this.centerUsed ? 0x9aa5b1 : 0xe53935;
-    g.fillStyle(cross, 1).fillRect(c.x - 6, c.y - 20, 12, 40).fillRect(c.x - 20, c.y - 6, 40, 12);
+    c.art.setUsed(this.centerUsed);
   }
 
   /** El mostrador cura la mitad de tus PS máximos, una vez por piso (si te falta vida). */
@@ -5880,7 +5876,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.hp = healed(this.hp, this.stats.maxHp, amount);
     this.centerUsed = true;
     sfx('heal');
-    this.paintCounter();
+    // Los huecos se encienden uno a uno y salen corazones; al terminar la máquina queda gris hasta el piso siguiente
+    this.counter?.art.heal();
+    this.time.delayedCall(1500, () => this.counter && this.paintCounter());
     this.popup(this.player.x, this.player.y - 50, `+${amount} PS`, CENTER_PINK);
     this.notify(`¡Centro Pokémon!\n+${amount} PS`, { kind: 'heal', icon: 'center' });
     this.saveNow();
