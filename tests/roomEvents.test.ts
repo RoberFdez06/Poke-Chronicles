@@ -18,8 +18,11 @@ import {
   trapChestOutcome,
   megaStoneDoneKey,
   pickMegaStoneRoom,
+  planMegaStoneRoom,
+  isPlainCombatRoom,
 } from '../src/level/roomEvents.ts';
-import { generateFloor, mulberry32 } from '../src/level/floorGen.ts';
+import { generateFloor, mulberry32, addBigRooms, type Floor } from '../src/level/floorGen.ts';
+import { pickRoomRules } from '../src/level/roomRules.ts';
 import { PASSIVE_ITEMS } from '../src/data/items.ts';
 
 const floorFor = (seed: number) => generateFloor({ seed, roomCount: 11, special: true, extra: true });
@@ -314,5 +317,98 @@ test('Mega Piedra: el desafío diario sigue estable (el santuario no toca las ti
     const despues = pickRoomEvent(floor, 4, mulberry32(seed * 31), new Set(), ['water'], DAILY_EVENTS);
     assert.deepEqual(antes, despues);
     assert.notEqual(despues?.kind, 'megaStone');
+  }
+});
+
+// --- Santuario de la Mega Piedra: nunca en una sala especial ---
+
+/** Todo lo que hace especial a una sala del piso (exhaustivo: tipos de sala y funciones añadidas por encima). */
+function specialRoomIds(f: Floor, extra: { miniboss?: number; eventRoom?: number; rules?: Iterable<number> }): Map<number, string> {
+  const m = new Map<number, string>();
+  const mark = (id: number | undefined, why: string) => { if (id !== undefined) m.set(id, why); };
+  mark(f.startId, 'inicio'); mark(f.bossId, 'jefe'); mark(f.itemId, 'objeto'); mark(f.centerId, 'centro');
+  mark(f.shopId, 'tienda'); mark(f.secretId, 'secreta'); mark(f.challengeId, 'desafío');
+  for (const id of f.chestRooms ?? []) mark(id, 'cofre');
+  for (const g of f.groups ?? []) for (const id of g) mark(id, 'grande');
+  for (const r of f.rooms) if (r.kind !== 'combat') mark(r.id, `tipo ${r.kind}`);
+  mark(extra.miniboss, 'minijefe'); mark(extra.eventRoom, 'evento');
+  for (const id of extra.rules ?? []) mark(id, 'regla');
+  return m;
+}
+
+/** Reproduce el orden de GameScene: minijefe, evento, reglas y, al final, el santuario. */
+function buildFloorLike(f: Floor, floorNum: number, seed: number) {
+  const st = f.rooms[f.startId];
+  const far = f.rooms
+    .filter((rm) => rm.kind === 'combat' && rm.group === undefined)
+    .sort((a, b) => Math.abs(b.gx - st.gx) + Math.abs(b.gy - st.gy) - (Math.abs(a.gx - st.gx) + Math.abs(a.gy - st.gy)) || a.id - b.id)[0];
+  const miniboss = far?.id;
+  const grouped = f.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id);
+  let event = pickRoomEvent(f, floorNum, mulberry32(seed ^ 0x2545f491), new Set([...(miniboss !== undefined ? [miniboss] : []), ...grouped]), ['water']);
+  const rules = pickRoomRules(f, floorNum, mulberry32(seed ^ 0x6c8e9cf5), new Set([...(miniboss !== undefined ? [miniboss] : []), ...(event ? [event.roomId] : []), ...grouped]));
+  const plan = planMegaStoneRoom(f, seed, { miniboss, eventRoom: event?.roomId, ruleRooms: rules.keys() });
+  if (plan?.dropRule) rules.delete(plan.roomId);
+  if (plan?.dropEvent) event = null;
+  return { miniboss, event, rules, plan };
+}
+
+test('Mega Piedra: en muchas semillas, pisos y tamaños nunca cae en ninguna sala especial', () => {
+  let planes = 0;
+  for (const roomCount of [8, 10, 12, 16, 24]) {
+    for (let seed = 1; seed <= 150; seed++) {
+      let f = generateFloor({ seed, roomCount, special: true, extra: true });
+      if (seed % 2 === 0) f = addBigRooms(f);
+      for (const floorNum of [2, 3, 5, 8, 12]) {
+        const { miniboss, event, rules, plan } = buildFloorLike(f, floorNum, seed * 7 + floorNum);
+        if (!plan) {
+          assert.ok(roomCount <= 10, `solo los pisos de 8-10 salas pueden quedarse sin santuario; piso de ${roomCount} salas sin santuario (semilla ${seed})`);
+          continue;
+        }
+        planes++;
+        const room = f.rooms[plan.roomId];
+        const special = specialRoomIds(f, { miniboss, eventRoom: event?.roomId, rules: rules.keys() });
+        assert.equal(room.kind, 'combat', `sala ${room.id} es ${room.kind}`);
+        assert.equal(special.get(plan.roomId), undefined, `semilla ${seed}/${roomCount}/${floorNum}: sala especial (${special.get(plan.roomId)})`);
+        assert.equal(rules.has(plan.roomId), false);
+        assert.notEqual(event?.roomId, plan.roomId);
+      }
+    }
+  }
+  assert.ok(planes > 2500, `solo ${planes} santuarios`);
+});
+
+test('Mega Piedra: sin salas normales libres convierte la menos especial (primero regla, luego evento) y nunca una especial', () => {
+  const f = generateFloor({ seed: 5, roomCount: 11, special: true, extra: true });
+  const plain = f.rooms.filter((r) => isPlainCombatRoom(f, r));
+  assert.ok(plain.length >= 2);
+  // Todas con regla: se le quita la regla a una
+  const todasRegla = planMegaStoneRoom(f, 5, { ruleRooms: plain.map((r) => r.id) })!;
+  assert.ok(todasRegla.dropRule && !todasRegla.dropEvent);
+  assert.ok(plain.some((r) => r.id === todasRegla.roomId));
+  // Todas con regla menos una con el evento: la preferida es la que solo tiene regla
+  const [ev, ...resto] = plain;
+  const conEvento = planMegaStoneRoom(f, 5, { eventRoom: ev.id, ruleRooms: resto.map((r) => r.id) })!;
+  assert.notEqual(conEvento.roomId, ev.id);
+  assert.equal(conEvento.dropEvent, false);
+  // Solo queda la del evento (el resto, minijefe): se le quita el evento
+  const [unica, ...otras] = plain;
+  const soloEvento = planMegaStoneRoom(f, 5, { miniboss: otras[0].id, eventRoom: unica.id, ruleRooms: otras.slice(1).map((r) => r.id) });
+  assert.ok(soloEvento);
+  assert.ok(soloEvento!.dropRule || soloEvento!.dropEvent || plain.some((r) => r.id === soloEvento!.roomId));
+  // Con todas ocupadas por minijefe no hay santuario antes que usar una sala especial
+  const minimal: Floor = { ...f, rooms: f.rooms.filter((r) => r.kind !== 'combat' || r.id === plain[0].id) };
+  const sin = planMegaStoneRoom(minimal, 5, { miniboss: plain[0].id });
+  assert.equal(sin, null);
+  assert.equal(pickMegaStoneRoom(minimal, 5, new Set([plain[0].id])), null);
+});
+
+test('Mega Piedra: un piso sin salas de combate no lo coloca en inicio, jefe, tienda, centro, objeto, secreta, desafío ni cofre', () => {
+  for (let seed = 1; seed <= 100; seed++) {
+    const f = floorFor(seed);
+    const soloEspeciales: Floor = { ...f, rooms: f.rooms.filter((r) => r.kind !== 'combat') };
+    assert.equal(pickMegaStoneRoom(soloEspeciales, seed), null);
+    assert.equal(planMegaStoneRoom(soloEspeciales, seed), null);
+    const soloCofres: Floor = { ...f, rooms: f.rooms.filter((r) => r.kind !== 'combat' || (f.chestRooms ?? []).includes(r.id)) };
+    assert.equal(pickMegaStoneRoom(soloCofres, seed), null);
   }
 });

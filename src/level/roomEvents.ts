@@ -19,7 +19,7 @@
 // Mega Piedra:
 // - Santuario de la Mega Piedra: sala dedicada, una por piso, con la Mega Piedra (ver pickMegaStoneRoom).
 // Sale de la semilla del piso, así al continuar o en el desafío diario es el mismo. Lógica pura, sin Phaser.
-import { mulberry32, type Floor } from './floorGen.ts';
+import { mulberry32, type Floor, type Room } from './floorGen.ts';
 import { RANDOM_PASSIVES, takeMoveByRarity, type MovePower, type PassiveItem } from '../data/items.ts';
 import { fishingWeight } from './fishing.ts';
 import { forgeWeight } from '../data/forge.ts';
@@ -167,22 +167,67 @@ export const MEGA_STONE_DONE_BASE = 100000;
 export const megaStoneDoneKey = (roomId: number): number => MEGA_STONE_DONE_BASE + roomId;
 
 /**
- * Sala del Santuario de la Mega Piedra del piso: determinista por la semilla del piso, nunca la de inicio ni la del
- * jefe (ni secreta, tienda, centro, objeto ni desafío). Prefiere una sala de combate libre (no en `exclude`: minijefe,
- * evento sorpresa, reglas…; ni de cofre ni grande), mejor sin salida; si no hay, cualquier sala de combate; y si
- * tampoco, cualquier sala que no sea de inicio, jefe ni secreta. Solo devuelve null si el piso no tiene otra sala.
+ * El santuario SOLO puede ir en una sala de combate normal: sin evento, sin regla, sin minijefe, sin cofre, no grande
+ * y que no sea de inicio, jefe, Centro, tienda, objeto, secreta ni desafío. Esta es la lista exhaustiva de lo que
+ * hace «especial» a una sala (los tests la comprueban).
+ */
+export function isPlainCombatRoom(floor: Floor, room: Room, exclude: ReadonlySet<number> = new Set()): boolean {
+  return (
+    room.kind === 'combat' &&
+    room.id !== floor.startId && room.id !== floor.bossId && room.id !== floor.itemId &&
+    room.id !== floor.centerId && room.id !== floor.shopId && room.id !== floor.secretId && room.id !== floor.challengeId &&
+    !(floor.chestRooms ?? []).includes(room.id) &&
+    room.group === undefined &&
+    !exclude.has(room.id)
+  );
+}
+
+/**
+ * Sala del Santuario de la Mega Piedra del piso: determinista por la semilla del piso. Solo una sala de combate normal
+ * (ver `isPlainCombatRoom`) fuera de `exclude` (minijefe, evento sorpresa, reglas…), mejor sin salida. Si no queda
+ * ninguna devuelve null (nunca una sala especial): GameScene usa entonces `planMegaStoneRoom`.
  */
 export function pickMegaStoneRoom(floor: Floor, seed: number, exclude: ReadonlySet<number> = new Set()): number | null {
   const rng = mulberry32((seed ^ MEGA_STONE_SEED_SALT) >>> 0);
   const x = rng();
-  const chests = floor.chestRooms ?? [];
-  const base = floor.rooms.filter((r) => r.id !== floor.startId && r.id !== floor.bossId && r.kind !== 'start' && r.kind !== 'boss' && r.kind !== 'secret');
-  const combat = base.filter((r) => r.kind === 'combat');
-  const free = combat.filter((r) => !exclude.has(r.id) && !chests.includes(r.id) && r.group === undefined);
+  const free = floor.rooms.filter((r) => isPlainCombatRoom(floor, r, exclude));
   const ends = free.filter((r) => Object.keys(r.doors).length === 1);
-  const pool = ends.length > 0 ? ends : free.length > 0 ? free : combat.length > 0 ? combat : base;
+  const pool = ends.length > 0 ? ends : free;
   if (pool.length === 0) return null;
   return pool[Math.min(pool.length - 1, Math.floor(x * pool.length))].id;
+}
+
+export interface MegaStonePlan {
+  roomId: number;
+  /** Hay que quitarle la regla de sala (la sala se «convierte» en normal). */
+  dropRule: boolean;
+  /** Hay que quitarle el evento sorpresa. */
+  dropEvent: boolean;
+}
+
+/**
+ * Plan del santuario. Primero una sala normal libre. Si no hay ninguna, se CONVIERTE la sala menos especial: una de
+ * combate con solo una regla (se le quita) y, si tampoco, la del evento sorpresa (se le quita). Nunca se usa el
+ * minijefe, un cofre, una sala grande ni ninguna de otro tipo. Null si ni así hay sala (el piso se queda sin santuario).
+ */
+export function planMegaStoneRoom(
+  floor: Floor,
+  seed: number,
+  ctx: { miniboss?: number; eventRoom?: number; ruleRooms?: Iterable<number> } = {},
+): MegaStonePlan | null {
+  const rules = new Set(ctx.ruleRooms ?? []);
+  const busy = new Set<number>([...(ctx.miniboss !== undefined ? [ctx.miniboss] : []), ...(ctx.eventRoom !== undefined ? [ctx.eventRoom] : []), ...rules]);
+  const clean = pickMegaStoneRoom(floor, seed, busy);
+  if (clean !== null) return { roomId: clean, dropRule: false, dropEvent: false };
+  const minus = (keep: ReadonlySet<number>) => new Set<number>([...(ctx.miniboss !== undefined ? [ctx.miniboss] : []), ...keep]);
+  // Solo con regla (sin evento): se le quita la regla
+  const onlyRule = pickMegaStoneRoom(floor, seed, minus(new Set(ctx.eventRoom !== undefined ? [ctx.eventRoom] : [])));
+  if (onlyRule !== null) return { roomId: onlyRule, dropRule: rules.has(onlyRule), dropEvent: false };
+  // Último recurso: la sala del evento (con o sin regla)
+  if (ctx.eventRoom !== undefined && isPlainCombatRoom(floor, floor.rooms[ctx.eventRoom], minus(new Set()))) {
+    return { roomId: ctx.eventRoom, dropRule: rules.has(ctx.eventRoom), dropEvent: true };
+  }
+  return null;
 }
 
 // --- Pokémon raro que huye ---

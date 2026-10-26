@@ -21,7 +21,7 @@ import {
   pickRoomEvent,
   DAILY_EVENTS,
   ROOM_EVENTS,
-  pickMegaStoneRoom,
+  planMegaStoneRoom,
   megaStoneDoneKey,
   runawayTickets,
   trapChestOutcome,
@@ -334,7 +334,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed' | 'reactionsFound'
 >;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
@@ -958,6 +958,8 @@ export class GameScene extends Phaser.Scene {
     // T75: el medidor y el Z son de toda la partida (pasan de piso)
     this.powerMeter = newPowerMeter(r?.powerMeter ?? this.carry?.powerMeter ?? 0);
     this.zUsed = r?.zUsed ?? this.carry?.zUsed ?? false;
+    // T76: las reacciones descubiertas son de toda la partida (se guardan y pasan de piso)
+    this.reactionsFound = [...(r?.reactionsFound ?? this.carry?.reactionsFound ?? [])];
     this.powerMeterHud = undefined;
     this.megaPulseAt = 0;
     this.megaKey = null;
@@ -2349,10 +2351,16 @@ export class GameScene extends Phaser.Scene {
         : new Map();
     // Santuario de la Mega Piedra: una sala por piso (Normal, Infinito y diario), elegida DESPUÉS de lo demás y con su
     // propia semilla para no alterar el resto del piso (ver pickMegaStoneRoom)
-    this.megaRoomId =
-      (this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)
-        ? (pickMegaStoneRoom(this.floor, this.floorSeed, new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...(this.roomEvent ? [this.roomEvent.roomId] : []), ...this.roomRules.keys()])) ?? undefined)
-        : undefined;
+    this.megaRoomId = undefined;
+    if ((this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)) {
+      // Solo en una sala de combate normal; si no queda ninguna, se convierte la menos especial (sin regla o sin evento)
+      const plan = planMegaStoneRoom(this.floor, this.floorSeed, { miniboss: this.minibossRoom, eventRoom: this.roomEvent?.roomId, ruleRooms: this.roomRules.keys() });
+      if (plan) {
+        this.megaRoomId = plan.roomId;
+        if (plan.dropRule) this.roomRules.delete(plan.roomId);
+        if (plan.dropEvent) this.roomEvent = null;
+      }
+    }
     // T72: la regla del piso de la Torre vale para todas sus casillas (es una sola sala)
     const tRule = this.towerSpec?.rule;
     if (tRule) this.roomRules = new Map(this.floor.rooms.map((rm) => [rm.id, tRule]));
@@ -3141,6 +3149,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       powerForm: powerFormToSave(this.powerForm),
       powerMeter: Math.round(this.powerMeter.value * 10) / 10,
       zUsed: this.zUsed,
+      reactionsFound: [...this.reactionsFound],
     });
   }
 
@@ -6338,6 +6347,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       bossesBeaten: this.bossesBeaten,
       powerMeter: this.powerMeter.value,
       zUsed: this.zUsed,
+      reactionsFound: [...this.reactionsFound],
     };
     // Caída por la trampilla: se coloca encima, gira encogiéndose hacia el agujero y la cámara se acerca
     const p = this.player;
