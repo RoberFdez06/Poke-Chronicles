@@ -489,7 +489,7 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
 - Lógica pura con tests: quién se puede capturar, probabilidad por PS, un solo éxito por piso, la espera y que se reinicia al cambiar de
   piso. Guardar y continuar partida: el aliado y si ya capturaste en ese piso van en `RunSave` (versión nueva con migración).
 
-## [ ] T66 — Megaevolución de jefes
+## [x] T66 — Megaevolución de jefes
 - A mitad de la pelea (por ejemplo al bajar al 50 % de PS) el jefe cambia de forma: aviso previo de 1,5 s fuera del centro, invulnerable
   mientras dura, y desde ahí tiene más daño y velocidad, un patrón de ataque nuevo (añádelo en `bossPatterns.ts` con aviso previo y que sea
   esquivable) y más ayudantes. Los legendarios sin megaevolución real usan una «forma furia» con la misma lógica. Solo jefes, no minijefes.

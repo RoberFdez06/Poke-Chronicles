@@ -280,3 +280,39 @@ export function twistBehaviors(list: readonly EnemyBehavior[], floor: number, bi
     return pick;
   });
 }
+
+// --- T66: ataque exclusivo de la megaevolución / forma furia ---
+
+/**
+ * «Estallido mega»: el jefe marca varios rayos desde su cuerpo (aviso largo) y, al acabar, estallan a la vez. Entre
+ * rayo y rayo siempre queda un hueco ancho y el aviso nunca baja de MEGA_BLAST_MIN_WARN, así que siempre se puede
+ * esquivar. Se dispara dos veces seguidas, girando la segunda.
+ */
+export const MEGA_ATTACK_LABEL = 'Estallido mega';
+export const MEGA_BLAST_MIN_WARN = 1000;
+/** El ángulo libre entre rayos nunca baja de 40° (el jugador mide unos 30 px y el rayo 2 × MEGA_BLAST_WIDTH). */
+export const MEGA_BLAST_MIN_GAP = (40 * Math.PI) / 180;
+export const MEGA_BLAST_WIDTH = 22;
+
+export interface MegaBlastSpec {
+  beams: number;
+  warnMs: number;
+  length: number;
+  waves: number;
+  /** Giro de la segunda ola respecto a la primera (rad). */
+  turn: number;
+}
+export function megaBlastSpec(floor: number): MegaBlastSpec {
+  const d = depth(floor);
+  const beams = Math.min(5, 4 + Math.round(d));
+  return { beams, warnMs: Math.max(MEGA_BLAST_MIN_WARN, 1300 - Math.round(d * 300)), length: 700, waves: 2, turn: Math.PI / beams };
+}
+
+/** Ángulos de los rayos de una ola (repartidos por igual a partir de `offset`). */
+export const megaBlastAngles = (spec: MegaBlastSpec, offset: number): number[] =>
+  Array.from({ length: spec.beams }, (_, k) => offset + (k / spec.beams) * Math.PI * 2);
+
+/** Hueco libre entre rayos (rad) a una distancia `r` del jefe, descontando su grosor. */
+export function megaBlastGap(spec: MegaBlastSpec, r = 120): number {
+  return (Math.PI * 2) / spec.beams - 2 * Math.atan(MEGA_BLAST_WIDTH / r);
+}

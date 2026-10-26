@@ -99,6 +99,11 @@ import {
   bossAttacksFor,
   hazardSpec,
   laserHits,
+  MAX_HELPERS,
+  MEGA_ATTACK_LABEL,
+  MEGA_BLAST_WIDTH,
+  megaBlastAngles,
+  megaBlastSpec,
   laserSpec,
   shockwaveHits,
   shockwaveSpec,
@@ -125,6 +130,7 @@ import { shotSfx } from '../data/sounds';
 import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
+import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
 import { adrenalineTrail, lootFlash, parryHit, parryStance, reviveBurst, bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
@@ -4349,6 +4355,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!ai.attacks || !b.active) return;
     // Fase 2: por debajo de la mitad de vida, más rápido y con más ataques
     const ratio = (b.getData('hp') as number) / (b.getData('maxHp') as number);
+    // T66: megaevolución / forma furia (una vez por jefe, a la vez que la fase 2). Durante el aviso no ataca.
+    if (this.updateMegaEvolution(b, ai, ratio, time)) return;
     if (ai.phase === 1 && bossPhase(ratio) === 2) {
       ai.phase = 2;
       sfx('enrage');
@@ -4388,7 +4396,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else if (time >= reinforceAt && time < (ai.nextAttack ?? 0) - TELEGRAPH_MS) {
       b.setData('reinforceAt', time + reinforceEvery(ph));
       const helpers = this.enemies.getChildren().filter((c) => c.active && (c as Sprite).getData('helper')).length;
-      if (helpersToSummon(ph, helpers) > 0) this.bossSummon(b, ai);
+      if (megaHelpersToSummon(helpersToSummon(ph, 0), MAX_HELPERS, helpers, !!b.getData('mega')) > 0) this.bossSummon(b, ai);
     }
     if (time < (ai.nextAttack ?? 0)) return;
     // La mitad de las veces, uno de sus movimientos de tipo (sin repetir el último)
@@ -4403,6 +4411,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.foeMove(b, mv, mtype, Math.round((b.getData('dmg') as number) * 0.7), TELEGRAPH_MS, true);
       return;
     }
+    // T66: ya megaevolucionado, uno de cada tres ataques es su estallido mega (con aviso largo y huecos)
+    if (b.getData('mega') && b.getData('lastMega') !== true && Math.random() < 0.34) {
+      b.setData('lastMega', true);
+      const ms = this.bossMegaBlast(b, ai);
+      ai.nextAttack = time + ms + attackInterval(ai.phase ?? 1) * (rage ? 0.65 : 1);
+      return;
+    }
+    b.setData('lastMega', false);
     const attack = pickAttack(ai.attacks, Math.random, ai.lastAttack);
     ai.lastAttack = attack;
     ai.nextAttack = time + attackInterval(ai.phase ?? 1) * (rage ? 0.65 : 1) + TELEGRAPH_MS;
@@ -4417,10 +4433,90 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
   }
 
+  /**
+   * T66: comprueba si el jefe megaevoluciona (o entra en forma furia). Devuelve true mientras dura el aviso: en ese
+   * tiempo está quieto, no ataca y no recibe daño (se le devuelve la vida que tenía al empezar, así cualquier fuente de
+   * daño queda cubierta sin tocar cada una). Al acabar, más daño, velocidad, ayudantes y el ataque nuevo.
+   */
+  private updateMegaEvolution(b: Sprite, ai: EnemyAI, ratio: number, time: number): boolean {
+    const startedAt = b.getData('megaAt') as number | undefined;
+    if (startedAt === undefined) {
+      const who = { boss: !!ai.boss, miniboss: !!b.getData('miniboss'), helper: !!b.getData('helper') };
+      if (!shouldMegaEvolve({ done: !!b.getData('megaDone') }, who, ratio)) return false;
+      b.setData('megaDone', true).setData('megaAt', time).setData('megaHp', b.getData('hp'));
+      const id = (b.getData('speciesId') as number | undefined) ?? 0;
+      const name = (b.getData('bname') as string | undefined) ?? this.bossName;
+      this.notify(megaWarning(id, name), { kind: 'danger', icon: 'star' });
+      sfx('enrage');
+      ai.knockUntil = time + MEGA_WARN_MS;
+      b.setVelocity(0, 0);
+      // TODO(supervisor): destello y aura de megaevolución propios (y sprite mega si existe); de momento evolveBurst.
+      b.setData('flashUntil', time + MEGA_WARN_MS).setTintFill(0xffffff);
+      return true;
+    }
+    if (megaInvulnerable(startedAt, time)) {
+      b.setData('hp', Math.max(b.getData('hp') as number, b.getData('megaHp') as number));
+      b.setVelocity(0, 0);
+      return true;
+    }
+    if (!b.getData('mega')) {
+      b.setData('mega', true);
+      b.setData('dmg', Math.round((b.getData('dmg') as number) * MEGA_DAMAGE_MUL));
+      b.setData('speed', (b.getData('speed') as number) * MEGA_SPEED_MUL);
+      const id = (b.getData('speciesId') as number | undefined) ?? 0;
+      const name = (b.getData('bname') as string | undefined) ?? this.bossName;
+      b.setData('bname', megaName(id, name));
+      const bb = b.body as Body | null;
+      if (!lowFx()) evolveBurst(this, b.x, b.y, bb ? bb.bottom : b.y + b.displayHeight / 2);
+      b.clearTint();
+      this.notify(`¡${megaName(id, name)}!`, { kind: 'danger', icon: 'star' });
+      ai.nextAttack = time + 700;
+    }
+    return false;
+  }
+
+  /** T66: estallido mega: rayos marcados desde el jefe que estallan a la vez, en dos olas giradas. Devuelve su duración. */
+  private bossMegaBlast(b: Sprite, ai: EnemyAI): number {
+    const spec = megaBlastSpec(this.level());
+    const color = typeColor(ai.type);
+    this.popup(b.x, b.y - (b.displayHeight / 2 + 20), MEGA_ATTACK_LABEL, color);
+    const offset = Math.random() * Math.PI * 2;
+    for (let w = 0; w < spec.waves; w++) {
+      const delay = w * (spec.warnMs + 250);
+      this.time.delayedCall(delay, () => {
+        if (!b.active || this.ended) return;
+        const cx = b.x;
+        const cy = b.y;
+        const angles = megaBlastAngles(spec, offset + w * spec.turn);
+        // Aviso: líneas finas que se van llenando (quieto mientras avisa para que no se muevan)
+        ai.knockUntil = this.time.now + spec.warnMs;
+        b.setVelocity(0, 0);
+        const g = this.add.graphics().setDepth(4);
+        for (const a of angles) {
+          g.lineStyle(MEGA_BLAST_WIDTH * 2, color, 0.18).lineBetween(cx, cy, cx + Math.cos(a) * spec.length, cy + Math.sin(a) * spec.length);
+          g.lineStyle(2, color, 0.9).lineBetween(cx, cy, cx + Math.cos(a) * spec.length, cy + Math.sin(a) * spec.length);
+        }
+        this.tweens.add({ targets: g, alpha: 0.45, yoyo: true, repeat: 3, duration: spec.warnMs / 8 });
+        this.time.delayedCall(spec.warnMs, () => {
+          this.tweens.killTweensOf(g);
+          g.destroy();
+          if (!b.active || this.ended) return;
+          // TODO(supervisor): efecto propio del estallido; de momento un destello de los rayos
+          const fx = this.add.graphics().setDepth(12);
+          for (const a of angles) fx.lineStyle(MEGA_BLAST_WIDTH * 2, color, 0.75).lineBetween(cx, cy, cx + Math.cos(a) * spec.length, cy + Math.sin(a) * spec.length);
+          this.tweens.add({ targets: fx, alpha: 0, duration: 260, onComplete: () => fx.destroy() });
+          if (angles.some((a) => laserHits(cx, cy, a, spec.length, this.player.x, this.player.y, MEGA_BLAST_WIDTH))) this.hurtPlayer(b, true);
+        });
+      });
+    }
+    return spec.waves * (spec.warnMs + 250) + 300;
+  }
+
   /** Invocación: círculos del color del jefe donde van a salir sus ayudantes (si ya hay muchos, hace una ráfaga). */
   private bossSummon(b: Sprite, ai: EnemyAI) {
     const alive = this.enemies.getChildren().filter((c) => c.active && (c as Sprite).getData('helper')).length;
-    const n = helpersToSummon(ai.phase ?? 1, alive);
+    // T66: megaevolucionado invoca más (y con un tope algo mayor)
+    const n = megaHelpersToSummon(helpersToSummon(ai.phase ?? 1, 0), MAX_HELPERS, alive, !!b.getData('mega'));
     // Ayudantes de su tipo (si no hay, de los del piso)
     const own = this.summonKinds.filter((k) => k.types.includes(ai.type));
     const kinds = own.length ? own : this.summonKinds.length ? this.summonKinds : this.foeKinds;
