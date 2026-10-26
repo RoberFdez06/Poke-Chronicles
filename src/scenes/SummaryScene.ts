@@ -12,6 +12,8 @@ import { addMenuBackdrop } from '../ui/art/landscape';
 import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
 import { HIDDEN_ITEMS, PASSIVE_ITEMS } from '../data/items';
 import { sfx } from '../ui/audio';
+import { shareCardData } from '../data/shareCard';
+import { renderShareCard, shareOrDownload } from './shareImage';
 
 export interface SummaryData {
   record: RunRecord;
@@ -28,6 +30,9 @@ export class SummaryScene extends Phaser.Scene {
   private nav!: NavInput;
   private menu!: MenuList;
   private leaving = false;
+  /** T82: mientras se genera la imagen no se pide otra. */
+  private saving = false;
+  private saveNote?: Phaser.GameObjects.Text;
 
   constructor() {
     super('Summary');
@@ -39,6 +44,7 @@ export class SummaryScene extends Phaser.Scene {
 
   create() {
     this.leaving = false;
+    this.saving = false;
     this.nav = new NavInput(this);
     fadeIn(this);
     fitDesign(this);
@@ -125,7 +131,8 @@ export class SummaryScene extends Phaser.Scene {
     this.moreStats(r);
     this.routesLine(r);
 
-    this.menu = new MenuList(this, 780, 230, ['Otra partida', 'Historial', 'Menú'], (i) => this.pick(i), { w: 280, h: 56, gap: 22 });
+    this.menu = new MenuList(this, 780, 230, ['Otra partida', 'Guardar imagen', 'Historial', 'Menú'], (i) => this.pick(i), { w: 280, h: 44, gap: 12, fontSize: 21 });
+    this.saveNote = this.add.text(780, 386, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0.5).setAlpha(0.85);
     this.add
       .text(480, 612, 'Flechas, ratón o mando para elegir · Enter, clic o A · Esc o B: menú', { fontFamily: FONT, fontSize: '15px', color: '#ffffff' })
       .setOrigin(0.5).setAlpha(0.6);
@@ -204,18 +211,44 @@ export class SummaryScene extends Phaser.Scene {
     });
   }
 
+  /** T82: imagen PNG de la partida; se descarga o se comparte. No guarda nada (vale también para invitados). */
+  private async saveImage() {
+    if (this.saving) return;
+    this.saving = true;
+    this.saveNote?.setText('Generando imagen…');
+    const r = this.data_.record;
+    // T81 (código de semilla) aún no existe: cuando esté, pasar aquí el código de la partida.
+    const card = shareCardData(r, undefined);
+    const itemId = (name: string) => [...PASSIVE_ITEMS, ...HIDDEN_ITEMS].find((p) => p.name === name)?.id;
+    const blob = await renderShareCard(this, card, {
+      portraitKey: `starter-${r.starterId}-front`,
+      itemKey: (name) => {
+        const id = itemId(name);
+        return id ? itemIconKey(id) : iconKey('bag');
+      },
+    });
+    if (!this.sys.isActive()) return;
+    const result = blob ? await shareOrDownload(blob, card.fileName).catch(() => null) : null;
+    if (!this.sys.isActive()) return;
+    this.saveNote?.setText(
+      result === 'compartida' ? 'Imagen compartida' : result === 'descargada' ? 'Imagen guardada' : result === 'cancelada' ? '' : 'No se pudo crear la imagen',
+    );
+    this.saving = false;
+  }
+
   private pick(i: number) {
     if (this.leaving) return;
+    if (i === 1) return void this.saveImage();
     this.leaving = true;
     if (i === 0) goTo(this, 'Starter', { slot: this.data_.slot });
-    else if (i === 1) goTo(this, 'History', { from: 'Menu' });
+    else if (i === 2) goTo(this, 'History', { from: 'Menu' });
     else goTo(this, 'Menu');
   }
 
   update() {
     if (this.leaving) return;
     const s = this.nav.read();
-    if (s.back) return this.pick(2);
+    if (s.back) return this.pick(3);
     this.menu.move(s.dy || s.dx);
     if (s.ok) this.menu.activate();
   }

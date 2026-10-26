@@ -670,7 +670,7 @@ sprites como `// TODO(supervisor)`, efectos bajos respetados, un commit por tare
   rechazados, mayúsculas y minúsculas indistintas. Botón de copiar al portapapeles. **Con mando se puede escribir** (selector de letras
   con arriba y abajo), con teclado y con ratón también.
 
-## [ ] T82 — Imagen de la partida
+## [x] T82 — Imagen de la partida
 - Botón «Guardar imagen» en el resumen (teclado, ratón y mando) que genera una **imagen PNG de 1200×630** con el Pokémon, el resultado
   (piso o victoria), el tiempo, kills, parrys, objetos con sus iconos y el código de semilla (T81). Se descarga como archivo o, donde el
   navegador lo permita, se comparte con el menú del sistema. Funciona también para invitados (no guarda nada).
