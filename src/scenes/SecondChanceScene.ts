@@ -20,6 +20,11 @@ export interface SecondChanceData {
 
 const LABEL: Record<ReviveCurrency, string> = { candies: 'caramelos', tickets: 'tickets' };
 const OPTIONS: SecondChanceChoice[] = ['candies', 'tickets', 'giveUp'];
+/**
+ * Sale en plena pelea: si estabas disparando a clics o pulsando Espacio (objeto activo, que en los menús también
+ * acepta), esa pulsación podría pagar o rendirse sin querer. Hasta pasado este margen no se elige nada (ms).
+ */
+export const SECOND_CHANCE_INPUT_DELAY_MS = 700;
 
 /**
  * T57: «Una más». Al caer, si queda la segunda oportunidad de la partida: revivir pagando caramelos o tickets, o
@@ -32,6 +37,7 @@ export class SecondChanceScene extends Phaser.Scene {
   private menu!: MenuList;
   private message!: Phaser.GameObjects.Text;
   private done = false;
+  private readyAt = 0;
 
   constructor() {
     super('SecondChance');
@@ -66,10 +72,11 @@ export class SecondChanceScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.add.text(480, 536, 'Flechas, ratón o mando · Enter, clic o A · Esc o B: terminar', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0.5);
     sfx('select');
+    this.readyAt = this.time.now + SECOND_CHANCE_INPUT_DELAY_MS;
   }
 
   private pick(i: number) {
-    if (this.done) return;
+    if (this.done || this.time.now < this.readyAt) return;
     const c = OPTIONS[i];
     if (c !== 'giveUp' && this.args.balances[c] < this.args.costs[c]) {
       // Sin saldo: no se cierra, para que pueda elegir la otra moneda o terminar
