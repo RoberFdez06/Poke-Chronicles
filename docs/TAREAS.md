@@ -689,14 +689,14 @@ Antes de empezar cada tarea: consulta graphify y busca lo que ya existe (`shiny.
 tiene las regiones; `medals.ts` las medallas de bioma; `MissionsScene` las misiones). Amplía, no dupliques. Todo en español; teclado,
 ratón y mando funcionan cada uno por separado. Lo visual nuevo, `// TODO(supervisor)`.
 
-## [ ] T83 — Formas regionales
+## [x] T83 — Formas regionales
 - Variantes de Alola, Galar, Hisui y Paldea de especies que ya salen (p. ej. Vulpix de Alola, Meowth de Galar, Growlithe de Hisui).
   Cada forma cambia **tipos, ataques y estadísticas**, y su ficha dice la región. Datos en un archivo nuevo `src/data/regionalForms.ts`
   (lógica pura, import con `.ts`, tests: toda forma apunta a una especie válida, tipos válidos, sin duplicados).
 - Salen como enemigos del bioma que encaje (probabilidad baja y ajustable), se pueden capturar (T65), cuentan en el Pokédex y en el gacha
   como entrada propia. Sprites: reutiliza los de PokeAPI cuando existan; si no, `// TODO(supervisor)`.
 
-## [ ] T84 — Cadena shiny
+## [x] T84 — Cadena shiny
 - Derrotar o capturar seguidos enemigos de **la misma especie** sube una cadena; cada eslabón multiplica la probabilidad de shiny
   (`SHINY_ODDS.enemy`) hasta un tope. Cambiar de especie o perder vida de golpe rompe la cadena. Lógica pura en `shiny.ts`
   (`chainOdds(n)`) con tests: sube, respeta el tope y se reinicia. Contador visible en el HUD solo cuando la cadena es 2 o más.

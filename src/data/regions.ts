@@ -1,6 +1,7 @@
 // Regiones, iniciales de cada región y filtros de la colección (por región, nombre y rareza).
 // Lógica pura, sin Phaser ni red, para poder testearla.
 import type { Rarity } from './gacha.ts';
+import { regionalForm } from './regionalForms.ts';
 
 export interface Region {
   id: string;
@@ -25,6 +26,9 @@ export const REGIONS: readonly Region[] = [
 ];
 
 export function regionOf(id: number): Region | undefined {
+  // T83: las formas regionales cuentan en su región (Vulpix de Alola en Alola)
+  const form = regionalForm(id);
+  if (form) return REGIONS.find((r) => r.id === form.region);
   return REGIONS.find((r) => id >= r.first && id <= r.last);
 }
 
@@ -61,16 +65,17 @@ export interface CollectionFilter {
   type?: string | null;
 }
 
-/** Colección filtrada y ordenada por número de Pokédex. */
+/** Colección filtrada y ordenada por número de Pokédex (cada forma regional detrás de su especie). */
 export function filterCollection<T extends CollectionEntry>(entries: readonly T[], f: CollectionFilter = {}): T[] {
   const q = normalizeText(f.query ?? '');
   const region = f.region ? REGIONS.find((r) => r.id === f.region) : undefined;
   return entries
-    .filter((e) => !region || (e.id >= region.first && e.id <= region.last))
+    .filter((e) => !region || regionOf(e.id) === region)
     .filter((e) => !f.rarity || e.rarity === f.rarity)
     .filter((e) => !f.type || (e.types ?? []).includes(f.type))
     .filter((e) => q === '' || normalizeText(e.name).includes(q))
-    .sort((a, b) => a.id - b.id);
+    // Las formas regionales van justo detrás de su especie normal
+    .sort((a, b) => (regionalForm(a.id)?.baseId ?? a.id) - (regionalForm(b.id)?.baseId ?? b.id) || a.id - b.id);
 }
 
 /** Cuántos tienes de cada región (para las pestañas). */

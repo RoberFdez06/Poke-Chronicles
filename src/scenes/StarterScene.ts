@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { fitDesign } from '../ui/layout';
 import { fetchPokemonCard, PokemonCard } from '../data/pokeapi';
 import { loadShinies, loadUnlocked } from '../data/save';
-import { loadSpeciesIndex } from '../data/speciesIndex';
+import { loadCollectionIndex, loadSpeciesIndex } from '../data/speciesIndex';
 import { classifyRarity, RARITY_LABEL } from '../data/gacha';
 import { filterCollection, CollectionEntry } from '../data/regions';
 import { NavInput, PadButtons, UI } from '../ui/nav';
@@ -104,7 +104,7 @@ export class StarterScene extends Phaser.Scene {
 
   private async boot(unlocked: number[], loading: Phaser.GameObjects.Text) {
     // La rareza y el nombre salen de la lista de especies; las tarjetas se piden por páginas
-    const index = await loadSpeciesIndex().catch(() => []);
+    const index = await loadCollectionIndex().catch(() => []);
     const byId = new Map(index.map((s) => [s.id, s]));
     this.entries = unlocked.map((id) => {
       const s = byId.get(id);

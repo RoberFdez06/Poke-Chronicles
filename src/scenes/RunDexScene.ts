@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { fitDesign } from '../ui/layout';
 import { loadDefeated } from '../data/save';
-import { loadSpeciesIndex } from '../data/speciesIndex';
+import { loadCollectionIndex } from '../data/speciesIndex';
 import { buildDexIndex, DEX_CANDIES, DEX_MILESTONES, typeProgress } from '../data/runDex';
 import { typeColor, typeNameEs } from '../data/types';
 import { addBackButton } from '../ui/cards';
@@ -33,7 +33,7 @@ export class RunDexScene extends Phaser.Scene {
       .setOrigin(0.5).setStroke('#2b3a67', 10);
     const wait = this.add.text(480, 320, 'Cargando…', { fontFamily: FONT, fontSize: '22px', color: '#ffffff' }).setOrigin(0.5);
 
-    loadSpeciesIndex()
+    loadCollectionIndex()
       .then((index) => {
         if (!this.scene.isActive()) return; // se salió antes de que cargara
         wait.destroy();
@@ -42,7 +42,7 @@ export class RunDexScene extends Phaser.Scene {
       .catch(() => wait.setText('No se pudo cargar la lista de Pokémon'));
   }
 
-  private draw(index: Awaited<ReturnType<typeof loadSpeciesIndex>>) {
+  private draw(index: Awaited<ReturnType<typeof loadCollectionIndex>>) {
     const dx = buildDexIndex(index);
     const defeated = loadDefeated();
     const rows = typeProgress(defeated, dx);

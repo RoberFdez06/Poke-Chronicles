@@ -56,7 +56,8 @@ import { THIEF_HP_MUL, THIEF_SPEED_MUL, coinsAfterTheft, thiefCanAppear, thiefEs
 import { FISH_MAX_CASTS, FISH_PRIZE_LABEL, FISH_RARE_HP_MUL, canCast, fishBiteDelay, fishCoins, fishPrize, fishRareCoins, hookResult } from '../level/fishing';
 import { SLOT_BETS, SLOT_MAX_SPINS, SLOT_OUTCOME_LABEL, canSpin, spinSlot } from '../level/slotMachine';
 import { applyDifficulty, scaleHeal, scaleTickets, withDifficulty, type Difficulty } from '../data/difficulty';
-import { loadSpeciesIndex } from '../data/speciesIndex';
+import { loadCollectionIndex, loadSpeciesIndex } from '../data/speciesIndex';
+import { applyRegionalForms, regionalForm } from '../data/regionalForms';
 import {
   bossTicketsFor,
   difficultyFor,
@@ -131,7 +132,7 @@ import {
   isCharged,
   SYNERGIES,
 } from '../data/synergies';
-import { rollShiny, SHINY_ENEMY, SHINY_ODDS } from '../data/shiny';
+import { chainBreak, chainHit, chainOdds, chainVisible, newShinyChain, rollShiny, SHINY_ENEMY, SHINY_ODDS, type ShinyChain } from '../data/shiny';
 import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
 import { cry, playMenuMusic, playTrack, sfx } from '../ui/audio';
@@ -537,6 +538,9 @@ export class GameScene extends Phaser.Scene {
   private weather: Weather | null = null;
   private combo: ComboState = newCombo();
   private comboHud?: ComboHud;
+  /** T84: cadena shiny (misma especie seguida). No cuenta en el desafío diario. */
+  private shinyChain: ShinyChain = newShinyChain();
+  private shinyChainHud?: Phaser.GameObjects.Text;
   private weatherFx?: WeatherFx;
   private weatherTickAt = 0;
   /** Día o noche (T67), según el tiempo jugado; null hasta el primer fotograma (así al continuar no avisa). */
@@ -812,6 +816,8 @@ export class GameScene extends Phaser.Scene {
     this.seeded = this.resume ? this.resume.seeded : (data?.seeded ?? (data?.carry ? null : { seed: newSeed(), fromCode: false }));
     if (this.daily) this.seeded = { seed: dailySeed(this.daily.day), fromCode: false };
     this.dailyRngs.clear();
+    // T84: la cadena shiny sigue entre pisos de la misma partida; una partida nueva o cargada empieza de cero
+    if (!data?.carry || this.resume) this.shinyChain = newShinyChain();
     this.diff = this.resume ? this.resume.difficulty : (data?.difficulty ?? 'normal');
   }
 
@@ -836,7 +842,7 @@ export class GameScene extends Phaser.Scene {
     this.adrenalineHud = undefined;
     this.dexIndex = undefined;
     this.dexDefeated = new Set(loadDefeated());
-    loadSpeciesIndex().then((ix) => void (this.dexIndex = buildDexIndex(ix))).catch(() => undefined);
+    loadCollectionIndex().then((ix) => void (this.dexIndex = buildDexIndex(ix))).catch(() => undefined);
     this.darkness = undefined;
     this.nightLayer = undefined;
     this.roomRules = new Map();
@@ -1096,7 +1102,8 @@ export class GameScene extends Phaser.Scene {
     this.bossId = bossId;
     // Enemigos del piso: más fuertes cuanto más hondo; la semilla del piso los fija (no hace falta guardarlos)
     // Una especie del tipo del bioma y el resto de cualquier tipo (biomes.ts)
-    const foeIds = pickMixedFoes(index, this.level(), this.biome, this.foeRng(this.level()), onlyBundled);
+    // T83: alguno puede salir en su forma regional (más si encaja con el bioma)
+    const foeIds = applyRegionalForms(pickMixedFoes(index, this.level(), this.biome, this.foeRng(this.level()), onlyBundled), this.biome.types, this.foeRng(this.level() + 131));
     const [starter, boss, foeCards] = await Promise.all([
       fetchPokemon(this.formId),
       fetchPokemon(bossId),
@@ -2142,6 +2149,7 @@ export class GameScene extends Phaser.Scene {
     }
     // Capturado: cuenta en el registro de combate (T63) y pasa a ser el ayudante hasta acabar el piso
     this.counters.kills++;
+    this.chainShiny(target);
     this.registerDex(target);
     (target.getData('bar') as Phaser.GameObjects.Graphics | undefined)?.destroy();
     if (!lowFx()) sparkle(this, target.x, target.y);
@@ -2264,7 +2272,7 @@ export class GameScene extends Phaser.Scene {
     return cards.map((c) => ({
       key: `foe-${c.id}`,
       behavior: behaviorForSpecies(c.types, c.id),
-      bst: index.find((s) => s.id === c.id)?.bst ?? 300,
+      bst: index.find((s) => s.id === c.id)?.bst ?? regionalForm(c.id)?.bst ?? 300,
       type: c.types[0] ?? 'normal',
       types: c.types.length > 0 ? [...c.types] : ['normal'],
       stats: c.stats,
@@ -2276,7 +2284,7 @@ export class GameScene extends Phaser.Scene {
   private async reloadFoes(level: number) {
     const index = await loadSpeciesIndex().catch(() => [] as SpeciesFact[]);
     this.biome = biomeFor(this.mode, level);
-    const ids = pickMixedFoes(index, level, this.biome, this.foeRng(level));
+    const ids = applyRegionalForms(pickMixedFoes(index, level, this.biome, this.foeRng(level)), this.biome.types, this.foeRng(level + 131));
     const cards = (await Promise.all(ids.map((id) => fetchPokemonCard(id).catch(() => null)))).filter((c) => c !== null);
     if (cards.length === 0 || !this.scene.isActive()) return;
     await new Promise<void>((resolve) => {
@@ -2582,6 +2590,10 @@ export class GameScene extends Phaser.Scene {
       // Esquina superior izquierda de la sala, en coordenadas reales de pantalla
       const k = GAME_VIEW.w / VIEW.w;
       this.comboHud = new ComboHud(this, GAME_VIEW.x + (ROOM.x + 22) * k, GAME_VIEW.y + (ROOM.y + 36) * k, FONT, hud);
+      // T84: contador de la cadena shiny, debajo del combo. TODO(supervisor): arte propio del contador
+      this.shinyChainHud = hud(
+        this.add.text(GAME_VIEW.x + (ROOM.x + 22) * k, GAME_VIEW.y + (ROOM.y + 96) * k, '', { fontFamily: FONT, fontSize: '16px', color: '#ffd34d', stroke: '#000000', strokeThickness: 4 }),
+      ).setVisible(false);
     }
     // T49: cuatro contadores (monedas, llaves, bombas y pociones); clic en la bomba o en la poción para usarlas
     this.coinsHud = count(iconKey('coin'), LX + HUD_COUNT_X.coin);
@@ -5299,7 +5311,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   ): Sprite {
     const { x, y } = helper ?? this.randomSpotInRoom(60);
     // Shiny (1/200): otro color, más vida y más premio
-    const shiny = rollShiny(Math.random, SHINY_ODDS.enemy) && this.textures.exists(`${kind.key}-s-front`);
+    // T84: la cadena shiny sube la probabilidad (en el desafío diario no: mismas condiciones para todos)
+    const odds = this.daily ? SHINY_ODDS.enemy : chainOdds(this.shinyChain.speciesId === Number(kind.key.replace('foe-', '')) ? this.shinyChain.count : 0);
+    const shiny = rollShiny(Math.random, odds) && this.textures.exists(`${kind.key}-s-front`);
     const sheet = shiny ? `${kind.key}-s` : kind.key;
     const e = this.enemies.create(x, y, `${sheet}-front`) as Sprite;
     e.setDisplaySize(60, 60).setData('sheet', sheet).setData('size', 60).setData('shiny', shiny);
@@ -7335,6 +7349,18 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.floor.shopId !== undefined) for (let k = 0; k < r.coins; k++) this.dropLoot(enemy.x + (k - r.coins / 2) * 16, enemy.y, { kind: 'coin', value: 1 });
   }
 
+  /** T84: derrotar o capturar suma a la cadena shiny si es la misma especie (los ayudantes del jefe no cuentan). */
+  private chainShiny(enemy: Sprite) {
+    if (this.daily || enemy.getData('helper')) return;
+    this.shinyChain = chainHit(this.shinyChain, (enemy.getData('speciesId') as number | undefined) ?? 0);
+    this.paintShinyChain();
+  }
+
+  private paintShinyChain() {
+    const show = chainVisible(this.shinyChain);
+    this.shinyChainHud?.setVisible(show).setText(show ? `Cadena shiny x${this.shinyChain.count}` : '');
+  }
+
   /** Se rompe el combo (te han hecho daño). */
   private comboLose() {
     const was = comboBreak(this.combo);
@@ -7367,6 +7393,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // T55: las bajas cargan la adrenalina (los ayudantes que invoca un jefe también cuentan: son enemigos de verdad)
     this.addAdrenaline('kill');
     this.comboKill(enemy);
+    this.chainShiny(enemy);
     this.mission({ kind: 'defeat', types: boss ? this.bossTypes : ((enemy.getData('types') as string[] | undefined) ?? []) });
     // Monedas solo donde hay tienda en la que gastarlas; bayas siempre
     const hasShop = this.floor.shopId !== undefined;
@@ -8300,6 +8327,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.hp = 1;
       this.notify('¡Aguantó gracias a la Banda Focus!', { kind: 'heal', icon: 'heart' });
     } else this.hp -= taken;
+    // T84: perder vida rompe la cadena shiny
+    if (this.shinyChain.count > 0) {
+      this.shinyChain = chainBreak();
+      this.paintShinyChain();
+    }
     if (!this.lowHpUsed && this.stats.lowHpHeal > 0 && this.hp > 0 && this.hp < this.stats.maxHp * 0.25) {
       // Hierba Blanca: una vez por piso
       this.lowHpUsed = true;

@@ -1,6 +1,7 @@
 // Lista de especies generada por scripts/buildSpeciesIndex.mjs (public/data/species-index.json).
 // Se carga una sola vez y se comparte entre el gacha, los jefes y los enemigos.
 import type { SpeciesFact } from './gacha';
+import { withRegionalForms } from './regionalForms';
 
 let cached: Promise<SpeciesFact[]> | null = null;
 
@@ -16,4 +17,9 @@ export function loadSpeciesIndex(): Promise<SpeciesFact[]> {
     throw err;
   });
   return cached;
+}
+
+/** T83: la lista de especies más las formas regionales (Pokédex, gacha, colección y nombres). Los enemigos usan la normal. */
+export async function loadCollectionIndex(): Promise<SpeciesFact[]> {
+  return withRegionalForms(await loadSpeciesIndex());
 }
