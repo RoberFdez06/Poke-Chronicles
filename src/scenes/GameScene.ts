@@ -3521,7 +3521,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const fill = adrenalineFill(this.adrenaline);
     const on = adrenalineActive(this.adrenaline);
     // Brasas que salen de los pies del jugador mientras dura la adrenalina (cada ~140 ms, sin acumular con la pausa)
-    if (on && this.player?.active && this.time.now >= this.adrenalineTrailAt) {
+    if (on && this.player?.active && this.time.now >= this.adrenalineTrailAt && this.fxBudget.take(this.time.now)) {
       this.adrenalineTrailAt = this.time.now + 140;
       adrenalineTrail(this, this.player.x, this.player.y);
     }
@@ -5833,7 +5833,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         drop.kind === 'coin' ? [LX + HUD_COUNT_X.coin, 288, this.coinsHud] : drop.kind === 'key' ? [LX + HUD_COUNT_X.key, 288, this.keysHud]
           : drop.kind === 'bomb' ? [LX + HUD_COUNT_X.bomb, 288, this.bombsHud]
           : drop.kind === 'potion' ? [LX + HUD_COUNT_X.potion, 288, this.potionsHud] : [LX + LW / 2, 186, this.hpText];
-      lootFlash(this, sprite.x, sprite.y, (sprite.tintTopLeft || 0xffe066) as number);
+      // Adorno: con efectos bajos (o si ya hay muchas partículas) no sale
+      if (this.fxBudget.take(this.time.now)) lootFlash(this, sprite.x, sprite.y, (sprite.tintTopLeft || 0xffe066) as number);
       this.flyToHud(sprite.texture.key, sprite.frame.name, sprite.x, sprite.y, target[0], target[1], target[2]);
     }
     this.floorItems = this.floorItems.filter((f) => f !== sprite.getData('entry'));
@@ -6540,7 +6541,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.invulnUntil = this.time.now + REVIVE_IMMUNE_MS;
         this.notify(`¡Una más!\nVuelves con ${Math.ceil(this.hp)} PS`, { kind: 'heal', icon: 'heart' });
         sfx('heal');
-        reviveBurst(this, this.player.x, this.player.y);
+        // El fogonazo de cámara no sale con efectos bajos (como los fundidos de los menús); el aviso sí
+        if (!this.fxBudget.low) reviveBurst(this, this.player.x, this.player.y);
         this.saveNow();
         // Si el último enemigo cayó mientras tenías 0 PS, checkClear no lo dio por limpio: se mira ahora
         // (solo en salas de pelea: en la tienda o el Centro, donde puedes caer con tu propia bomba, no hay nada que limpiar)
