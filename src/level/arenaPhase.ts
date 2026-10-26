@@ -187,18 +187,80 @@ export function arenaPhase(input: ArenaPhaseInput): ArenaPhase {
 // --- Fase 2: caída a otra arena según el tipo del jefe ---
 
 /**
+ * Temas por tipo (los de siempre):
  * - lava (fuego): charcas de lava que queman al pisarlas y rocas.
  * - inundada (agua): casi toda el agua cubre el suelo (más lento) y alguna roca.
  * - hielo: placas de hielo resbaladizas y columnas de hielo.
  * - raices (planta y bicho): raíces que cortan el paso (se rompen a disparos, como la hierba alta) y rocas.
- * - ruinas (el resto): rocas, columnas y algún foso.
+ * - ruinas (el resto, y los Regis): rocas, columnas y algún foso.
+ * Temas por concepto (legendarios y, como respaldo, algunos tipos):
+ * - tiempo (Dialga, Celebi, Koraidon, Miraidon; acero): cámara del tiempo con columnas-reloj.
+ * - espacio (Palkia, Solgaleo, Lunala, Necrozma, Eternatus, Jirachi): vacío estelar con fosos al vacío.
+ * - distorsion (Giratina, Yveltal, Darkrai, Hoopa; fantasma y siniestro): mundo distorsión con islas y fosos.
+ * - cielo (Rayquaza, Tornado, Latios, Latias; dragón y volador): sobre las nubes, huecos entre ellas y la columna celeste.
+ * - mar (Kyogre, Lugia, Manaphy, Suicune): el océano con un torbellino; casi todo agua.
+ * - magma (Groudon, Heatran, Entei, Volcanion, Landorus; tierra): tierra partida con ríos de magma.
+ * - creacion (Arceus, Mew, Xerneas, Calyrex, Zacian, Zamazenta, Terapagos; hada): salón del origen con columnas y flores.
+ * - arcoiris (Ho-Oh, Reshiram): torre del fuego sagrado bajo el arcoíris, con llamas sagradas.
+ * - tormenta (Zekrom, Zapdos, Raikou, Thundurus, Tapu Koko; eléctrico): meseta bajo la tormenta con rocas.
+ * - psique (Mewtwo, Deoxys, trío del lago; psíquico): laboratorio psíquico con columnas flotantes.
  */
-export type FallTheme = 'lava' | 'inundada' | 'hielo' | 'raices' | 'ruinas';
+export type FallTheme =
+  | 'lava' | 'inundada' | 'hielo' | 'raices' | 'ruinas'
+  | 'tiempo' | 'espacio' | 'distorsion' | 'cielo' | 'mar' | 'magma' | 'creacion' | 'arcoiris' | 'tormenta' | 'psique';
+
+export const FALL_THEMES: readonly FallTheme[] = ['lava', 'inundada', 'hielo', 'raices', 'ruinas', 'tiempo', 'espacio', 'distorsion', 'cielo', 'mar', 'magma', 'creacion', 'arcoiris', 'tormenta', 'psique'];
 
 const TYPE_THEME: Readonly<Record<string, FallTheme>> = { fire: 'lava', water: 'inundada', ice: 'hielo', grass: 'raices', bug: 'raices' };
+/** Respaldo por tipo para los que no tienen tema de los de siempre (va después de TYPE_THEME). */
+const TYPE_CONCEPT: Readonly<Record<string, FallTheme>> = {
+  electric: 'tormenta', psychic: 'psique', ghost: 'distorsion', dark: 'distorsion', dragon: 'cielo', flying: 'cielo', steel: 'tiempo', fairy: 'creacion', ground: 'magma',
+};
+/** Tema por especie (número de la Pokédex nacional): lo que representa el legendario, no solo su tipo. */
+export const SPECIES_THEME: Readonly<Record<number, FallTheme>> = {
+  // Tiempo
+  483: 'tiempo', 251: 'tiempo', 1007: 'tiempo', 1008: 'tiempo',
+  // Espacio y cosmos
+  484: 'espacio', 789: 'espacio', 790: 'espacio', 791: 'espacio', 792: 'espacio', 800: 'espacio', 890: 'espacio', 385: 'espacio',
+  // Mundo distorsión y oscuridad
+  487: 'distorsion', 717: 'distorsion', 491: 'distorsion', 720: 'distorsion',
+  // Cielo
+  384: 'cielo', 641: 'cielo', 380: 'cielo', 381: 'cielo',
+  // Mares
+  382: 'mar', 249: 'mar', 490: 'mar', 489: 'mar', 245: 'mar',
+  // Tierra y magma
+  383: 'magma', 485: 'magma', 244: 'magma', 721: 'magma', 645: 'magma',
+  // Creación y luz sagrada
+  493: 'creacion', 151: 'creacion', 716: 'creacion', 898: 'creacion', 888: 'creacion', 889: 'creacion', 1024: 'creacion',
+  // Arcoíris y fuego sagrado
+  250: 'arcoiris', 643: 'arcoiris',
+  // Tormenta
+  644: 'tormenta', 145: 'tormenta', 243: 'tormenta', 642: 'tormenta', 785: 'tormenta',
+  // Mente
+  150: 'psique', 386: 'psique', 480: 'psique', 481: 'psique', 482: 'psique',
+  // Los de un solo elemento: lo básico de su tipo
+  146: 'lava', 144: 'hielo', 378: 'hielo', 646: 'hielo',
+  // Los Regis y Regigigas: ruinas antiguas
+  377: 'ruinas', 379: 'ruinas', 486: 'ruinas', 894: 'ruinas', 895: 'ruinas',
+  // Guardianes de la naturaleza
+  492: 'raices', 787: 'raices', 1017: 'raices',
+};
 
-/** Arena a la que se cae: la del primer tipo del jefe que tenga regla propia; si ninguno, ruinas. */
-export const fallTheme = (bossTypes: readonly string[]): FallTheme => bossTypes.map((t) => TYPE_THEME[t]).find((t) => t !== undefined) ?? 'ruinas';
+/**
+ * Arena a la que se cae: la de la especie si tiene una propia; si no, la del primer tipo con tema de los de siempre
+ * (fuego, agua, hielo, planta, bicho), luego la del primer tipo con tema de concepto; si ninguno, ruinas.
+ */
+export const fallTheme = (bossTypes: readonly string[], speciesId?: number): FallTheme =>
+  (speciesId !== undefined ? SPECIES_THEME[speciesId] : undefined) ??
+  bossTypes.map((t) => TYPE_THEME[t]).find((t) => t !== undefined) ??
+  bossTypes.map((t) => TYPE_CONCEPT[t]).find((t) => t !== undefined) ??
+  'ruinas';
+
+/** Qué hacen las casillas especiales de cada tema: 'lava' hace daño (no cuenta como camino), 'hielo' resbala. */
+export const FALL_HAZARD: Readonly<Record<FallTheme, 'lava' | 'hielo' | null>> = {
+  lava: 'lava', inundada: null, hielo: 'hielo', raices: null, ruinas: null,
+  tiempo: null, espacio: null, distorsion: null, cielo: null, mar: null, magma: 'lava', creacion: null, arcoiris: 'lava', tormenta: null, psique: 'hielo',
+};
 
 export const FALL_WARNING = '¡El suelo se derrumba!';
 export const FALL_LANDING: Readonly<Record<FallTheme, string>> = {
@@ -207,12 +269,34 @@ export const FALL_LANDING: Readonly<Record<FallTheme, string>> = {
   hielo: '¡Habéis caído a una caverna helada! El hielo resbala',
   raices: '¡Habéis caído entre raíces! Ábrete paso a disparos',
   ruinas: '¡Habéis caído a unas ruinas! Todo ha cambiado',
+  tiempo: '¡Habéis caído a la cámara del tiempo! Los relojes no se detienen',
+  espacio: '¡Habéis caído al vacío del espacio! No te acerques a los abismos',
+  distorsion: '¡Habéis caído al mundo distorsión! Arriba y abajo ya no existen',
+  cielo: '¡Habéis caído sobre las nubes! Cuidado con los huecos',
+  mar: '¡Habéis caído al fondo del océano! El agua te frena',
+  magma: '¡Habéis caído a la tierra en llamas! El magma quema',
+  creacion: '¡Habéis caído al salón del origen! Aquí empezó todo',
+  arcoiris: '¡Habéis caído a la torre del fuego sagrado! Sus llamas queman',
+  tormenta: '¡Habéis caído en plena tormenta! Los rayos caen sin parar',
+  psique: '¡Habéis caído a un espacio psíquico! El suelo flota y resbala',
 };
-/** Tinte del suelo nuevo (color liso hasta que haya arte). */
-export const FALL_TINT: Readonly<Record<FallTheme, number>> = { lava: 0x5a1a0a, inundada: 0x1a4a7a, hielo: 0xbfe6ff, raices: 0x2e4a1e, ruinas: 0x5a5048 };
+/** Tinte del suelo nuevo (debajo va el fondo animado de cada tema). */
+export const FALL_TINT: Readonly<Record<FallTheme, number>> = {
+  lava: 0x5a1a0a, inundada: 0x1a4a7a, hielo: 0xbfe6ff, raices: 0x2e4a1e, ruinas: 0x5a5048,
+  tiempo: 0x1c3048, espacio: 0x120a28, distorsion: 0x1e1a24, cielo: 0x6fb4e8, mar: 0x0e3a6a, magma: 0x2a0c06,
+  creacion: 0xe8dcb4, arcoiris: 0x7a3a1a, tormenta: 0x2a3038, psique: 0x3a1a4a,
+};
+/** Color de luz de cada tema (grietas del derrumbe, aterrizaje). */
+export const FALL_GLOW: Readonly<Record<FallTheme, number>> = {
+  lava: 0xff8a30, inundada: 0x4aa8ff, hielo: 0xbfe6ff, raices: 0x9ade5a, ruinas: 0xff9a4a,
+  tiempo: 0x7fd4ff, espacio: 0xff7ad8, distorsion: 0xc04aff, cielo: 0x6aff8a, mar: 0x4ad0ff, magma: 0xff5a1f,
+  creacion: 0xfff0a0, arcoiris: 0xffb04a, tormenta: 0xffe94a, psique: 0xff70d0,
+};
 
 export interface FallInput {
   bossTypes: readonly string[];
+  /** Especie del jefe (Pokédex nacional): elige el tema por concepto antes que por tipo. */
+  speciesId?: number;
   seed: number;
   player: Tile;
   boss?: Tile;
@@ -223,16 +307,36 @@ export interface ArenaFall {
   theme: FallTheme;
   /** Obstáculos nuevos (sustituye a toda la cuadrícula de la sala). */
   grid: Grid;
-  /** Casillas especiales sobre suelo libre: lava (daño) o hielo (resbala). Vacío en el resto de temas. */
+  /** Casillas especiales sobre suelo libre: lava (daño) o hielo (resbala) según FALL_HAZARD. Vacío en el resto de temas. */
   hazards: [number, number][];
 }
 
-const FALL_PLAN: Readonly<Record<FallTheme, readonly { cell: Cell | 'hazard'; n: number; clump: number }[]>> = {
+export const FALL_PLAN: Readonly<Record<FallTheme, readonly { cell: Cell | 'hazard'; n: number; clump: number }[]>> = {
   lava: [{ cell: 'hazard', n: 34, clump: 3 }, { cell: 'R', n: 8, clump: 1 }],
   inundada: [{ cell: 'W', n: 90, clump: 4 }, { cell: 'R', n: 6, clump: 0 }],
   hielo: [{ cell: 'hazard', n: 70, clump: 4 }, { cell: 'P', n: 6, clump: 0 }],
   raices: [{ cell: 'B', n: 22, clump: 2 }, { cell: 'R', n: 6, clump: 0 }],
   ruinas: [{ cell: 'R', n: 16, clump: 1 }, { cell: 'P', n: 6, clump: 0 }, { cell: 'H', n: 6, clump: 1 }],
+  // Columnas-reloj en filas ordenadas y algún bloque de piedra
+  tiempo: [{ cell: 'P', n: 10, clump: 0 }, { cell: 'R', n: 6, clump: 1 }],
+  // Abismos al vacío en manchas y pocas columnas
+  espacio: [{ cell: 'H', n: 16, clump: 2 }, { cell: 'P', n: 4, clump: 0 }],
+  // Islas rotas: fosos y rocas sueltas
+  distorsion: [{ cell: 'H', n: 12, clump: 1 }, { cell: 'R', n: 10, clump: 1 }],
+  // Huecos entre las nubes y la columna celeste
+  cielo: [{ cell: 'H', n: 18, clump: 3 }, { cell: 'P', n: 4, clump: 0 }],
+  // El océano: agua casi por todas partes y algún arrecife
+  mar: [{ cell: 'W', n: 120, clump: 5 }, { cell: 'R', n: 4, clump: 0 }],
+  // Ríos de magma y placas de roca levantadas
+  magma: [{ cell: 'hazard', n: 26, clump: 3 }, { cell: 'R', n: 12, clump: 1 }],
+  // Columnas del origen y flores
+  creacion: [{ cell: 'P', n: 8, clump: 0 }, { cell: 'B', n: 12, clump: 1 }],
+  // Llamas sagradas y columnas de la torre
+  arcoiris: [{ cell: 'hazard', n: 18, clump: 2 }, { cell: 'P', n: 6, clump: 0 }],
+  // Peñascos partidos por los rayos y charcos de lluvia
+  tormenta: [{ cell: 'R', n: 12, clump: 1 }, { cell: 'W', n: 24, clump: 2 }],
+  // Suelo que flota y resbala y columnas psíquicas
+  psique: [{ cell: 'hazard', n: 40, clump: 3 }, { cell: 'P', n: 8, clump: 0 }],
 };
 
 /**
@@ -241,7 +345,7 @@ const FALL_PLAN: Readonly<Record<FallTheme, readonly { cell: Cell | 'hazard'; n:
  * El agua y el hielo se pueden cruzar, así que no cierran el paso.
  */
 export function arenaFall(input: FallInput): ArenaFall {
-  const theme = fallTheme(input.bossTypes);
+  const theme = fallTheme(input.bossTypes, input.speciesId);
   const rng = mulberry32((input.seed ^ 0x7f4a7c15) >>> 0);
   const people: Tile[] = input.boss ? [input.player, input.boss] : [input.player];
   const banned = bannedSet(people);
@@ -255,7 +359,7 @@ export function arenaFall(input: FallInput): ArenaFall {
     const out: [number, number][] = [];
     const candidates = shuffled(all.filter(([x, y]) => grid[y][x] === '.' && !hazards.some(([hx, hy]) => hx === x && hy === y)), rng);
     // Lo que se cruza a pie (agua, hielo) no cierra el paso: se coloca sin tocar la rejilla segura
-    const passable = step.cell === 'W' || (step.cell === 'hazard' && theme === 'hielo');
+    const passable = step.cell === 'W' || (step.cell === 'hazard' && FALL_HAZARD[theme] === 'hielo');
     if (passable) {
       const scratch = safe.map((r) => [...r]);
       place(grid, scratch, banned, must, candidates, step.n, step.clump, rng, out);
