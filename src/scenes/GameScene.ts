@@ -264,6 +264,7 @@ import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBeh
   turnToward,
 } from '../data/enemies';
 import { drawMinimap } from './minimap';
+import { cancelCharge, chargedShapeFor, CHARGE_DAMAGE_MUL, CHARGE_MOVE_MUL, CHARGE_SOURCES, isCharging, newCharge, stepCharge, type ChargeSource, type ChargeState } from '../data/charge.ts';
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
 import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineFull, adrenalineSpeedMul, gainAdrenaline, spendAdrenaline, newAdrenaline, tickAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
@@ -686,6 +687,9 @@ export class GameScene extends Phaser.Scene {
   private potionsHud?: Phaser.GameObjects.Text;
   /** T53: parry (ventana, recarga y crítico pendiente), su tecla y su cuadro del HUD con la recarga. */
   private parry: ParryState = newParry();
+  /** T77: carga del disparo, una por fuente (teclado, ratón, mando, táctil) y la última dirección de cada una. */
+  private charges: Record<ChargeSource, ChargeState> = this.newCharges();
+  private chargeAim: Partial<Record<ChargeSource, Phaser.Math.Vector2>> = {};
   private parryKey!: Key;
   private parryHud?: { g: Phaser.GameObjects.Graphics; x: number; y: number; w: number; h: number; shown: string };
   /** T55: adrenalina (sube con bajas, esquivas y parrys) y su barra del HUD. */
@@ -796,6 +800,7 @@ export class GameScene extends Phaser.Scene {
     this.aim.set(0, 1);
     this.invulnUntil = 0;
     this.parry = newParry();
+    this.charges = this.newCharges();
     this.parryHud = undefined;
     this.adrenaline = newAdrenaline();
     this.adrenalineHud = undefined;
@@ -3142,6 +3147,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   // --- Pausa ---
 
   private openPause() {
+    this.cancelCharges();
     if (this.ended || this.transitioning || !this.player || this.scene.isPaused()) return;
     this.player.setVelocity(0, 0);
     this.overHud = false;
@@ -4359,6 +4365,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   private useActive() {
     if (this.ended || this.transitioning || !this.active || !this.player?.active) return;
+    this.cancelCharges();
     const a = activeById(this.active.id);
     if (!a) return;
     if (!isCharged(this.active.charge, a.charge)) {
@@ -4751,6 +4758,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   // --- Navegación entre salas ---
 
   private enterRoom(room: Room) {
+    this.cancelCharges();
     this.current = room;
     this.roomStartSec = this.counters.seconds;
     // T56: la oscuridad es de la sala de la que vienes
@@ -6453,7 +6461,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // En los charcos vas más despacio
     const wade = this.cellAt(this.player.x, this.player.y) === 'W' ? 0.6 : 1;
     // T55: con la adrenalina activa vas más rápido
-    const spd = this.stats.speed * wade * adrenalineSpeedMul(this.adrenaline) * powerFormSpeedMul(this.powerForm);
+    // T77: mientras cargas el disparo vas un 40 % más lento
+    const loopNow = this.game.loop.time;
+    const chargeSlow = CHARGE_SOURCES.some((k) => isCharging(this.charges[k], loopNow)) ? CHARGE_MOVE_MUL : 1;
+    const spd = this.stats.speed * wade * chargeSlow * adrenalineSpeedMul(this.adrenaline) * powerFormSpeedMul(this.powerForm);
     if (this.time.now >= this.playerKnockUntil) this.player.setVelocity(dir.x * spd, dir.y * spd);
     if (this.player.getData('pmd')) {
       const moving = dir.length() > 0.2;
@@ -6465,14 +6476,27 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.updateFlow();
 
     // Disparo continuo como en Isaac: flechas (o clic / stick derecho) y mira hacia donde dispara
-    const shoot = this.readShootDir(hasPad ? pad! : null);
+    // T77: mantener carga el disparo (a los 0,8 s sale el cargado); soltar antes dispara el normal. Cada fuente va aparte.
+    // TODO(supervisor): brillo de carga alrededor del jugador según chargeProgress(...)
+    const bySource = this.readShootSources(hasPad ? pad! : null);
+    let shoot: Phaser.Math.Vector2 | null = null;
+    for (const k of CHARGE_SOURCES) {
+      const d = bySource[k];
+      if (d) {
+        shoot ??= d;
+        this.chargeAim[k] = d;
+      }
+      const act = stepCharge(this.charges[k], !!d, loopNow);
+      const aimK = this.chargeAim[k];
+      if (act === 'cargado' && aimK) this.fireTear(aimK, true);
+      else if (act === 'normal' && aimK && time >= this.nextTear) {
+        this.fireTear(aimK);
+        this.nextTear = time + this.stats.fireDelay;
+      }
+    }
     if (shoot) {
       this.aim.copy(shoot);
       this.face(this.player, shoot);
-      if (time >= this.nextTear) {
-        this.fireTear(shoot);
-        this.nextTear = time + this.stats.fireDelay;
-      }
     } else if (dir.length() > 0.2) {
       this.aim.copy(dir).normalize();
       this.face(this.player, dir);
@@ -6610,30 +6634,31 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return p.x >= GAME_VIEW.x && p.x <= GAME_VIEW.x + GAME_VIEW.w && p.y >= GAME_VIEW.y && p.y <= GAME_VIEW.y + GAME_VIEW.h;
   }
 
-  private readShootDir(pad: Phaser.Input.Gamepad.Gamepad | null): Phaser.Math.Vector2 | null {
+  private newCharges(): Record<ChargeSource, ChargeState> {
+    return { teclado: newCharge(), raton: newCharge(), mando: newCharge(), tactil: newCharge() };
+  }
+
+  /** T77: corta todas las cargas (pausa, cambio de sala, objeto activo); no vuelven a cargar hasta soltar el botón. */
+  private cancelCharges() {
+    for (const k of CHARGE_SOURCES) cancelCharge(this.charges[k]);
+  }
+
+  /** T77: dirección de disparo de cada fuente por separado (null si esa fuente no dispara). */
+  private readShootSources(pad: Phaser.Input.Gamepad.Gamepad | null): Record<ChargeSource, Phaser.Math.Vector2 | null> {
     const { left, right, up, down } = this.arrows;
     const ax = (right.isDown ? 1 : 0) - (left.isDown ? 1 : 0);
     const ay = (down.isDown ? 1 : 0) - (up.isDown ? 1 : 0);
-    if (ax !== 0 || ay !== 0) return new Phaser.Math.Vector2(ax, ay).normalize();
-    // Joystick táctil derecho (en móvil el dedo en la sala no dispara: lo hace el joystick)
-    if (this.touch) {
-      const a = this.touch.aim;
-      if (a.lengthSq() > 0.04) return a.clone().normalize();
-    }
-
+    const out: Record<ChargeSource, Phaser.Math.Vector2 | null> = { teclado: null, raton: null, mando: null, tactil: null };
+    if (ax !== 0 || ay !== 0) out.teclado = new Phaser.Math.Vector2(ax, ay).normalize();
+    if (this.touch && this.touch.aim.lengthSq() > 0.04) out.tactil = this.touch.aim.clone().normalize();
     const pointer = this.input.activePointer;
-    // Solo el clic izquierdo dispara (el derecho es para moverse) y no sobre las ranuras de poder
     if (!this.touch && pointer.leftButtonDown() && !this.overHud && this.inGameView(pointer)) {
-      // Se recalcula con la cámara actual: worldX se queda viejo si la cámara se mueve
       const p = pointer.positionToCamera(this.cameras.main) as Phaser.Math.Vector2;
       const d = new Phaser.Math.Vector2(p.x - this.player.x, p.y - this.player.y);
-      if (d.length() > 1) return d.normalize();
+      if (d.length() > 1) out.raton = d.normalize();
     }
-
-    if (pad && pad.rightStick.length() > 0.3) {
-      return new Phaser.Math.Vector2(pad.rightStick.x, pad.rightStick.y).normalize();
-    }
-    return null;
+    if (pad && pad.rightStick.length() > 0.3) out.mando = new Phaser.Math.Vector2(pad.rightStick.x, pad.rightStick.y).normalize();
+    return out;
   }
 
   /** Telescopio: tus disparos giran poco a poco hacia el enemigo más cercano. */
@@ -6768,7 +6793,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Disparo básico. Los pasivos cambian cuántos salen, cuánto daño hacen y hasta dónde llegan. */
-  private fireTear(dir: Phaser.Math.Vector2) {
+  private fireTear(dir: Phaser.Math.Vector2, charged = false) {
     sfx(shotSfx(this.shotType()));
     this.lastShotAt = this.time.now;
     const s = this.stats;
@@ -6787,6 +6812,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Cómo vuela según tu tipo: el eléctrico en zigzag, el agua ondulando, el psíquico persiguiendo un poco…
     const basic = basicShotFor(this.shotType());
     Object.assign(opts, { speed: opts.speed * basic.speed, size: opts.size * basic.size, motion: basic.motion, anim: basic.anim });
+    // T77: disparo cargado: doble de daño, más grande, atraviesa y cambia según el tipo (fuego rastro, agua empuja, eléctrico salta)
+    // TODO(supervisor): aspecto del disparo cargado y el rastro de fuego (shape.trail)
+    const shape = charged ? chargedShapeFor(this.shotType()) : null;
+    if (shape) Object.assign(opts, { damage: opts.damage * CHARGE_DAMAGE_MUL, size: opts.size * shape.sizeMul, pierce: opts.pierce + shape.pierce, bounces: opts.bounces + shape.bounces });
+    if (shape) {
+      const shot = this.spawnShot(dir, 0, opts);
+      shot.setData('pushMul', shape.pushMul).setData('charged', true);
+      return;
+    }
     if (this.fxBudget.take(this.time.now)) muzzle(this, this.player.x, this.player.y, dir.x, dir.y, opts.color);
     for (let k = 0; k < n; k++) this.spawnShot(dir, (k - (n - 1) / 2) * SPREAD, opts);
     // Cola Gemela: también hacia atrás
@@ -6830,7 +6864,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
     const status = shot.getData('status') as string | undefined;
     const sv = (shot.body as Body | null)?.velocity;
-    const hp = this.hitEnemy(enemy, shot.getData('dmg') as number, status, shot.x, shot.y, (shot.getData('pcolor') as number | undefined) ?? 0xffffff, sv?.clone());
+    // T77: el cargado de agua (y otros) empuja más
+    const pushMul = (shot.getData('pushMul') as number | undefined) ?? 1;
+    const hp = this.hitEnemy(enemy, shot.getData('dmg') as number, status, shot.x, shot.y, (shot.getData('pcolor') as number | undefined) ?? 0xffffff, sv?.clone().scale(pushMul));
     if (hp === undefined) return;
 
     const pierce = shot.getData('pierce') as number;
