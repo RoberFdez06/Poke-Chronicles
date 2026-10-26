@@ -97,8 +97,8 @@ test('al acabar: resumen, historial y vuelta al menú (T28)', async ({ page }) =
   const history = await page.evaluate(() => JSON.parse(localStorage.getItem('pokeisaac.history') ?? '[]'));
   expect(history).toHaveLength(1);
   expect(history[0].won).toBe(false);
-  // Historial (segunda opción) y Esc vuelve al menú
-  await press(page, 'ArrowDown');
+  // Historial (cuarta opción) y Esc vuelve al menú
+  await press(page, 'ArrowDown', 3);
   await press(page, 'Enter');
   await waitScene(page, 'History', 1200);
   await page.screenshot({ path: 'test-results/screens/17-historial.png' });

@@ -22,6 +22,8 @@ export interface ModeData {
 
 /** La opción que va detrás de los modos: el desafío diario (T34), que es una partida de Normal con semilla del día. */
 const DAILY_INDEX = MODES.length;
+/** T81: y la partida con código (lleva a la pantalla de escribirlo). */
+const CODE_INDEX = MODES.length + 1;
 
 /** Tras elegir Pokémon: Normal, Oleadas, Infinito, Rush de jefes o Desafío diario, con el récord de cada uno. */
 export class ModeScene extends Phaser.Scene {
@@ -70,7 +72,10 @@ export class ModeScene extends Phaser.Scene {
         this.shown = -1;
       })
       .catch(() => undefined);
-    this.list = new MenuList(this, 280, 170, [...MODES.map((m) => MODE_LABEL[m]), 'Desafío diario'], (i) => this.start(i), { w: 320, h: 58, gap: 14 });
+    this.list = new MenuList(this, 280, 170, [...MODES.map((m) => MODE_LABEL[m]), 'Desafío diario', 'Partida con código'], (i) => this.start(i), {
+      // TODO(supervisor): repasar el espaciado con la séptima opción (T81)
+      w: 320, h: 46, gap: 8,
+    });
 
     const panel = this.add.graphics();
     drawBox(panel, 480, 160, 420, 380, { radius: 20 });
@@ -115,6 +120,10 @@ export class ModeScene extends Phaser.Scene {
   private start(i: number) {
     if (this.leaving || this.time.now < this.readyAt) return;
     this.leaving = true;
+    if (i === CODE_INDEX) {
+      goTo(this, 'SeedCode', { slot: this.args.slot, starterId: this.args.starterId });
+      return;
+    }
     if (i === DAILY_INDEX) {
       // Mismo inicial para todos; solo la primera partida del día cuenta
       const counts = beginDaily(this.day);
@@ -161,6 +170,11 @@ export class ModeScene extends Phaser.Scene {
         const who = this.dailyName || 'cargando…';
         this.desc.setText(`Desafío diario\n\nNormal con los mismos pisos, jefes y objetos para todos hoy (siempre en Normal). Inicial del día: ${who}.`);
         this.record.setText(dailyText(loadDaily(), this.day, FLOOR_COUNT));
+        return;
+      }
+      if (this.shown === CODE_INDEX) {
+        this.desc.setText('Partida con código\n\nEscribe el código de otra partida (sale en la pausa y al terminar) y juega los mismos pisos, salas, jefes y objetos, con su Pokémon, modo y dificultad.');
+        this.record.setText('No cuenta para récords, desafío diario, misiones ni registro de combate; sí guarda tu mejor resultado con cada código.');
         return;
       }
       const m = MODES[this.shown];

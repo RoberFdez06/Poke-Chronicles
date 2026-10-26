@@ -68,7 +68,7 @@ test('con mando: se juega, se guarda, se continúa y B vuelve atrás', async ({ 
   await page.waitForTimeout(400);
   await padPress(page, PAD.START);
   await waitScene(page, 'Pause');
-  await padPress(page, PAD.DOWN, 4);
+  await padPress(page, PAD.DOWN, 5);
   await padPress(page, PAD.A);
   // N23 (arreglado): la A aún pulsada al llegar al menú ya no cuenta como otra pulsación
   await waitScene(page, 'Menu');

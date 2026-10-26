@@ -8,8 +8,8 @@ export const CARD_W = 1200;
 export const CARD_H = 630;
 /** Cuántos objetos caben en la tarjeta; el resto sale como «+N». */
 export const CARD_MAX_ITEMS = 12;
-/** Texto mientras no exista el código de semilla (T81). */
-export const NO_SEED_TEXT = 'Código de semilla: próximamente';
+/** Texto para las partidas sin código de semilla (las de antes de T81). */
+export const NO_SEED_TEXT = 'Sin código de semilla';
 
 export interface CardItem {
   name: string;

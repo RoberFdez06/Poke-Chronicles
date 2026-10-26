@@ -18,6 +18,7 @@ import { emptyDaily, parseDaily, startDaily, withDailyResult, type DailyState } 
 import { parseTutorial, type TutorialState } from './tutorial.ts';
 import { parseHistory, withRun, type RunRecord } from './runHistory.ts';
 import { parseKeys, type KeyMap } from './keybinds.ts';
+import { parseSeedBests, seedBest, withSeedBest } from './seedCode.ts';
 
 export type { StorageLike } from './storage.ts';
 
@@ -292,6 +293,30 @@ export function submitDaily(day: number, floors: number, storage: StorageLike | 
   return newBest;
 }
 
+// --- T81: mejor resultado de cada código de semilla (ver seedCode.ts) ---
+
+export const SEED_BESTS_KEY = 'pokeisaac.seedBests';
+
+/** Mejor resultado guardado de un código (0 si nunca se jugó). */
+export function loadSeedBest(code: string, storage: StorageLike | null = browserStorage()): number {
+  try {
+    return seedBest(parseSeedBests(storage?.getItem(SEED_BESTS_KEY) ?? null), code);
+  } catch {
+    return 0;
+  }
+}
+
+/** Guarda el resultado de una partida con código si mejora el suyo; devuelve si lo ha mejorado. */
+export function submitSeedBest(code: string, value: number, storage: StorageLike | null = browserStorage()): boolean {
+  try {
+    const { bests, improved } = withSeedBest(parseSeedBests(storage?.getItem(SEED_BESTS_KEY) ?? null), code, value);
+    if (improved) storage?.setItem(SEED_BESTS_KEY, JSON.stringify(bests));
+    return improved;
+  } catch {
+    return false;
+  }
+}
+
 // --- Volumen de música y efectos (ver sounds.ts) ---
 
 export const AUDIO_KEY = 'pokeisaac.audio';
@@ -496,6 +521,7 @@ export const PROGRESS_KEYS: readonly string[] = [
   recordsKeyFor(RECORDS_KEY, 'easy'),
   recordsKeyFor(RECORDS_KEY, 'hard'),
   DAILY_KEY,
+  SEED_BESTS_KEY,
   UPGRADES_KEY,
   SHINIES_KEY,
   MISSIONS_KEY,

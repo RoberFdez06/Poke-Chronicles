@@ -14,6 +14,9 @@ import { HIDDEN_ITEMS, PASSIVE_ITEMS } from '../data/items';
 import { sfx } from '../ui/audio';
 import { shareCardData } from '../data/shareCard';
 import { renderShareCard, shareOrDownload } from './shareImage';
+import { copyText } from '../ui/clipboard';
+import { loadSeedBest } from '../data/save';
+import { seedBestText } from '../data/seedCode';
 
 export interface SummaryData {
   record: RunRecord;
@@ -131,11 +134,32 @@ export class SummaryScene extends Phaser.Scene {
     this.moreStats(r);
     this.routesLine(r);
 
-    this.menu = new MenuList(this, 780, 230, ['Otra partida', 'Guardar imagen', 'Historial', 'Menú'], (i) => this.pick(i), { w: 280, h: 44, gap: 12, fontSize: 21 });
-    this.saveNote = this.add.text(780, 386, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0.5).setAlpha(0.85);
+    this.seedLine(r);
+    // TODO(supervisor): colocación del menú con la quinta opción (T81) y de la nota de abajo
+    this.menu = new MenuList(this, 780, 150, ['Otra partida', 'Guardar imagen', 'Copiar código', 'Historial', 'Menú'], (i) => this.pick(i), { w: 280, h: 40, gap: 10, fontSize: 20 });
+    this.saveNote = this.add.text(780, 382, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0.5).setAlpha(0.85);
     this.add
       .text(480, 612, 'Flechas, ratón o mando para elegir · Enter, clic o A · Esc o B: menú', { fontFamily: FONT, fontSize: '15px', color: '#ffffff' })
       .setOrigin(0.5).setAlpha(0.6);
+  }
+
+  /** T81: código de semilla de la partida y, si se jugó con código, que no cuenta y su mejor resultado. */
+  private seedLine(r: RunRecord) {
+    // TODO(supervisor): estilo de la línea del código
+    const style = { fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: '#b8860b' };
+    this.add.text(580, 462, r.seedCode ? `Código: ${r.seedCode}` : 'Sin código de semilla', style).setOrigin(1, 0);
+    if (r.fromCode && r.seedCode) {
+      const note = `Con código: sin récords ni misiones · ${seedBestText(r.mode, loadSeedBest(r.seedCode))}`;
+      this.add.text(580, 440, note, { fontFamily: FONT, fontSize: '12px', color: HEX.textSoft }).setOrigin(1, 0);
+    }
+  }
+
+  /** T81: copia el código de la partida al portapapeles. */
+  private async copyCode() {
+    const code = this.data_.record.seedCode;
+    if (!code) return void this.saveNote?.setText('Esta partida no tiene código');
+    const ok = await copyText(code);
+    if (this.sys.isActive()) this.saveNote?.setText(ok ? 'Código copiado' : 'No se pudo copiar: apúntalo a mano');
   }
 
   /** T80: rutas elegidas en la partida (encima del cuadro de la derecha). */
@@ -217,8 +241,8 @@ export class SummaryScene extends Phaser.Scene {
     this.saving = true;
     this.saveNote?.setText('Generando imagen…');
     const r = this.data_.record;
-    // T81 (código de semilla) aún no existe: cuando esté, pasar aquí el código de la partida.
-    const card = shareCardData(r, undefined);
+    // T81: el código de semilla sale en la tarjeta (las partidas de antes no lo tienen)
+    const card = shareCardData(r, r.seedCode);
     const itemId = (name: string) => [...PASSIVE_ITEMS, ...HIDDEN_ITEMS].find((p) => p.name === name)?.id;
     const blob = await renderShareCard(this, card, {
       portraitKey: `starter-${r.starterId}-front`,
@@ -239,16 +263,17 @@ export class SummaryScene extends Phaser.Scene {
   private pick(i: number) {
     if (this.leaving) return;
     if (i === 1) return void this.saveImage();
+    if (i === 2) return void this.copyCode();
     this.leaving = true;
     if (i === 0) goTo(this, 'Starter', { slot: this.data_.slot });
-    else if (i === 2) goTo(this, 'History', { from: 'Menu' });
+    else if (i === 3) goTo(this, 'History', { from: 'Menu' });
     else goTo(this, 'Menu');
   }
 
   update() {
     if (this.leaving) return;
     const s = this.nav.read();
-    if (s.back) return this.pick(3);
+    if (s.back) return this.pick(4);
     this.menu.move(s.dy || s.dx);
     if (s.ok) this.menu.activate();
   }

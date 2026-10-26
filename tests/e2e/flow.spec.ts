@@ -60,10 +60,10 @@ test('con teclado: se juega, se guarda, se continúa y Esc vuelve atrás', async
   expect(saved, 'partida guardada al empezar').not.toBeNull();
   expect(saved!.version).toBe(RUN_VERSION);
 
-  // Pausa → Salir y guardar (la quinta opción)
+  // Pausa → Salir y guardar (la sexta opción)
   await press(page, 'Escape');
   await waitScene(page, 'Pause');
-  await press(page, 'ArrowDown', 4);
+  await press(page, 'ArrowDown', 5);
   await press(page, 'Enter');
   await waitScene(page, 'Menu');
   expect(await runSaved(page, 0)).not.toBeNull();

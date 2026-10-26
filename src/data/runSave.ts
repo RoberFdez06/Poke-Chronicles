@@ -11,6 +11,7 @@ import { BERRIES, POTIONS, type ShopSlot } from './loot.ts';
 import { REACTIONS, discover, type ReactionId } from './reactions.ts';
 import { isPowerFormSave, type PowerFormSave } from './powerForm.ts';
 import { isRouteOption, type RouteOption } from '../level/routes.ts';
+import type { SeedRun } from './seedCode.ts';
 
 export const RUN_SLOTS = 3;
 /**
@@ -36,8 +37,9 @@ export const RUN_SLOTS = 3;
  * v22: historias con decisiones ya vistas en la partida (T79), para que cada una salga una sola vez.
  * v23: reacciones de tipo descubiertas (T76). Los v22 empiezan sin ninguna.
  * v24: ruta del piso actual y rutas elegidas en la partida (T80). Los v23 van por la ruta de siempre (ninguna).
+ * v25: semilla de la partida y si se empezó con un código (T81). Los v24 no tienen semilla (ni código que compartir).
  */
-export const RUN_VERSION = 24;
+export const RUN_VERSION = 25;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -151,6 +153,8 @@ export interface RunSave {
   /** T80: ruta por la que se llegó a este piso (null = la de siempre) y las elegidas en la partida, en orden. */
   route: RouteOption | null;
   routesTaken: RouteOption[];
+  /** T81: semilla de la partida (de ella salen los pisos) y si se empezó con un código; null = partida sin semilla (v24). */
+  seeded: SeedRun | null;
 }
 
 export interface DailyRun {
@@ -310,6 +314,16 @@ function migrateV23(d: RunSave): RunSave {
   return { ...d, version: 24, route: null, routesTaken: [] };
 }
 
+/** v24 no tenía semilla de partida (T81): sin código que compartir. */
+function migrateV24(d: RunSave): RunSave {
+  return { ...d, version: 25, seeded: null };
+}
+
+const isSeedRun = (s: unknown): s is SeedRun => {
+  const o = s as SeedRun;
+  return !!o && typeof o === 'object' && isInt(o.seed) && o.seed >= 0 && o.seed <= 0x7fffffff && typeof o.fromCode === 'boolean';
+};
+
 const REACTION_IDS: readonly string[] = REACTIONS.map((r) => r.id);
 
 /** Lista de reacciones guardada: debe ser un array; los ids desconocidos se descartan y los repetidos se juntan. */
@@ -353,6 +367,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 21) d = migrateV21(d);
   if (d.version === 22) d = migrateV22(d);
   if (d.version === 23) d = migrateV23(d);
+  if (d.version === 24) d = migrateV24(d);
   if (d.version !== RUN_VERSION) return null;
   const reactions = cleanReactions(d.reactionsFound);
   if (!reactions) return null;
@@ -381,7 +396,8 @@ export function parseRun(raw: string | null): RunSave | null {
     isPowerFormSave(d.powerForm) &&
     typeof d.powerMeter === 'number' && Number.isFinite(d.powerMeter) && d.powerMeter >= 0 && d.powerMeter <= 100 && typeof d.zUsed === 'boolean' &&
     Array.isArray(d.storiesSeen) && d.storiesSeen.every((k) => typeof k === 'string') &&
-    (d.route === null || isRouteOption(d.route)) && Array.isArray(d.routesTaken) && d.routesTaken.every(isRouteOption);
+    (d.route === null || isRouteOption(d.route)) && Array.isArray(d.routesTaken) && d.routesTaken.every(isRouteOption) &&
+    (d.seeded === null || isSeedRun(d.seeded));
   return ok ? d : null;
 }
 

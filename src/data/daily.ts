@@ -27,15 +27,24 @@ export function dailyStarter(day: number): number {
   return DAILY_STARTERS[i];
 }
 
-/** Semilla del piso `floor` del desafío de ese día. */
-export const dailyFloorSeed = (day: number, floor: number): number => mix(dailySeed(day) + Math.floor(floor) * 7919) & 0x7fffffff;
+/**
+ * T81: semilla del piso `floor` de una partida con semilla `seed` (cualquier partida, no solo el desafío). Con la
+ * misma semilla salen los mismos pisos; es lo que lleva el código de semilla (seedCode.ts).
+ */
+export const seedFloorSeed = (seed: number, floor: number): number => mix(Math.floor(seed) + Math.floor(floor) * 7919) & 0x7fffffff;
 
 /**
- * Azar del piso del desafío (número de salas, jefe, tesoro, cofres, tienda y objetos que caen): mismo orden de
- * tiradas, mismos resultados. `stream` separa cosas que no deben depender unas de otras.
+ * T81: azar del piso de una partida con semilla (número de salas, jefe, tesoro, cofres, tienda y objetos que caen):
+ * mismo orden de tiradas, mismos resultados. `stream` separa cosas que no deben depender unas de otras.
  */
-export const dailyRng = (day: number, floor: number, stream = 0): (() => number) =>
-  mulberry32(dailyFloorSeed(day, floor) ^ mix(stream + 1));
+export const seedRng = (seed: number, floor: number, stream = 0): (() => number) =>
+  mulberry32(seedFloorSeed(seed, floor) ^ mix(stream + 1));
+
+/** Semilla del piso `floor` del desafío de ese día (la de la partida con la semilla del día). */
+export const dailyFloorSeed = (day: number, floor: number): number => seedFloorSeed(dailySeed(day), floor);
+
+/** Azar del piso del desafío: el de la partida con la semilla del día. */
+export const dailyRng = (day: number, floor: number, stream = 0): (() => number) => seedRng(dailySeed(day), floor, stream);
 
 // --- Récord diario y racha ---
 

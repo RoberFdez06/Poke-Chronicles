@@ -67,6 +67,7 @@ function sample(): RunSave {
     storiesSeen: ['mochila'],
     route: { biomeId: 'cueva', diffPct: 20, reward: 'shop' },
     routesTaken: [{ biomeId: 'cueva', diffPct: 20, reward: 'shop' }],
+    seeded: { seed: 123456, fromCode: true },
   };
 }
 
@@ -388,4 +389,19 @@ test('T80: v23 se migra sin rutas; la ruta hace la ida y vuelta y las corruptas 
     assert.equal(parseRun(JSON.stringify({ ...sample(), routesTaken: [bad] })), null);
   }
   assert.equal(parseRun(JSON.stringify({ ...sample(), routesTaken: null })), null);
+});
+
+test('T81: v24 se migra sin semilla; la semilla hace la ida y vuelta y las corruptas se rechazan', () => {
+  const { seeded: _s, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 24 }))!;
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.seeded, null);
+  assert.equal(parseRun(JSON.stringify(old)), null);
+  const st = fakeStorage();
+  assert.ok(saveRun(0, sample(), st));
+  assert.deepEqual(loadRun(0, st)!.seeded, { seed: 123456, fromCode: true });
+  assert.equal(parseRun(JSON.stringify({ ...sample(), seeded: null }))!.seeded, null);
+  for (const bad of [{ seed: -1, fromCode: false }, { seed: 2 ** 31, fromCode: false }, { seed: 1.5, fromCode: true }, { seed: 5 }, 5, 'x']) {
+    assert.equal(parseRun(JSON.stringify({ ...sample(), seeded: bad })), null);
+  }
 });

@@ -8,6 +8,7 @@ import { STAT_KEYS, STAT_LABEL, type BaseStats } from '../data/pokeStats';
 import { itemLinesFromHeight, pauseTailLayout, PAUSE_ITEMS_Y, PAUSE_ITEM_MAX_LINES, PAUSE_PANEL_MIN_H, PAUSE_PANEL_Y } from '../data/pauseLayout';
 import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
 import type { SettingsData } from './SettingsScene';
+import { copyText } from '../ui/clipboard';
 
 export interface PauseData {
   starterName: string;
@@ -15,6 +16,8 @@ export interface PauseData {
   /** Modo y progreso ("Normal", "Piso 2/5"). */
   modeLabel: string;
   progress: string;
+  /** T81: código de semilla para que otro juegue la misma partida (falta en partidas de antes de T81). */
+  seedCode?: string;
   /** En Oleadas y Rush de jefes no hay salas que contar. */
   showRooms: boolean;
   hp: number;
@@ -131,8 +134,9 @@ export class PauseScene extends Phaser.Scene {
       if (m) addTypeChip(this, x + 196, y + 11, typeNameEs(m.type), typeColor(m.type), 64, 20);
     });
 
-    this.menu = new MenuList(this, 760, 200, ['Reanudar', 'Reiniciar', 'Controles', 'Ajustes', 'Salir y guardar'], (i) => this.pick(i), {
-      w: 290, h: 56, gap: 20,
+    this.menu = new MenuList(this, 760, 200, ['Reanudar', 'Reiniciar', 'Código de semilla', 'Controles', 'Ajustes', 'Salir y guardar'], (i) => this.pick(i), {
+      // TODO(supervisor): repasar el espaciado con la sexta opción (T81)
+      w: 290, h: 50, gap: 14,
     });
     this.add
       .text(480, 612, 'Esc, P, Start o B para reanudar · flechas, ratón o mando para elegir', {
@@ -145,8 +149,9 @@ export class PauseScene extends Phaser.Scene {
     if (this.done) return;
     if (i === 0) return this.finish(this.info.onResume);
     if (i === 1) return this.confirmRestart();
-    if (i === 2) return this.showControls();
-    if (i === 3) return this.openSettings();
+    if (i === 2) return this.showSeedCode();
+    if (i === 3) return this.showControls();
+    if (i === 4) return this.openSettings();
     return this.finish(this.info.onQuit);
   }
 
@@ -193,6 +198,28 @@ export class PauseScene extends Phaser.Scene {
       if (k === 1) this.finish(this.info.onRestart);
       else this.closeSub();
     }, { w: 300, h: 52, gap: 16, depth: 51 });
+    this.openSub(layer, list);
+  }
+
+  /** T81: el código de la partida, con botón de copiar (teclado, ratón o mando). */
+  private showSeedCode() {
+    const code = this.info.seedCode;
+    // TODO(supervisor): diseño del panel del código
+    const layer = addPanel(this, 480, 320, 600, 320, 50);
+    layer.add(this.add.text(480, 205, 'Código de semilla', { fontFamily: UI.FONT, fontSize: '24px', fontStyle: 'bold', color: '#2b3a67' }).setOrigin(0.5));
+    layer.add(this.add.text(480, 255, code ?? 'Esta partida no tiene código\n(se empezó en una versión anterior)', {
+      fontFamily: UI.FONT, fontSize: code ? '34px' : '18px', fontStyle: 'bold', color: code ? '#b8860b' : '#4a5578', align: 'center',
+    }).setOrigin(0.5));
+    layer.add(this.add.text(480, 300, 'Con él, otro jugador juega esta misma partida desde «Partida con código».', {
+      fontFamily: UI.FONT, fontSize: '14px', color: '#4a5578', align: 'center', wordWrap: { width: 520 },
+    }).setOrigin(0.5));
+    const note = this.add.text(480, 466, '', { fontFamily: UI.FONT, fontSize: '15px', color: '#2b3a67' }).setOrigin(0.5);
+    layer.add(note);
+    const options = code ? ['Copiar', 'Volver'] : ['Volver'];
+    const list = new MenuList(this, 480, 345, options, (k) => {
+      if (!code || k === 1) return this.closeSub();
+      void copyText(code).then((ok) => note.active && note.setText(ok ? 'Código copiado' : 'No se pudo copiar: apúntalo a mano'));
+    }, { w: 260, h: 44, gap: 10, depth: 51 });
     this.openSub(layer, list);
   }
 

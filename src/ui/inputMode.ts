@@ -77,13 +77,15 @@ export const PAD_LEGENDS: Record<string, string> = {
   // T57 y T63: «Una más» (B termina la partida) y el registro de combate (solo se mira: B vuelve)
   SecondChance: 'Arriba/Abajo: elegir · A: aceptar · B: terminar la partida',
   RunDex: 'B: volver',
+  // T81: escribir el código con el selector de letras
+  SeedCode: 'Arriba/Abajo: letra · Izq/Der: mover · A: jugar · X: borrar · Y: pegar · B: volver',
   Menu: DEFAULT_LEGEND,
 };
 
 /** Escenas de menú que llevan la barra (en la partida no: ahí hay HUD). */
 export const LEGEND_SCENES = new Set([
   'Title', 'Menu', 'Slots', 'Starter', 'FirstStarter', 'Mode', 'Settings', 'Pokedex', 'Upgrades', 'Missions', 'RunDex', 'Summary', 'History',
-  'Keys', 'Gacha', 'Pause', 'Controls', 'Account', 'SlotSwap', 'FinalPrompt', 'SecondChance',
+  'Keys', 'Gacha', 'Pause', 'Controls', 'Account', 'SlotSwap', 'FinalPrompt', 'SecondChance', 'SeedCode',
 ]);
 
 export const legendFor = (scene: string): string => PAD_LEGENDS[scene] ?? DEFAULT_LEGEND;

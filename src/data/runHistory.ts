@@ -28,6 +28,9 @@ export interface RunRecord {
   floorSeconds?: number[];
   /** T80 (las partidas antiguas no lo tienen): rutas elegidas, como texto («Cueva · +20 % · Tienda extra»). */
   routes?: string[];
+  /** T81 (las partidas antiguas no lo tienen): código de semilla para jugar la misma partida y si se jugó con código. */
+  seedCode?: string;
+  fromCode?: boolean;
 }
 
 /** Cuántas partidas se guardan en el historial. */
@@ -45,7 +48,8 @@ function isRecord(r: unknown): r is RunRecord {
     Number.isInteger(o.floor) && o.floor >= 1 && typeof o.won === 'boolean' && isNum(o.seconds) && isNum(o.kills) &&
     isNum(o.damage) && Array.isArray(o.items) && o.items.every((i) => typeof i === 'string') && isNum(o.tickets) &&
     typeof o.newRecord === 'boolean' && optNum(o.parries) && optNum(o.picked) && optNum(o.fastestRoom) && optNums(o.floorSeconds) &&
-    (o.routes === undefined || (Array.isArray(o.routes) && o.routes.every((x) => typeof x === 'string')))
+    (o.routes === undefined || (Array.isArray(o.routes) && o.routes.every((x) => typeof x === 'string'))) &&
+    (o.seedCode === undefined || typeof o.seedCode === 'string') && (o.fromCode === undefined || typeof o.fromCode === 'boolean')
   );
 }
 

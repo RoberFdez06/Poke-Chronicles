@@ -3,10 +3,11 @@ import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetch
 import { evolveFloors, pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
-import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal, loadCandies, loadDaily, loadDefeated, loadTickets, saveDefeated, spendCandies, spendTickets } from '../data/save';
+import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal, loadCandies, loadDaily, loadDefeated, loadTickets, saveDefeated, spendCandies, spendTickets, submitSeedBest } from '../data/save';
 import { buildDexIndex, registerDefeat, type DexIndex } from '../data/runDex';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
-import { dailyFloorSeed, dailyRng, streakReward } from '../data/daily';
+import { dailySeed, seedFloorSeed, seedRng, streakReward } from '../data/daily';
+import { encodeSeed, newSeed, type SeedRun } from '../data/seedCode';
 import { damageMul, effectOf, EFFECT_COLOR, EFFECT_LABEL, rawEffectiveness } from '../data/typeChart';
 import { weatherChip, weatherFor, weatherHurts, weatherPowerMul, WEATHER_DESC, WEATHER_LABEL, WEATHER_TICK_MS, type Weather } from '../data/weather';
 import { WeatherFx } from '../ui/weatherFx';
@@ -354,6 +355,8 @@ export interface GameData {
   daily?: DailyRun | null;
   /** Fácil, Normal o Difícil (T40); el desafío diario siempre es Normal. */
   difficulty?: Difficulty;
+  /** T81: semilla de la partida (de un código o nueva); pasa de piso en piso. Si falta en una partida nueva se crea. */
+  seeded?: SeedRun | null;
 }
 
 /** Una de las especies de enemigo del piso. */
@@ -519,6 +522,8 @@ export class GameScene extends Phaser.Scene {
   private mode: GameMode = 'normal';
   /** Desafío diario (null = partida normal) y el azar fijo de cada cosa del piso (ver rng). */
   private daily: DailyRun | null = null;
+  /** T81: semilla de la partida (pisos, salas, jefes y objetos salen de ella) y si se empezó con un código. */
+  private seeded: SeedRun | null = null;
   private dailyRngs = new Map<number, () => number>();
   private diff: Difficulty = 'normal';
   /** Clima del piso (T38) y su efecto visual; la arena y el granizo hacen daño cada WEATHER_TICK_MS. */
@@ -790,6 +795,9 @@ export class GameScene extends Phaser.Scene {
     this.shiny = loadShinies().includes(this.starterId);
     this.mode = this.resume?.mode ?? data?.mode ?? 'normal';
     this.daily = this.resume ? this.resume.daily : (data?.daily ?? null);
+    // T81: el diario usa la semilla del día; una partida nueva sin código, una semilla nueva (las v24 cargadas no tienen)
+    this.seeded = this.resume ? this.resume.seeded : (data?.seeded ?? (data?.carry ? null : { seed: newSeed(), fromCode: false }));
+    if (this.daily) this.seeded = { seed: dailySeed(this.daily.day), fromCode: false };
     this.dailyRngs.clear();
     this.diff = this.resume ? this.resume.difficulty : (data?.difficulty ?? 'normal');
   }
@@ -999,13 +1007,13 @@ export class GameScene extends Phaser.Scene {
     this.hazardTickAt = 0;
     // Al continuar, el piso se regenera igual con la misma semilla; cada piso nuevo es más grande.
     // Oleadas y Rush de jefes se juegan en una sola sala
-    this.floorSeed = r?.floorSeed ?? (this.daily ? dailyFloorSeed(this.daily.day, this.floorNum) : Phaser.Math.Between(0, 0x7fffffff));
+    this.floorSeed = r?.floorSeed ?? (this.seeded ? seedFloorSeed(this.seeded.seed, this.floorNum) : Phaser.Math.Between(0, 0x7fffffff));
     if (this.mode === 'tower') {
       // T72: la semilla de la subida es la misma en todos los pisos (así no se repiten forma, plantilla ni regla seguidas);
       // la del piso se saca de ella y del número, y al continuar se recupera deshaciendo la mezcla (no cambia RunSave)
       const mix = Math.imul(this.floorNum, 0x9e3779b1) >>> 0;
       if (r) this.towerSeed = (r.floorSeed ^ mix) >>> 0;
-      else if (!this.carry || this.towerSeed === 0) this.towerSeed = Phaser.Math.Between(1, 0x7fffffff);
+      else if (!this.carry || this.towerSeed === 0) this.towerSeed = this.seeded ? seedFloorSeed(this.seeded.seed, 0) || 1 : Phaser.Math.Between(1, 0x7fffffff);
       if (!r) this.floorSeed = (this.towerSeed ^ mix) >>> 0;
       this.towerSpec = towerFloorSpec(this.floorNum, this.towerSeed);
       this.biome = this.towerSpec.biome;
@@ -1350,10 +1358,10 @@ export class GameScene extends Phaser.Scene {
    * tienda): una secuencia fija por piso y por cosa. Fuera del desafío, Math.random.
    */
   private rng(stream: number): () => number {
-    if (!this.daily) return Math.random;
+    if (!this.seeded) return Math.random;
     let r = this.dailyRngs.get(stream);
     if (!r) {
-      r = dailyRng(this.daily.day, this.floorNum, stream);
+      r = seedRng(this.seeded.seed, this.floorNum, stream);
       this.dailyRngs.set(stream, r);
     }
     return r;
@@ -2662,7 +2670,7 @@ export class GameScene extends Phaser.Scene {
     // En Oleadas el cartel de la ronda lo pone startWave
     if (this.mode !== 'waves') {
       const where = progressText(this.mode, this.floorNum);
-      const head = r ? 'Partida cargada' : withDifficulty(this.daily ? 'Desafío diario' : MODE_LABEL[this.mode], this.diff);
+      const head = r ? 'Partida cargada' : this.runLabel();
       this.notify(`${head}
 ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
@@ -3166,6 +3174,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       healed: this.healedRun,
       counters: { ...this.counters },
       daily: this.daily ? { ...this.daily } : null,
+      seeded: this.seeded ? { ...this.seeded } : null,
       difficulty: this.diff,
       eventsDone: [...this.eventsDone],
       hpSacrificed: this.hpSacrificed,
@@ -3201,7 +3210,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const data: PauseData = {
       starterName: this.starterName,
       slot: this.slot,
-      modeLabel: withDifficulty(this.daily ? 'Desafío diario' : MODE_LABEL[this.mode], this.diff),
+      modeLabel: this.runLabel(),
+      seedCode: this.seedCode(),
       progress: progressText(this.mode, this.floorNum),
       showRooms: this.mode === 'normal' || this.mode === 'endless',
       hp: this.hp,
@@ -4022,6 +4032,26 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.gainItem(item);
   }
 
+  /** T81: la partida se empezó escribiendo un código (no cuenta para récords, diario, misiones ni registro de combate). */
+  private get codeRun(): boolean {
+    return !!this.seeded?.fromCode;
+  }
+
+  /** T81: código de semilla de la partida para compartirla (undefined si no tiene semilla, p. ej. una v24 cargada). */
+  private seedCode(): string | undefined {
+    if (!this.seeded) return undefined;
+    try {
+      return encodeSeed({ seed: this.seeded.seed, mode: this.mode, difficulty: this.diff, starterId: this.starterId });
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Nombre de la partida para avisos y la pausa: modo (o desafío diario), «con código» y dificultad. */
+  private runLabel(): string {
+    return withDifficulty(this.daily ? 'Desafío diario' : `${MODE_LABEL[this.mode]}${this.codeRun ? ' con código' : ''}`, this.diff);
+  }
+
   /** Pasivos que pueden salir: todos menos los que aún bloquea un logro (missions.ts). */
   private passivePool() {
     const locked = lockedItems(loadMissions());
@@ -4030,6 +4060,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Suma un suceso a las misiones y logros; lo que se cumpla se avisa abajo (los premios ya se han dado). */
   private mission(e: MissionEvent) {
+    // T81: las partidas con código no cuentan para misiones ni logros
+    if (this.codeRun) return;
     for (const c of recordMission(e)) {
       const reward = rewardText(c.reward, { item: c.reward.item ? passiveById(c.reward.item)?.name : undefined });
       sfx('buy');
@@ -6299,7 +6331,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Sala de la Torre limpia: récord, premio del jefe y la columna de luz (o la victoria en el piso 100). */
   private towerCleared(room: Room) {
-    const record = submitRecord(this.mode, this.floorNum, undefined, this.diff);
+    const record = !this.codeRun && submitRecord(this.mode, this.floorNum, undefined, this.diff);
     if (record) this.counters.newRecord = true;
     if (room.kind === 'boss') this.bossBeaten();
     if (isLastStage(this.mode, this.floorNum)) {
@@ -6436,7 +6468,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const next = this.floorNum + 1;
     if (!hasRoutes(this.mode, next, (n) => isFinalFloor(this.mode, n)) || !this.scene.manager.keys['Route'] || this.scene.isActive('Route')) return this.descendBy(null);
     // En el desafío diario las rutas salen de la semilla del día (las mismas para todos)
-    const seed = this.daily ? dailyFloorSeed(this.daily.day, next) : this.floorSeed;
+    const seed = this.seeded ? seedFloorSeed(this.seeded.seed, next) : this.floorSeed;
     const options = routeOptions(next, seed, this.mode);
     if (this.trapdoor) this.trapdoor.armed = false;
     this.player.setVelocity(0, 0);
@@ -6505,7 +6537,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       went = true;
       cam.fadeOut(300, 0, 0, 0);
       cam.once(Phaser.Cameras.Scene2D.Events.FADE_OUT_COMPLETE, () => {
-        this.scene.restart({ slot: this.slot, starterId: this.starterId, mode: this.mode, carry, daily: this.daily, difficulty: this.diff } satisfies GameData);
+        this.scene.restart({ slot: this.slot, starterId: this.starterId, mode: this.mode, carry, daily: this.daily, difficulty: this.diff, seeded: this.seeded } satisfies GameData);
       });
     };
     if (!door) return go();
@@ -7147,7 +7179,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    */
   private registerDex(enemy: Sprite) {
     const id = enemy.getData('speciesId') as number | undefined;
-    if (!id || !this.dexIndex) return;
+    // T81: las partidas con código no cuentan para el registro de combate
+    if (!id || !this.dexIndex || this.codeRun) return;
     const gain = registerDefeat(this.dexIndex, this.dexDefeated, id);
     if (!gain.isNew) return;
     saveDefeated([...this.dexDefeated]);
@@ -7758,7 +7791,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.foeShots.clear(true, true);
     this.hp = Math.min(this.stats.maxHp, this.hp + this.stats.healOnClear);
     const reward = this.giveTickets(waveTickets(round));
-    const record = submitRecord('waves', round, undefined, this.diff);
+    const record = !this.codeRun && submitRecord('waves', round, undefined, this.diff);
     if (record) this.counters.newRecord = true;
 
     let text = `¡Ronda ${round} superada! +${reward} tickets`;
@@ -7850,7 +7883,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
     if (room.kind === 'boss') {
       // Récord: pisos completados (Normal, Infinito) o jefes vencidos (Rush)
-      const record = submitRecord(this.mode, this.floorNum, undefined, this.diff);
+      const record = !this.codeRun && submitRecord(this.mode, this.floorNum, undefined, this.diff);
       if (record) this.counters.newRecord = true;
       // Medalla del bioma (solo la primera vez que se vence a su jefe; los invitados no guardan)
       const medal = earnMedal(this.biome.id);
@@ -8181,6 +8214,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.notify(`¡Racha de ${streak} días!\n+${bonus} tickets`, { kind: 'reward', icon: 'ticket' });
       }
     }
+    // T81: la partida con código guarda su mejor resultado (pisos, rondas o jefes superados) para comparar
+    const code = this.seedCode();
+    if (this.codeRun && code) submitSeedBest(code, won ? this.floorNum : this.floorNum - 1);
     this.ended = true;
     this.endedAt = this.time.now;
     this.physics.pause();
@@ -8213,6 +8249,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // Los pisos ya cerrados al bajar y el de ahora, que sigue abierto
       floorSeconds: floorTimes(this.counters),
       routes: this.routesTaken.map(routeLabel),
+      ...(code ? { seedCode: code } : {}),
+      ...(this.codeRun ? { fromCode: true } : {}),
     };
     addRunHistory(this.lastRecord);
     // Un momento de margen y un clic nuevo, para no saltarse la pantalla si estabas disparando; si no, va solo

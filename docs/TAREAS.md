@@ -660,7 +660,7 @@ sprites como `// TODO(supervisor)`, efectos bajos respetados, un commit por tare
   las mismas para todos (salen de la semilla del día) aunque la elección sea libre. Pantalla `RouteScene` con teclado, ratón y mando; sus
   dibujos y el mapa de la ruta, `// TODO(supervisor)`.
 
-## [ ] T81 — Código de semilla
+## [x] T81 — Código de semilla
 - Al terminar una partida (resumen) y desde la pausa, un **código corto** (por ejemplo `PKI-7F3K-9QXA`) que lleva la semilla, el modo, la
   dificultad y el Pokémon inicial. Otro jugador lo escribe en el menú de modos («Partida con código») y juega la misma partida: mismos pisos,
   salas, jefes y objetos. Ese tipo de partida **no cuenta** para récords, desafío diario, misiones ni registro de combate, pero sí guarda su
