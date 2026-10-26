@@ -18,6 +18,8 @@
 // - Forja: reciclar un objeto por monedas o fusionar dos de la misma rareza (ver data/forge.ts).
 // Mega Piedra:
 // - Santuario de la Mega Piedra: sala dedicada, una por piso, con la Mega Piedra (ver pickMegaStoneRoom).
+// T79:
+// - Historia con decisiones: un texto corto con 2 o 3 elecciones y sus consecuencias (ver choiceEvents.ts).
 // Sale de la semilla del piso, así al continuar o en el desafío diario es el mismo. Lógica pura, sin Phaser.
 import { mulberry32, type Floor, type Room } from './floorGen.ts';
 import { RANDOM_PASSIVES, takeMoveByRarity, type MovePower, type PassiveItem } from '../data/items.ts';
@@ -25,7 +27,7 @@ import { fishingWeight } from './fishing.ts';
 import { forgeWeight } from '../data/forge.ts';
 import type { ShopGoods, ShopSlot } from '../data/loot.ts';
 
-export const ROOM_EVENTS = ['runaway', 'merchant', 'altar', 'trapChest', 'rival', 'fountain', 'timeTrial', 'egg', 'slots', 'thief', 'fishing', 'forge', 'megaStone'] as const;
+export const ROOM_EVENTS = ['runaway', 'merchant', 'altar', 'trapChest', 'rival', 'fountain', 'timeTrial', 'egg', 'slots', 'thief', 'fishing', 'forge', 'megaStone', 'story'] as const;
 export type RoomEventKind = (typeof ROOM_EVENTS)[number];
 
 /**
@@ -54,6 +56,7 @@ export const ROOM_EVENT_LABEL: Record<RoomEventKind, string> = {
   fishing: 'Laguna de pesca',
   forge: 'Forja',
   megaStone: 'Santuario de la Mega Piedra',
+  story: 'Encuentro',
 };
 
 /** Color de la marca en el minimapa (al descubrir la sala, hasta resolver el evento). */
@@ -71,6 +74,7 @@ export const ROOM_EVENT_COLOR: Record<RoomEventKind, number> = {
   fishing: 0x0288d1,
   forge: 0xe67e22,
   megaStone: 0x8fd3ff, // el color de la propia Mega Piedra
+  story: 0xc5e1a5,
 };
 
 /** Premio y riesgo de cada evento, para el aviso al entrar. */
@@ -88,6 +92,7 @@ export const ROOM_EVENT_DESC: Record<RoomEventKind, string> = {
   fishing: 'Lanza la caña y pulsa cuando pique: monedas, bayas, objetos… o algo raro',
   forge: 'Recicla un objeto por monedas o fusiona dos de la misma rareza en uno mejor',
   megaStone: 'Una Mega Piedra por piso: sin ella no hay megaevolución',
+  story: 'Una pequeña historia: elige qué hacer y atente a las consecuencias',
 };
 
 /**
@@ -110,6 +115,7 @@ export function eventWeights(floorNum: number, biomeTypes: readonly string[] = [
     thief: 0.5 + 0.3 * deep, // T70: algo más hondo, cuando llevas más monedas
     fishing: fishingWeight(biomeTypes), // T69: sobre todo en biomas con agua
     forge: forgeWeight(f), // T73: más probable cuanto más hondo
+    story: 1, // T79: peso fijo, en todos los pisos (cada historia sale una vez por partida)
     megaStone: 0, // nunca sale al sortear: tiene su propia sala fija por piso (pickMegaStoneRoom)
   };
 }

@@ -64,6 +64,7 @@ function sample(): RunSave {
     powerMeter: 0,
     zUsed: false,
     reactionsFound: [],
+    storiesSeen: ['mochila'],
   };
 }
 
@@ -323,7 +324,8 @@ test('T74: v19 sin forma de poder se migra sin forma y lo que queda de megaevolu
 
 test('T75: v20 se migra con el medidor vacío y el Z sin usar; medidor, Z, Tera y escudo hacen la ida y vuelta', () => {
   const { powerMeter: _m, zUsed: _z, ...old } = sample();
-  const run = parseRun(JSON.stringify({ ...old, version: 20 }))!;
+  const { storiesSeen: _s, ...old20 } = old;
+  const run = parseRun(JSON.stringify({ ...old20, version: 20 }))!;
   assert.equal(run.version, RUN_VERSION);
   assert.equal(run.powerMeter, 0);
   assert.equal(run.zUsed, false);
@@ -341,9 +343,19 @@ test('T75: v20 se migra con el medidor vacío y el Z sin usar; medidor, Z, Tera 
   assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'dynamax', leftMs: 100, used: true, shield: 999 } })), null);
 });
 
-test('T76: v21 se migra sin reacciones; las descubiertas hacen la ida y vuelta y las corruptas se rechazan o limpian', () => {
-  const { reactionsFound: _r, ...old } = sample();
+test('T79: v21 se migra sin historias vistas; las vistas hacen la ida y vuelta y las corruptas se rechazan', () => {
+  const { storiesSeen: _s, ...old } = sample();
   const run = parseRun(JSON.stringify({ ...old, version: 21 }))!;
+  assert.equal(run.version, RUN_VERSION);
+  assert.deepEqual(run.storiesSeen, []);
+  assert.deepEqual(parseRun(JSON.stringify({ ...sample(), storiesSeen: ['eco', 'huevo'] }))!.storiesSeen, ['eco', 'huevo']);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), storiesSeen: [3] })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), storiesSeen: null })), null);
+});
+
+test('T76: v22 se migra sin reacciones; las descubiertas hacen la ida y vuelta y las corruptas se rechazan o limpian', () => {
+  const { reactionsFound: _r, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 22 }))!;
   assert.equal(run.version, RUN_VERSION);
   assert.deepEqual(run.reactionsFound, []);
   // Sin el campo en la versión actual: guardado corrupto

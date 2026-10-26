@@ -32,9 +32,10 @@ export const RUN_SLOTS = 3;
  *      menos el actual; no se les quita ningún objeto aunque lleven más que huecos.
  * v20: forma de poder (megaevolución, T74): cuánto le queda y si ya se usó en el piso. Los v19 no la tenían.
  * v21: medidor de poder y Cristal Z usado (T75). La forma guarda además el tipo Tera y el escudo del Dinamax.
- * v22: reacciones de tipo descubiertas (T76). Los v21 empiezan sin ninguna.
+ * v22: historias con decisiones ya vistas en la partida (T79), para que cada una salga una sola vez.
+ * v23: reacciones de tipo descubiertas (T76). Los v22 empiezan sin ninguna.
  */
-export const RUN_VERSION = 22;
+export const RUN_VERSION = 23;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -141,6 +142,8 @@ export interface RunSave {
   /** T75: medidor de poder (0..100) y si ya se ha usado el Cristal Z en la partida. */
   powerMeter: number;
   zUsed: boolean;
+  /** T79: ids de las historias con decisiones ya vistas (ver level/choiceEvents.ts). */
+  storiesSeen: string[];
   /** T76: reacciones de tipo descubiertas en la partida (en el orden de la tabla, sin repetir). */
   reactionsFound: ReactionId[];
 }
@@ -287,9 +290,14 @@ function migrateV20(d: RunSave): RunSave {
   return { ...d, version: 21, powerMeter: 0, zUsed: false };
 }
 
-/** v21 no guardaba las reacciones descubiertas (T76): empiezan vacías. */
+/** v21 no tenía historias con decisiones (T79): ninguna vista. */
 function migrateV21(d: RunSave): RunSave {
-  return { ...d, version: 22, reactionsFound: [] };
+  return { ...d, version: 22, storiesSeen: [] };
+}
+
+/** v22 no guardaba las reacciones descubiertas (T76): empiezan vacías. */
+function migrateV22(d: RunSave): RunSave {
+  return { ...d, version: 23, reactionsFound: [] };
 }
 
 const REACTION_IDS: readonly string[] = REACTIONS.map((r) => r.id);
@@ -333,6 +341,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 19) d = migrateV19(d);
   if (d.version === 20) d = migrateV20(d);
   if (d.version === 21) d = migrateV21(d);
+  if (d.version === 22) d = migrateV22(d);
   if (d.version !== RUN_VERSION) return null;
   const reactions = cleanReactions(d.reactionsFound);
   if (!reactions) return null;
@@ -359,7 +368,8 @@ export function parseRun(raw: string | null): RunSave | null {
     typeof d.secondChance === 'boolean' && typeof d.captureDone === 'boolean' && isInt(d.capturePrevAlly) && d.capturePrevAlly >= -1 &&
     isPairs(d.slotSpins) && isPairs(d.fishCasts) && isInt(d.bossesBeaten) && d.bossesBeaten >= 0 &&
     isPowerFormSave(d.powerForm) &&
-    typeof d.powerMeter === 'number' && Number.isFinite(d.powerMeter) && d.powerMeter >= 0 && d.powerMeter <= 100 && typeof d.zUsed === 'boolean';
+    typeof d.powerMeter === 'number' && Number.isFinite(d.powerMeter) && d.powerMeter >= 0 && d.powerMeter <= 100 && typeof d.zUsed === 'boolean' &&
+    Array.isArray(d.storiesSeen) && d.storiesSeen.every((k) => typeof k === 'string');
   return ok ? d : null;
 }
 

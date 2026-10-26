@@ -247,6 +247,7 @@ import {
   removePassive,
   slotsLabel,
 } from '../data/forge';
+import { canAfford, describeEffects, optionLabel, pickStory, resolveChoice, type ChoiceEffects, type ChoiceState, type ChoiceStory } from '../level/choiceEvents';
 import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
 import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES, pickBossWeighted, pickMixedFoes } from '../level/biomes';
 import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES,
@@ -334,7 +335,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed' | 'reactionsFound'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed' | 'reactionsFound' | 'storiesSeen'
 >;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
@@ -580,6 +581,8 @@ export class GameScene extends Phaser.Scene {
   /** T75: medidor de poder (Dinamax, Tera, Z), si ya se usó el Cristal Z y su barra del HUD. */
   private powerMeter: PowerMeterState = newPowerMeter();
   private zUsed = false;
+  /** T79: historias con decisiones ya vistas en la partida (cada una sale una vez). */
+  private storiesSeen: string[] = [];
   private powerMeterHud?: { g: Phaser.GameObjects.Graphics; x: number; y: number; w: number; h: number; shown: string };
   private megaGlowAt = 0;
   private megaInputKey!: Key;
@@ -960,6 +963,7 @@ export class GameScene extends Phaser.Scene {
     this.zUsed = r?.zUsed ?? this.carry?.zUsed ?? false;
     // T76: las reacciones descubiertas son de toda la partida (se guardan y pasan de piso)
     this.reactionsFound = [...(r?.reactionsFound ?? this.carry?.reactionsFound ?? [])];
+    this.storiesSeen = [...(r?.storiesSeen ?? this.carry?.storiesSeen ?? [])];
     this.powerMeterHud = undefined;
     this.megaPulseAt = 0;
     this.megaKey = null;
@@ -1555,6 +1559,11 @@ export class GameScene extends Phaser.Scene {
 
     if (kind === 'forge') {
       this.placeForge(room, i.cx, i.cy);
+      return;
+    }
+
+    if (kind === 'story') {
+      this.placeStory(room, i.cx, i.cy, rng);
       return;
     }
 
@@ -3150,6 +3159,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       powerMeter: Math.round(this.powerMeter.value * 10) / 10,
       zUsed: this.zUsed,
       reactionsFound: [...this.reactionsFound],
+      storiesSeen: [...this.storiesSeen],
     });
   }
 
@@ -4147,7 +4157,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * Abre la lista de ItemChoiceScene con el juego en pausa (como askSlot). Devuelve false si no se puede abrir.
    * `then(i)` recibe la opción o -1; se llama ya con la escena reanudada.
    */
-  private openItemChoice(title: string, text: string, options: string[], then: (i: number) => void, cancel?: string): boolean {
+  private openItemChoice(title: string, text: string, options: string[], then: (i: number) => void, cancel?: string, disabled?: boolean[]): boolean {
     if (this.itemChoiceOpen || this.swapOpen || !this.scene.manager.keys['ItemChoice']) return false;
     this.itemChoiceOpen = true;
     this.player?.setVelocity(0, 0);
@@ -4156,6 +4166,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       text,
       options,
       cancel,
+      disabled,
       onChoice: (i: number) => {
         this.scene.stop('ItemChoice');
         this.scene.resume();
@@ -4220,6 +4231,86 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.hpMark = this.hp;
     this.refreshInventory();
     this.saveNow();
+  }
+
+  // --- T79: historias con decisiones (lógica en level/choiceEvents.ts) ---
+
+  /** Un cartel con la historia de la sala; al usarlo se abre la lista de elecciones (ItemChoiceScene). */
+  private placeStory(room: Room, x: number, y: number, rng: () => number) {
+    const story = pickStory(this.storiesSeen, rng());
+    if (!story) return this.finishEvent(room);
+    // TODO(supervisor): dibujo propio de cada historia (mochila, nido, pozo, estatua…); de momento un cartel de texto
+    const t = this.add.text(x, y - 40, `${story.title}\n¿Qué haces?`, { fontFamily: FONT, fontSize: '16px', color: '#e6f4d0', stroke: '#101828', strokeThickness: 4, align: 'center' }).setOrigin(0.5).setDepth(4);
+    this.eventObjs.push(t);
+    const open = () => this.openStory(room, story);
+    const z = this.add.zone(x, y, 260, 110).setInteractive({ useHandCursor: true });
+    z.on('pointerover', () => (this.overHud = true));
+    z.on('pointerout', () => (this.overHud = false));
+    z.on('pointerdown', () => this.current?.id === room.id && open());
+    this.eventObjs.push(z);
+    this.eventSpots.push({ x, y, prompt: () => 'Enter / A / clic: ver qué pasa', use: open });
+  }
+
+  private openStory(room: Room, story: ChoiceStory) {
+    if (this.ended || this.transitioning || this.eventsDone.has(room.id) || this.game.loop.time < this.itemChoiceCooldownUntil) return;
+    const st = (): ChoiceState => ({ coins: this.coins, hp: this.hp, maxHp: this.stats.maxHp });
+    const s0 = st();
+    this.openItemChoice(
+      story.title,
+      story.text,
+      story.options.map((o) => optionLabel(o, s0)),
+      (k) => {
+        if (k < 0 || this.eventsDone.has(room.id)) return;
+        // Mismo azar cada vez que se resuelve esta sala (semilla del piso y de la sala)
+        const r = resolveChoice(story, k, mulberry32((this.floorSeed ^ Math.imul(room.id + 7, 0x27d4eb2d)) >>> 0), st());
+        if (!r) return;
+        this.storiesSeen.push(story.id);
+        this.applyStory(room, r.effects);
+        const extra = describeEffects(r.effects);
+        this.notify(extra ? `${r.text}\n${extra}` : r.text, { kind: r.effects.fight ? 'danger' : 'info', icon: 'star' });
+      },
+      'Marcharse sin decidir',
+      story.options.map((o) => !canAfford(o, s0)),
+    );
+  }
+
+  /** Aplica lo que salió de la historia (ya ajustado: nada queda en negativo). */
+  private applyStory(room: Room, e: ChoiceEffects) {
+    this.coins += e.coins ?? 0;
+    if (e.maxHpLoss) {
+      this.hpSacrificed += e.maxHpLoss;
+      this.stats = this.calcStats();
+    }
+    this.hp = Math.max(1, Math.min(this.stats.maxHp, this.hp + (e.hp ?? 0)));
+    if ((e.hp ?? 0) > 0) sfx('heal');
+    if ((e.hp ?? 0) < 0) sfx('hurt');
+    if (e.coins && e.coins > 0) sfx('coin');
+    this.potions += e.potions ?? 0;
+    this.keys += e.keys ?? 0;
+    this.bombs += e.bombs ?? 0;
+    if (e.tickets) this.giveTickets(e.tickets);
+    if (e.item) {
+      const p = this.freeSpot(this.player.x, this.player.y - 60);
+      this.dropItem(room.id, p.x, p.y);
+    }
+    this.refreshInventory();
+    if (e.fight && this.foeKinds.length > 0) {
+      // Pelea: la sala no queda limpia hasta vencerlos (checkClear), como el cofre trampa
+      this.eventsDone.add(room.id);
+      this.eventSpots = [];
+      this.prompt.setText('');
+      this.clearEventObjs();
+      for (let n = 0; n < e.fight; n++) {
+        const k = this.foeKinds[n % this.foeKinds.length];
+        this.spawnEnemy(k, k.behavior);
+      }
+      this.setDoorsLocked(room, true, true);
+      this.cameras.main.shake(160, 0.006);
+      this.drawMap();
+      this.saveNow();
+      return;
+    }
+    this.finishEvent(room);
   }
 
   /** Forja: yunque con dos puntos de uso (reciclar y fusionar). Un solo uso por forja. */
@@ -6348,6 +6439,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       powerMeter: this.powerMeter.value,
       zUsed: this.zUsed,
       reactionsFound: [...this.reactionsFound],
+      storiesSeen: [...this.storiesSeen],
     };
     // Caída por la trampilla: se coloca encima, gira encogiéndose hacia el agujero y la cámara se acerca
     const p = this.player;

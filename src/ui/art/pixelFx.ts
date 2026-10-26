@@ -391,3 +391,55 @@ export function pixMarker(sc: Phaser.Scene, x: number, y: number, radius: number
   draw();
   return g;
 }
+
+/** Rayos de píxeles que salen disparados del centro (estallido de una onda): punta blanca, cuerpo claro y cola del color. */
+export function pixSpokes(sc: Phaser.Scene, x: number, y: number, r0: number, r1: number, n: number, color: number, ms = 300, depth = 8, off = 0) {
+  const light = lightOf(color);
+  animate(sc, depth, ms, (g, k) => {
+    const head = r0 + (r1 - r0) * Phaser.Math.Easing.Cubic.Out(k);
+    const tailR = r0 + (r1 - r0) * Phaser.Math.Easing.Cubic.Out(Math.max(0, k - 0.25) / 0.75);
+    const a = 1 - k * 0.6;
+    for (let i = 0; i < n; i++) {
+      const ang = off + (i / n) * Math.PI * 2;
+      const c = Math.cos(ang);
+      const s = Math.sin(ang) * 0.75;
+      for (let r = tailR; r <= head; r += PX) {
+        const f = (head - r) / Math.max(1, head - tailR);
+        dot(g, x + c * r, y + s * r, f < 0.2 ? 0xffffff : f < 0.55 ? light : color, a * (1 - f * 0.5), f < 0.3 ? PX : PX, f < 0.2);
+      }
+    }
+  }, 40);
+}
+
+/** Disco de luz que se abre y se apaga (destello central, sin anillo ni trozos). */
+export function pixFlash(sc: Phaser.Scene, x: number, y: number, radius: number, color: number, ms = 220, depth = 8) {
+  const light = lightOf(color);
+  animate(sc, depth, ms, (g, k) => {
+    const r = radius * (0.5 + 0.5 * Phaser.Math.Easing.Cubic.Out(k));
+    const layers: [number, number][] = [[1, color], [0.7, light], [0.4, 0xffffff]];
+    for (const [f, c] of layers) {
+      const rr = r * f;
+      for (let yy = -rr; yy <= rr; yy += PX) {
+        const half = Math.sqrt(Math.max(0, rr * rr - yy * yy));
+        g.fillStyle(c, (1 - k) * (f === 1 ? 0.55 : 0.9)).fillRect(snap(x - half), snap(y + yy * 0.7), snap(half * 2) || PX, PX);
+      }
+    }
+  }, 40);
+}
+
+/** Pinchos de roca que asoman del suelo y se hunden (terremotos): contorno, color del tipo, cara clara y punta blanca. */
+export function pixSpikes(sc: Phaser.Scene, x: number, y: number, color: number, height = 30, ms = 420, depth = 2) {
+  const light = lightOf(color);
+  const dark = darkOf(color);
+  animate(sc, depth, ms, (g, k) => {
+    const up = k < 0.35 ? k / 0.35 : 1 - (k - 0.35) / 0.65;
+    const h = height * Phaser.Math.Easing.Back.Out(Math.max(0, up));
+    for (let yy = 0; yy < h; yy += PX) {
+      const w = Math.max(1, Math.round(((h - yy) / h) * 3));
+      for (let i = -w; i <= w; i++) {
+        const c = i === -w || i === w ? OUT : i < 0 ? light : i === 0 && yy > h - PX * 2 ? 0xffffff : i === 0 ? color : dark;
+        dot(g, x + i * PX, y - yy, c, up > 0 ? 1 : 0);
+      }
+    }
+  }, 40);
+}

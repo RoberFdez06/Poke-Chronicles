@@ -152,7 +152,26 @@ export function projRotation(type: string, a: number): number {
   }
 }
 
-/** Crea (una vez) las texturas de proyectil de todos los tipos (10x10). */
+/**
+ * Las texturas de proyectil miden 24x24 (forma 8x8 a 2 px por celda, contorno, núcleo blanco y halo), pero se
+ * dibujan a `PROJ_FIT` de la escala que pida la partida: el dibujo sale ~1,5 veces más grande que el de 10x10 de
+ * antes y el halo lo rodea. `fitProjectile` deja el cuerpo de colisión exactamente como era (10x10 a la escala
+ * original).
+ */
+export const PROJ_FIT = 0.75;
+const PT = 24;
+
+/** Ajusta (una sola vez) escala y cuerpo de un proyectil recién creado con `projKey`. */
+export function fitProjectile(s: Phaser.Physics.Arcade.Sprite) {
+  if (s.getData('pfit') || !s.texture.key.startsWith('proj-')) return;
+  s.setData('pfit', true);
+  s.setScale(s.scaleX * PROJ_FIT, s.scaleY * PROJ_FIT);
+  (s.body as Phaser.Physics.Arcade.Body | null)?.setSize(10 / PROJ_FIT, 10 / PROJ_FIT, true);
+}
+
+export const projTailKey = (type: string) => `projtail-${TYPE_FX[type] ? type : 'normal'}`;
+
+/** Crea (una vez) las texturas de proyectil de todos los tipos (24x24) y su estela (36x12, la cabeza a la derecha). */
 export function bakeProjectiles(scene: Phaser.Scene) {
   for (const type of Object.keys(TYPE_FX)) {
     const key = projKey(type);
@@ -160,35 +179,89 @@ export function bakeProjectiles(scene: Phaser.Scene) {
     const fx = TYPE_FX[type];
     const rows = SHAPES[fx.shape];
     const on = (x: number, y: number) => y >= 0 && y < 8 && x >= 0 && x < 8 && rows[y][x] === 'X';
+    const inner = (x: number, y: number) => on(x, y) && on(x - 1, y) && on(x + 1, y) && on(x, y - 1) && on(x, y + 1);
+    const light = shadeHex(fx.colors[0], 0.45);
     const g = scene.make.graphics({}, false);
-    // Contorno: cualquier hueco que toca la forma
+    // Halo: dos discos pixelados del color del tipo, translúcidos
+    for (let y = 0; y < PT; y += 2) {
+      for (let x = 0; x < PT; x += 2) {
+        const d = Math.hypot(x + 1 - PT / 2, y + 1 - PT / 2);
+        if (d < 12) g.fillStyle(d < 9 ? light : fx.colors[0], d < 9 ? 0.5 : 0.32).fillRect(x, y, 2, 2);
+      }
+    }
+    const O = 4; // la forma (16x16) va centrada
+    const cell = (x: number, y: number, c: number) => g.fillStyle(c, 1).fillRect(O + x * 2, O + y * 2, 2, 2);
+    // Contorno oscuro de una celda
     for (let y = -1; y <= 8; y++) {
       for (let x = -1; x <= 8; x++) {
         if (on(x, y)) continue;
-        if (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1)) g.fillStyle(0x18202c, 1).fillRect(x + 1, y + 1, 1, 1);
+        if (on(x - 1, y) || on(x + 1, y) || on(x, y - 1) || on(x, y + 1)) cell(x, y, 0x18202c);
+        else if (on(x - 1, y - 1) || on(x + 1, y + 1) || on(x - 1, y + 1) || on(x + 1, y - 1)) g.fillStyle(0x18202c, 0.45).fillRect(O + x * 2, O + y * 2, 2, 2);
       }
     }
     for (let y = 0; y < 8; y++) {
       for (let x = 0; x < 8; x++) {
         if (!on(x, y)) continue;
-        // Brillo arriba a la izquierda, sombra abajo a la derecha
         const edgeTL = !on(x - 1, y) || !on(x, y - 1);
         const edgeBR = !on(x + 1, y) || !on(x, y + 1);
-        const c = edgeTL ? fx.colors[1] : edgeBR ? shadeHex(fx.colors[0], -0.25) : fx.colors[0];
-        g.fillStyle(c, 1).fillRect(x + 1, y + 1, 1, 1);
+        const deep = inner(x, y) && inner(x - 1, y) && inner(x + 1, y) && inner(x, y - 1) && inner(x, y + 1);
+        const c = deep ? 0xffffff : inner(x, y) ? light : edgeBR ? shadeHex(fx.colors[0], -0.3) : edgeTL ? fx.colors[1] : fx.colors[0];
+        cell(x, y, c);
+        // Brillo de medio píxel arriba a la izquierda en el borde
+        if (edgeTL && !edgeBR) g.fillStyle(0xffffff, 0.55).fillRect(O + x * 2, O + y * 2, 1, 1);
       }
     }
-    // Un punto de luz
-    for (let y = 0; y < 8; y++) {
-      const x = rows[y].indexOf('X');
-      if (x >= 0 && on(x + 1, y + 1)) {
-        g.fillStyle(fx.colors[2], 1).fillRect(x + 2, y + 2, 1, 1);
-        break;
+    // Formas finas sin interior (rayo, hoja, anillo…): una chispa blanca en el centro de la forma
+    // Núcleo blanco: si la forma no tiene celdas hondas, la celda interior (o de la forma) más cerca del centro
+    const deepAt = (x: number, y: number) => inner(x, y) && inner(x - 1, y) && inner(x + 1, y) && inner(x, y - 1) && inner(x, y + 1);
+    let any = false;
+    for (let y = 0; y < 8 && !any; y++) for (let x = 0; x < 8; x++) if (deepAt(x, y)) any = true;
+    if (!any) {
+      let bx = 3;
+      let by = 3;
+      let bd = 99;
+      for (let y = 0; y < 8; y++) {
+        for (let x = 0; x < 8; x++) {
+          const d = Math.hypot(x - 3.5, y - 3.5) - (inner(x, y) ? 10 : 0);
+          if (on(x, y) && d < bd) [bx, by, bd] = [x, y, d];
+        }
       }
+      cell(bx, by, 0xffffff);
     }
-    g.generateTexture(key, 10, 10);
+    g.generateTexture(key, PT, PT);
     g.destroy();
     scene.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
+
+    // Estela: cinta pixelada que se afina y se deshace hacia atrás (blanco junto al proyectil, luego claro y color)
+    const tk = projTailKey(type);
+    if (!scene.textures.exists(tk)) {
+      const tg = scene.make.graphics({}, false);
+      const TW = 36;
+      for (let x = 0; x < TW; x += 2) {
+        const f = 1 - x / TW; // 0 junto a la cabeza (derecha), 1 al final
+        const half = Math.max(1, Math.round((1 - f) * 4 + 1)) * 2; // 2..10 px
+        for (let y = 6 - half / 2; y < 6 + half / 2; y += 2) {
+          if (f > 0.55 && ((x + y) / 2) % 2 === 0) continue; // tramado al final
+          const edge = y === 6 - half / 2 || y === 6 + half / 2 - 2;
+          const mid = Math.abs(y + 1 - 6) <= 1;
+          const c = edge ? shadeHex(fx.colors[0], -0.35) : mid && f < 0.5 ? 0xffffff : f < 0.35 ? light : fx.colors[0];
+          tg.fillStyle(c, edge ? 0.6 : 0.95).fillRect(x, y, 2, 2);
+        }
+      }
+      tg.generateTexture(tk, TW, 12);
+      tg.destroy();
+      scene.textures.get(tk).setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+  }
+  // Destello de impacto (estrella de 4 puntas blanca, 14x14)
+  if (!scene.textures.exists('proj-flash')) {
+    const g = scene.make.graphics({}, false);
+    g.fillStyle(0xffffff, 1);
+    g.fillRect(6, 0, 2, 14).fillRect(0, 6, 14, 2).fillRect(4, 4, 6, 6);
+    g.fillStyle(0xffffff, 0.6).fillRect(2, 2, 2, 2).fillRect(10, 2, 2, 2).fillRect(2, 10, 2, 2).fillRect(10, 10, 2, 2);
+    g.generateTexture('proj-flash', 14, 14);
+    g.destroy();
+    scene.textures.get('proj-flash').setFilter(Phaser.Textures.FilterMode.NEAREST);
   }
 }
 
