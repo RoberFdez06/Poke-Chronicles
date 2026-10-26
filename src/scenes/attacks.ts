@@ -5,9 +5,9 @@
 import Phaser from 'phaser';
 import type { Anim, Motion, Pattern } from '../data/movePatterns';
 import { typeColor } from '../data/types';
-import { typeImpact, typeTrail, projKey } from '../ui/art/typeFx';
+import { typeImpact, typeTrail, projKey, projTailKey, fitProjectile, PROJ_FIT } from '../ui/art/typeFx';
 import { dustBurst, hitSpark } from '../ui/art/combatFx';
-import { drawPixBeam, drawPixJet, drawPixOrb, lightOf, pixBlast, pixBolt, pixCracks, pixDebris, pixGeyser, pixMarker, pixMuzzle, pixRing, pixSpeedLines, pixTrap, PX } from '../ui/art/pixelFx';
+import { animate, drawPixBeam, drawPixJet, drawPixOrb, lightOf, pixBlast, pixBolt, pixCracks, pixDebris, pixGeyser, pixMarker, pixMuzzle, pixRing, pixSpeedLines, pixTrap, pixFlash, pixSpokes, pixSpikes, darkOf, PX } from '../ui/art/pixelFx';
 import { lowFx } from '../ui/theme';
 
 /** Mezcla dos colores (t = 0 → a, t = 1 → b). */
@@ -80,8 +80,71 @@ function distToSegment(px: number, py: number, x1: number, y1: number, x2: numbe
 
 /** Datos de movimiento de un proyectil (los lee updateShots). */
 export function setMotion(s: Sprite, side: Side, angle: number, speed: number, motion: Motion | undefined, anim: Anim | undefined, owner: Sprite, t: number) {
+  // Arte: escala del dibujo grande (el cuerpo de colisión no cambia), estela pegada y chispas al chocar
+  fitProjectile(s);
+  dressProjectile(s);
   s.setData('mv', motion).setData('anim', anim).setData('born', t).setData('ang', angle).setData('spd', speed);
   s.setData('side', side).setData('owner', owner).setData('baseScale', s.scaleX);
+}
+
+/** Tipo del proyectil a partir de su textura (`proj-fire` → `fire`). */
+const projType = (s: Sprite) => s.texture.key.slice(5);
+
+/**
+ * Arte de cada proyectil (una vez): estela horneada que lo sigue (una imagen, sin Graphics) y, al desaparecer,
+ * destello y chispas de su tipo si ha golpeado a algo (o una bocanada pequeña si se apaga sin dar).
+ */
+function dressProjectile(s: Sprite) {
+  if (s.getData('dressed') || !s.texture.key.startsWith('proj-')) return;
+  s.setData('dressed', true);
+  const sc = s.scene;
+  const type = projType(s);
+  if (!lowFx()) {
+    const tail = sc.add.image(s.x, s.y, projTailKey(type)).setOrigin(1, 0.5).setDepth(s.depth - 0.05).setVisible(false);
+    s.setData('tail', tail).setData('x0', s.x).setData('y0', s.y);
+    s.once(Phaser.GameObjects.Events.DESTROY, () => tail.destroy());
+  }
+  s.once(Phaser.GameObjects.Events.DESTROY, (_o: unknown, fromScene?: boolean) => {
+    if (fromScene || !sc.sys.isActive()) return;
+    const hit = (s.getData('hit') as Set<object> | undefined)?.size;
+    const k = s.scaleX / PROJ_FIT / 2.2;
+    if (lowFx()) {
+      if (hit) typeImpact(sc, s.x, s.y, type, 0.6, 3);
+      return;
+    }
+    if (!hit) {
+      typeImpact(sc, s.x, s.y, type, 0.5 * k, 2);
+      return;
+    }
+    const f = sc.add.image(s.x, s.y, 'proj-flash').setTint(0xffffff).setScale(2 * k).setDepth(8).setAngle(Phaser.Math.Between(0, 1) * 45);
+    sc.tweens.add({ targets: f, scale: 4 * k, alpha: 0, angle: f.angle + 45, duration: 160, onComplete: () => f.destroy() });
+    typeImpact(sc, s.x, s.y, type, 0.8 * k, 5);
+  });
+}
+
+/** Coloca la estela detrás del proyectil según su velocidad, con un pequeño latido. */
+function updateTail(s: Sprite, body: Body, t: number) {
+  const tail = s.getData('tail') as Phaser.GameObjects.Image | undefined;
+  if (!tail) return;
+  const vx = body.velocity.x;
+  const vy = body.velocity.y;
+  const sp = Math.hypot(vx, vy);
+  // Los chorros ya tienen su cuerpo; y la estela nunca asoma por detrás de quien dispara
+  const x0 = s.getData('x0') as number | undefined;
+  const y0 = s.getData('y0') as number | undefined;
+  const gone = x0 === undefined || y0 === undefined ? 999 : Math.hypot(s.x - x0, s.y - y0);
+  if (sp < 40 || !s.visible || s.getData('anim') === 'flicker' || gone < 8) {
+    tail.setVisible(false);
+    return;
+  }
+  const k = s.scaleX / PROJ_FIT; // escala que pidió la partida
+  const len = Math.min(Phaser.Math.Clamp(sp / 360, 0.7, 1.5), gone / (36 * k * 0.8));
+  tail
+    .setVisible(true)
+    .setPosition(s.x - (vx / sp) * 3 * k, s.y - (vy / sp) * 3 * k)
+    .setRotation(Math.atan2(vy, vx))
+    .setScale(k * 0.8 * len, k * 0.85 * (1 + 0.12 * Math.sin(t / 45)))
+    .setAlpha(s.alpha * 0.9);
 }
 
 /**
@@ -214,6 +277,13 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
           if (!src.active) return;
           const off = r * (Math.PI / p.n) + (side === 'foe' ? Math.random() : 0);
           pixRing(sc, src.x, src.y + 10, 70 + r * 20, color, 300, 6);
+          // Arte: destello en el centro, rayos que salen entre los proyectiles y un segundo anillo más ancho
+          if (!lowFx()) {
+            pixFlash(sc, src.x, src.y, 46 + r * 8, color, 220, 8);
+            pixSpokes(sc, src.x, src.y, 18, 110 + r * 20, p.n, color, 320, 7.5, off + Math.PI / p.n);
+            if (r === 0) pixRing(sc, src.x, src.y + 10, 130, color, 420, 5.5, 0.62);
+            sc.cameras.main.shake(70, 0.0025);
+          }
           for (let k = 0; k < p.n; k++) fire(off + (k / p.n) * Math.PI * 2, { speed: p.speed, size: p.size, motion: p.motion, anim: p.anim, life: 900 });
         });
       }
@@ -231,9 +301,18 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
         const w = pixMarker(sc, cx, cy, p.radius, color);
         sc.tweens.add({ targets: w, alpha: 0.3, yoyo: true, repeat: 2, duration: warn / 6, onComplete: () => w.destroy() });
       }
+      // Arte (enemigos): el suelo se carga antes de romper: anillo que se cierra hacia el centro
+      if (warn && !lowFx()) pixRing(sc, cx, cy, p.radius, darkOf(color), warn, 1.55, 0.65);
       later(h, warn, () => {
         sc.cameras.main.shake(p.ms * 0.6, 0.008);
         dustBurst(sc, cx, cy, 1.6, 12);
+        if (!lowFx()) {
+          // Pisotón: destello en el centro y un pincho grande que sale y se hunde
+          pixFlash(sc, cx, cy, 54, color, 240, 2);
+          pixSpikes(sc, cx, cy + 4, color, 42, 520, 2.1);
+        }
+        const fancyQ = !lowFx();
+        const spikeA = Array.from({ length: 10 }, (_, i) => (i / 10) * Math.PI * 2 + Math.random() * 0.3);
         pixCracks(sc, cx, cy, p.radius * 0.8, color, p.ms + 300);
         pixDebris(sc, cx, cy, color, 12, 1.1);
         const t0 = now(h);
@@ -244,6 +323,31 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
             const k = Math.min(1, (now(h) - t0) / p.ms);
             const r = p.radius * Phaser.Math.Easing.Cubic.Out(k);
             g.clear();
+            if (fancyQ) {
+              // Suelo hundido dentro de la onda y una segunda onda más baja detrás
+              g.fillStyle(0x000000, 0.18 * (1 - k)).fillEllipse(cx, cy, r * 2, r * 1.3);
+              g.fillStyle(color, 0.14 * (1 - k)).fillEllipse(cx, cy, r * 1.6, r * 1.04);
+              const r2 = r * 0.72;
+              const st2 = (PX * 1.2) / Math.max(r2, 10);
+              for (let t = 0; t < Math.PI * 2; t += st2) {
+                const px = Math.round((cx + Math.cos(t) * r2) / PX) * PX;
+                const py = Math.round((cy + Math.sin(t) * r2 * 0.65) / PX) * PX;
+                g.fillStyle(darkOf(color), 0.7 * (1 - k)).fillRect(px - PX / 2, py - PX / 2, PX, PX);
+              }
+              // Pinchos de roca que asoman en la cresta y se hunden detrás
+              for (const a of spikeA) {
+                const sx = Math.round((cx + Math.cos(a) * r) / PX) * PX;
+                const sy = Math.round((cy + Math.sin(a) * r * 0.65) / PX) * PX;
+                const hh = (k < 0.8 ? 1 : (1 - k) / 0.2) * (14 + 10 * Math.abs(Math.sin(a * 3)));
+                for (let yy = 0; yy < hh; yy += PX) {
+                  const w = Math.max(1, Math.round(((hh - yy) / hh) * 2));
+                  g.fillStyle(0x18202c, 1).fillRect(sx - w * PX - 2, sy - yy - PX, w * 2 * PX + 4, PX);
+                  g.fillStyle(lightOf(color), 1).fillRect(sx - w * PX, sy - yy - PX, w * PX, PX);
+                  g.fillStyle(darkOf(color), 1).fillRect(sx, sy - yy - PX, w * PX, PX);
+                }
+                if (hh > PX) g.fillStyle(0xffffff, 1).fillRect(sx - PX / 2, sy - hh - PX, PX, PX);
+              }
+            }
             // Onda de tierra en píxeles: borde de rocas del color del tipo con cresta blanca
             const stepA = (PX * 0.9) / Math.max(r, 10);
             for (let t = 0; t < Math.PI * 2; t += stepA) {
@@ -281,7 +385,7 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
           const mark = pixMarker(sc, x, y, p.radius, color);
           sc.tweens.add({ targets: mark, scale: { from: 1.3, to: 1 }, duration: p.delay });
           // Lo que cae: el dibujo del tipo, grande, desde arriba
-          const fall = sc.add.image(x, y - 420, projKey(type)).setScale(4.5).setDepth(12).setRotation(Math.PI / 2);
+          const fall = sc.add.image(x, y - 420, projKey(type)).setScale(4.5 * PROJ_FIT * 1.15).setDepth(12).setRotation(Math.PI / 2);
           // Arte: estela vertical de píxeles detrás de lo que cae (borde oscuro, color, claro y punta blanca)
           const streak = lowFx() ? undefined : sc.add.graphics().setDepth(11.9);
           const sl = lightOf(color);
@@ -328,7 +432,7 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
         const ms = (side === 'foe' ? 900 : 620) / slow;
         const shadow = sc.add.ellipse(x0, y0 + 20, 34, 12, 0x000000, 0.35).setDepth(1.5);
         const mark = side === 'foe' ? pixMarker(sc, tx, ty, p.radius, color) : !lowFx() ? pixMarker(sc, tx, ty, p.radius * 0.6, color).setAlpha(0.55) : undefined;
-        const ball = sc.add.image(x0, y0, projKey(type)).setScale(3.6).setDepth(12);
+        const ball = sc.add.image(x0, y0, projKey(type)).setScale(3.6 * PROJ_FIT * 1.15).setDepth(12);
         // Arte: halo de energía detrás de la bomba y estela de píxeles que se apaga
         const glow = lowFx() ? undefined : sc.add.graphics().setDepth(11.9);
         const tail: [number, number][] = [];
@@ -509,6 +613,30 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
     case 'eruption': {
       // Columnas que brotan del suelo una tras otra en línea
       const warn = side === 'foe' ? 450 : 0;
+      const fancyE = !lowFx();
+      // Arte: una fisura incandescente recorre el suelo por delante de las columnas (un solo Graphics)
+      if (fancyE) {
+        const fx0 = src.x;
+        const fy0 = src.y + 10;
+        const total = warn + p.steps * p.every + 700;
+        const reach = p.gap * (p.steps + 0.4);
+        const jit = Array.from({ length: 64 }, () => (Math.random() - 0.5) * PX * 1.6);
+        const el = lightOf(color);
+        animate(sc, 1.6, total, (g, k, tt) => {
+          const head = Math.min(1, tt / Math.max(1, warn + (p.steps - 1) * p.every + 1)) * reach;
+          const fade = tt > total - 400 ? (total - tt) / 400 : 1;
+          let i = 0;
+          for (let d = PX * 3; d < head; d += PX, i++) {
+            const nx = -dir.y * jit[i % 64];
+            const ny = dir.x * jit[i % 64];
+            const x = Math.round((fx0 + dir.x * d + nx) / PX) * PX;
+            const y = Math.round((fy0 + dir.y * d + ny) / PX) * PX;
+            const hot = head - d < PX * 6;
+            g.fillStyle(0x1a120c, 0.85 * fade).fillRect(x - PX, y - PX / 2, PX * 2, PX);
+            g.fillStyle(hot ? 0xffffff : (i + Math.floor(tt / 80)) % 3 ? color : el, (hot ? 1 : 0.8) * fade).fillRect(x - PX / 2, y - PX / 2, PX, PX / 2 + 1);
+          }
+        }, 40);
+      }
       for (let i = 0; i < p.steps; i++) {
         const x = src.x + dir.x * p.gap * (i + 1);
         const y = src.y + dir.y * p.gap * (i + 1) + 10;
@@ -524,6 +652,13 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
           pixGeyser(sc, x, y, color, 100 + p.radius * 0.6, Math.max(30, p.radius * 0.8));
           typeImpact(sc, x, y - 30, type, 0.9, 5);
           dustBurst(sc, x, y, 0.9, 6);
+          if (fancyE) {
+            // Base del géiser: destello, onda de choque, trozos que saltan y temblor corto
+            pixFlash(sc, x, y, p.radius * 0.9, color, 200, 8.5);
+            pixRing(sc, x, y + 4, p.radius * 1.2, color, 320, 1.7, 0.5);
+            pixDebris(sc, x, y - 10, color, 6, 0.8, 10);
+            sc.cameras.main.shake(70, 0.003);
+          }
           h.area(side, x, y, p.radius, dmg, type, src);
         });
       }
@@ -823,6 +958,7 @@ export function updateShots(h: AttackHost, group: Phaser.Physics.Arcade.Group, t
       body.velocity.set(Math.cos(a) * speed + extra.x, Math.sin(a) * speed + extra.y);
     }
 
+    updateTail(s, body, t);
     // Animación del propio proyectil
     const anim = s.getData('anim') as Anim | undefined;
     const base = (s.getData('baseScale') as number | undefined) ?? s.scaleX;
