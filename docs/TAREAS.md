@@ -578,6 +578,7 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
   otros), y la migración. El dibujo del yunque y de la sala queda como `// TODO(supervisor)`.
 
 ## [ ] T74 — Megaevolución del jugador (en cualquier modo)
+- **Sprites (confirmado por el usuario):** las formas alternativas existen en PokeAPI **con sprite** (`charizard-mega-x`, `charizard-gmax`, `pikachu-gmax`, etc.; ids desde 10000). Usa la forma real al megaevolucionar o gigamaxear; si una concreta no trajera sprite, deja el sprite normal más grande con aura (`// TODO(supervisor)`), nunca dibujes tú un personaje conocido.
 - Botón de megaevolución (teclado, ratón y mando, con su etiqueta). Requisitos, todos a la vez: llevar una **Mega Piedra** (objeto raro
   nuevo que sale en cofres, tiendas y jefes), tener la **barra de adrenalina llena** (T55; gasta la barra) y que tu Pokémon **tenga
   megaevolución en los juegos** (lista de ids en lógica pura; para el resto, sin megaevolución, la piedra no hace nada y no se ofrece).
@@ -588,6 +589,7 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
   guardado y continuar partida mantienen cuánto queda de megaevolución. Estructúralo con un tipo «forma de poder» para que T75 lo reutilice.
 
 ## [ ] T75 — Otras formas de poder (propuesta; solo si T74 va bien)
+- **Sprites (confirmado por el usuario):** las formas alternativas existen en PokeAPI **con sprite** (`charizard-mega-x`, `charizard-gmax`, `pikachu-gmax`, etc.; ids desde 10000). Usa la forma real al megaevolucionar o gigamaxear; si una concreta no trajera sprite, deja el sprite normal más grande con aura (`// TODO(supervisor)`), nunca dibujes tú un personaje conocido.
 - Reutiliza la estructura de T74 con el mismo botón y la regla «solo una forma activa a la vez y una vez por piso». Cada una pide su objeto:
   **Dinamax/Gigamax** (**Banda Dinamax**: tamaño ×1,5 con un escudo extra de vida y los ataques más grandes; Gigamax solo para las
   especies que lo tienen y con ataque propio), **Teracristalización** (**Teragema**: durante unos segundos tu Pokémon cambia a un tipo
