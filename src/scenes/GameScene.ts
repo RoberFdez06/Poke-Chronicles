@@ -7,7 +7,7 @@ import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal, loadCandies, loadD
 import { buildDexIndex, registerDefeat, type DexIndex } from '../data/runDex';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
 import { dailyFloorSeed, dailyRng, streakReward } from '../data/daily';
-import { damageMul, effectOf, EFFECT_COLOR, EFFECT_LABEL } from '../data/typeChart';
+import { damageMul, effectOf, EFFECT_COLOR, EFFECT_LABEL, rawEffectiveness } from '../data/typeChart';
 import { weatherChip, weatherFor, weatherHurts, weatherPowerMul, WEATHER_DESC, WEATHER_LABEL, WEATHER_TICK_MS, type Weather } from '../data/weather';
 import { WeatherFx } from '../ui/weatherFx';
 import { phaseAtSeconds, phasePowerMul, pickByPhase, PHASE_DESC, PHASE_NOTICE, type Phase } from '../data/dayNight';
@@ -264,7 +264,8 @@ import { drawMinimap } from './minimap';
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
 import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineFull, adrenalineSpeedMul, gainAdrenaline, spendAdrenaline, newAdrenaline, tickAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
-import { MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState } from '../data/powerForm';
+import { MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState, absorbWithShield, gmaxFormName, pickPower, pickTeraType, POWER_BLOCK_TEXT, powerCost, powerFormSizeMul, powerFormTeraType, useZMove, Z_MOVE_DAMAGE_MUL, type PowerChoice, type PowerContext } from '../data/powerForm';
+import { meterOnDamage, meterOnParry, newPowerMeter, powerMeterFill, spendPowerMeter, tickPowerMeter, type PowerMeterState } from '../data/powerMeter';
 import { canCapture, canThrow, CAPTURE_RANGE, newCaptureState, nextFloorCapture, resolveThrow, rollCapture, type CaptureState } from '../data/capture';
 import { DARK_RADIUS, darkEdge, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, ruleDamageMul, ruleNotice, shouldMultiply, speedRoomBonus, MULTIPLY_HP, MULTIPLY_SIZE, SPEED_ROOM_MUL, type RoomRule } from '../level/roomRules';
 import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data/secondChance';
@@ -329,7 +330,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed'
 >;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
@@ -568,6 +569,10 @@ export class GameScene extends Phaser.Scene {
   private powerFormLoopAt = 0;
   private megaPulseAt = 0;
   private megaKey: string | null = null;
+  /** T75: medidor de poder (Dinamax, Tera, Z), si ya se usó el Cristal Z y su barra del HUD. */
+  private powerMeter: PowerMeterState = newPowerMeter();
+  private zUsed = false;
+  private powerMeterHud?: { g: Phaser.GameObjects.Graphics; x: number; y: number; w: number; h: number; shown: string };
   private megaGlowAt = 0;
   private megaInputKey!: Key;
   private dpadUpPrev = false;
@@ -937,6 +942,10 @@ export class GameScene extends Phaser.Scene {
     // T74: al continuar, la forma de poder tal cual (lo que le quedaba); en un piso nuevo, recargada y sin forma
     this.powerForm = r ? powerFormFromSave(r.powerForm) : newPowerFormState();
     this.powerFormLoopAt = this.game.loop.time;
+    // T75: el medidor y el Z son de toda la partida (pasan de piso)
+    this.powerMeter = newPowerMeter(r?.powerMeter ?? this.carry?.powerMeter ?? 0);
+    this.zUsed = r?.zUsed ?? this.carry?.zUsed ?? false;
+    this.powerMeterHud = undefined;
     this.megaPulseAt = 0;
     this.megaKey = null;
     this.megaGlowAt = 0;
@@ -1289,6 +1298,8 @@ export class GameScene extends Phaser.Scene {
     if (this.tiredRooms > 0) stats.speed *= FOUNTAIN_TIRED_SPEED;
     // T74: la megaevolución da PS máximos mientras dura (se quitan al acabar; ver endPowerForm)
     stats.maxHp += powerFormMaxHpBonus(this.powerForm);
+    // T75: con Dinamax los ataques también son más grandes
+    stats.shotScale *= powerFormSizeMul(this.powerForm);
     return stats;
   }
 
@@ -2335,7 +2346,12 @@ export class GameScene extends Phaser.Scene {
     this.player.setCircle(fw * 0.3, fw * 0.2, fw * 0.2);
     if (!this.shiny) this.applyPmd(this.player, this.formId, 84, true);
     // T74: al continuar con la megaevolución a medias, vuelve a ponerse la forma
-    if (powerFormActive(this.powerForm)) void this.applyMegaLook();
+    // T75: al continuar con Dinamax/Gigamax, el tamaño o la forma Gigamax; la mega, su sprite; el Tera no cambia de sprite
+    const pf = this.powerForm.active;
+    if (powerFormActive(this.powerForm)) {
+      if (pf === 'mega') void this.applyMegaLook();
+      else if (pf === 'dynamax' || pf === 'gigamax') void this.applyMaxLook(pf);
+    }
 
     this.enemies = this.physics.add.group();
     this.shots = this.physics.add.group();
@@ -2439,6 +2455,8 @@ export class GameScene extends Phaser.Scene {
       const g = hud(this.add.graphics());
       const text = txt(ax + (LW - 76) / 2, 66, 12, '#f8f8f8', true).setOrigin(0.5).setText('Adrenalina');
       this.adrenalineHud = { g, text, x: ax, y: 50, w: LW - 76, h: 32, shown: '' };
+      // T75: medidor de poder, una tira fina entre la adrenalina y la ficha (solo con Banda Dinamax, Teragema o Cristal Z)
+      this.powerMeterHud = { g: hud(this.add.graphics()), x: ax + 4, y: 84, w: LW - 84, h: 9, shown: '' };
     }
     // Ficha del Pokémon: nombre, progreso y PS
     hud(drawHudFrame(this.add.graphics(), LX, 96, LW, 150));
@@ -2494,7 +2512,7 @@ export class GameScene extends Phaser.Scene {
     this.megaHud = { g: hud(this.add.graphics()), x: LX + LW - 88, y: 124, shown: '' };
     const megaZone = this.add.zone(LX + LW - 88, 130, 50, 52).setInteractive({ useHandCursor: true });
     over(hud(megaZone));
-    megaZone.on('pointerdown', () => this.megaEvolve());
+    megaZone.on('pointerdown', () => this.powerButton());
     this.megaZone = megaZone;
     badge(LX + LW - 88, 152, 'Cruz ↑', 'mega');
     activeBtn.on('pointerdown', () => this.useActive());
@@ -2787,6 +2805,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const now = this.game.loop.time;
     const dt = now - this.powerFormLoopAt;
     this.powerFormLoopAt = now;
+    // T75: el medidor baja poco a poco si no peleas (con el mismo paso recortado: la pausa no lo vacía)
+    if (!this.ended) tickPowerMeter(this.powerMeter, dt);
     if (!powerFormActive(this.powerForm)) return;
     if (tickPowerForm(this.powerForm, dt)) return this.endPowerForm();
     // Sin sprite mega: el normal con el brillo de evolución de vez en cuando (con efectos bajos, nada)
@@ -2795,8 +2815,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.megaGlowAt = now + 4000;
       evolveGlow(this, this.player, 900);
     }
-    if (now >= this.megaPulseAt) {
-      this.megaPulseAt = now + POWER_FORMS.mega.pulseMs;
+    // Pulso propio: la «Mega descarga» o el ataque Gigamax (Dinamax y Tera no tienen)
+    const pulse = POWER_FORMS[this.powerForm.active!].pulseMs;
+    if (pulse > 0 && now >= this.megaPulseAt) {
+      this.megaPulseAt = now + pulse;
       this.megaPulse();
     }
   }
@@ -2808,24 +2830,167 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private megaPulse() {
     if (!this.player?.active || this.ended || this.enemies.countActive(true) === 0) return;
     const s = this.stats;
-    const basic = basicShotFor(this.tearType);
+    const basic = basicShotFor(this.shotType());
     const opts = {
       damage: s.damage * 1.5 * this.dmgMul(),
       speed: s.shotSpeed * basic.speed,
       life: s.range * 0.8,
       size: 1.1 * s.shotScale * basic.size,
-      color: typeColor(this.tearType),
-      type: this.tearType,
+      color: typeColor(this.shotType()),
+      type: this.shotType(),
       pierce: s.pierce + 1,
       bounces: 0,
       motion: basic.motion,
       anim: basic.anim,
     };
-    sfx(shotSfx(this.tearType));
+    sfx(shotSfx(this.shotType()));
     for (let k = 0; k < 8; k++) {
       const a = (k / 8) * Math.PI * 2;
       this.spawnShot(new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), 0, opts);
     }
+  }
+
+  /** T75: lo que piden Dinamax, Tera y Z. */
+  private powerContext(): PowerContext {
+    return { speciesId: this.formId, passives: this.passives, meter: this.powerMeter.value, hp: this.hp, maxHp: this.stats.maxHp, zUsed: this.zUsed };
+  }
+
+  /** ¿Se ve el botón de forma de poder? Con la mega o con alguna forma de T75 que se ofrezca. */
+  private powerButtonOffered(): boolean {
+    return megaOffered(this.megaContext()) || pickPower(this.powerForm, this.powerContext()) !== null;
+  }
+
+  /** Tipo de los disparos: el Tera mientras dura, si no el de siempre. */
+  private shotType(): string {
+    return powerFormTeraType(this.powerForm) ?? this.tearType;
+  }
+
+  /**
+   * T75: el botón de forma de poder (el de la mega). La mega va primero si se puede; si no, la forma de T75 que toque
+   * (pickPower); si no se puede ninguna, el aviso de la que se ofrece.
+   */
+  private powerButton() {
+    if (this.ended || this.transitioning || this.falling || !this.player?.active || this.scene.isPaused()) return;
+    const mctx = this.megaContext();
+    const megaOk = megaOffered(mctx) && megaBlock(this.powerForm, mctx) === null;
+    const pick = pickPower(this.powerForm, this.powerContext());
+    if (megaOk || !pick) return this.megaEvolve();
+    if (pick.block) return this.notify(POWER_BLOCK_TEXT[pick.block], { kind: 'warning', icon: 'pokeball' });
+    this.startPower(pick.choice);
+  }
+
+  private startPower(choice: PowerChoice) {
+    if (!spendPowerMeter(this.powerMeter, powerCost(choice))) return;
+    if (this.powerMeterHud) this.powerMeterHud.shown = '';
+    if (choice === 'z') return this.zMove();
+    const tera = choice === 'tera' ? pickTeraType(this.biome.types, this.tearType, rawEffectiveness) : null;
+    this.powerForm = startPowerForm(this.powerForm, choice, tera);
+    this.powerFormLoopAt = this.game.loop.time;
+    this.megaPulseAt = this.game.loop.time + POWER_FORMS[choice].pulseMs;
+    this.stats = this.calcStats();
+    sfx('evolve');
+    const secs = Math.round(POWER_FORMS[choice].durationMs / 1000);
+    const name = this.niceName();
+    if (choice === 'tera') {
+      // TODO(supervisor): cristal Tera encima del sprite (mismo sprite, con la corona/joya del tipo) y destello al empezar.
+      if (!lowFx()) evolveGlow(this, this.player, 900);
+      this.notify(`¡${name} se teracristaliza!\nTus ataques son de tipo ${typeNameEs(tera!)} durante ${secs} s`, { kind: 'item', icon: 'pokeball' });
+    } else {
+      // TODO(supervisor): efecto de Dinamax (nubes rojas, energía de la banda) y aura gigante. Con efectos bajos, nada.
+      if (!lowFx()) this.cameras.main.flash(250, 232, 56, 79);
+      const label = choice === 'gigamax' ? `${name} Gigamax` : `${name} Dinamax`;
+      this.notify(`¡${label}!\nGigante, con escudo y ataques más grandes durante ${secs} s`, { kind: 'item', icon: 'pokeball' });
+      void this.applyMaxLook(choice);
+    }
+    void cry(this.formId);
+    this.saveNow();
+  }
+
+  /**
+   * Aspecto del Dinamax/Gigamax: la forma Gigamax de PokeAPI si la hay (como la mega), y si no el sprite de siempre
+   * ×1,5. TODO(supervisor): aura roja del Dinamax para las formas sin sprite propio.
+   */
+  private async applyMaxLook(choice: 'dynamax' | 'gigamax') {
+    const size = Math.round(84 * POWER_FORMS[choice].sizeMul);
+    const form = choice === 'gigamax' ? gmaxFormName(this.formId) : null;
+    if (form) {
+      const sprites = await fetchFormSprites(form);
+      if (sprites && powerFormActive(this.powerForm) && this.player?.active && !this.ended) {
+        const key = `gmax-${form}${this.shiny ? '-s' : ''}`;
+        const urls = pickSprites(sprites, this.shiny);
+        await new Promise<void>((resolve) => {
+          let queued = 0;
+          for (const side of ['front', 'back'] as const) {
+            if (this.textures.exists(`${key}-${side}`)) continue;
+            this.load.image(`${key}-${side}`, urls[side]);
+            queued++;
+          }
+          if (queued === 0) return resolve();
+          this.load.once(Phaser.Loader.Events.COMPLETE, () => resolve());
+          this.load.start();
+        });
+        if (this.textures.exists(`${key}-front`) && powerFormActive(this.powerForm) && this.player?.active && !this.ended) {
+          for (const side of ['front', 'back']) {
+            if (this.textures.exists(`${key}-${side}`)) this.textures.get(`${key}-${side}`).setFilter(Phaser.Textures.FilterMode.NEAREST);
+          }
+          this.megaKey = key;
+          this.setStaticLook(key, size);
+          return;
+        }
+      }
+    }
+    if (!powerFormActive(this.powerForm) || !this.player?.active || this.ended) return;
+    this.megaKey = this.playerKey;
+    this.setStaticLook(this.playerKey, size);
+  }
+
+  /**
+   * Cristal Z: un único ataque devastador de tu tipo, una vez por partida (y gasta la forma del piso). Un anillo
+   * doble de disparos enormes que atraviesan todo.
+   */
+  private zMove() {
+    this.zUsed = true;
+    this.powerForm = useZMove(this.powerForm);
+    const s = this.stats;
+    const type = this.shotType();
+    const basic = basicShotFor(type);
+    const opts = {
+      damage: s.damage * Z_MOVE_DAMAGE_MUL * this.dmgMul(),
+      speed: s.shotSpeed * basic.speed,
+      life: s.range * 1.2,
+      size: 1.8 * s.shotScale * basic.size,
+      color: typeColor(type),
+      type,
+      pierce: s.pierce + 99,
+      bounces: 0,
+      motion: basic.motion,
+      anim: basic.anim,
+    };
+    sfx('evolve');
+    // TODO(supervisor): pose y rayo del movimiento Z (cristal brillando, gran onda de su tipo). Con efectos bajos, sin flash.
+    if (!lowFx()) this.cameras.main.flash(300, 255, 230, 120);
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      this.spawnShot(new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), 0, opts);
+    }
+    this.notify(`¡Movimiento Z de ${this.niceName()}!\nEl Cristal Z ya no se puede volver a usar`, { kind: 'item', icon: 'star' });
+    this.saveNow();
+  }
+
+  /** T75: tira del medidor de poder con las formas de theme.ts (cuadro GBA); solo si llevas un objeto que lo use. */
+  private paintPowerMeter() {
+    const h = this.powerMeterHud;
+    if (!h) return;
+    const show = pickPower(this.powerForm, this.powerContext()) !== null;
+    const fill = powerMeterFill(this.powerMeter);
+    const key = `${show}:${Math.round(fill * 50)}`;
+    if (h.shown === key) return;
+    h.shown = key;
+    h.g.clear();
+    if (!show) return;
+    drawBox(h.g, h.x, h.y, h.w, h.h, { fill: 0x1d2440 });
+    // TODO(supervisor): marcas del gasto de cada forma (60 % Tera, 100 % Dinamax/Z) y brillo al llenarse.
+    if (fill > 0) h.g.fillStyle(fill >= 1 ? 0xff5a6e : 0xc23a5a, 1).fillRect(h.x + 2, h.y + 2, Math.max(1, (h.w - 4) * fill), h.h - 4);
   }
 
   /** Mega Piedra del HUD: solo si llevas la piedra y tu Pokémon tiene mega; brilla si se puede, se vacía mientras dura. */
@@ -2833,9 +2998,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const h = this.megaHud;
     if (!h) return;
     const ctx = this.megaContext();
-    const offered = megaOffered(ctx);
+    // T75: el mismo botón sirve para Dinamax, Tera y Z: se ve si se ofrece alguna y brilla si alguna se puede
+    const offered = this.powerButtonOffered();
     const on = powerFormActive(this.powerForm);
-    const ready = offered && megaBlock(this.powerForm, ctx) === null;
+    const pick = pickPower(this.powerForm, this.powerContext());
+    const ready = (megaOffered(ctx) && megaBlock(this.powerForm, ctx) === null) || (!!pick && pick.block === null);
     const fill = on ? powerFormFill(this.powerForm) : 0;
     const key = `${offered}:${ready}:${on}:${Math.round(fill * 20)}:${this.powerForm.usedThisFloor}`;
     if (h.shown === key) return;
@@ -2946,6 +3113,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       slotSpins: [...this.slotSpins],
       fishCasts: [...this.fishCasts],
       powerForm: powerFormToSave(this.powerForm),
+      powerMeter: Math.round(this.powerMeter.value * 10) / 10,
+      zUsed: this.zUsed,
     });
   }
 
@@ -4432,7 +4601,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     for (const b of this.actionBadges) {
       b.g.clear();
       // T74: la etiqueta de la megaevolución solo si se ofrece (Mega Piedra y Pokémon con mega)
-      if (b.action === 'mega' && !megaOffered(this.megaContext())) {
+      if (b.action === 'mega' && !this.powerButtonOffered()) {
         b.t.setVisible(false);
         continue;
       }
@@ -6080,6 +6249,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       potions: this.potions,
       secondChance: this.secondChanceUsed,
       bossesBeaten: this.bossesBeaten,
+      powerMeter: this.powerMeter.value,
+      zUsed: this.zUsed,
     };
     // Caída por la trampilla: se coloca encima, gira encogiéndose hacia el agujero y la cámara se acerca
     const p = this.player;
@@ -6242,7 +6413,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.r3Prev = r3Now;
     // T74: megaevolución con su tecla, la cruceta arriba (botón 12, libre en partida) o clic en la Mega Piedra del HUD
     const dpadUpNow = hasPad && !!pad!.buttons[12]?.pressed;
-    if (Phaser.Input.Keyboard.JustDown(this.megaInputKey) || (dpadUpNow && !this.dpadUpPrev)) this.megaEvolve();
+    if (Phaser.Input.Keyboard.JustDown(this.megaInputKey) || (dpadUpNow && !this.dpadUpPrev)) this.powerButton();
     this.dpadUpPrev = dpadUpNow;
     this.rbPrev = rbNow;
     // Objeto activo: Espacio o LB (el clic va en su cuadro)
@@ -6342,6 +6513,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.potionsHud?.setText(String(this.potions));
     this.paintBall(time);
     this.paintMega();
+    this.paintPowerMeter();
     this.slots.forEach((m, i) => this.paintSlot(i, m, !m || time >= this.slotReady[i]));
 
     if (this.combo.count > 0 && !comboAlive(this.combo, time)) this.comboLose();
@@ -6518,23 +6690,23 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Disparo básico. Los pasivos cambian cuántos salen, cuánto daño hacen y hasta dónde llegan. */
   private fireTear(dir: Phaser.Math.Vector2) {
-    sfx(shotSfx(this.tearType));
+    sfx(shotSfx(this.shotType()));
     this.lastShotAt = this.time.now;
     const s = this.stats;
     const n = 1 + s.extraShots;
     const opts = {
-      damage: s.damage * this.dmgMul() * pinchMul(this.ability, this.tearType, this.hp, s.maxHp),
+      damage: s.damage * this.dmgMul() * pinchMul(this.ability, this.shotType(), this.hp, s.maxHp),
       speed: s.shotSpeed,
       // Pokéradar: más alcance cuantos más enemigos queden
       life: s.range * (1 + s.rangePerEnemy * this.enemies.countActive(true)),
       size: 0.7 * s.shotScale,
-      color: typeColor(this.tearType),
-      type: this.tearType,
+      color: typeColor(this.shotType()),
+      type: this.shotType(),
       pierce: s.pierce,
       bounces: s.bounces,
     };
     // Cómo vuela según tu tipo: el eléctrico en zigzag, el agua ondulando, el psíquico persiguiendo un poco…
-    const basic = basicShotFor(this.tearType);
+    const basic = basicShotFor(this.shotType());
     Object.assign(opts, { speed: opts.speed * basic.speed, size: opts.size * basic.size, motion: basic.motion, anim: basic.anim });
     if (this.fxBudget.take(this.time.now)) muzzle(this, this.player.x, this.player.y, dir.x, dir.y, opts.color);
     for (let k = 0; k < n; k++) this.spawnShot(dir, (k - (n - 1) / 2) * SPREAD, opts);
@@ -6672,7 +6844,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Suma al daño hecho de la partida (sin contar lo que sobra al rematar). */
   private countDamage(e: Sprite, dmg: number) {
-    this.counters.damage += Math.max(0, Math.min(dmg, e.getData('hp') as number));
+    const done = Math.max(0, Math.min(dmg, e.getData('hp') as number));
+    this.counters.damage += done;
+    // T75: el daño que haces llena el medidor de poder
+    meterOnDamage(this.powerMeter, done);
   }
 
   /** Combo de bajas: suma, avisa en los hitos y da un pequeño premio. */
@@ -7573,6 +7748,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // Aviso sobre el jugador, como "¡Esquivado!" (nunca en el centro de la pantalla)
       this.popup(this.player.x, this.player.y - 50, '¡Parry!', 0xffd34d);
       this.addAdrenaline('parry');
+      meterOnParry(this.powerMeter);
       noteParry(this.counters);
       sfx('crit');
       parryHit(this, this.player.x, this.player.y);
@@ -7605,8 +7781,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const weak = enemy.getData('ai') ? enemyDamageMul((enemy.getData('statuses') as ActiveStatus[] | undefined) ?? [], now) : 1;
     // Lluvia y Sol también cambian los ataques de Agua y Fuego de los enemigos
     const foeType = ai?.type ?? (enemy.getData('ptype') as string | undefined);
-    const taken = Math.max(1, Math.round(((enemy.getData('dmg') as number | undefined) ?? 10) * weak * this.stats.damageTaken * weatherPowerMul(this.weather, foeType) * phasePowerMul(this.phase ?? 'day', foeType) * damageMul(foeType, this.playerTypes)));
+    const rawTaken = Math.max(1, Math.round(((enemy.getData('dmg') as number | undefined) ?? 10) * weak * this.stats.damageTaken * weatherPowerMul(this.weather, foeType) * phasePowerMul(this.phase ?? 'day', foeType) * damageMul(foeType, this.playerTypes)));
     this.effectivenessPopup(effectOf(foeType, this.playerTypes), this.player.x, this.player.y - 70);
+    // T75: el escudo del Dinamax/Gigamax para el golpe antes que los PS
+    const taken = absorbWithShield(this.powerForm, rawTaken);
+    if (taken < rawTaken) this.popup(this.player.x, this.player.y - 50, '¡Escudo Dinamax!', 0xe8384f);
+    if (taken <= 0) return;
     if (this.hp - taken <= 0 && this.focusLeft > 0) {
       // Banda Focus: aguanta con 1 PS
       this.focusLeft--;

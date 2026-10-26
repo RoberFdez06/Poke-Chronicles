@@ -61,6 +61,8 @@ function sample(): RunSave {
     fishCasts: [],
     bossesBeaten: 1,
     powerForm: { active: null, leftMs: 0, used: false },
+    powerMeter: 0,
+    zUsed: false,
   };
 }
 
@@ -311,9 +313,29 @@ test('T74: v19 sin forma de poder se migra sin forma y lo que queda de megaevolu
   // Usada en el piso pero ya acabada
   assert.ok(parseRun(JSON.stringify({ ...sample(), powerForm: { active: null, leftMs: 0, used: true } })));
   // Corruptos: forma desconocida, tiempo negativo o de más, activa sin usar
-  assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'gigamax', leftMs: 100, used: true } })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'ultra', leftMs: 100, used: true } })), null);
   assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'mega', leftMs: -1, used: true } })), null);
   assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'mega', leftMs: 999999, used: true } })), null);
   assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'mega', leftMs: 100, used: false } })), null);
   assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: null })), null);
+});
+
+test('T75: v20 se migra con el medidor vacío y el Z sin usar; medidor, Z, Tera y escudo hacen la ida y vuelta', () => {
+  const { powerMeter: _m, zUsed: _z, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 20 }))!;
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.powerMeter, 0);
+  assert.equal(run.zUsed, false);
+  const tera = { active: 'tera', leftMs: 5000, used: true, tera: 'water', shield: 0 };
+  const mid = parseRun(JSON.stringify({ ...sample(), powerMeter: 42.5, zUsed: true, powerForm: tera }))!;
+  assert.equal(mid.powerMeter, 42.5);
+  assert.equal(mid.zUsed, true);
+  assert.deepEqual(mid.powerForm, tera);
+  assert.ok(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'dynamax', leftMs: 100, used: true, tera: null, shield: 20 } })));
+  // Corruptos: medidor fuera de rango, Tera sin tipo, escudo de más
+  assert.equal(parseRun(JSON.stringify({ ...sample(), powerMeter: 101 })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), powerMeter: -1 })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), zUsed: 'no' })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'tera', leftMs: 100, used: true } })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'dynamax', leftMs: 100, used: true, shield: 999 } })), null);
 });

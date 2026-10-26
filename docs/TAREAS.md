@@ -593,7 +593,7 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
 - Lógica pura con tests: requisitos, una vez por piso, duración (usa `this.game.loop.time`, no `Clock.now`), lista de especies y que el
   guardado y continuar partida mantienen cuánto queda de megaevolución. Estructúralo con un tipo «forma de poder» para que T75 lo reutilice.
 
-## [ ] T75 — Otras formas de poder (propuesta; solo si T74 va bien)
+## [x] T75 — Otras formas de poder (propuesta; solo si T74 va bien)
 - **Sprites (confirmado por el usuario):** las formas alternativas existen en PokeAPI **con sprite** (`charizard-mega-x`, `charizard-gmax`, `pikachu-gmax`, etc.; ids desde 10000). Usa la forma real al megaevolucionar o gigamaxear; si una concreta no trajera sprite, deja el sprite normal más grande con aura (`// TODO(supervisor)`), nunca dibujes tú un personaje conocido.
 - Reutiliza la estructura de T74 con el mismo botón y la regla «solo una forma activa a la vez y una vez por piso». Cada una pide su objeto:
   **Dinamax/Gigamax** (**Banda Dinamax**: tamaño ×1,5 con un escudo extra de vida y los ataques más grandes; Gigamax solo para las
@@ -607,6 +607,10 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
   guarda con la partida y se ve en el HUD sin tapar nada (el dibujo de la barra queda con las formas de `theme.ts`).
 - Tests de la lógica pura de cada forma y del medidor (subida, bajada, gasto por forma, el límite de PS del Dinamax). Efectos y sprites como
   `// TODO(supervisor)`.
+- **Hecho:** Dinamax, Gigamax (32 especies con su forma `-gmax` de PokeAPI), Teracristalización y Cristal Z en `powerForm.ts`, medidor
+  en `powerMeter.ts`, objetos Banda Dinamax / Teragema / Cristal Z (legendarios), mismo botón que la mega (si hay varias, la primera
+  que se pueda: Gigamax/Dinamax, Tera, Z), tira del medidor bajo la adrenalina, RunSave v21. El tipo Tera lo elige el juego (el de más
+  ventaja contra el bioma); elegirlo a mano queda pendiente si se quiere. Efectos y cristal Tera, `// TODO(supervisor)`.
 
 # Tanda 10 (pedida por Roberto el 26/10: reacciones, ataque cargado, arenas, eventos con decisiones, rutas, semilla e imagen)
 

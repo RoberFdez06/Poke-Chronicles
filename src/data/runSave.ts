@@ -30,8 +30,9 @@ export const RUN_SLOTS = 3;
  * v19: jefes vencidos, que dan huecos de objetos (T73). Los v18 se migran contando los jefes que ya habían salido
  *      menos el actual; no se les quita ningún objeto aunque lleven más que huecos.
  * v20: forma de poder (megaevolución, T74): cuánto le queda y si ya se usó en el piso. Los v19 no la tenían.
+ * v21: medidor de poder y Cristal Z usado (T75). La forma guarda además el tipo Tera y el escudo del Dinamax.
  */
-export const RUN_VERSION = 20;
+export const RUN_VERSION = 21;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -135,6 +136,9 @@ export interface RunSave {
   bossesBeaten: number;
   /** T74: forma de poder activa (megaevolución), lo que le queda (ms) y si ya se ha usado en este piso. */
   powerForm: PowerFormSave;
+  /** T75: medidor de poder (0..100) y si ya se ha usado el Cristal Z en la partida. */
+  powerMeter: number;
+  zUsed: boolean;
 }
 
 export interface DailyRun {
@@ -274,6 +278,11 @@ function migrateV19(d: RunSave): RunSave {
   return { ...d, version: 20, powerForm: { active: null, leftMs: 0, used: false } };
 }
 
+/** v20 no tenía medidor de poder ni Cristal Z (T75): medidor vacío y Z sin usar. */
+function migrateV20(d: RunSave): RunSave {
+  return { ...d, version: 21, powerMeter: 0, zUsed: false };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -303,6 +312,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 17) d = migrateV17(d);
   if (d.version === 18) d = migrateV18(d);
   if (d.version === 19) d = migrateV19(d);
+  if (d.version === 20) d = migrateV20(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
@@ -325,7 +335,8 @@ export function parseRun(raw: string | null): RunSave | null {
     isInt(d.eggLeft) && d.eggLeft >= 0 && isInt(d.allyId) && d.allyId >= 0 && isInt(d.tiredRooms) && d.tiredRooms >= 0 && isInt(d.potions) && d.potions >= 0 &&
     typeof d.secondChance === 'boolean' && typeof d.captureDone === 'boolean' && isInt(d.capturePrevAlly) && d.capturePrevAlly >= -1 &&
     isPairs(d.slotSpins) && isPairs(d.fishCasts) && isInt(d.bossesBeaten) && d.bossesBeaten >= 0 &&
-    isPowerFormSave(d.powerForm);
+    isPowerFormSave(d.powerForm) &&
+    typeof d.powerMeter === 'number' && Number.isFinite(d.powerMeter) && d.powerMeter >= 0 && d.powerMeter <= 100 && typeof d.zUsed === 'boolean';
   return ok ? d : null;
 }
 

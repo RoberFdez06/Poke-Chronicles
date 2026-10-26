@@ -128,6 +128,7 @@ export function controlsFor(k: KeyMap): [string, string][] {
     ['Parry', `${L('parry')} · clic central · RT (justo antes de que te den: bloquea y tu siguiente golpe es crítico)`],
     ['Poké Ball', `${L('ball')} · clic en la Poké Ball del HUD · R3 (pulsar el stick derecho) con un enemigo débil cerca`],
     ['Megaevolución', `${L('mega')} · clic en la Mega Piedra del HUD · cruceta arriba (con Mega Piedra y la adrenalina llena)`],
+    ['Dinamax · Tera · Z', `El mismo botón: ${L('mega')} · clic en su icono del HUD · cruceta arriba (con Banda Dinamax, Teragema o Cristal Z y el medidor de poder)`],
     ['Usar · Bomba · Poción', `Usar: ${L('accept')} · clic · A    Bomba: ${L('bomb')} · clic en la bomba del HUD · RB    Poción: ${L('potion')} · clic en la poción del HUD · stick izq. (pulsar)`],
   ];
 }
