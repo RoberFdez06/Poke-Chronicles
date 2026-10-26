@@ -123,11 +123,21 @@ export class SummaryScene extends Phaser.Scene {
 
     // T62: más cifras de la partida (las guardadas antes no las tienen y se saltan)
     this.moreStats(r);
+    this.routesLine(r);
 
     this.menu = new MenuList(this, 780, 230, ['Otra partida', 'Historial', 'Menú'], (i) => this.pick(i), { w: 280, h: 56, gap: 22 });
     this.add
       .text(480, 612, 'Flechas, ratón o mando para elegir · Enter, clic o A · Esc o B: menú', { fontFamily: FONT, fontSize: '15px', color: '#ffffff' })
       .setOrigin(0.5).setAlpha(0.6);
+  }
+
+  /** T80: rutas elegidas en la partida (encima del cuadro de la derecha). */
+  private routesLine(r: RunRecord) {
+    const routes = r.routes ?? [];
+    if (routes.length === 0) return;
+    // Las últimas 3 (en Infinito pueden ser muchas)
+    const text = routes.slice(-3).map((x, k) => `${routes.length - Math.min(3, routes.length) + k + 1}. ${x}`).join('\n');
+    this.add.text(654, 444, `Rutas: ${routes.length}\n${text}`, { fontFamily: FONT, fontSize: '12px', color: HEX.text, lineSpacing: 2 }).setOrigin(0, 1);
   }
 
   /** Cuadro de la derecha: parrys, objetos cogidos, sala más rápida y tiempo de cada piso. */

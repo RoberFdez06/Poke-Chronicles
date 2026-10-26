@@ -10,6 +10,7 @@ import { emptyCounters, isCounters, type RunCounters } from './runHistory.ts';
 import { BERRIES, POTIONS, type ShopSlot } from './loot.ts';
 import { REACTIONS, discover, type ReactionId } from './reactions.ts';
 import { isPowerFormSave, type PowerFormSave } from './powerForm.ts';
+import { isRouteOption, type RouteOption } from '../level/routes.ts';
 
 export const RUN_SLOTS = 3;
 /**
@@ -34,8 +35,9 @@ export const RUN_SLOTS = 3;
  * v21: medidor de poder y Cristal Z usado (T75). La forma guarda además el tipo Tera y el escudo del Dinamax.
  * v22: historias con decisiones ya vistas en la partida (T79), para que cada una salga una sola vez.
  * v23: reacciones de tipo descubiertas (T76). Los v22 empiezan sin ninguna.
+ * v24: ruta del piso actual y rutas elegidas en la partida (T80). Los v23 van por la ruta de siempre (ninguna).
  */
-export const RUN_VERSION = 23;
+export const RUN_VERSION = 24;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -146,6 +148,9 @@ export interface RunSave {
   storiesSeen: string[];
   /** T76: reacciones de tipo descubiertas en la partida (en el orden de la tabla, sin repetir). */
   reactionsFound: ReactionId[];
+  /** T80: ruta por la que se llegó a este piso (null = la de siempre) y las elegidas en la partida, en orden. */
+  route: RouteOption | null;
+  routesTaken: RouteOption[];
 }
 
 export interface DailyRun {
@@ -300,6 +305,11 @@ function migrateV22(d: RunSave): RunSave {
   return { ...d, version: 23, reactionsFound: [] };
 }
 
+/** v23 no tenía rutas (T80): piso por la ruta de siempre y ninguna elegida. */
+function migrateV23(d: RunSave): RunSave {
+  return { ...d, version: 24, route: null, routesTaken: [] };
+}
+
 const REACTION_IDS: readonly string[] = REACTIONS.map((r) => r.id);
 
 /** Lista de reacciones guardada: debe ser un array; los ids desconocidos se descartan y los repetidos se juntan. */
@@ -342,6 +352,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 20) d = migrateV20(d);
   if (d.version === 21) d = migrateV21(d);
   if (d.version === 22) d = migrateV22(d);
+  if (d.version === 23) d = migrateV23(d);
   if (d.version !== RUN_VERSION) return null;
   const reactions = cleanReactions(d.reactionsFound);
   if (!reactions) return null;
@@ -369,7 +380,8 @@ export function parseRun(raw: string | null): RunSave | null {
     isPairs(d.slotSpins) && isPairs(d.fishCasts) && isInt(d.bossesBeaten) && d.bossesBeaten >= 0 &&
     isPowerFormSave(d.powerForm) &&
     typeof d.powerMeter === 'number' && Number.isFinite(d.powerMeter) && d.powerMeter >= 0 && d.powerMeter <= 100 && typeof d.zUsed === 'boolean' &&
-    Array.isArray(d.storiesSeen) && d.storiesSeen.every((k) => typeof k === 'string');
+    Array.isArray(d.storiesSeen) && d.storiesSeen.every((k) => typeof k === 'string') &&
+    (d.route === null || isRouteOption(d.route)) && Array.isArray(d.routesTaken) && d.routesTaken.every(isRouteOption);
   return ok ? d : null;
 }
 

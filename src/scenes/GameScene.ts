@@ -250,7 +250,9 @@ import {
 } from '../data/forge';
 import { canAfford, describeEffects, optionLabel, pickStory, resolveChoice, type ChoiceEffects, type ChoiceState, type ChoiceStory } from '../level/choiceEvents';
 import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
-import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES, pickBossWeighted, pickMixedFoes } from '../level/biomes';
+import { biomeBossPool, biomeById, biomeEnemyPool, biomeFor, Biome, BIOMES, pickBossWeighted, pickMixedFoes } from '../level/biomes';
+import { forcedEventRng, hasRoutes, ROUTE_EVENT, routeLabel, routeMul, routeOptions, type RouteOption } from '../level/routes';
+import type { RouteSceneData } from './RouteScene';
 import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES,
   HEAL_EVERY_MS,
   HEAL_PART,
@@ -336,7 +338,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed' | 'reactionsFound' | 'storiesSeen'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed' | 'reactionsFound' | 'storiesSeen' | 'route' | 'routesTaken'
 >;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
@@ -584,6 +586,9 @@ export class GameScene extends Phaser.Scene {
   private zUsed = false;
   /** T79: historias con decisiones ya vistas en la partida (cada una sale una vez). */
   private storiesSeen: string[] = [];
+  /** T80: ruta por la que se ha llegado a este piso (null = la de siempre) y las elegidas en la partida. */
+  private route: RouteOption | null = null;
+  private routesTaken: RouteOption[] = [];
   private powerMeterHud?: { g: Phaser.GameObjects.Graphics; x: number; y: number; w: number; h: number; shown: string };
   private megaGlowAt = 0;
   private megaInputKey!: Key;
@@ -965,6 +970,8 @@ export class GameScene extends Phaser.Scene {
     // T76: las reacciones descubiertas son de toda la partida (se guardan y pasan de piso)
     this.reactionsFound = [...(r?.reactionsFound ?? this.carry?.reactionsFound ?? [])];
     this.storiesSeen = [...(r?.storiesSeen ?? this.carry?.storiesSeen ?? [])];
+    this.route = r ? r.route : (this.carry?.route ?? null);
+    this.routesTaken = [...(r?.routesTaken ?? this.carry?.routesTaken ?? [])];
     this.powerMeterHud = undefined;
     this.megaPulseAt = 0;
     this.megaKey = null;
@@ -982,6 +989,12 @@ export class GameScene extends Phaser.Scene {
     this.waveActive = false;
     this.difficulty = applyDifficulty(difficultyFor(this.level()), this.diff);
     this.biome = biomeFor(this.mode, this.mode === 'waves' ? this.level() : this.floorNum);
+    // T80: la ruta elegida cambia el bioma y endurece a los enemigos (vida y daño)
+    if (this.route && (this.mode === 'normal' || this.mode === 'endless')) {
+      const m = routeMul(this.route);
+      this.difficulty = { ...this.difficulty, hp: this.difficulty.hp * m, damage: this.difficulty.damage * m };
+      this.biome = biomeById(this.route.biomeId);
+    }
     this.towerSpec = undefined;
     this.hazardTickAt = 0;
     // Al continuar, el piso se regenera igual con la misma semilla; cada piso nuevo es más grande.
@@ -2355,6 +2368,12 @@ export class GameScene extends Phaser.Scene {
       (this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)
         ? pickRoomEvent(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x2545f491), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]), this.biome.types, this.daily ? DAILY_EVENTS : ROOM_EVENTS)
         : null;
+    // T80: el premio de la ruta (mercader, fuente o historia) es la sala sorpresa del piso, siempre
+    const routeEvent = this.route ? ROUTE_EVENT[this.route.reward] : undefined;
+    if (routeEvent && (this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)) {
+      const exclude = new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]);
+      this.roomEvent = pickRoomEvent(this.floor, this.floorNum, forcedEventRng(mulberry32(this.floorSeed ^ 0x2545f491)), exclude, this.biome.types, [routeEvent]) ?? this.roomEvent;
+    }
     // T56: reglas de sala, con otra semilla del piso; nunca en la del evento ni la del minijefe (ya tienen lo suyo) ni
     // en las salas grandes (se puede entrar por cualquiera de sus casillas y la regla quedaría en otra)
     this.roomRules =
@@ -2636,6 +2655,8 @@ export class GameScene extends Phaser.Scene {
     // que la intro del jefe de las arenas espere a que acabe)
     if (this.carry && !r) this.showFloorIntro();
     this.enterRoom(start);
+    // T80: ruta de «mejor botín»: un objeto más en la sala de llegada
+    if (this.carry && !r && this.route?.reward === 'loot') this.dropItem(start.id, si.cx, si.cy + 110);
     void this.loadAbility(this.formId);
     if (usingOfflineData()) this.notifyOffline();
     // En Oleadas el cartel de la ronda lo pone startWave
@@ -3163,6 +3184,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       zUsed: this.zUsed,
       reactionsFound: [...this.reactionsFound],
       storiesSeen: [...this.storiesSeen],
+      route: this.route ? { ...this.route } : null,
+      routesTaken: this.routesTaken.map((x) => ({ ...x })),
     });
   }
 
@@ -6408,7 +6431,29 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
   }
 
+  /** T80: antes de bajar (Normal e Infinito), se elige la ruta del piso siguiente en RouteScene. */
   private descend() {
+    const next = this.floorNum + 1;
+    if (!hasRoutes(this.mode, next, (n) => isFinalFloor(this.mode, n)) || !this.scene.manager.keys['Route'] || this.scene.isActive('Route')) return this.descendBy(null);
+    // En el desafío diario las rutas salen de la semilla del día (las mismas para todos)
+    const seed = this.daily ? dailyFloorSeed(this.daily.day, next) : this.floorSeed;
+    const options = routeOptions(next, seed, this.mode);
+    if (this.trapdoor) this.trapdoor.armed = false;
+    this.player.setVelocity(0, 0);
+    this.scene.launch('Route', {
+      floor: next,
+      options,
+      onChoice: (o: RouteOption) => {
+        this.scene.stop('Route');
+        this.scene.resume();
+        this.input.keyboard?.resetKeys();
+        this.descendBy(o);
+      },
+    } satisfies RouteSceneData);
+    this.scene.pause();
+  }
+
+  private descendBy(route: RouteOption | null) {
     const door = this.trapdoor;
     this.transitioning = true;
     this.trapdoor = undefined;
@@ -6443,6 +6488,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       zUsed: this.zUsed,
       reactionsFound: [...this.reactionsFound],
       storiesSeen: [...this.storiesSeen],
+      route,
+      routesTaken: [...this.routesTaken.map((x) => ({ ...x })), ...(route ? [{ ...route }] : [])],
     };
     // Caída por la trampilla: se coloca encima, gira encogiéndose hacia el agujero y la cámara se acerca
     const p = this.player;
@@ -8165,6 +8212,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       fastestRoom: Math.round(this.counters.fastestRoom ?? 0),
       // Los pisos ya cerrados al bajar y el de ahora, que sigue abierto
       floorSeconds: floorTimes(this.counters),
+      routes: this.routesTaken.map(routeLabel),
     };
     addRunHistory(this.lastRecord);
     // Un momento de margen y un clic nuevo, para no saltarse la pantalla si estabas disparando; si no, va solo

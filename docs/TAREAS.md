@@ -652,7 +652,7 @@ sprites como `// TODO(supervisor)`, efectos bajos respetados, un commit por tare
 - Lógica pura `resolveChoice(evento, opción, rng)` con tests: probabilidades que suman 100, nunca deja monedas ni PS en negativo, una
   historia solo una vez por partida y que todas son válidas. El panel de texto con las formas de `theme.ts`; el dibujo, `// TODO(supervisor)`.
 
-## [ ] T80 — Rutas del piso
+## [x] T80 — Rutas del piso
 - Al acabar un piso (modos Normal e Infinito; no en Torre) eliges el siguiente entre **2 o 3 rutas**, cada una con su carta: el bioma, la
   dificultad (por ejemplo +20 %) y el premio (tienda extra, descanso con fuente, un evento con decisiones o mejor botín). Lógica pura
   `routeOptions(piso, semilla)` con tests: siempre hay una ruta tranquila, no se repiten tipos de premio y es determinista.

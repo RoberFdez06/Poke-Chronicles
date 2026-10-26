@@ -65,6 +65,8 @@ function sample(): RunSave {
     zUsed: false,
     reactionsFound: [],
     storiesSeen: ['mochila'],
+    route: { biomeId: 'cueva', diffPct: 20, reward: 'shop' },
+    routesTaken: [{ biomeId: 'cueva', diffPct: 20, reward: 'shop' }],
   };
 }
 
@@ -369,4 +371,21 @@ test('T76: v22 se migra sin reacciones; las descubiertas hacen la ida y vuelta y
   assert.deepEqual(messy.reactionsFound, ['descarga', 'vapor']);
   // Tipos equivocados: se rechaza
   for (const bad of ['descarga', 5, null, { 0: 'vapor' }]) assert.equal(parseRun(JSON.stringify({ ...sample(), reactionsFound: bad })), null);
+});
+
+test('T80: v23 se migra sin rutas; la ruta hace la ida y vuelta y las corruptas se rechazan', () => {
+  const { route: _r, routesTaken: _t, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 23 }))!;
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.route, null);
+  assert.deepEqual(run.routesTaken, []);
+  assert.equal(parseRun(JSON.stringify(old)), null);
+  const st = fakeStorage();
+  assert.ok(saveRun(0, sample(), st));
+  assert.deepEqual(loadRun(0, st)!.route, sample().route);
+  for (const bad of [{ biomeId: 'nada', diffPct: 0, reward: 'shop' }, { biomeId: 'cueva', diffPct: -5, reward: 'shop' }, { biomeId: 'cueva', diffPct: 0, reward: 'oro' }, 'cueva']) {
+    assert.equal(parseRun(JSON.stringify({ ...sample(), route: bad })), null);
+    assert.equal(parseRun(JSON.stringify({ ...sample(), routesTaken: [bad] })), null);
+  }
+  assert.equal(parseRun(JSON.stringify({ ...sample(), routesTaken: null })), null);
 });
