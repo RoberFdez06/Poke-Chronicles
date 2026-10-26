@@ -7,7 +7,7 @@ import { levelsFor, parseUpgrades, upgradeCost, type UpgradeBook, type UpgradeKi
 import { nodeState } from './upgradeTree.ts';
 import { activeStorage, type StorageLike } from './storage.ts';
 import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } from './modes.ts';
-import { applyMissionEvent, parseMissions, type Completed, type MissionEvent, type MissionState } from './missions.ts';
+import { applyMissionEvent, offerNpcMission, parseMissions, type Completed, type MissionEvent, type MissionState, type NpcMission } from './missions.ts';
 import { dayNumber } from './gacha.ts';
 import { awardMedal, parseMedals, type MedalAward } from './medals.ts';
 import { KONAMI_KEY } from './easterEggs.ts';
@@ -432,7 +432,16 @@ export function loadMissions(day = dayNumber(), storage: StorageLike | null = br
  * (tickets y desbloqueos). Devuelve lo completado para avisar en la partida.
  */
 export function recordMission(e: MissionEvent, day = dayNumber(), storage: StorageLike | null = browserStorage()): Completed[] {
-  const { state, completed } = applyMissionEvent(loadMissions(day, storage), e, day);
+  return recordMissionEvent(e, day, storage).completed;
+}
+
+/** Como recordMission, pero también dice qué encargos de NPC han caducado (T87). */
+export function recordMissionEvent(
+  e: MissionEvent,
+  day = dayNumber(),
+  storage: StorageLike | null = browserStorage(),
+): { completed: Completed[]; expired: NpcMission[] } {
+  const { state, completed, expired } = applyMissionEvent(loadMissions(day, storage), e, day);
   try {
     storage?.setItem(MISSIONS_KEY, JSON.stringify(state));
   } catch {
@@ -442,7 +451,22 @@ export function recordMission(e: MissionEvent, day = dayNumber(), storage: Stora
     addTickets(c.reward.tickets, storage);
     if (c.reward.pokemon) unlockPokemon(c.reward.pokemon, storage);
   }
-  return completed;
+  return { completed, expired };
+}
+
+/**
+ * T87: un NPC ofrece un encargo y se acepta (si hay hueco, máximo 3). Devuelve el encargo o null.
+ * Los invitados juegan con almacenamiento en memoria (storage.ts): lo pueden hacer, pero no se guarda al cerrar.
+ */
+export function acceptNpcMission(seed: number, day = dayNumber(), storage: StorageLike | null = browserStorage()): NpcMission | null {
+  const r = offerNpcMission(loadMissions(day, storage), seed);
+  if (!r) return null;
+  try {
+    storage?.setItem(MISSIONS_KEY, JSON.stringify(r.state));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+  return r.mission;
 }
 
 // --- Tutorial: consejos vistos (ver tutorial.ts) ---

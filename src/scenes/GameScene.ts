@@ -79,7 +79,7 @@ import {
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
-import { addRunHistory, loadKeys, loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMission, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
+import { acceptNpcMission, addRunHistory, loadKeys, loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMissionEvent, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
 import { disableTips, markTipSeen, shouldShowTip, TIPS, type TipId } from '../data/tutorial';
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
 import { closeFloor, emptyCounters, floorTimes, noteParry, notePickup, noteRoomTime, openFloor, type RunCounters, type RunRecord } from '../data/runHistory';
@@ -693,6 +693,8 @@ export class GameScene extends Phaser.Scene {
   /** Monedas de la partida (solo para la tienda) y estado del Centro y la tienda de este piso. */
   private coins = 0;
   private centerUsed = false;
+  /** T87: en este piso ya ha ofrecido encargo un NPC (uno por piso, en el Centro Pokémon o la tienda). */
+  private npcOffered = false;
   private shop: ShopSlot[] = [];
   private layout = FLOOR_LAYOUT;
   private loot!: Phaser.Physics.Arcade.Group;
@@ -869,6 +871,7 @@ export class GameScene extends Phaser.Scene {
     this.lowHpUsed = false;
     this.lifestealAcc = 0;
     this.centerUsed = false;
+    this.npcOffered = false;
     this.shop = [];
     this.layout = FLOOR_LAYOUT;
     this.counter?.art.destroy();
@@ -1179,6 +1182,8 @@ export class GameScene extends Phaser.Scene {
           this.pmd = m;
           loading.destroy();
           this.startFloor();
+          // Misiones de "llega al piso N (sin curarte)"
+          this.mission({ kind: 'floor', floor: this.floorNum, healed: this.healedRun });
         });
     });
     this.load.start();
@@ -4104,12 +4109,28 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private mission(e: MissionEvent) {
     // T81: las partidas con código no cuentan para misiones ni logros
     if (this.codeRun) return;
-    for (const c of recordMission(e)) {
+    const { completed, expired } = recordMissionEvent(e);
+    for (const m of expired) this.notify(`Encargo caducado\n${m.npc}: ${m.text}`, { kind: 'warning', ms: 4000 });
+    for (const c of completed) {
       const reward = rewardText(c.reward, { item: c.reward.item ? passiveById(c.reward.item)?.name : undefined });
       sfx('buy');
       if (c.kind === 'daily') this.notify(`¡Misión cumplida!\n${c.text}\n${reward}`, { kind: 'mission', ms: 5000 });
+      else if (c.kind === 'npc') this.notify(`¡Encargo cumplido!\n${c.text}\n${reward}`, { kind: 'mission', ms: 5000 });
       else this.notify(`¡Logro: ${c.text}!\n${ACHIEVEMENTS.find((a) => a.id === c.id)?.text ?? ''}\n${reward}`, { kind: 'mission', ms: 5000 });
     }
+  }
+
+  /**
+   * T87: el NPC de la sala especial ofrece un encargo (como mucho uno por piso y 3 activos). Se acepta solo, sin
+   * pulsar nada, así funciona igual con teclado, ratón o mando. Las partidas con código no cuentan.
+   */
+  private npcEncounter(room: Room) {
+    if (this.npcOffered || this.codeRun || this.ended) return;
+    this.npcOffered = true;
+    const m = acceptNpcMission((this.floorSeed ^ Math.imul(room.id + 1, 0x9e3779b1)) >>> 0);
+    if (!m) return;
+    sfx('buy');
+    this.notify(`${m.npc}: «${m.dialog}»\nEncargo: ${m.text} (${m.runs === 1 ? '1 partida' : `${m.runs} partidas`})`, { kind: 'mission', ms: 6000 });
   }
 
   /** Pone en cola un consejo del tutorial si aún no se ha visto (y no están desactivados). */
@@ -4976,6 +4997,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (room.kind === 'start') this.tip('move');
     else if (room.kind === 'center') this.tip('center');
     else if (room.kind === 'shop') this.tip('shop');
+    if (room.kind === 'center' || room.kind === 'shop') this.npcEncounter(room);
     if (!this.cleared.has(room.id) && (this.mode === 'waves' || room.kind === 'combat' || room.kind === 'boss' || room.kind === 'challenge')) this.tip('shoot');
     if (this.chests.has(room.id)) this.tip('chest');
 
@@ -7654,6 +7676,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     hit.on('pointerover', () => (this.overHud = true));
     hit.on('pointerout', () => (this.overHud = false));
     hit.on('pointerdown', () => this.current?.id === room.id && this.useCenter());
+    // T87: NPC de los encargos al lado del mostrador
+    // TODO(supervisor): sprite del NPC; de momento un círculo de color liso
+    this.add.circle(x + 170, y + 40, 16, 0xe6a23c).setDepth(3);
   }
 
   private paintCounter() {
@@ -8417,6 +8442,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // T81: la partida con código guarda su mejor resultado (pisos, rondas o jefes superados) para comparar
     const code = this.seedCode();
     if (this.codeRun && code) submitSeedBest(code, won ? this.floorNum : this.floorNum - 1);
+    // T87: los encargos de NPC caducan contando partidas terminadas
+    this.mission({ kind: 'runEnd' });
     this.ended = true;
     this.endedAt = this.time.now;
     this.physics.pause();

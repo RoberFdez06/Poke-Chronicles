@@ -713,7 +713,7 @@ ratón y mando funcionan cada uno por separado. Lo visual nuevo, `// TODO(superv
   líder y da una medalla/objeto. Generador de puzzles en `src/level/gymPuzzles.ts`, puro y determinista por semilla, con tests: todo
   puzzle generado tiene solución. Lo visual del suelo y las piezas, `// TODO(supervisor)`.
 
-## [ ] T87 — Misiones de NPC
+## [x] T87 — Misiones de NPC
 - NPC en el Centro Pokémon y en salas especiales que piden cosas concretas (derrota 3 Pokémon de agua, llega al piso 8 sin curarte,
   entrega una baya) y dan premio. Se amplía `missions.ts`/`MissionsScene` con un tipo «de NPC» con texto de diálogo. Máximo 3 activas.
   Tests de progreso y de caducidad. Los invitados pueden hacerlas pero no se guardan.

@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { fitDesign } from '../ui/layout';
 import { loadMedals, loadMissions } from '../data/save';
 import { dayNumber } from '../data/gacha';
-import { ACHIEVEMENTS, dailyMissions, isAchieved, rewardText, type Reward } from '../data/missions';
+import { ACHIEVEMENTS, dailyMissions, isAchieved, NPC_MAX_ACTIVE, npcMissionById, rewardText, type Reward } from '../data/missions';
 import { MEDALS } from '../data/medals';
 import { passiveById } from '../data/items';
 import { addBackButton } from '../ui/cards';
@@ -28,13 +28,16 @@ function untilMidnight(now = new Date()): string {
 export class MissionsScene extends Phaser.Scene {
   private nav!: NavInput;
   private leaving = false;
+  /** 0 = misiones de hoy, medallas y logros; 1 = encargos de NPC (T87). */
+  private page = 0;
 
   constructor() {
     super('Missions');
   }
 
-  create() {
+  create(data?: { page?: number }) {
     this.leaving = false;
+    this.page = data?.page === 1 ? 1 : 0;
     this.nav = new NavInput(this);
     fadeIn(this);
     fitDesign(this);
@@ -46,6 +49,20 @@ export class MissionsScene extends Phaser.Scene {
 
     const day = dayNumber();
     const state = loadMissions(day);
+
+    // Pestaña para cambiar de página: clic, ←/→ (o A/D) o cruceta/stick
+    const tab = this.add
+      .text(920, 44, this.page === 0 ? 'Encargos de NPC ▸' : '◂ Misiones y logros', {
+        fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: '#ffffff', backgroundColor: '#2b3a67', padding: { x: 10, y: 6 },
+      })
+      .setOrigin(1, 0.5)
+      .setInteractive({ useHandCursor: true });
+    tab.on('pointerdown', () => this.flip());
+
+    if (this.page === 1) {
+      this.npcPage(state.npc);
+      return;
+    }
 
     // --- Diarias ---
     drawBox(this.add.graphics(), 40, 84, 880, 196, { radius: 14 });
@@ -111,6 +128,47 @@ export class MissionsScene extends Phaser.Scene {
       .setOrigin(0.5).setAlpha(0.7);
   }
 
+  /** T87: los encargos de NPC activos (máximo 3), con su diálogo, progreso, partidas que quedan y premio. */
+  private npcPage(active: readonly { id: string; n: number; runsLeft: number }[]) {
+    this.add.text(480, 100, `Encargos de NPC ${active.length}/${NPC_MAX_ACTIVE}`, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: HEX.gold })
+      .setOrigin(0.5).setStroke('#2b3a67', 8);
+    for (let k = 0; k < NPC_MAX_ACTIVE; k++) {
+      const y = 130 + k * 150;
+      drawBox(this.add.graphics(), 40, y, 880, 136, { radius: 14 });
+      const a = active[k];
+      const m = a ? npcMissionById(a.id) : undefined;
+      if (!a || !m) {
+        this.add.text(480, y + 68, 'Hueco libre: habla con los NPC del Centro Pokémon o de la tienda', {
+          fontFamily: FONT, fontSize: '17px', color: HEX.textSoft,
+        }).setOrigin(0.5);
+        continue;
+      }
+      // TODO(supervisor): retrato del NPC; de momento un círculo de color liso
+      this.add.circle(84, y + 50, 24, 0xe6a23c);
+      this.add.text(124, y + 26, m.npc, { fontFamily: FONT, fontSize: '19px', fontStyle: 'bold', color: HEX.text }).setOrigin(0, 0.5);
+      this.add.text(124, y + 56, `«${m.dialog}»`, { fontFamily: FONT, fontSize: '14px', fontStyle: 'italic', color: HEX.textSoft, wordWrap: { width: 760 } })
+        .setOrigin(0, 0.5);
+      this.add.text(124, y + 92, m.text, { fontFamily: FONT, fontSize: '17px', color: HEX.text }).setOrigin(0, 0.5);
+      this.bar(560, y + 92, 160, a.n / m.goal);
+      this.add.text(732, y + 92, `${a.n}/${m.goal}`, { fontFamily: FONT, fontSize: '16px', color: HEX.textSoft }).setOrigin(0, 0.5);
+      addIcon(this, 812, y + 92, 'ticket', 1.5);
+      this.add.text(830, y + 92, `+${m.reward.tickets}`, { fontFamily: FONT, fontSize: '18px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(0, 0.5);
+      this.add.text(124, y + 118, a.runsLeft === 1 ? 'Caduca al acabar esta partida' : `Caduca en ${a.runsLeft} partidas`, {
+        fontFamily: FONT, fontSize: '13px', color: a.runsLeft === 1 ? '#c0392b' : HEX.textSoft,
+      }).setOrigin(0, 0.5);
+    }
+    this.add
+      .text(480, 626, 'Te los dan los NPC al entrar en su sala · ←/→ o clic arriba para cambiar · Esc, B o "Volver" para salir', {
+        fontFamily: FONT, fontSize: '14px', color: '#ffffff',
+      })
+      .setOrigin(0.5).setAlpha(0.7);
+  }
+
+  private flip() {
+    if (this.leaving) return;
+    this.scene.restart({ page: this.page === 0 ? 1 : 0 });
+  }
+
   /** Barrita de progreso (0-1). */
   private bar(x: number, y: number, w: number, f: number) {
     const g = this.add.graphics();
@@ -126,6 +184,8 @@ export class MissionsScene extends Phaser.Scene {
 
   update() {
     if (this.leaving) return;
-    if (this.nav.read().back) this.back();
+    const n = this.nav.read();
+    if (n.back) this.back();
+    else if (n.dx !== 0) this.flip();
   }
 }
