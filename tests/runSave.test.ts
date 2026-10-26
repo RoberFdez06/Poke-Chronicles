@@ -60,6 +60,7 @@ function sample(): RunSave {
     slotSpins: [],
     fishCasts: [],
     bossesBeaten: 1,
+    powerForm: { active: null, leftMs: 0, used: false },
   };
 }
 
@@ -298,4 +299,21 @@ test('T73: v18 sin jefes vencidos se migra contando los jefes vistos menos el ac
   assert.equal(none.bossesBeaten, 0);
   assert.equal(parseRun(JSON.stringify({ ...sample(), bossesBeaten: -1 })), null);
   assert.equal(parseRun(JSON.stringify({ ...sample(), bossesBeaten: 1.5 })), null);
+});
+
+test('T74: v19 sin forma de poder se migra sin forma y lo que queda de megaevolución hace la ida y vuelta', () => {
+  const { powerForm: _p, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 19 }))!;
+  assert.equal(run.version, RUN_VERSION);
+  assert.deepEqual(run.powerForm, { active: null, leftMs: 0, used: false });
+  const mid = parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'mega', leftMs: 12345, used: true } }))!;
+  assert.deepEqual(mid.powerForm, { active: 'mega', leftMs: 12345, used: true });
+  // Usada en el piso pero ya acabada
+  assert.ok(parseRun(JSON.stringify({ ...sample(), powerForm: { active: null, leftMs: 0, used: true } })));
+  // Corruptos: forma desconocida, tiempo negativo o de más, activa sin usar
+  assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'gigamax', leftMs: 100, used: true } })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'mega', leftMs: -1, used: true } })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'mega', leftMs: 999999, used: true } })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: { active: 'mega', leftMs: 100, used: false } })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), powerForm: null })), null);
 });

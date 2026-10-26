@@ -311,6 +311,10 @@ const SPECIAL_ITEMS: PassiveItem[] = [
     apply: (s) => void (s.lootMagnet += 110) },
   { id: 'piedra-lunar', name: 'Piedra Lunar', description: 'Tus disparos giran un poco hacia los enemigos y llegan un 10 % más lejos.', color: 0xcfd8dc,
     apply: (s) => void ((s.homing += 1.2), (s.range *= 1.1)) },
+  // T74: permite megaevolucionar (ver powerForm.ts) a los Pokémon que pueden; los 5 PS son para que también valga algo
+  // a los demás y para que, como todo pasivo, cambie alguna estadística
+  { id: 'mega-piedra', name: 'Mega Piedra', description: 'Si tu Pokémon tiene megaevolución, con la adrenalina llena puedes megaevolucionar (una vez por piso). +5 PS máximos.', color: 0x8fd3ff,
+    apply: (s) => void (s.maxHp += 5) },
   ...TYPE_BOOSTERS.map(([id, name, type, color]) => ({
     id,
     name,
@@ -449,6 +453,8 @@ export const PASSIVE_RARITY: Readonly<Record<string, MoveRarity>> = {
   'doble-equipo': 'epic', 'concha-campana': 'epic', 'gafas-especiales': 'epic', 'roca-del-rey': 'epic', 'mineral-evolutivo': 'epic',
   'bola-ferrea': 'epic', 'piedra-lunar': 'epic',
   'cola-gemela': 'legendary', 'orbe-vital': 'legendary',
+  // T74: objeto raro de verdad (sale poco en cofres, tienda y jefes)
+  'mega-piedra': 'legendary',
 };
 export const passiveRarity = (id: string): MoveRarity => PASSIVE_RARITY[id] ?? 'rare';
 /** Precio en la tienda según la rareza (monedas de la partida). */

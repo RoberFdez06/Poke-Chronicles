@@ -60,7 +60,8 @@ test('T49: usar poción tiene su tecla (C) y sale en los controles', async () =>
   assert.equal(ACTION_LABEL.potion, 'Usar poción');
   assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([, how]) => how.includes('Poción: C')));
   // Caben en la pantalla de teclas (2 columnas de 10 desde T53)
-  assert.ok(ACTIONS.length <= 20);
+  // La pantalla de teclas (KeysScene) tiene dos columnas de 11 filas
+  assert.ok(ACTIONS.length <= 22);
 });
 
 test('T53: el parry tiene su tecla (F), sale en los controles y va detrás de las de antes', () => {
@@ -79,14 +80,26 @@ test('T53: un guardado de antes con la F en otra acción no pierde sus teclas', 
   assert.equal(k.potion, 'C');
 });
 
-test('T65: la Poké Ball tiene su tecla (G), es la última acción y sale en los controles', () => {
+test('T65: la Poké Ball tiene su tecla (G), va detrás del parry y sale en los controles', () => {
   assert.equal(DEFAULT_KEYS.ball, 'G');
-  assert.equal(ACTIONS[ACTIONS.length - 1], 'ball');
-  assert.ok(ACTIONS.length <= 20);
+  assert.ok(ACTIONS.indexOf('ball') > ACTIONS.indexOf('parry'));
+  // La pantalla de teclas (KeysScene) tiene dos columnas de 11 filas
+  assert.ok(ACTIONS.length <= 22);
   assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([what, how]) => what === 'Poké Ball' && how.includes('G') && how.includes('R3')));
   // Un guardado de antes con la G en otra acción no pierde sus teclas
   const k = parseKeys(JSON.stringify({ ...DEFAULT_KEYS, ball: undefined, bomb: 'G' }));
   assert.equal(k.bomb, 'G');
   assert.notEqual(k.ball, 'G');
+  assert.equal(new Set(Object.values(k)).size, ACTIONS.length);
+});
+
+test('T74: megaevolucionar tiene su tecla (M), es la última acción y sale en los controles', () => {
+  assert.equal(DEFAULT_KEYS.mega, 'M');
+  assert.equal(ACTIONS[ACTIONS.length - 1], 'mega');
+  assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([what, how]) => what === 'Megaevolución' && how.includes('M') && how.includes('cruceta')));
+  // Un guardado de antes con la M en otra acción no pierde sus teclas
+  const k = parseKeys(JSON.stringify({ ...DEFAULT_KEYS, mega: undefined, bomb: 'M' }));
+  assert.equal(k.bomb, 'M');
+  assert.notEqual(k.mega, 'M');
   assert.equal(new Set(Object.values(k)).size, ACTIONS.length);
 });

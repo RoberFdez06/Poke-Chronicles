@@ -582,7 +582,7 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
 - **Estado (rama t73):** hechos huecos, reciclar, fusionar, forja como evento y en el descanso de la Torre, `RunSave` v19.
   Queda sin hacer lo opcional («mejorar» +25 % hasta nivel 3); ver `docs/BITACORA.md` (T73).
 
-## [ ] T74 — Megaevolución del jugador (en cualquier modo)
+## [x] T74 — Megaevolución del jugador (en cualquier modo)
 - **Sprites (confirmado por el usuario):** las formas alternativas existen en PokeAPI **con sprite** (`charizard-mega-x`, `charizard-gmax`, `pikachu-gmax`, etc.; ids desde 10000). Usa la forma real al megaevolucionar o gigamaxear; si una concreta no trajera sprite, deja el sprite normal más grande con aura (`// TODO(supervisor)`), nunca dibujes tú un personaje conocido.
 - Botón de megaevolución (teclado, ratón y mando, con su etiqueta). Requisitos, todos a la vez: llevar una **Mega Piedra** (objeto raro
   nuevo que sale en cofres, tiendas y jefes), tener la **barra de adrenalina llena** (T55; gasta la barra) y que tu Pokémon **tenga

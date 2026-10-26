@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetchAttackMovesForTypes, fetchMoveInfo, fetchEvolutionsLeft, fetchNextEvolutions, fetchPokemon, fetchPokemonCard, pickSprites } from '../data/pokeapi';
+import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetchAttackMovesForTypes, fetchMoveInfo, fetchEvolutionsLeft, fetchNextEvolutions, fetchPokemon, fetchPokemonCard, fetchFormSprites, pickSprites } from '../data/pokeapi';
 import { evolveFloors, pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
@@ -262,7 +262,8 @@ import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBeh
 import { drawMinimap } from './minimap';
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
-import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineSpeedMul, gainAdrenaline, newAdrenaline, tickAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
+import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineFull, adrenalineSpeedMul, gainAdrenaline, spendAdrenaline, newAdrenaline, tickAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
+import { MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState } from '../data/powerForm';
 import { canCapture, canThrow, CAPTURE_RANGE, newCaptureState, nextFloorCapture, resolveThrow, rollCapture, type CaptureState } from '../data/capture';
 import { DARK_RADIUS, darkEdge, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, ruleDamageMul, ruleNotice, shouldMultiply, speedRoomBonus, MULTIPLY_HP, MULTIPLY_SIZE, SPEED_ROOM_MUL, type RoomRule } from '../level/roomRules';
 import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data/secondChance';
@@ -558,6 +559,19 @@ export class GameScene extends Phaser.Scene {
   private ballKey!: Key;
   private r3Prev = false;
   private ballHud?: { g: Phaser.GameObjects.Graphics; x: number; y: number; shown: string };
+  /**
+   * T74: forma de poder (megaevolución). El tiempo avanza con `game.loop.time` (no con Clock.now) y se recorta el paso,
+   * así la pausa no la gasta. `megaKey` = textura de la forma mega cargada (null = sin sprite: el normal con brillo).
+   */
+  private powerForm: PowerFormState = newPowerFormState();
+  private powerFormLoopAt = 0;
+  private megaPulseAt = 0;
+  private megaKey: string | null = null;
+  private megaGlowAt = 0;
+  private megaInputKey!: Key;
+  private dpadUpPrev = false;
+  private megaHud?: { g: Phaser.GameObjects.Graphics; x: number; y: number; shown: string };
+  private megaZone?: Phaser.GameObjects.Zone;
   private tiredRooms = 0;
   /** Lo dibujado del evento de la sala actual y los sitios donde se usa con Enter / A / clic. */
   private eventObjs: Phaser.GameObjects.GameObject[] = [];
@@ -720,7 +734,7 @@ export class GameScene extends Phaser.Scene {
   /** Botón con el que se lanza cada poder (tecla o botón del mando, según con qué juegues). */
   private slotBadges: Phaser.GameObjects.Text[] = [];
   /** Botón de la bomba, la poción y el objeto activo (tecla o botón del mando), junto a cada uno en el HUD. */
-  private actionBadges: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; x: number; y: number; pad: string; action: 'active' | 'bomb' | 'potion' | 'parry' | 'ball' }[] = [];
+  private actionBadges: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; x: number; y: number; pad: string; action: 'active' | 'bomb' | 'potion' | 'parry' | 'ball' | 'mega' }[] = [];
   private badgeShown = '';
   private banner!: Phaser.GameObjects.Text;
   private toasts?: ToastStack;
@@ -919,6 +933,15 @@ export class GameScene extends Phaser.Scene {
     this.capture = r ? { ...newCaptureState(), done: r.captureDone, prevAllyId: r.capturePrevAlly >= 0 ? r.capturePrevAlly : null } : newCaptureState();
     this.capturing = false;
     this.r3Prev = false;
+    // T74: al continuar, la forma de poder tal cual (lo que le quedaba); en un piso nuevo, recargada y sin forma
+    this.powerForm = r ? powerFormFromSave(r.powerForm) : newPowerFormState();
+    this.powerFormLoopAt = this.game.loop.time;
+    this.megaPulseAt = 0;
+    this.megaKey = null;
+    this.megaGlowAt = 0;
+    this.dpadUpPrev = false;
+    this.megaHud = undefined;
+    this.megaZone = undefined;
     this.tiredRooms = r?.tiredRooms ?? this.carry?.tiredRooms ?? 0;
     this.potions = r?.potions ?? this.carry?.potions ?? 0;
     this.buffMul = 1;
@@ -1263,13 +1286,16 @@ export class GameScene extends Phaser.Scene {
     if (this.hpSacrificed > 0) stats.maxHp = Math.max(1, stats.maxHp - this.hpSacrificed);
     // Fuente curativa (T48): beber gratis cansa unas salas
     if (this.tiredRooms > 0) stats.speed *= FOUNTAIN_TIRED_SPEED;
+    // T74: la megaevolución da PS máximos mientras dura (se quitan al acabar; ver endPowerForm)
+    stats.maxHp += powerFormMaxHpBonus(this.powerForm);
     return stats;
   }
 
   /** Multiplicador de daño de Ataque X mientras dura. */
   private dmgMul(): number {
     // T55: la adrenalina activa se suma a Ataque X (se multiplican)
-    return (this.time.now < this.buffUntil ? this.buffMul : 1) * adrenalineDamageMul(this.adrenaline);
+    // T74: la megaevolución también
+    return (this.time.now < this.buffUntil ? this.buffMul : 1) * adrenalineDamageMul(this.adrenaline) * powerFormDamageMul(this.powerForm);
   }
 
   /**
@@ -2314,6 +2340,8 @@ export class GameScene extends Phaser.Scene {
     const fw = this.player.width;
     this.player.setCircle(fw * 0.3, fw * 0.2, fw * 0.2);
     if (!this.shiny) this.applyPmd(this.player, this.formId, 84, true);
+    // T74: al continuar con la megaevolución a medias, vuelve a ponerse la forma
+    if (powerFormActive(this.powerForm)) void this.applyMegaLook();
 
     this.enemies = this.physics.add.group();
     this.shots = this.physics.add.group();
@@ -2356,6 +2384,7 @@ export class GameScene extends Phaser.Scene {
     this.potionKey = key('potion');
     this.parryKey = key('parry');
     this.ballKey = key('ball');
+    this.megaInputKey = key('mega');
     this.activeKey = key('active');
     this.escKey = key('back');
     this.pauseKey = key('pause');
@@ -2456,7 +2485,7 @@ export class GameScene extends Phaser.Scene {
     };
     const activeBtn = over(hud(this.add.zone(LX + LW / 2, H - 71, LW, 110).setInteractive({ useHandCursor: true })));
     // Con qué se usa cada cosa (se redibuja al cambiar de teclado a mando): bomba, poción y objeto activo
-    const badge = (x: number, y: number, pad: string, action: 'active' | 'bomb' | 'potion' | 'parry' | 'ball') =>
+    const badge = (x: number, y: number, pad: string, action: 'active' | 'bomb' | 'potion' | 'parry' | 'ball' | 'mega') =>
       this.actionBadges.push({ g: hud(this.add.graphics()), t: txt(x, y, 11, '#1d2848', true).setOrigin(0.5), x, y, pad, action });
     badge(LX + HUD_COUNT_X.bomb + 6, 316, 'RB', 'bomb');
     badge(LX + HUD_COUNT_X.potion + 6, 316, 'L3', 'potion');
@@ -2467,6 +2496,13 @@ export class GameScene extends Phaser.Scene {
     const ballBtn = over(hud(this.add.zone(LX + LW - 34, 130, 50, 52).setInteractive({ useHandCursor: true })));
     ballBtn.on('pointerdown', () => this.throwBall());
     badge(LX + LW - 34, 152, 'R3', 'ball');
+    // T74: Mega Piedra a la izquierda de la Poké Ball (clic para megaevolucionar). Solo se ve si se ofrece (paintMega)
+    this.megaHud = { g: hud(this.add.graphics()), x: LX + LW - 88, y: 124, shown: '' };
+    const megaZone = this.add.zone(LX + LW - 88, 130, 50, 52).setInteractive({ useHandCursor: true });
+    over(hud(megaZone));
+    megaZone.on('pointerdown', () => this.megaEvolve());
+    this.megaZone = megaZone;
+    badge(LX + LW - 88, 152, 'Cruz ↑', 'mega');
     activeBtn.on('pointerdown', () => this.useActive());
     // Poderes: cuatro cuadros abajo a la derecha (clic para lanzar)
     for (let i = 0; i < SLOT_COUNT; i++) {
@@ -2649,6 +2685,180 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
   }
 
+
+  // --- Megaevolución del jugador (T74, powerForm.ts) ---
+
+  /** Nombre del Pokémon del jugador con mayúscula para los avisos. */
+  private niceName(): string {
+    return this.starterName.charAt(0).toUpperCase() + this.starterName.slice(1);
+  }
+
+  /** Especie de la forma actual (la mega depende de ella: Charmander no, Charizard sí). */
+  private megaContext() {
+    return { speciesId: this.formId, passives: this.passives, adrenalineFull: adrenalineFull(this.adrenaline) };
+  }
+
+  /**
+   * Megaevoluciona si se cumple todo: Mega Piedra, especie con mega, adrenalina llena (se gasta) y no usada en el piso.
+   * Dura POWER_FORMS.mega.durationMs: más daño, velocidad y PS máximos, y una descarga de su tipo cada pocos segundos.
+   */
+  private megaEvolve() {
+    if (this.ended || this.transitioning || this.falling || !this.player?.active || this.scene.isPaused()) return;
+    const ctx = this.megaContext();
+    // Sin piedra o sin mega en los juegos no se ofrece: el botón ni se ve, así que tampoco se avisa
+    if (!megaOffered(ctx)) return;
+    const why = megaBlock(this.powerForm, ctx);
+    if (why) return this.notify(MEGA_BLOCK_TEXT[why], { kind: 'warning', icon: 'pokeball' });
+    spendAdrenaline(this.adrenaline);
+    if (this.adrenalineHud) this.adrenalineHud.shown = '';
+    this.powerForm = startPowerForm(this.powerForm, 'mega');
+    this.powerFormLoopAt = this.game.loop.time;
+    this.megaPulseAt = this.game.loop.time + POWER_FORMS.mega.pulseMs;
+    // Los PS máximos extra también curan lo mismo (como al evolucionar)
+    const prevMax = this.stats.maxHp;
+    this.stats = this.calcStats();
+    this.hp = Math.min(this.stats.maxHp, this.hp + Math.max(0, this.stats.maxHp - prevMax));
+    this.hpMark = this.hp;
+    sfx('evolve');
+    const pb = this.player.body as Body | null;
+    // TODO(supervisor): efecto propio de la megaevolución del jugador (esfera de la Mega Piedra, crisálida, símbolo mega).
+    // De momento, el mismo de los jefes (T66); con efectos bajos, megaEvolveFx ya va sin destellos y sin flash de cámara.
+    megaEvolveFx(this, this.player.x, this.player.y, pb ? pb.bottom : this.player.y + 30, typeColor(this.tearType));
+    if (!lowFx()) this.cameras.main.flash(300, 255, 255, 255);
+    this.notify(`¡${megaDisplayName(this.formId, this.niceName())}!\nMás daño, velocidad y PS durante ${Math.round(POWER_FORMS.mega.durationMs / 1000)} s`, { kind: 'item', icon: 'pokeball' });
+    void cry(this.formId);
+    void this.applyMegaLook();
+    this.saveNow();
+  }
+
+  /**
+   * Cambia al sprite de la forma mega de PokeAPI si lo hay (se carga la primera vez). Si no hay red o la forma no trae
+   * sprite, se queda el normal y updatePowerForm le pone el brillo de evolveGlow cada pocos segundos.
+   */
+  private async applyMegaLook() {
+    const form = megaFormName(this.formId);
+    if (!form) return;
+    const sprites = await fetchFormSprites(form);
+    if (!sprites || !powerFormActive(this.powerForm) || !this.player?.active) return;
+    const key = `mega-${form}${this.shiny ? '-s' : ''}`;
+    const urls = pickSprites(sprites, this.shiny);
+    await new Promise<void>((resolve) => {
+      let queued = 0;
+      for (const side of ['front', 'back'] as const) {
+        if (this.textures.exists(`${key}-${side}`)) continue;
+        this.load.image(`${key}-${side}`, urls[side]);
+        queued++;
+      }
+      if (queued === 0) return resolve();
+      this.load.once(Phaser.Loader.Events.COMPLETE, () => resolve());
+      this.load.start();
+    });
+    if (!this.textures.exists(`${key}-front`) || !powerFormActive(this.powerForm) || !this.player?.active || this.ended) return;
+    for (const side of ['front', 'back']) {
+      if (this.textures.exists(`${key}-${side}`)) this.textures.get(`${key}-${side}`).setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+    this.megaKey = key;
+    // Un poco más grande: la forma mega impone más (el cuerpo físico es el de siempre)
+    this.setStaticLook(key, 96);
+  }
+
+  /** Pone un sprite de PokeAPI (sin hoja animada de SpriteCollab) con su cuerpo redondo de siempre. */
+  private setStaticLook(sheet: string, size: number) {
+    const p = this.player;
+    p.anims.stop();
+    p.setData('pmd', undefined).setData('sheet', sheet).setData('size', size).setData('facing', undefined);
+    p.setTexture(`${sheet}-front`).setFlipX(false).setScale(1).setDisplaySize(size, size);
+    const fw = p.width;
+    p.setCircle(fw * 0.3, fw * 0.2, fw * 0.2);
+    this.face(p, this.aim);
+  }
+
+  /** Vuelve a la forma normal: sprite de antes, sin PS extra (sin matarte) y aviso. */
+  private endPowerForm() {
+    this.stats = this.calcStats();
+    this.hp = Math.max(1, Math.min(this.hp, this.stats.maxHp));
+    this.hpMark = this.hp;
+    if (this.player?.active && this.megaKey) {
+      this.setStaticLook(this.playerKey, 84);
+      if (!this.shiny) this.applyPmd(this.player, this.formId, 84, true);
+      this.face(this.player, this.aim);
+    }
+    this.megaKey = null;
+    if (!this.ended) this.notify(`${this.niceName()} vuelve a su forma normal`, { kind: 'info', icon: 'pokeball' });
+    this.saveNow();
+  }
+
+  /** Cada fotograma: avanza la forma con game.loop.time, suelta la descarga de su tipo y el brillo si no hay sprite. */
+  private updatePowerForm() {
+    const now = this.game.loop.time;
+    const dt = now - this.powerFormLoopAt;
+    this.powerFormLoopAt = now;
+    if (!powerFormActive(this.powerForm)) return;
+    if (tickPowerForm(this.powerForm, dt)) return this.endPowerForm();
+    // Sin sprite mega: el normal con el brillo de evolución de vez en cuando (con efectos bajos, nada)
+    // TODO(supervisor): aura propia del jugador megaevolucionado y sprite «más grande con aura» para las formas sin sprite.
+    if (!this.megaKey && !lowFx() && now >= this.megaGlowAt && this.player?.active) {
+      this.megaGlowAt = now + 4000;
+      evolveGlow(this, this.player, 900);
+    }
+    if (now >= this.megaPulseAt) {
+      this.megaPulseAt = now + POWER_FORMS.mega.pulseMs;
+      this.megaPulse();
+    }
+  }
+
+  /**
+   * Ataque nuevo de la forma mega: «Mega descarga», un anillo de 8 disparos grandes de su tipo alrededor del jugador.
+   * Sale solo cada pulseMs para no pedir otro botón.
+   */
+  private megaPulse() {
+    if (!this.player?.active || this.ended || this.enemies.countActive(true) === 0) return;
+    const s = this.stats;
+    const basic = basicShotFor(this.tearType);
+    const opts = {
+      damage: s.damage * 1.5 * this.dmgMul(),
+      speed: s.shotSpeed * basic.speed,
+      life: s.range * 0.8,
+      size: 1.1 * s.shotScale * basic.size,
+      color: typeColor(this.tearType),
+      type: this.tearType,
+      pierce: s.pierce + 1,
+      bounces: 0,
+      motion: basic.motion,
+      anim: basic.anim,
+    };
+    sfx(shotSfx(this.tearType));
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      this.spawnShot(new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), 0, opts);
+    }
+  }
+
+  /** Mega Piedra del HUD: solo si llevas la piedra y tu Pokémon tiene mega; brilla si se puede, se vacía mientras dura. */
+  private paintMega() {
+    const h = this.megaHud;
+    if (!h) return;
+    const ctx = this.megaContext();
+    const offered = megaOffered(ctx);
+    const on = powerFormActive(this.powerForm);
+    const ready = offered && megaBlock(this.powerForm, ctx) === null;
+    const fill = on ? powerFormFill(this.powerForm) : 0;
+    const key = `${offered}:${ready}:${on}:${Math.round(fill * 20)}:${this.powerForm.usedThisFloor}`;
+    if (h.shown === key) return;
+    // Si cambia si se ofrece (coges o sueltas la piedra, evolucionas), se redibuja su etiqueta de tecla/botón
+    if (h.shown.split(':')[0] !== String(offered)) this.badgeShown = '';
+    h.shown = key;
+    h.g.clear();
+    this.megaZone?.setVisible(offered);
+    if (!offered) return;
+    // TODO(supervisor): icono de Mega Piedra de verdad (esfera con la hélice del símbolo mega).
+    const used = this.powerForm.usedThisFloor && !on;
+    h.g.fillStyle(0x101828, 1).fillCircle(h.x, h.y, 17);
+    h.g.fillStyle(used ? 0x4a5468 : ready ? 0x8fd3ff : 0x5a7a98, 1).fillCircle(h.x, h.y, 14);
+    if (on) h.g.lineStyle(3, 0xffe066, 1).beginPath().arc(h.x, h.y, 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * fill).strokePath();
+    else if (ready) h.g.lineStyle(2, 0xffffff, 0.9).strokeCircle(h.x, h.y, 16);
+  }
+
   // --- Guardado (como en Isaac: solo, en el hueco elegido) ---
 
   private toSaved(item: DroppedItem): SavedDrop {
@@ -2741,6 +2951,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       capturePrevAlly: this.capture.prevAllyId ?? -1,
       slotSpins: [...this.slotSpins],
       fishCasts: [...this.fishCasts],
+      powerForm: powerFormToSave(this.powerForm),
     });
   }
 
@@ -4231,6 +4442,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const keys = loadKeys();
     for (const b of this.actionBadges) {
       b.g.clear();
+      // T74: la etiqueta de la megaevolución solo si se ofrece (Mega Piedra y Pokémon con mega)
+      if (b.action === 'mega' && !megaOffered(this.megaContext())) {
+        b.t.setVisible(false);
+        continue;
+      }
       if (device === 'touch') {
         b.t.setVisible(false);
         continue;
@@ -5998,7 +6214,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // En los charcos vas más despacio
     const wade = this.cellAt(this.player.x, this.player.y) === 'W' ? 0.6 : 1;
     // T55: con la adrenalina activa vas más rápido
-    const spd = this.stats.speed * wade * adrenalineSpeedMul(this.adrenaline);
+    const spd = this.stats.speed * wade * adrenalineSpeedMul(this.adrenaline) * powerFormSpeedMul(this.powerForm);
     if (this.time.now >= this.playerKnockUntil) this.player.setVelocity(dir.x * spd, dir.y * spd);
     if (this.player.getData('pmd')) {
       const moving = dir.length() > 0.2;
@@ -6035,6 +6251,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const r3Now = hasPad && !!pad!.buttons[11]?.pressed;
     if (Phaser.Input.Keyboard.JustDown(this.ballKey) || (r3Now && !this.r3Prev)) this.throwBall();
     this.r3Prev = r3Now;
+    // T74: megaevolución con su tecla, la cruceta arriba (botón 12, libre en partida) o clic en la Mega Piedra del HUD
+    const dpadUpNow = hasPad && !!pad!.buttons[12]?.pressed;
+    if (Phaser.Input.Keyboard.JustDown(this.megaInputKey) || (dpadUpNow && !this.dpadUpPrev)) this.megaEvolve();
+    this.dpadUpPrev = dpadUpNow;
     this.rbPrev = rbNow;
     // Objeto activo: Espacio o LB (el clic va en su cuadro)
     const lbNow = hasPad && !!pad!.buttons[4]?.pressed;
@@ -6044,6 +6264,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.stepLootAll(time, delta);
     this.updateDarkness();
     if (tickAdrenaline(this.adrenaline, delta)) this.adrenalineHud && (this.adrenalineHud.shown = '');
+    this.updatePowerForm();
     const ltNow = hasPad && (pad!.buttons[6]?.value ?? 0) > 0.5;
     const rtNow = hasPad && (pad!.buttons[7]?.value ?? 0) > 0.5;
     if (this.tipObjects.length > 0) {
@@ -6131,6 +6352,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.bombsHud.setText(String(this.bombs));
     this.potionsHud?.setText(String(this.potions));
     this.paintBall(time);
+    this.paintMega();
     this.slots.forEach((m, i) => this.paintSlot(i, m, !m || time >= this.slotReady[i]));
 
     if (this.combo.count > 0 && !comboAlive(this.combo, time)) this.comboLose();
