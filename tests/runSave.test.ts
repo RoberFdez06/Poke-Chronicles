@@ -55,6 +55,8 @@ function sample(): RunSave {
     tiredRooms: 0,
     potions: 2,
     secondChance: false,
+    captureDone: false,
+    capturePrevAlly: -1,
   };
 }
 
@@ -256,4 +258,14 @@ test('T57: un guardado v15 se migra con la segunda oportunidad sin usar y se gua
   assert.equal(run.secondChance, false);
   assert.equal(parseRun(JSON.stringify({ ...sample(), secondChance: true }))?.secondChance, true);
   assert.equal(parseRun(JSON.stringify({ ...sample(), secondChance: 'sí' })), null);
+});
+
+test('T65: v16 sin captura se migra (sin capturar) y se valida', () => {
+  const { captureDone: _c, capturePrevAlly: _p, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 16 }))!;
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.captureDone, false);
+  assert.equal(run.capturePrevAlly, -1);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), captureDone: true, capturePrevAlly: 7 }))?.capturePrevAlly, 7);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), capturePrevAlly: -2 })), null);
 });

@@ -8,6 +8,8 @@ export const ACTIONS = [
   'active', 'bomb', 'potion', 'pause', 'accept', 'back',
   // T53: va la última para que los guardados de antes (que no la tienen) se lean igual
   'parry',
+  // T65: la Poké Ball, también al final por lo mismo
+  'ball',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 export type KeyMap = Record<Action, string>;
@@ -32,6 +34,7 @@ export const ACTION_LABEL: Readonly<Record<Action, string>> = {
   accept: 'Aceptar / usar',
   back: 'Volver',
   parry: 'Parry (bloquear)',
+  ball: 'Lanzar Poké Ball',
 };
 
 export const DEFAULT_KEYS: Readonly<KeyMap> = {
@@ -40,6 +43,7 @@ export const DEFAULT_KEYS: Readonly<KeyMap> = {
   power1: 'ONE', power2: 'TWO', power3: 'THREE', power4: 'FOUR',
   active: 'SPACE', bomb: 'E', potion: 'C', pause: 'P', accept: 'ENTER', back: 'ESC',
   parry: 'F',
+  ball: 'G',
 };
 
 /**
@@ -118,6 +122,7 @@ export function controlsFor(k: KeyMap): [string, string][] {
     ['Poderes · Objeto activo', `Poderes: ${L('power1')} ${L('power2')} ${L('power3')} ${L('power4')} · clic en la ranura · A B X Y    Activo: ${L('active')} · clic en su cuadro · LB`],
     ['Pausa', `${L('pause')} o ${L('back')} · botón ❚❚ de arriba a la izquierda · Start`],
     ['Parry', `${L('parry')} · clic central · RT (justo antes de que te den: bloquea y tu siguiente golpe es crítico)`],
+    ['Poké Ball', `${L('ball')} · clic en la Poké Ball del HUD · R3 (pulsar el stick derecho) con un enemigo débil cerca`],
     ['Usar · Bomba · Poción', `Usar: ${L('accept')} · clic · A    Bomba: ${L('bomb')} · clic en la bomba del HUD · RB    Poción: ${L('potion')} · clic en la poción del HUD · stick izq. (pulsar)`],
   ];
 }
