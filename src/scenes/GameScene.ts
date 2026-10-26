@@ -165,6 +165,8 @@ import {
   upcomingRule, type TowerFloorSpec,
 } from '../level/tower';
 import { towerArrive, towerAscend } from '../ui/art/towerFx';
+import { buildMegaShrine, buildStoryArt, coinsStolenFx, fishLeap, legendAura, thiefGear } from '../ui/art/storyArt';
+import { buildHazards, buildLightColumn, buildSupplyStall, buildTowerAltar, buildTowerStall } from '../ui/art/towerArt';
 import {
   iceVelocity, isTowerFinale, TOWER_ALTAR_COUNT, TOWER_REST_LAYOUT, TOWER_SHOP_SOLD, towerAltarItems, towerCheckpointKit, towerMinibossItem, towerShopOffer,
 } from '../level/towerExtras';
@@ -1582,8 +1584,8 @@ export class GameScene extends Phaser.Scene {
       // T70: ladrón rápido y sin ataque. Toca para robar y corre hacia la puerta más lejana de ti.
       if (this.foeKinds.length === 0) return this.finishEvent(room);
       const k = this.foeKinds[Math.floor(rng() * this.foeKinds.length) % this.foeKinds.length];
-      // TODO(supervisor): sprite propio del ladrón (antifaz, saco de monedas); de momento un enemigo normal del piso
       const e = this.spawnEnemy(k, 'chase');
+      thiefGear(this, e);
       const ai = e.getData('ai') as EnemyAI;
       ai.eliteMove = undefined;
       const hp = Math.max(1, Math.round((e.getData('maxHp') as number) * THIEF_HP_MUL));
@@ -1964,7 +1966,7 @@ export class GameScene extends Phaser.Scene {
     t.stolen = stolen;
     this.coins = coinsAfterTheft(this.coins, stolen);
     this.popup(this.player.x, this.player.y - 50, `−${stolen} monedas`, 0xffcc80);
-    // TODO(supervisor): efecto de monedas saliendo del jugador hacia el ladrón (respetando efectos bajos)
+    coinsStolenFx(this, this.player, t.sprite, stolen);
     this.notify(`¡Te ha robado ${stolen} monedas!\nAbátelo antes de que salga de la sala`, { kind: 'danger', icon: 'coin' });
   }
 
@@ -2085,7 +2087,7 @@ export class GameScene extends Phaser.Scene {
       const prize = fishPrize(rng(), this.passives);
       status.setText(FISH_PRIZE_LABEL[prize]);
       const p = this.freeSpot(this.player.x, this.player.y + 60);
-      // TODO(supervisor): animación del pez saliendo del agua
+      fishLeap(this, this.interior(room).cx, this.interior(room).cy - 20, p.x, p.y);
       if (prize === 'coins') this.spawnLoot(room.id, p.x, p.y, { kind: 'coin', value: fishCoins(this.floorNum) });
       else if (prize === 'berry') this.spawnLoot(room.id, p.x, p.y, { kind: 'berry', id: rng() < 0.25 ? 'zidra' : 'aranja' });
       else if (prize === 'item') this.dropItem(room.id, p.x, p.y);
@@ -2349,8 +2351,10 @@ export class GameScene extends Phaser.Scene {
     ai.moves = bossStyles(k.types, id);
     ai.eliteMove = ai.moves[0];
     ai.eliteAt = Number.POSITIVE_INFINITY;
-    // TODO(supervisor): aura propia del legendario de la cacería; de momento, la dorada de los minijefes
-    this.glowAura(e, 0xffd34d);
+    legendAura(this, e, typeColor(k.types[0]), () => {
+      const bd = e.body as Body | null;
+      return bd ? bd.bottom : e.y + e.displayHeight / 2;
+    });
     void cry(id);
     this.notify(`¡Sala oculta!\n${this.legendName()} te esperaba`, { kind: 'danger', icon: 'star' });
     this.showBossIntro(ai, { boss: { texture: `${k.key}-front`, name: this.legendName(), types: k.types }, tier: 'mini', subtitle: 'Cacería legendaria · Fase 1/3' });
@@ -4665,8 +4669,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private placeStory(room: Room, x: number, y: number, rng: () => number) {
     const story = pickStory(this.storiesSeen, rng());
     if (!story) return this.finishEvent(room);
-    // TODO(supervisor): dibujo propio de cada historia (mochila, nido, pozo, estatua…); de momento un cartel de texto
-    const t = this.add.text(x, y - 40, `${story.title}\n¿Qué haces?`, { fontFamily: FONT, fontSize: '16px', color: '#e6f4d0', stroke: '#101828', strokeThickness: 4, align: 'center' }).setOrigin(0.5).setDepth(4);
+    this.eventObjs.push(buildStoryArt(this, story.id, x, y));
+    const t = this.add.text(x, y + 70, `${story.title}\n¿Qué haces?`, { fontFamily: FONT, fontSize: '16px', color: '#e6f4d0', stroke: '#101828', strokeThickness: 4, align: 'center' }).setOrigin(0.5).setDepth(4);
     this.eventObjs.push(t);
     const open = () => this.openStory(room, story);
     const z = this.add.zone(x, y, 260, 110).setInteractive({ useHandCursor: true });
@@ -4778,13 +4782,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       return o;
     };
     const have = this.passives.includes(MEGA_STONE_ID);
-    // TODO(supervisor): arte propio del santuario (pedestal con runas y la piedra con destello); de momento formas simples
-    const g = keep(this.add.graphics().setDepth(2));
-    g.fillStyle(have ? 0x3a3a46 : 0x4a4a5a, 1).fillRect(x - 40, y - 6, 80, 40);
-    g.fillStyle(have ? 0x55555f : 0x6e6e84, 1).fillRect(x - 52, y - 16, 104, 14);
-    g.fillStyle(have ? 0x555566 : 0x8fd3ff, have ? 0.4 : 0.85).fillRect(x - 30, y + 8, 60, 5);
-    const stone = keep(this.add.image(x, y - 50, iconKey('star')).setScale(3).setDepth(3).setTint(have ? 0x666677 : 0x8fd3ff).setAlpha(have ? 0.45 : 1));
-    if (!have) this.tweens.add({ targets: stone, y: y - 60, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    keep(buildMegaShrine(this, x, y, have));
     keep(
       this.add
         .text(x, y + 58, have ? 'Santuario de la Mega Piedra\nYa la llevas' : 'Santuario de la Mega Piedra', { fontFamily: FONT, fontSize: '15px', color: have ? '#9aa3b4' : '#c8ecff', stroke: '#101828', strokeThickness: 4, align: 'center' })
@@ -7023,7 +7021,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /**
    * T72: sala de suministros: un puesto donde eliges poción, llave o baya (ItemChoiceScene: teclado, ratón y mando).
    * Lo elegido cae delante del puesto; la elección se apunta en eventsDone (también al continuar).
-   * TODO(supervisor): dibujo del puesto de suministros; ahora es un rectángulo de color liso.
    */
   private towerSupply(room: Room) {
     if (this.eventsDone.has(TOWER_SUPPLY_DONE)) return;
@@ -7031,8 +7028,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const x = i.cx + TOWER_REST_LAYOUT.supply.x;
     const y = i.cy + TOWER_REST_LAYOUT.supply.y;
     const objs: Phaser.GameObjects.GameObject[] = [];
-    const box = this.add.rectangle(x, y, 120, 50, 0x3f7f5a, 1).setDepth(0.8);
-    const t = this.add.text(x, y - 46, 'Suministros: elige uno', { fontFamily: FONT, fontSize: '15px', color: '#d6ffd8', stroke: '#101828', strokeThickness: 4 }).setOrigin(0.5).setDepth(4);
+    const box = this.add.rectangle(x, y, 120, 50, 0x3f7f5a, 0).setDepth(0.8);
+    objs.push(buildSupplyStall(this, x, y, this.biome.colors.wall));
+    const t = this.add.text(x, y - 70, 'Suministros: elige uno', { fontFamily: FONT, fontSize: '15px', color: '#d6ffd8', stroke: '#101828', strokeThickness: 4 }).setOrigin(0.5).setDepth(4);
     objs.push(box, t);
     this.towerRestObjs.push(...objs);
     const names = ['Poción', 'Llave', 'Baya Aranja'];
@@ -7068,8 +7066,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /**
    * T72: altar y tienda del descanso. Los objetos del altar se marcan para que, al coger uno, se vayan los otros
    * (también al continuar: se reconocen por su sitio). La tienda vende dos objetos rebajados y uno exclusivo; lo
-   * comprado se apunta en eventsDone (ver towerShopDraw). TODO(supervisor): dibujo del altar y del
-   * puesto; ahora son rectángulos de color liso.
+   * comprado se apunta en eventsDone (ver towerShopDraw). Dibujo en towerArt.
    */
   private towerRestExtras(room: Room) {
     const i = this.interior(room);
@@ -7084,7 +7081,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       }
       const a = TOWER_REST_LAYOUT.altar;
       const ax = i.cx + a.x + a.step;
-      const base = this.add.rectangle(ax, i.cy + a.y + 22, a.step * 2 + 60, 18, 0x6e6e84, 1).setDepth(0.8);
+      const base = buildTowerAltar(this, ax, i.cy + a.y + 22, a.step, this.biome.colors.wall);
       this.towerRestObjs.push(base);
       const t = this.add.text(ax, i.cy + a.y - 40, 'Altar: coge uno', { fontFamily: FONT, fontSize: '14px', color: '#e3d4ff', stroke: '#101828', strokeThickness: 4 }).setOrigin(0.5).setDepth(4);
       this.towerRestObjs.push(t);
@@ -7112,7 +7109,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.towerRestSpots = this.towerRestSpots.filter((sp) => !drop.has(sp));
     this.eventSpots = this.eventSpots.filter((sp) => !drop.has(sp));
     const sx = i.cx + S.x + S.step;
-    const stall = this.add.rectangle(sx, i.cy + S.y + 30, S.step * 2 + 100, 18, 0x6b4423, 1).setDepth(0.8);
+    const stall = buildTowerStall(this, sx, i.cy + S.y + 30, S.step * 2 + 100);
     const title = this.add.text(sx, i.cy + S.y - 50, 'Tienda del descanso (-30 %)', { fontFamily: FONT, fontSize: '15px', color: '#ffe9a8', stroke: '#101828', strokeThickness: 4 }).setOrigin(0.5).setDepth(4);
     this.towerShopObjs.push(stall, title);
     stock.forEach((slot, n) => {
@@ -7196,13 +7193,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     window.setTimeout(go, 3000);
   }
 
-  /** Peligros del suelo. TODO(supervisor): dibujo de pinchos, lava y hielo; ahora son casillas de color liso. */
+  /** Peligros del suelo: pinchos, lava y hielo animados (towerArt). */
   private drawHazards(spec: TowerFloorSpec) {
-    const color = spec.hazard === 'lava' ? 0xff5a1f : spec.hazard === 'ice' ? 0xbfe8ff : 0x8a8f9c;
-    for (const h of spec.hazards) {
+    const tiles = spec.hazards.map((h) => {
       const i = this.interior(this.floor.rooms[h.cell]);
-      this.add.rectangle(i.x0 + h.tx * TILE + TILE / 2, i.y0 + h.ty * TILE + TILE / 2, TILE - 4, TILE - 4, color, 0.55).setDepth(0.5);
-    }
+      return { x: i.x0 + h.tx * TILE + TILE / 2, y: i.y0 + h.ty * TILE + TILE / 2 };
+    });
+    if (tiles.length > 0) buildHazards(this, spec.hazard, tiles, TILE);
   }
 
   /** T72: ¿estás pisando una casilla de hielo de la Torre? */
@@ -7240,13 +7237,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private spawnTrapdoor(final = false) {
     const i = this.interior(this.floor.rooms[this.floor.bossId]);
     if (this.mode === 'tower') {
-      // T72: columna de luz en el centro. TODO(supervisor): dibujo de la columna en reposo (ahora, un rectángulo liso)
+      // T72: columna de luz en el centro (en reposo, towerArt; al pisarla, towerFx)
       // En el descanso (con Centro, forja, altar y tienda) va abajo en medio para no pisar nada (TOWER_REST_LAYOUT)
       const rest = this.towerSpec?.kind === 'rest';
       const cx = rest ? i.cx + TOWER_REST_LAYOUT.column.x : i.cx;
       const cy = rest ? i.cy + TOWER_REST_LAYOUT.column.y : i.cy;
-      const col = this.add.rectangle(cx, cy - 30, 36, 110, 0xfff2a8, 0.6).setDepth(1);
-      if (!lowFx()) this.tweens.add({ targets: col, alpha: 0.3, duration: 700, yoyo: true, repeat: -1 });
+      buildLightColumn(this, cx, cy + 25, this.biome.colors.wall, 110);
       this.add.text(cx, cy - 100, 'Subir', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(0.5).setDepth(3);
       this.trapdoor = { x: cx, y: cy, armed: false };
       return;
