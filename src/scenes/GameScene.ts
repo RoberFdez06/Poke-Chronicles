@@ -144,7 +144,7 @@ import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuf
 import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
-import { arenaBackdrop, arenaCrack, arenaLanding, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
+import { arenaBackdrop, arenaChasm, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
 import { dynamaxBurst, teraBurst, zMoveFx } from '../ui/art/formsFx';
 import { buildClue, buildNpc, drawBallIcon } from '../ui/art/worldArt';
 import { buildShopArt, type ShopArt } from '../ui/art/shopArt';
@@ -6203,6 +6203,18 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     const i = this.interior(room);
     this.arenaObjs.push(...arenaQuake(this, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS));
+    if (!lowFx()) {
+      // Cinemática corta: bandas de cine, gran grieta que parte la sala por el jefe, rugido con cámara lenta y sacudida del jefe
+      arenaLetterbox(this, this.scale.width, this.scale.height, 260, FALL_SHAKE_MS - 260 + FALL_FADE_MS, 300);
+      this.arenaObjs.push(arenaChasm(this, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS));
+      this.time.delayedCall(FALL_SHAKE_MS * 0.3, () => {
+        sfx('enrage');
+        cam.flash(180, 255, 255, 255);
+        this.tweens.timeScale = 0.4;
+        this.tweens.add({ targets: b, scale: b.scale * 1.12, duration: 160, yoyo: true, repeat: 2 });
+        this.time.delayedCall(450, () => { this.tweens.timeScale = 1; });
+      });
+    }
     this.time.delayedCall(FALL_SHAKE_MS, () => cam.fadeOut(FALL_FADE_MS, 0, 0, 0));
     this.time.delayedCall(FALL_SHAKE_MS + FALL_FADE_MS, () => this.swapArena(room, fall));
     this.time.delayedCall(FALL_SHAKE_MS + FALL_FADE_MS + FALL_HOLD_MS, () => {

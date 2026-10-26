@@ -342,3 +342,69 @@ export function arenaLanding(scene: Phaser.Scene, x: number, y: number, color: n
     },
   });
 }
+
+/**
+ * La gran grieta: una fisura que cruza la sala en diagonal por el jefe y se ensancha hasta ser un abismo con brillo por
+ * dentro, labios de roca que se desprenden y brasas que suben. Dura `ms`; devuelve el Graphics (límpialo con el resto).
+ */
+export function arenaChasm(scene: Phaser.Scene, x0: number, y0: number, w: number, h: number, cx: number, cy: number, ms: number, glow = 0xff9a4a): Phaser.GameObjects.Graphics {
+  const g = scene.add.graphics().setDepth(0.72);
+  const ang = -0.38;
+  const dx = Math.cos(ang);
+  const dy = Math.sin(ang);
+  const len = Math.hypot(w, h);
+  const t0 = scene.time.now;
+  const low = lowFx();
+  const paint = () => {
+    if (!g.active) return;
+    const k = Math.min(1, (scene.time.now - t0) / (ms * 0.7));
+    const grow = Phaser.Math.Easing.Cubic.Out(k);
+    g.clear();
+    for (let d = -len / 2; d <= len / 2; d += P) {
+      const u = d / (len / 2);
+      if (Math.abs(u) > grow) continue;
+      const taper = 1 - Math.abs(u) * 0.8;
+      const wob = Math.sin(d * 0.09) * 6 + Math.sin(d * 0.31) * 3;
+      const half = Math.max(P, taper * 26 * grow);
+      const px0 = cx + dx * d - dy * wob;
+      const py0 = cy + dy * d + dx * wob;
+      if (px0 < x0 || px0 > x0 + w || py0 < y0 || py0 > y0 + h) continue;
+      const nx = -dy;
+      const ny = dx;
+      for (let s = -half; s <= half; s += P) {
+        const edge = Math.abs(s) >= half - P;
+        const qx = Math.round((px0 + nx * s) / P) * P;
+        const qy = Math.round((py0 + ny * s) / P) * P;
+        const depthGlow = 1 - Math.abs(s) / half;
+        px(g, qx, qy, edge ? OUT : mixColor(0x050203, glow, Math.max(0, depthGlow - 0.35) * (0.7 + 0.3 * Math.sin(scene.time.now / 130 + d * 0.05))), 1);
+      }
+      // labio de roca claro a un lado
+      px(g, Math.round((px0 + nx * (half + P)) / P) * P, Math.round((py0 + ny * (half + P)) / P) * P, 0xb8a98f, 0.9);
+    }
+    if (!low) {
+      for (let i = 0; i < 16; i++) {
+        const ph = ((scene.time.now / 1300 + i / 16) % 1);
+        const d = ((i * 97) % len) - len / 2;
+        if (Math.abs(d / (len / 2)) > grow) continue;
+        px(g, cx + dx * d + Math.sin(i * 5 + ph * 6) * 10, cy + dy * d - ph * 90, ph < 0.5 ? 0xffd54f : 0xff7043, (1 - ph) * k, P / 2 + 1, P / 2 + 1);
+      }
+    }
+  };
+  paint();
+  const ev = scene.time.addEvent({ delay: low ? 150 : 50, loop: true, callback: paint });
+  g.once(Phaser.GameObjects.Events.DESTROY, () => ev.remove());
+  return g;
+}
+
+/** Bandas de cine arriba y abajo (fijas a la cámara) que entran en `inMs`, esperan y salen. Se destruyen solas. */
+export function arenaLetterbox(scene: Phaser.Scene, viewW: number, viewH: number, inMs: number, holdMs: number, outMs: number, depth = 70) {
+  const bar = Math.round(viewH * 0.1);
+  const top = scene.add.rectangle(viewW / 2, -bar / 2, viewW, bar, 0x000000, 1).setScrollFactor(0).setDepth(depth);
+  const bot = scene.add.rectangle(viewW / 2, viewH + bar / 2, viewW, bar, 0x000000, 1).setScrollFactor(0).setDepth(depth);
+  scene.tweens.add({ targets: top, y: bar / 2, duration: inMs, ease: 'Cubic.easeOut' });
+  scene.tweens.add({ targets: bot, y: viewH - bar / 2, duration: inMs, ease: 'Cubic.easeOut' });
+  scene.time.delayedCall(inMs + holdMs, () => {
+    scene.tweens.add({ targets: top, y: -bar / 2, duration: outMs, ease: 'Cubic.easeIn', onComplete: () => top.destroy() });
+    scene.tweens.add({ targets: bot, y: viewH + bar / 2, duration: outMs, ease: 'Cubic.easeIn', onComplete: () => bot.destroy() });
+  });
+}
