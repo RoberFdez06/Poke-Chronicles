@@ -646,6 +646,15 @@ sprites como `// TODO(supervisor)`, efectos bajos respetados, un commit por tare
   jugador de golpe. Lógica pura `arenaPhase(...)` con tests (siempre hay camino, determinista por semilla, no solapa con las puertas).
 - Con la megaevolución del jefe (T66) la arena también cambia: mejor coordínalo para que las dos cosas no se pisen en el mismo instante.
   El dibujo de las zonas y su aviso (grietas, agua, bloques) lo hace el supervisor; deja `// TODO(supervisor)` y usa un color liso.
+- **Rehecha (rama `arenas2`).** Fase 1 al bajar del **67 %**: desperfectos leves con aviso de 1,5 s (grietas que queman un 4 %,
+  escombros que caen como rocas rompibles y charcos hacia las esquinas); la sala sigue igual. Fase 2 al bajar del **34 %**: tiembla todo,
+  el suelo se derrumba y, tras un fundido a negro (1,4 s en total, sin pausar), jugador y jefe aparecen en **otra arena** según el tipo del
+  jefe: fuego → lava (quema un 8 %), agua → inundada (más lento), hielo → resbaladiza, planta/bicho → raíces que se rompen a disparos, el
+  resto → ruinas de roca. Puertas y trampilla en su sitio, nunca nada encima del jugador ni del jefe y siempre camino seguro.
+  Durante el derrumbe todos son invulnerables, no hay disparos y los jefes no atacan. La megaevolución (50 %) va siempre **entre** las dos
+  fases y nunca a la vez: cada suceso espera 1 s tras el anterior y van en orden aunque un golpe baje mucha vida (`nextBossEvent`).
+  Lógica pura en `arenaPhase.ts` (`arenaPhase`, `arenaFall`, `fallTheme`, `nextBossEvent`) con tests. Al continuar una partida el jefe
+  vuelve con la vida entera, así que la arena empieza en su fase 0 (no hace falta tocar `RunSave`). Dibujos: `// TODO(supervisor)`.
 
 ## [x] T79 — Eventos con decisiones
 - Evento de sala nuevo en `roomEvents.ts` (etiqueta, color de minimapa y peso por piso): una **pequeña historia con 2 o 3 elecciones** y
@@ -707,7 +716,7 @@ ratón y mando funcionan cada uno por separado. Lo visual nuevo, `// TODO(superv
   (no por reloj) y la recoges para llevarla a la run: curan, dan escudo o adrenalina. Datos y crecimiento en `src/data/berries.ts`,
   guardado en `save.ts` (clave en `PROGRESS_KEYS`), tests de crecimiento y de cosecha. Escena `GardenScene` con teclado, ratón y mando.
 
-## [ ] T86 — Gimnasios con puzzles
+## [x] T86 — Gimnasios con puzzles
 - Cada 10 pisos de la Torre y al final de cada bioma, una sala de **gimnasio** con un puzzle de su tipo antes del líder: Roca (empujar
   bloques), Eléctrico (interruptores en orden), Hielo (suelo que resbala), Fantasma (puertas falsas), etc. Resolverlo abre el paso al
   líder y da una medalla/objeto. Generador de puzzles en `src/level/gymPuzzles.ts`, puro y determinista por semilla, con tests: todo

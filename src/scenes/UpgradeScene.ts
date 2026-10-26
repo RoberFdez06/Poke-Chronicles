@@ -5,6 +5,8 @@ import { buyUpgrade, loadCandies, loadUnlocked, loadUpgrades } from '../data/sav
 import { levelsFor, UPGRADE_DESC, UPGRADE_LABEL, UPGRADE_MAX, type UpgradeKind } from '../data/upgrades';
 import { BRANCH_LABEL, BRANCHES, moveInTree, nodeCost, nodeState, remainingTreeCost, treeNode, UPGRADE_TREE } from '../data/upgradeTree';
 import { sfx } from '../ui/audio';
+import { openConfirm } from './ConfirmScene';
+import { confirmText } from '../data/confirm';
 import { addBackButton, buildPokemonCard, loadCardTextures } from '../ui/cards';
 import { NavInput, PadButtons } from '../ui/nav';
 import { ARROW, COLORS, drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
@@ -61,6 +63,7 @@ export class UpgradeScene extends Phaser.Scene {
     this.index = 0;
     this.selected = 'damage';
     this.leaving = false;
+    this.confirmOpen = false;
     this.ids = [...loadUnlocked()].sort((a, b) => a - b);
     if (this.wantId !== undefined && this.ids.includes(this.wantId)) this.index = this.ids.indexOf(this.wantId);
     this.nav = new NavInput(this);
@@ -209,9 +212,27 @@ export class UpgradeScene extends Phaser.Scene {
     this.goal.setText(`Para completar el árbol de este Pokémon faltan ${remainingTreeCost(lv)} caramelos`);
   }
 
-  private buy() {
-    if (this.ids.length === 0) return;
+  private confirmOpen = false;
+
+  private buy(confirmed = false) {
+    if (this.ids.length === 0 || this.confirmOpen) return;
     const kind = this.selected;
+    // Con algo que pagar (nodo desbloqueado, no al máximo y con caramelos de sobra) se pregunta antes de gastar
+    if (!confirmed) {
+      const lv = levelsFor(loadUpgrades(), this.id);
+      const cost = nodeCost(kind, lv);
+      if (nodeState(kind, lv) !== 'locked' && cost !== null && loadCandies() >= cost) {
+        this.confirmOpen = true;
+        const ok = openConfirm(this, confirmText(`${UPGRADE_LABEL[kind]} (nivel ${lv[kind] + 1})`, cost, 'caramelos'), (yes) => {
+          this.confirmOpen = false;
+          this.nav = new NavInput(this); // las teclas que se pulsaron en el cuadro no cuentan aquí
+          this.pad = new PadButtons(this);
+          if (yes) this.buy(true);
+        });
+        if (!ok) this.confirmOpen = false;
+        return;
+      }
+    }
     const res = buyUpgrade(this.id, kind);
     if (res === 'ok') {
       sfx('buy');
