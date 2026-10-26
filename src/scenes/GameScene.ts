@@ -701,9 +701,9 @@ export class GameScene extends Phaser.Scene {
   private potionsHud?: Phaser.GameObjects.Text;
   /** T53: parry (ventana, recarga y crítico pendiente), su tecla y su cuadro del HUD con la recarga. */
   private parry: ParryState = newParry();
-  /** T77: carga del disparo, una por fuente (teclado, ratón, mando, táctil) y la última dirección de cada una. */
+  /** T77: carga del disparo cargado, una por fuente (teclado, ratón, mando). Es una entrada propia, no el disparo normal. */
   private charges: Record<ChargeSource, ChargeState> = this.newCharges();
-  private chargeAim: Partial<Record<ChargeSource, Phaser.Math.Vector2>> = {};
+  private chargeKey!: Key;
   private parryKey!: Key;
   private parryHud?: { g: Phaser.GameObjects.Graphics; x: number; y: number; w: number; h: number; shown: string };
   /** T55: adrenalina (sube con bajas, esquivas y parrys) y su barra del HUD. */
@@ -2467,6 +2467,7 @@ export class GameScene extends Phaser.Scene {
     this.potionKey = key('potion');
     this.parryKey = key('parry');
     this.ballKey = key('ball');
+    this.chargeKey = key('charge');
     this.megaInputKey = key('mega');
     this.activeKey = key('active');
     this.escKey = key('back');
@@ -6660,23 +6661,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.updateFlow();
 
     // Disparo continuo como en Isaac: flechas (o clic / stick derecho) y mira hacia donde dispara
-    // T77: mantener carga el disparo (a los 0,8 s sale el cargado); soltar antes dispara el normal. Cada fuente va aparte.
-    // TODO(supervisor): brillo de carga alrededor del jugador según chargeProgress(...)
-    const bySource = this.readShootSources(hasPad ? pad! : null);
-    let shoot: Phaser.Math.Vector2 | null = null;
+    const shoot = this.readShootDir(hasPad ? pad! : null);
+    if (shoot && time >= this.nextTear) {
+      this.fireTear(shoot);
+      this.nextTear = time + this.stats.fireDelay;
+    }
+    // T77: ataque cargado aparte: mantener su tecla / botón del ratón / LT carga; al soltar con la carga completa sale
+    // (hacia donde miras). Cada fuente carga sola. TODO(supervisor): brillo de carga según chargeProgress(...)
+    const held = this.readChargeHeld(hasPad ? pad! : null);
     for (const k of CHARGE_SOURCES) {
-      const d = bySource[k];
-      if (d) {
-        shoot ??= d;
-        this.chargeAim[k] = d;
-      }
-      const act = stepCharge(this.charges[k], !!d, loopNow);
-      const aimK = this.chargeAim[k];
-      if (act === 'cargado' && aimK) this.fireTear(aimK, true);
-      else if (act === 'normal' && aimK && time >= this.nextTear) {
-        this.fireTear(aimK);
-        this.nextTear = time + this.stats.fireDelay;
-      }
+      if (stepCharge(this.charges[k], held[k], loopNow) === 'cargado') this.fireTear((shoot ?? this.aim).clone().normalize(), true);
     }
     if (shoot) {
       this.aim.copy(shoot);
@@ -6819,7 +6813,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   private newCharges(): Record<ChargeSource, ChargeState> {
-    return { teclado: newCharge(), raton: newCharge(), mando: newCharge(), tactil: newCharge() };
+    return { teclado: newCharge(), raton: newCharge(), mando: newCharge() };
   }
 
   /** T77: corta todas las cargas (pausa, cambio de sala, objeto activo); no vuelven a cargar hasta soltar el botón. */
@@ -6827,22 +6821,44 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     for (const k of CHARGE_SOURCES) cancelCharge(this.charges[k]);
   }
 
-  /** T77: dirección de disparo de cada fuente por separado (null si esa fuente no dispara). */
-  private readShootSources(pad: Phaser.Input.Gamepad.Gamepad | null): Record<ChargeSource, Phaser.Math.Vector2 | null> {
+  /** Dirección de disparo (como antes de T77): flechas, joystick táctil, clic izquierdo o stick derecho. null si no se dispara. */
+  private readShootDir(pad: Phaser.Input.Gamepad.Gamepad | null): Phaser.Math.Vector2 | null {
     const { left, right, up, down } = this.arrows;
     const ax = (right.isDown ? 1 : 0) - (left.isDown ? 1 : 0);
     const ay = (down.isDown ? 1 : 0) - (up.isDown ? 1 : 0);
-    const out: Record<ChargeSource, Phaser.Math.Vector2 | null> = { teclado: null, raton: null, mando: null, tactil: null };
-    if (ax !== 0 || ay !== 0) out.teclado = new Phaser.Math.Vector2(ax, ay).normalize();
-    if (this.touch && this.touch.aim.lengthSq() > 0.04) out.tactil = this.touch.aim.clone().normalize();
+    if (ax !== 0 || ay !== 0) return new Phaser.Math.Vector2(ax, ay).normalize();
+    // Joystick táctil derecho (en móvil el dedo en la sala no dispara: lo hace el joystick)
+    if (this.touch) {
+      const a = this.touch.aim;
+      if (a.lengthSq() > 0.04) return a.clone().normalize();
+    }
+
     const pointer = this.input.activePointer;
+    // Solo el clic izquierdo dispara (el derecho es para moverse) y no sobre las ranuras de poder
     if (!this.touch && pointer.leftButtonDown() && !this.overHud && this.inGameView(pointer)) {
+      // Se recalcula con la cámara actual: worldX se queda viejo si la cámara se mueve
       const p = pointer.positionToCamera(this.cameras.main) as Phaser.Math.Vector2;
       const d = new Phaser.Math.Vector2(p.x - this.player.x, p.y - this.player.y);
-      if (d.length() > 1) out.raton = d.normalize();
+      if (d.length() > 1) return d.normalize();
     }
-    if (pad && pad.rightStick.length() > 0.3) out.mando = new Phaser.Math.Vector2(pad.rightStick.x, pad.rightStick.y).normalize();
-    return out;
+
+    if (pad && pad.rightStick.length() > 0.3) {
+      return new Phaser.Math.Vector2(pad.rightStick.x, pad.rightStick.y).normalize();
+    }
+    return null;
+  }
+
+  /**
+   * T77: qué entradas de carga están pulsadas. Teclado: su tecla (V). Ratón: botón lateral «atrás» o «adelante» (el derecho mueve y el
+   * central es el parry). Mando: LT (en partida solo cierra consejos). Cada una carga por separado.
+   */
+  private readChargeHeld(pad: Phaser.Input.Gamepad.Gamepad | null): Record<ChargeSource, boolean> {
+    const pointer = this.input.activePointer;
+    return {
+      teclado: this.chargeKey.isDown,
+      raton: !this.touch && (pointer.backButtonDown() || pointer.forwardButtonDown()) && !this.overHud && this.inGameView(pointer),
+      mando: !!pad && (pad.buttons[6]?.value ?? 0) > 0.5,
+    };
   }
 
   /** Telescopio: tus disparos giran poco a poco hacia el enemigo más cercano. */

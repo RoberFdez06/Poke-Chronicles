@@ -19,7 +19,7 @@ export type ControlMode = (typeof CONTROL_MODES)[number];
 export const CONTROL_MODE_LABEL: Record<ControlMode, string> = { keyboard: 'Teclado', mouse: 'Ratón', gamepad: 'Mando', touch: 'Táctil' };
 
 /** Todo lo que se puede hacer, en el orden en que sale en cada sección. */
-export const CONTROL_ACTIONS = ['move', 'shoot', 'powers', 'parry', 'active', 'bomb', 'potion', 'ball', 'mega', 'use', 'pause', 'menus', 'back'] as const;
+export const CONTROL_ACTIONS = ['move', 'shoot', 'powers', 'parry', 'active', 'bomb', 'potion', 'ball', 'mega', 'charge', 'use', 'pause', 'menus', 'back'] as const;
 export type ControlAction = (typeof CONTROL_ACTIONS)[number];
 
 export const CONTROL_ACTION_LABEL: Record<ControlAction, string> = {
@@ -32,6 +32,7 @@ export const CONTROL_ACTION_LABEL: Record<ControlAction, string> = {
   potion: 'Poción',
   ball: 'Poké Ball (enemigo débil)',
   mega: 'Megaevolución',
+  charge: 'Ataque cargado',
   use: 'Usar (Centro, tienda, cofre)',
   pause: 'Pausa',
   menus: 'Menús: elegir y aceptar',
@@ -52,6 +53,7 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       potion: L('potion'),
       ball: L('ball'),
       mega: `${L('mega')} (con Mega Piedra y adrenalina llena)`,
+      charge: `Mantén ${L('charge')} y suelta tras 0,8 s`,
       use: `${L('accept')} cerca`,
       pause: `${L('pause')} o ${L('back')}`,
       menus: `Flechas para elegir · ${L('accept')} o Espacio para aceptar`,
@@ -67,6 +69,7 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       potion: 'Clic en la poción del HUD',
       ball: 'Clic en la Poké Ball del HUD',
       mega: 'Clic en la Mega Piedra del HUD',
+      charge: 'Mantén el botón lateral (atrás o adelante) y suelta tras 0,8 s',
       use: 'Clic en el mostrador, el artículo o el cofre',
       pause: 'Botón ❚❚ de arriba a la izquierda',
       menus: 'Pasa el ratón por encima y haz clic',
@@ -82,6 +85,7 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       potion: 'Pulsar el stick izquierdo (L3)',
       ball: 'Pulsar el stick derecho (R3)',
       mega: 'Cruceta arriba',
+      charge: 'Mantén LT y suelta tras 0,8 s',
       use: 'A cerca',
       pause: 'Start (o Select)',
       menus: 'Cruceta o stick para elegir · A para aceptar',
@@ -97,6 +101,7 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       potion: 'Botón de la poción (encima del joystick izquierdo)',
       ball: 'Toca la Poké Ball del HUD',
       mega: 'Toca la Mega Piedra del HUD',
+      charge: 'No disponible en táctil (el joystick dispara en ráfaga)',
       use: 'Botón "Usar" cerca',
       pause: 'Botón ❚❚ de arriba a la izquierda',
       menus: 'Toca la opción',
