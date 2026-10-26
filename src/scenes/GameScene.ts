@@ -219,6 +219,7 @@ import {
   computeStats,
   PASSIVE_ITEMS,
   passiveById,
+  passiveRarity,
   rollItem,
   toMovePower,
   moveRarity,
@@ -227,7 +228,21 @@ import {
   DroppedItem,
   MovePower,
   PlayerStats,
+  PassiveItem,
 } from '../data/items';
+import {
+  canTakePassive,
+  distinctPassives,
+  fuse,
+  fuseCost,
+  fusePartners,
+  fuseResult,
+  itemSlots,
+  recycle,
+  recycleCoins,
+  removePassive,
+  slotsLabel,
+} from '../data/forge';
 import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
 import { biomeBossPool, biomeEnemyPool, biomeFor, Biome, BIOMES, pickBossWeighted, pickMixedFoes } from '../level/biomes';
 import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBehavior, FALLBACK_ENEMIES,
@@ -312,7 +327,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 /** Lo que pasa de un piso al siguiente al bajar por la trampilla. */
 export type FloorCarry = Pick<
   RunSave,
-  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance'
+  'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten'
 >;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
@@ -597,6 +612,10 @@ export class GameScene extends Phaser.Scene {
   /** Ranura que has elegido en la pantalla de cambio (la usa gainItem una sola vez). */
   private chosenSlot?: number;
   private swapOpen = false;
+  /** T73: jefes vencidos (dan huecos de objeto) y la lista de elegir objeto (huecos llenos o forja) abierta. */
+  private bossesBeaten = 0;
+  private itemChoiceOpen = false;
+  private itemChoiceCooldownUntil = 0;
   private swapCooldownUntil = 0;
   /** Tras coger un activo, 1 s sin poder coger otro (si no, el que sueltas y el nuevo se intercambian sin parar). */
   private activeSwapUntil = 0;
@@ -882,6 +901,8 @@ export class GameScene extends Phaser.Scene {
     const r = this.resume;
     this.hpSacrificed = r?.hpSacrificed ?? this.carry?.hpSacrificed ?? 0;
     this.secondChanceUsed = r?.secondChance ?? this.carry?.secondChance ?? false;
+    this.bossesBeaten = r?.bossesBeaten ?? this.carry?.bossesBeaten ?? 0;
+    this.itemChoiceOpen = false;
     this.eventsDone = new Set(r?.eventsDone ?? []);
     this.slotSpins = new Map(r?.slotSpins ?? []);
     this.fishCasts = new Map(r?.fishCasts ?? []);
@@ -1469,6 +1490,11 @@ export class GameScene extends Phaser.Scene {
         { x: i.cx - 150, y: i.cy + 70, prompt: () => `Enter / A / clic: curar ${amount()} PS por ${price} monedas (tienes ${this.coins})`, use: pay },
         { x: i.cx + 150, y: i.cy + 70, prompt: () => `Enter / A / clic: curar ${amount()} PS gratis, pero irás más lento ${FOUNTAIN_TIRED_ROOMS} salas`, use: free },
       );
+      return;
+    }
+
+    if (kind === 'forge') {
+      this.placeForge(room, i.cx, i.cy);
       return;
     }
 
@@ -2710,6 +2736,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       tiredRooms: this.tiredRooms,
       potions: this.potions,
       secondChance: this.secondChanceUsed,
+      bossesBeaten: this.bossesBeaten,
       captureDone: this.capture.done,
       capturePrevAlly: this.capture.prevAllyId ?? -1,
       slotSpins: [...this.slotSpins],
@@ -2736,6 +2763,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       baseStats: this.baseStats,
       ability: this.ability ? { name: this.ability.name, description: this.ability.description } : undefined,
       items: [
+        `Huecos ${slotsLabel(this.passives, this.bossesBeaten)}`,
         ...[...counts].map(([id, n]) => (passiveById(id)?.name ?? id) + (n > 1 ? ` x${n}` : '')),
         ...(this.active ? [`Activo: ${activeById(this.active.id)?.name} (${this.active.charge}/${activeById(this.active.id)?.charge})`] : []),
         ...this.synergies.map((id) => `¡Sinergia! ${SYNERGIES.find((syn) => syn.id === id)?.name}`),
@@ -3519,6 +3547,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (this.swapOpen || this.time.now < this.swapCooldownUntil) return;
       if (this.askSlot(item.move, (slot) => { this.chosenSlot = slot; this.pickItem(sprite); }, () => undefined)) return;
     }
+    // T73: huecos de objeto llenos: eliges cuál soltar; si cancelas, el nuevo se queda en el suelo
+    if (item.kind === 'passive' && !canTakePassive(item.item.id, this.passives, this.bossesBeaten)) {
+      if (this.itemChoiceOpen || this.game.loop.time < this.itemChoiceCooldownUntil) return;
+      this.askDropFor(item.item, () => this.pickItem(sprite), () => undefined);
+      return;
+    }
     {
       const LX = HUD.left.x + HUD.pad;
       const LW = HUD.left.w - HUD.pad * 2;
@@ -3626,6 +3660,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Te quedas un pasivo o un poder (cogido del suelo o comprado). */
   private gainItem(item: DroppedItem) {
+    // T73: comprado o regalado (tienda, mercader, eventos…) con los huecos llenos: eliges qué soltar o se queda al lado
+    if (item.kind === 'passive' && !canTakePassive(item.item.id, this.passives, this.bossesBeaten)) {
+      this.askDropFor(item.item, () => this.gainItem(item), () => this.dropBeside(item));
+      return;
+    }
     sfx('pickup');
     this.mission({ kind: 'item' });
     this.tip(item.kind === 'move' ? 'powers' : item.kind === 'passive' ? 'items' : 'active');
@@ -3671,6 +3710,206 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     this.refreshInventory();
     this.saveNow();
+  }
+
+  // --- T73: huecos de objeto y forja (lógica en data/forge.ts) ---
+
+  /** Jefe vencido: cuenta para los huecos de objeto y avisa si da uno más. */
+  private bossBeaten() {
+    const before = itemSlots(this.bossesBeaten);
+    this.bossesBeaten++;
+    this.mission({ kind: 'boss' });
+    if (itemSlots(this.bossesBeaten) > before) {
+      this.notify(`+1 hueco de objeto\nObjetos ${slotsLabel(this.passives, this.bossesBeaten)}`, { kind: 'reward', icon: 'bag' });
+      this.refreshInventory();
+    }
+  }
+
+  private passiveName(id: string, withCount = false) {
+    const n = this.passives.filter((p) => p === id).length;
+    return (passiveById(id)?.name ?? id) + (withCount && n > 1 ? ` x${n}` : '');
+  }
+
+  /**
+   * Abre la lista de ItemChoiceScene con el juego en pausa (como askSlot). Devuelve false si no se puede abrir.
+   * `then(i)` recibe la opción o -1; se llama ya con la escena reanudada.
+   */
+  private openItemChoice(title: string, text: string, options: string[], then: (i: number) => void, cancel?: string): boolean {
+    if (this.itemChoiceOpen || this.swapOpen || !this.scene.manager.keys['ItemChoice']) return false;
+    this.itemChoiceOpen = true;
+    this.player?.setVelocity(0, 0);
+    this.scene.launch('ItemChoice', {
+      title,
+      text,
+      options,
+      cancel,
+      onChoice: (i: number) => {
+        this.scene.stop('ItemChoice');
+        this.scene.resume();
+        this.input.keyboard?.resetKeys();
+        this.itemChoiceOpen = false;
+        // Hora real (el reloj de la escena estaba parado): que no se reabra al seguir encima del objeto
+        this.itemChoiceCooldownUntil = this.game.loop.time + 1200;
+        then(i);
+      },
+    });
+    this.scene.pause();
+    return true;
+  }
+
+  /** Encadena otra lista justo después de cerrar una (la de pasos de la forja): un instante para que Phaser la cierre. */
+  private nextItemChoice(...args: Parameters<GameScene['openItemChoice']>) {
+    this.time.delayedCall(60, () => !this.ended && this.openItemChoice(...args));
+  }
+
+  /** Huecos llenos: pregunta qué objeto soltar para coger `item`. Si no se puede preguntar, cuenta como cancelar. */
+  private askDropFor(item: PassiveItem, then: () => void, cancel: () => void) {
+    const owned = distinctPassives(this.passives);
+    const ok = this.openItemChoice(
+      'HUECOS LLENOS',
+      `Objetos ${slotsLabel(this.passives, this.bossesBeaten)}: ¿cuál sueltas para coger ${item.name}?\nEl que sueltes se queda en el suelo.`,
+      owned.map((id) => this.passiveName(id, true)),
+      (i) => {
+        if (i < 0) return cancel();
+        this.dropPassiveToFloor(owned[i]);
+        then();
+      },
+      `Dejar ${item.name} en el suelo`,
+    );
+    if (!ok) cancel();
+  }
+
+  /** Deja un objeto en el suelo a tu lado (dentro de la sala). */
+  private dropBeside(item: DroppedItem) {
+    if (!this.player) return;
+    const rm = this.host.room();
+    const side = this.player.x + 70 > rm.x1 - 40 ? -70 : 70;
+    const p = this.freeSpot(Phaser.Math.Clamp(this.player.x + side, rm.x0 + 40, rm.x1 - 40), Phaser.Math.Clamp(this.player.y, rm.y0 + 50, rm.y1 - 40));
+    this.spawnPickup(this.current.id, p.x, p.y, item, true);
+  }
+
+  /** Suelta un objeto entero (con sus copias, que van al suelo una a una) y libera su hueco. */
+  private dropPassiveToFloor(id: string) {
+    const item = passiveById(id);
+    const copies = this.passives.filter((p) => p === id).length;
+    this.passives = removePassive(this.passives, id);
+    if (id === 'banda-focus') this.focusLeft = Math.max(0, this.focusLeft - copies);
+    if (item) for (let k = 0; k < copies; k++) this.dropBeside({ kind: 'passive', item });
+    this.passivesChanged();
+    this.notify(`Has soltado ${item?.name ?? id}`, { kind: 'info', icon: 'bag' });
+  }
+
+  /** Tras quitar o cambiar pasivos: estadísticas, PS (los máximos de más también curan), HUD y guardado. */
+  private passivesChanged() {
+    const prevMax = this.stats.maxHp;
+    this.stats = this.calcStats();
+    this.hp = Math.max(1, Math.min(this.stats.maxHp, this.hp + Math.max(0, this.stats.maxHp - prevMax)));
+    this.hpMark = this.hp;
+    this.refreshInventory();
+    this.saveNow();
+  }
+
+  /** Forja: yunque con dos puntos de uso (reciclar y fusionar). Un solo uso por forja. */
+  private placeForge(room: Room, x: number, y: number) {
+    // TODO(supervisor): dibujo del yunque, el fuego de la fragua y las chispas al usarla (respetando efectos bajos);
+    // ahora, formas lisas
+    const g = this.add.graphics().setDepth(2);
+    g.fillStyle(0x3d3d46, 1).fillRect(x - 46, y - 8, 92, 18);
+    g.fillStyle(0x55555f, 1).fillRect(x - 30, y + 10, 60, 26);
+    g.fillStyle(0xe67e22, 0.9).fillRect(x - 20, y - 20, 40, 10);
+    this.eventObjs.push(g);
+    const label = (lx: number, ly: number, text: string, color = '#ffffff') => {
+      const t = this.add.text(lx, ly, text, { fontFamily: FONT, fontSize: '15px', color, stroke: '#101828', strokeThickness: 4, align: 'center' }).setOrigin(0.5).setDepth(4);
+      this.eventObjs.push(t);
+    };
+    label(x, y - 44, 'Forja', '#ffcc80');
+    const actions: [number, string, () => void][] = [
+      [x - 90, 'Reciclar', () => this.forgeRecycle(room)],
+      [x + 90, 'Fusionar', () => this.forgeFuse(room)],
+    ];
+    for (const [ax, text, use] of actions) {
+      const z = this.add.zone(ax, y + 70, 130, 44).setInteractive({ useHandCursor: true });
+      z.on('pointerover', () => (this.overHud = true));
+      z.on('pointerout', () => (this.overHud = false));
+      z.on('pointerdown', () => this.current?.id === room.id && use());
+      this.eventObjs.push(z);
+      label(ax, y + 70, text, '#ffe0b2');
+    }
+    this.eventSpots.push(
+      { x: x - 90, y: y + 70, prompt: () => 'Enter / A / clic: reciclar un objeto por monedas (libera su hueco)', use: actions[0][2] },
+      { x: x + 90, y: y + 70, prompt: () => 'Enter / A / clic: fusionar dos objetos de la misma rareza en uno mejor', use: actions[1][2] },
+    );
+  }
+
+  private forgeUsable(room: Room) {
+    return !this.ended && !this.transitioning && !this.eventsDone.has(room.id) && !this.itemChoiceOpen;
+  }
+
+  private forgeRecycle(room: Room) {
+    if (!this.forgeUsable(room)) return;
+    const owned = distinctPassives(this.passives);
+    if (owned.length === 0) return this.notify('Forja: no llevas objetos que reciclar', { kind: 'warning', icon: 'bag' });
+    this.openItemChoice(
+      'FORJA: RECICLAR',
+      'Elige el objeto que quieres destruir: te da monedas y libera su hueco.',
+      owned.map((id) => `${this.passiveName(id, true)} → +${recycleCoins(id, this.passives)} monedas`),
+      (i) => {
+        if (i < 0) return;
+        const id = owned[i];
+        const coins = recycleCoins(id, this.passives);
+        this.nextItemChoice('FORJA: RECICLAR', `¿Destruir ${this.passiveName(id, true)} por ${coins} monedas?\nLa forja solo se puede usar una vez.`, [`Reciclar por ${coins} monedas`], (ok) => {
+          if (ok !== 0 || !this.forgeUsable(room)) return;
+          const r = recycle(this.passives, id);
+          if (id === 'banda-focus') this.focusLeft = 0;
+          this.passives = r.passives;
+          this.coins += r.coins;
+          sfx('coin');
+          this.notify(`Forja: ${passiveById(id)?.name ?? id} reciclado\n+${r.coins} monedas`, { kind: 'reward', icon: 'bag' });
+          this.passivesChanged();
+          this.finishEvent(room);
+        });
+      },
+    );
+  }
+
+  private forgeFuse(room: Room) {
+    if (!this.forgeUsable(room)) return;
+    const firsts = distinctPassives(this.passives).filter((a) => fusePartners(a, this.passives).length > 0);
+    if (firsts.length === 0) {
+      return this.notify('Forja: necesitas dos objetos distintos de la misma rareza (no legendarios)', { kind: 'warning', icon: 'bag' });
+    }
+    const rarity = (id: string) => MOVE_RARITY_LABEL[passiveRarity(id)];
+    this.openItemChoice('FORJA: FUSIONAR', 'Primer objeto (se gasta una copia de cada uno):', firsts.map((id) => `${this.passiveName(id, true)} (${rarity(id)})`), (i) => {
+      if (i < 0) return;
+      const a = firsts[i];
+      const partners = fusePartners(a, this.passives);
+      this.nextItemChoice('FORJA: FUSIONAR', `${this.passiveName(a)} + ¿cuál?`, partners.map((id) => `${this.passiveName(id, true)} (${rarity(id)})`), (j) => {
+        if (j < 0) return;
+        const b = partners[j];
+        // Azar fijo por piso, sala y pareja: el resultado se enseña antes de aceptar y no cambia al repetir
+        const seed = (this.floorSeed ^ Math.imul(room.id + 7, 0x2c1b3c6d) ^ Math.imul(this.passives.indexOf(a) + 31 * this.passives.indexOf(b) + 1, 0x297a2d39)) >>> 0;
+        const res = fuseResult(a, b, this.passives, mulberry32(seed), this.passivePool());
+        if (!res) return this.notify('Forja: no hay objetos de la rareza siguiente', { kind: 'warning', icon: 'bag' });
+        const cost = fuseCost(a);
+        this.nextItemChoice(
+          'FORJA: FUSIONAR',
+          `${this.passiveName(a)} + ${this.passiveName(b)} → ${res.name} (${rarity(res.id)})\n${res.description}\nCuesta ${cost} monedas (tienes ${this.coins}). La forja solo se puede usar una vez.`,
+          [this.coins >= cost ? `Fusionar por ${cost} monedas` : `Te faltan ${cost - this.coins} monedas`],
+          (ok) => {
+            if (ok !== 0 || !this.forgeUsable(room)) return;
+            if (this.coins < cost) return this.notify(`Forja: te faltan ${cost - this.coins} monedas`, { kind: 'warning', icon: 'bag' });
+            this.coins -= cost;
+            for (const gone of [a, b]) if (gone === 'banda-focus') this.focusLeft = Math.max(0, this.focusLeft - 1);
+            if (res.id === 'banda-focus') this.focusLeft++;
+            this.passives = fuse(this.passives, a, b, res.id);
+            sfx('pickup');
+            this.notify(`¡Fusión!\n${res.name}: ${res.description}`, { kind: 'reward', icon: 'bag' });
+            this.passivesChanged();
+            this.finishEvent(room);
+          },
+        );
+      });
+    });
   }
 
   // --- Objeto activo ---
@@ -4043,7 +4282,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Iconos de los objetos en rejilla (con "x2" si se repiten); el texto queda vacío
     this.invIcons.forEach((o) => o.destroy());
     this.invIcons = [];
-    this.invText.setText('');
+    // T73: huecos ocupados / disponibles encima de los iconos
+    this.invText.setText(`Objetos ${slotsLabel(this.passives, this.bossesBeaten)}`);
     const LX = HUD.left.x + HUD.pad;
     const LW = HUD.left.w - HUD.pad * 2;
     const cols = Math.max(1, Math.floor(LW / 46));
@@ -5451,8 +5691,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       for (const rm of this.floor.rooms) this.cleared.add(rm.id);
       if (!this.resume) {
         if (spec.kind === 'rest') {
-          // Descanso: el Centro Pokémon hace de fuente y cae un objeto (el altar de 3 objetos, la forja y la tienda
-          // con descuento quedan pendientes, ver BITACORA)
+          // Descanso: el Centro Pokémon hace de fuente, cae un objeto y hay forja (T73, abajo). El altar de 3 objetos
+          // y la tienda con descuento quedan pendientes, ver BITACORA
           this.dropItem(room.id, i.cx + 170, i.cy);
           this.notify(`Sala de descanso\nCúrate en el Centro y coge el objeto`, { kind: 'reward', icon: 'heart' });
         } else {
@@ -5464,6 +5704,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       }
       this.saveNow();
     }
+    // T73: el descanso siempre tiene forja (de un uso; al continuar sigue si no se había usado)
+    if (spec.kind === 'rest' && !this.eventsDone.has(room.id)) this.placeForge(room, i.cx - 170, i.cy + 40);
     if (this.cleared.has(0) && !isLastStage(this.mode, this.floorNum)) this.spawnTrapdoor();
     if (spec.rule && !this.cleared.has(0)) this.notify(ruleNotice(spec.rule), { kind: 'danger', icon: 'star' });
   }
@@ -5472,7 +5714,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private towerCleared(room: Room) {
     const record = submitRecord(this.mode, this.floorNum, undefined, this.diff);
     if (record) this.counters.newRecord = true;
-    if (room.kind === 'boss') this.mission({ kind: 'boss' });
+    if (room.kind === 'boss') this.bossBeaten();
     if (isLastStage(this.mode, this.floorNum)) {
       this.mission({ kind: 'win' });
       this.giveTickets(FINALE_BONUS);
@@ -5632,6 +5874,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       tiredRooms: this.tiredRooms,
       potions: this.potions,
       secondChance: this.secondChanceUsed,
+      bossesBeaten: this.bossesBeaten,
     };
     // Caída por la trampilla: se coloca encima, gira encogiéndose hacia el agujero y la cámara se acerca
     const p = this.player;
@@ -6874,7 +7117,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.chargeActive();
     this.mission({ kind: 'room' });
     this.tip('pause');
-    if (room.kind === 'boss') this.mission({ kind: 'boss' });
+    if (room.kind === 'boss') this.bossBeaten();
     sfx('clear');
     this.setGroupDoorsLocked(room, false, true);
     // Onda de "sala limpia" que sale del jugador y recorre la sala

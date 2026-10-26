@@ -1197,3 +1197,27 @@ Pendiente (T72 sigue `[ ]`):
   de uno de los ocho, también cambia el diario: el test con la copia literal de los pesos antiguos avisa.
 - **Guardado v18**: `RunSave.slotSpins` y `fishCasts` (pares `[sala, cantidad]`) guardan las tiradas de la tragaperras y
   los lanzamientos de pesca; los v17 migran con ambos vacíos. Al continuar en la misma sala ya no se reinician.
+## T73 — Forja y huecos de objetos limitados
+Hecho:
+- `src/data/forge.ts` (tests en `tests/forge.test.ts`), constantes en `items.ts` (`ITEM_SLOTS_BASE` 10,
+  `ITEM_SLOTS_PER_BOSS` 1, `ITEM_SLOTS_MAX` 16): huecos por jefes vencidos, las copias ocupan un hueco, `canTakePassive`,
+  reciclar (`RECYCLE_SHARE` del precio por copia, quita todas las copias), fusionar (dos distintos de la misma rareza, no
+  legendarios; gasta una copia de cada uno; resultado de la rareza siguiente que no tengas si hay otros; coste
+  `FUSE_COST`), `forgeWeight` (0 en los pisos 1-2 y sube con la profundidad).
+- `RunSave` v19: `bossesBeaten`. Los v18 migran con los jefes vistos menos uno; no se quita ningún objeto aunque
+  lleven más que huecos (solo no pueden coger objetos nuevos hasta liberar).
+- Evento `forge` en `roomEvents.ts` (etiqueta, color naranja de minimapa, descripción, peso). NO está en `DAILY_EVENTS`
+  (tabla congelada), así que el diario no cambia. El test de la laguna deja fuera la forja al probar la última tirada.
+- `ItemChoiceScene` (nueva, genérica, como `SlotSwapScene`): lista con teclado (flechas/Enter/1-9/Esc), ratón y mando
+  (cruceta/A/B). Se usa para soltar un objeto con los huecos llenos (al coger del suelo: si cancelas se queda en el
+  suelo; comprado o de un evento: si cancelas cae a tu lado) y para los pasos de la forja, con confirmación que
+  enseña coste y resultado (el de la fusión sale de un azar fijo por piso, sala y pareja).
+- GameScene: HUD «Objetos 7/10» encima de los iconos, línea «Huecos 7/10» en la pausa (va en `items`, sin tocar
+  PauseScene), aviso «+1 hueco de objeto» al vencer un jefe, forja de un uso en las salas sorpresa y **siempre en el
+  descanso de la Torre** (sigue al continuar si no se había usado; se marca en `eventsDone`).
+- Al soltar un objeto apilado (x2), caen todas sus copias al suelo una a una.
+Pendiente:
+- «Mejorar» (monedas por +25 % al efecto, hasta nivel 3): opcional, no hecho (necesitaría niveles por objeto en
+  `RunSave` y en `computeStats`).
+- `// TODO(supervisor)`: dibujo del yunque, fragua y chispas; marco de `ItemChoiceScene`.
+- Probar en el navegador (solo verificado con `tsc` y `npm test`).

@@ -59,6 +59,7 @@ function sample(): RunSave {
     capturePrevAlly: -1,
     slotSpins: [],
     fishCasts: [],
+    bossesBeaten: 1,
   };
 }
 
@@ -273,7 +274,7 @@ test('T65: v16 sin captura se migra (sin capturar) y se valida', () => {
 });
 
 test('T68/T69: v17 sin contadores se migra a cero y los contadores hacen la ida y vuelta', () => {
-  const { slotSpins: _s, fishCasts: _f, ...old } = sample();
+  const { slotSpins: _s, fishCasts: _f, bossesBeaten: _b, ...old } = sample();
   const run = parseRun(JSON.stringify({ ...old, version: 17 }))!;
   assert.equal(run.version, RUN_VERSION);
   assert.deepEqual(run.slotSpins, []);
@@ -284,4 +285,17 @@ test('T68/T69: v17 sin contadores se migra a cero y los contadores hacen la ida 
   assert.deepEqual(new Map(back.fishCasts), new Map([[4, 3]]));
   assert.equal(parseRun(JSON.stringify({ ...sample(), slotSpins: [[1, -1]] })), null);
   assert.equal(parseRun(JSON.stringify({ ...sample(), fishCasts: 'x' })), null);
+});
+
+test('T73: v18 sin jefes vencidos se migra contando los jefes vistos menos el actual, sin tocar los objetos', () => {
+  const many = Array.from({ length: 14 }, (_, i) => `obj-${i}`);
+  const { bossesBeaten: _b, ...old } = { ...sample(), passives: many };
+  const run = parseRun(JSON.stringify({ ...old, version: 18 }))!;
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.bossesBeaten, 1); // bossHistory [144, 150]
+  assert.deepEqual(run.passives, many);
+  const none = parseRun(JSON.stringify({ ...old, bossHistory: [], version: 18 }))!;
+  assert.equal(none.bossesBeaten, 0);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), bossesBeaten: -1 })), null);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), bossesBeaten: 1.5 })), null);
 });

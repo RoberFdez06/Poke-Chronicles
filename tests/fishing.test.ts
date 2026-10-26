@@ -13,7 +13,7 @@ import {
   fishingWeight,
   hookResult,
 } from '../src/level/fishing.ts';
-import { eventWeights, pickEventKind } from '../src/level/roomEvents.ts';
+import { eventWeights, pickEventKind, ROOM_EVENTS } from '../src/level/roomEvents.ts';
 import { GYARADOS, MAGIKARP } from '../src/data/easterEggs.ts';
 
 test('espera hasta que pica, dentro de sus límites', () => {
@@ -57,6 +57,6 @@ test('la laguna sale sobre todo en biomas con agua', () => {
   assert.ok(fishingWeight(['water', 'flying']) > fishingWeight(['fire', 'rock']));
   assert.ok(fishingWeight([]) > 0, 'en el resto, poco peso pero puede salir');
   assert.ok(eventWeights(4, ['water']).fishing > eventWeights(4, ['fire']).fishing);
-  // Con todo el peso al final de la lista, la última tirada cae en la laguna
-  assert.equal(pickEventKind(4, 0.999, ['water']), 'fishing');
+  // Con la laguna al final de la lista, la última tirada cae en ella (T73 añadió la forja detrás: se deja fuera)
+  assert.equal(pickEventKind(4, 0.999, ['water'], ROOM_EVENTS.filter((k) => k !== 'forge')), 'fishing');
 });

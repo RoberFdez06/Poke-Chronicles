@@ -26,8 +26,10 @@ export const RUN_SLOTS = 3;
  * v14: huevo misterioso, ayudante y cansancio de la fuente (T48; los v13 no tenían).
  * v15: pociones que llevas y pociones en el suelo (T49; los v14 no tenían).
  * v18: tiradas de la tragaperras y lanzamientos de pesca por sala (T68/T69; los v17 no tenían).
+ * v19: jefes vencidos, que dan huecos de objetos (T73). Los v18 se migran contando los jefes que ya habían salido
+ *      menos el actual; no se les quita ningún objeto aunque lleven más que huecos.
  */
-export const RUN_VERSION = 18;
+export const RUN_VERSION = 19;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -127,6 +129,8 @@ export interface RunSave {
   /** T68/T69: tiradas de la tragaperras y lanzamientos de pesca ya hechos, como pares [sala, cantidad]. */
   slotSpins: [number, number][];
   fishCasts: [number, number][];
+  /** T73: jefes vencidos en la partida (cada uno da un hueco de objeto más, ver items.ts). */
+  bossesBeaten: number;
 }
 
 export interface DailyRun {
@@ -252,6 +256,15 @@ function migrateV17(d: RunSave): RunSave {
   return { ...d, version: 18, slotSpins: [], fishCasts: [] };
 }
 
+/**
+ * v18 no contaba los jefes vencidos (T73). `bossHistory` guarda los que han salido, y el del piso actual puede no
+ * estar vencido: se cuenta uno menos para no regalar un hueco. Los objetos que ya llevabas no se tocan.
+ */
+function migrateV18(d: RunSave): RunSave {
+  const seen = Array.isArray(d.bossHistory) ? d.bossHistory.length : 0;
+  return { ...d, version: 19, bossesBeaten: Math.max(0, seen - 1) };
+}
+
 /** Lee un guardado; si está corrupto o es de otra versión, devuelve null (hueco vacío). */
 export function parseRun(raw: string | null): RunSave | null {
   if (!raw) return null;
@@ -279,6 +292,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 15) d = migrateV15(d);
   if (d.version === 16) d = migrateV16(d);
   if (d.version === 17) d = migrateV17(d);
+  if (d.version === 18) d = migrateV18(d);
   if (d.version !== RUN_VERSION) return null;
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
@@ -300,7 +314,7 @@ export function parseRun(raw: string | null): RunSave | null {
     isDifficulty(d.difficulty) && isIntArray(d.eventsDone) && isInt(d.hpSacrificed) && d.hpSacrificed >= 0 &&
     isInt(d.eggLeft) && d.eggLeft >= 0 && isInt(d.allyId) && d.allyId >= 0 && isInt(d.tiredRooms) && d.tiredRooms >= 0 && isInt(d.potions) && d.potions >= 0 &&
     typeof d.secondChance === 'boolean' && typeof d.captureDone === 'boolean' && isInt(d.capturePrevAlly) && d.capturePrevAlly >= -1 &&
-    isPairs(d.slotSpins) && isPairs(d.fishCasts);
+    isPairs(d.slotSpins) && isPairs(d.fishCasts) && isInt(d.bossesBeaten) && d.bossesBeaten >= 0;
   return ok ? d : null;
 }
 

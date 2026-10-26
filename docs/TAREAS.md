@@ -561,13 +561,13 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
   puedes arrancar desde el último jefe vencido, con un coste en caramelos que decides en la lógica pura y pones en una constante).
 - Tests: qué piso es minijefe, jefe, descanso o final, escalado y récord. Es la tarea más grande: déjala la última.
 - **Estado (rama t72):** hecha la lógica pura (`src/level/tower.ts`) y el modo con la ruta básica; falta lo anotado en
-  `docs/BITACORA.md` (T72 — Pendiente): 2x2, altar/forja/tienda del descanso, elegir suministro, minijefe con ataque extra y
+  `docs/BITACORA.md` (T72 — Pendiente): 2x2, altar/tienda del descanso (la forja ya está, T73), elegir suministro, minijefe con ataque extra y
   objeto épico, piso 100 con `finale.ts`, hielo, pantalla de puntos de control.
 
 ## Orden recomendado
 - T64 primero (arregla algo que Roberto notó), luego T65, T66 y T67, después T68-T70 (salas), T71 y por último T72.
 
-## [ ] T73 — Forja de objetos y huecos de objetos limitados (en cualquier modo)
+## [x] T73 — Forja de objetos y huecos de objetos limitados (en cualquier modo)
 - **Huecos de objetos pasivos limitados.** Hoy no hay tope. Propuesta (constantes fáciles de cambiar en `items.ts`): **10 huecos** al empezar,
   **+1 por cada jefe vencido hasta 16**; las copias del mismo objeto ocupan **un solo hueco** (el «x2» actual). Con los huecos llenos, al
   coger un objeto nuevo eliges cuál soltar (teclado, ratón y mando) o lo dejas en el suelo. Los activos y consumibles no usan hueco.
@@ -579,6 +579,8 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
   si queda tiempo, **mejorar** (monedas para +25 % al efecto de un objeto, hasta nivel 3). Ven el coste y el resultado antes de aceptar.
 - Tests de la lógica pura: huecos disponibles, qué ocupa hueco, reciclado, fusión (rarezas y que nunca sale uno que ya tengas si hay
   otros), y la migración. El dibujo del yunque y de la sala queda como `// TODO(supervisor)`.
+- **Estado (rama t73):** hechos huecos, reciclar, fusionar, forja como evento y en el descanso de la Torre, `RunSave` v19.
+  Queda sin hacer lo opcional («mejorar» +25 % hasta nivel 3); ver `docs/BITACORA.md` (T73).
 
 ## [ ] T74 — Megaevolución del jugador (en cualquier modo)
 - **Sprites (confirmado por el usuario):** las formas alternativas existen en PokeAPI **con sprite** (`charizard-mega-x`, `charizard-gmax`, `pikachu-gmax`, etc.; ids desde 10000). Usa la forma real al megaevolucionar o gigamaxear; si una concreta no trajera sprite, deja el sprite normal más grande con aura (`// TODO(supervisor)`), nunca dibujes tú un personaje conocido.

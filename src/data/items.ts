@@ -489,3 +489,13 @@ export function rollItem(
   // T52: los raros salen menos
   return { kind: 'passive', item: pickPassive(rng, list) };
 }
+
+// --- Huecos de objetos pasivos (T73) ---
+// Constantes sueltas para poder equilibrarlas sin tocar la lógica (ver forge.ts).
+
+/** Huecos al empezar la partida. */
+export const ITEM_SLOTS_BASE = 10;
+/** Huecos que da cada jefe vencido. */
+export const ITEM_SLOTS_PER_BOSS = 1;
+/** Tope de huecos, por muchos jefes que caigan. */
+export const ITEM_SLOTS_MAX = 16;

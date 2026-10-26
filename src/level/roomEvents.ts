@@ -14,13 +14,16 @@
 // - Ladrón: te roba monedas y huye hacia una puerta (ver thief.ts).
 // T69:
 // - Laguna de pesca: lanzas la caña y pulsas cuando pica (ver fishing.ts).
+// T73:
+// - Forja: reciclar un objeto por monedas o fusionar dos de la misma rareza (ver data/forge.ts).
 // Sale de la semilla del piso, así al continuar o en el desafío diario es el mismo. Lógica pura, sin Phaser.
 import type { Floor } from './floorGen.ts';
 import { PASSIVE_ITEMS, takeMoveByRarity, type MovePower, type PassiveItem } from '../data/items.ts';
 import { fishingWeight } from './fishing.ts';
+import { forgeWeight } from '../data/forge.ts';
 import type { ShopGoods, ShopSlot } from '../data/loot.ts';
 
-export const ROOM_EVENTS = ['runaway', 'merchant', 'altar', 'trapChest', 'rival', 'fountain', 'timeTrial', 'egg', 'slots', 'thief', 'fishing'] as const;
+export const ROOM_EVENTS = ['runaway', 'merchant', 'altar', 'trapChest', 'rival', 'fountain', 'timeTrial', 'egg', 'slots', 'thief', 'fishing', 'forge'] as const;
 export type RoomEventKind = (typeof ROOM_EVENTS)[number];
 
 /**
@@ -47,6 +50,7 @@ export const ROOM_EVENT_LABEL: Record<RoomEventKind, string> = {
   slots: 'Sala de juegos',
   thief: 'Ladrón',
   fishing: 'Laguna de pesca',
+  forge: 'Forja',
 };
 
 /** Color de la marca en el minimapa (al descubrir la sala, hasta resolver el evento). */
@@ -62,6 +66,7 @@ export const ROOM_EVENT_COLOR: Record<RoomEventKind, number> = {
   slots: 0xff7043,
   thief: 0x8d6e63,
   fishing: 0x0288d1,
+  forge: 0xe67e22,
 };
 
 /** Premio y riesgo de cada evento, para el aviso al entrar. */
@@ -77,6 +82,7 @@ export const ROOM_EVENT_DESC: Record<RoomEventKind, string> = {
   slots: 'Tragaperras con monedas: apuesta 3, 6 o 12 (tiradas limitadas)',
   thief: 'Te roba monedas y huye: abátelo antes de que salga y te las devuelve con extra',
   fishing: 'Lanza la caña y pulsa cuando pique: monedas, bayas, objetos… o algo raro',
+  forge: 'Recicla un objeto por monedas o fusiona dos de la misma rareza en uno mejor',
 };
 
 /**
@@ -98,6 +104,7 @@ export function eventWeights(floorNum: number, biomeTypes: readonly string[] = [
     slots: 0.7, // T68: poco peso y fijo; solo cuesta monedas
     thief: 0.5 + 0.3 * deep, // T70: algo más hondo, cuando llevas más monedas
     fishing: fishingWeight(biomeTypes), // T69: sobre todo en biomas con agua
+    forge: forgeWeight(f), // T73: más probable cuanto más hondo
   };
 }
 
