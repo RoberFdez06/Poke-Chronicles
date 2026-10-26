@@ -147,6 +147,10 @@ import { bombExplosion, bombFuse } from '../ui/art/bombFx';
 import { fallConceptFx, sacredFlame } from '../ui/art/fallArt';
 import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
 import { dynamaxBurst, teraBurst, zMoveFx } from '../ui/art/formsFx';
+import { drawMegaStoneHud, drawPowerMeterFill, playerFormAura, playerMegaFx } from '../ui/art/megaFx';
+import { chargedShotFx, chargeGlow } from '../ui/art/shotFx';
+import { megaBlastFx, reactionChain, reactionFx } from '../ui/art/reactionFx';
+import { shinyChainBadge } from '../ui/art/shinyChainArt';
 import { buildClue, buildNpc, drawBallIcon } from '../ui/art/worldArt';
 import { buildShopArt, type ShopArt } from '../ui/art/shopArt';
 import { buildForgeArt, buildLagoonArt, buildSlotArt } from '../ui/art/eventArt';
@@ -285,7 +289,7 @@ import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBeh
   turnToward,
 } from '../data/enemies';
 import { drawMinimap } from './minimap';
-import { cancelCharge, chargedShapeFor, CHARGE_DAMAGE_MUL, CHARGE_MOVE_MUL, CHARGE_SOURCES, isCharging, newCharge, stepCharge, type ChargeSource, type ChargeState } from '../data/charge.ts';
+import { cancelCharge, chargedShapeFor, chargeProgress, CHARGE_DAMAGE_MUL, CHARGE_MOVE_MUL, CHARGE_SOURCES, isCharging, newCharge, stepCharge, type ChargeSource, type ChargeState } from '../data/charge.ts';
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
 import { openConfirm } from './ConfirmScene';
@@ -2829,9 +2833,9 @@ export class GameScene extends Phaser.Scene {
       // Esquina superior izquierda de la sala, en coordenadas reales de pantalla
       const k = GAME_VIEW.w / VIEW.w;
       this.comboHud = new ComboHud(this, GAME_VIEW.x + (ROOM.x + 22) * k, GAME_VIEW.y + (ROOM.y + 36) * k, FONT, hud);
-      // T84: contador de la cadena shiny, debajo del combo. TODO(supervisor): arte propio del contador
+      // T84: contador de la cadena shiny, debajo del combo (la estrella la pinta shinyChainBadge a su izquierda)
       this.shinyChainHud = hud(
-        this.add.text(GAME_VIEW.x + (ROOM.x + 22) * k, GAME_VIEW.y + (ROOM.y + 96) * k, '', { fontFamily: FONT, fontSize: '16px', color: '#ffd34d', stroke: '#000000', strokeThickness: 4 }),
+        this.add.text(GAME_VIEW.x + (ROOM.x + 22) * k + 18, GAME_VIEW.y + (ROOM.y + 96) * k, '', { fontFamily: FONT, fontSize: '16px', color: '#ffd34d', stroke: '#000000', strokeThickness: 4 }),
       ).setVisible(false);
     }
     // T49: cuatro contadores (monedas, llaves, bombas y pociones); clic en la bomba o en la poción para usarlas
@@ -3091,9 +3095,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.hpMark = this.hp;
     sfx('evolve');
     const pb = this.player.body as Body | null;
-    // TODO(supervisor): efecto propio de la megaevolución del jugador (esfera de la Mega Piedra, crisálida, símbolo mega).
-    // De momento, el mismo de los jefes (T66); con efectos bajos, megaEvolveFx ya va sin destellos y sin flash de cámara.
-    megaEvolveFx(this, this.player.x, this.player.y, pb ? pb.bottom : this.player.y + 30, typeColor(this.tearType));
+    // Mega Piedra, crisálida de luz y símbolo mega (con efectos bajos, solo un anillo)
+    playerMegaFx(this, this.player.x, this.player.y, pb ? pb.bottom : this.player.y + 30, typeColor(this.tearType));
     if (!lowFx()) this.cameras.main.flash(300, 255, 255, 255);
     this.notify(`¡${megaDisplayName(this.formId, this.niceName())}!\nMás daño, velocidad y PS durante ${Math.round(POWER_FORMS.mega.durationMs / 1000)} s`, { kind: 'item', icon: 'pokeball' });
     void cry(this.formId);
@@ -3166,10 +3169,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.powerFormLoopAt = now;
     // T75: el medidor baja poco a poco si no peleas (con el mismo paso recortado: la pausa no lo vacía)
     if (!this.ended) tickPowerMeter(this.powerMeter, dt);
+    // Aura de la forma: la mega (ligera) y la roja del Dinamax si no hay sprite Gigamax; sin sprite propio, más grande
+    const formNow = powerFormActive(this.powerForm) ? this.powerForm.active : null;
+    const auraKind = formNow === 'mega' ? 'mega' : (formNow === 'dynamax' || formNow === 'gigamax') && this.megaKey === this.playerKey ? 'max' : null;
+    if (this.player) playerFormAura(this, this.player, auraKind, typeColor(this.tearType), (this.player.body as Body | null)?.bottom ?? this.player.y + 30, auraKind === 'max' || !this.megaKey);
     if (!powerFormActive(this.powerForm)) return;
     if (tickPowerForm(this.powerForm, dt)) return this.endPowerForm();
     // Sin sprite mega: el normal con el brillo de evolución de vez en cuando (con efectos bajos, nada)
-    // TODO(supervisor): aura propia del jugador megaevolucionado y sprite «más grande con aura» para las formas sin sprite.
     if (!this.megaKey && !lowFx() && now >= this.megaGlowAt && this.player?.active) {
       this.megaGlowAt = now + 4000;
       evolveGlow(this, this.player, 900);
@@ -3267,7 +3273,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /**
    * Aspecto del Dinamax/Gigamax: la forma Gigamax de PokeAPI si la hay (como la mega), y si no el sprite de siempre
-   * ×1,5. TODO(supervisor): aura roja del Dinamax para las formas sin sprite propio.
+   * ×1,5 con el aura roja del Dinamax (playerFormAura, desde updatePowerForm).
    */
   private async applyMaxLook(choice: 'dynamax' | 'gigamax') {
     const size = Math.round(84 * POWER_FORMS[choice].sizeMul);
@@ -3342,14 +3348,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!h) return;
     const show = pickPower(this.powerForm, this.powerContext()) !== null;
     const fill = powerMeterFill(this.powerMeter);
-    const key = `${show}:${Math.round(fill * 50)}`;
+    const key = `${show}:${Math.round(fill * 50)}${fill >= 1 && !lowFx() ? ':' + Math.floor(this.game.loop.time / 60) : ''}`;
     if (h.shown === key) return;
     h.shown = key;
     h.g.clear();
     if (!show) return;
     drawBox(h.g, h.x, h.y, h.w, h.h, { fill: 0x1d2440 });
-    // TODO(supervisor): marcas del gasto de cada forma (60 % Tera, 100 % Dinamax/Z) y brillo al llenarse.
-    if (fill > 0) h.g.fillStyle(fill >= 1 ? 0xff5a6e : 0xc23a5a, 1).fillRect(h.x + 2, h.y + 2, Math.max(1, (h.w - 4) * fill), h.h - 4);
+    // Relleno con franjas, marcas del gasto de cada forma (Tera 60 %, Dinamax/Z 100 %) y destello al llenarse
+    drawPowerMeterFill(h.g, h.x, h.y, h.w, h.h, fill, this.game.loop.time);
   }
 
   /** Mega Piedra del HUD: solo si llevas la piedra y tu Pokémon tiene mega; brilla si se puede, se vacía mientras dura. */
@@ -3363,7 +3369,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const pick = pickPower(this.powerForm, this.powerContext());
     const ready = (megaOffered(ctx) && megaBlock(this.powerForm, ctx) === null) || (!!pick && pick.block === null);
     const fill = on ? powerFormFill(this.powerForm) : 0;
-    const key = `${offered}:${ready}:${on}:${Math.round(fill * 20)}:${this.powerForm.usedThisFloor}`;
+    const key = `${offered}:${ready}:${on}:${Math.round(fill * 20)}:${this.powerForm.usedThisFloor}:${(ready || on) && !lowFx() ? Math.floor(this.game.loop.time / 80) : 0}`;
     if (h.shown === key) return;
     // Si cambia si se ofrece (coges o sueltas la piedra, evolucionas), se redibuja su etiqueta de tecla/botón
     if (h.shown.split(':')[0] !== String(offered)) this.badgeShown = '';
@@ -3371,12 +3377,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     h.g.clear();
     this.megaZone?.setVisible(offered);
     if (!offered) return;
-    // TODO(supervisor): icono de Mega Piedra de verdad (esfera con la hélice del símbolo mega).
+    // Mega Piedra: esfera con la hélice del símbolo mega; aro dorado que se vacía mientras dura la forma
     const used = this.powerForm.usedThisFloor && !on;
-    h.g.fillStyle(0x101828, 1).fillCircle(h.x, h.y, 17);
-    h.g.fillStyle(used ? 0x4a5468 : ready ? 0x8fd3ff : 0x5a7a98, 1).fillCircle(h.x, h.y, 14);
-    if (on) h.g.lineStyle(3, 0xffe066, 1).beginPath().arc(h.x, h.y, 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * fill).strokePath();
-    else if (ready) h.g.lineStyle(2, 0xffffff, 0.9).strokeCircle(h.x, h.y, 16);
+    drawMegaStoneHud(h.g, h.x, h.y, used ? 'used' : on ? 'on' : ready ? 'ready' : 'idle', fill, this.game.loop.time);
   }
 
   // --- Guardado (como en Isaac: solo, en el hueco elegido) ---
@@ -6323,10 +6326,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           this.tweens.killTweensOf(g);
           g.destroy();
           if (!b.active || this.ended) return;
-          // TODO(supervisor): efecto propio del estallido; de momento un destello de los rayos
-          const fx = this.add.graphics().setDepth(12);
-          for (const a of angles) fx.lineStyle(MEGA_BLAST_WIDTH * 2, color, 0.75).lineBetween(cx, cy, cx + Math.cos(a) * spec.length, cy + Math.sin(a) * spec.length);
-          this.tweens.add({ targets: fx, alpha: 0, duration: 260, onComplete: () => fx.destroy() });
+          megaBlastFx(this, cx, cy, angles, spec.length, MEGA_BLAST_WIDTH, color);
           if (angles.some((a) => laserHits(cx, cy, a, spec.length, this.player.x, this.player.y, MEGA_BLAST_WIDTH))) this.hurtPlayer(b, true);
         });
       });
@@ -7521,11 +7521,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.nextTear = time + this.stats.fireDelay;
     }
     // T77: ataque cargado aparte: mantener su tecla / botón del ratón / LT carga; al soltar con la carga completa sale
-    // (hacia donde miras). Cada fuente carga sola. TODO(supervisor): brillo de carga según chargeProgress(...)
+    // (hacia donde miras). Cada fuente carga sola. El brillo crece con la carga de la que vaya más avanzada.
     const held = this.readChargeHeld(hasPad ? pad! : null);
     for (const k of CHARGE_SOURCES) {
       if (stepCharge(this.charges[k], held[k], loopNow) === 'cargado') this.fireTear((shoot ?? this.aim).clone().normalize(), true);
     }
+    chargeGlow(this, this.player.x, this.player.y, Math.atan2(this.aim.y, this.aim.x), Math.max(...CHARGE_SOURCES.map((k) => chargeProgress(this.charges[k], loopNow))), typeColor(this.shotType()));
     if (shoot) {
       this.aim.copy(shoot);
       this.face(this.player, shoot);
@@ -7883,12 +7884,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const basic = basicShotFor(this.shotType());
     Object.assign(opts, { speed: opts.speed * basic.speed, size: opts.size * basic.size, motion: basic.motion, anim: basic.anim });
     // T77: disparo cargado: doble de daño, más grande, atraviesa y cambia según el tipo (fuego rastro, agua empuja, eléctrico salta)
-    // TODO(supervisor): aspecto del disparo cargado y el rastro de fuego (shape.trail)
     const shape = charged ? chargedShapeFor(this.shotType()) : null;
     if (shape) Object.assign(opts, { damage: opts.damage * CHARGE_DAMAGE_MUL, size: opts.size * shape.sizeMul, pierce: opts.pierce + shape.pierce, bounces: opts.bounces + shape.bounces });
     if (shape) {
       const shot = this.spawnShot(dir, 0, opts);
       shot.setData('pushMul', shape.pushMul).setData('charged', true);
+      chargedShotFx(this, shot, opts.color, shape.trail);
       return;
     }
     if (this.fxBudget.take(this.time.now)) muzzle(this, this.player.x, this.player.y, dir.x, dir.y, opts.color);
@@ -8064,6 +8065,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private paintShinyChain() {
     const show = chainVisible(this.shinyChain);
     this.shinyChainHud?.setVisible(show).setText(show ? `Cadena shiny x${this.shinyChain.count}` : '');
+    if (this.shinyChainHud) shinyChainBadge(this, this.shinyChainHud, show ? this.shinyChain.count : 0);
   }
 
   /** Se rompe el combo (te han hecho daño). */
@@ -8613,7 +8615,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.reactionsFound = discover(this.reactionsFound, r.id);
     // Aviso sobre el enemigo, nunca en el centro
     this.popup(enemy.x, enemy.y - (enemy.getData('size') as number) / 2 - 28, r.name, r.color);
-    // TODO(supervisor): efecto visual de cada reacción (chispa que salta, nube de vapor, explosión tóxica, hielo roto…)
+    reactionFx(this, r.id, enemy.x, enemy.y, r.color, r.radius);
     const hurt = (e: Sprite) => {
       const boss = !!(e.getData('ai') as EnemyAI | undefined)?.boss;
       const d = reactionDamage(r, damage, boss);
@@ -8631,6 +8633,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const targets = r.radius > 0
       ? others.filter((o) => o.d <= r.radius)
       : others.filter((o) => o.d <= 180).sort((a, b) => a.d - b.d).slice(0, r.chain);
+    if (r.chain > 0) reactionChain(this, enemy.x, enemy.y, targets.map((o) => o.e), r.color);
     for (const o of targets) hurt(o.e);
   }
 
