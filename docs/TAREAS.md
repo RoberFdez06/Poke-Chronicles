@@ -639,7 +639,7 @@ sprites como `// TODO(supervisor)`, efectos bajos respetados, un commit por tare
   parry: usa `this.game.loop.time`). Lógica pura (`charge.ts`) con tests: tiempo de carga, cancelar, fuentes independientes, daño según
   carga y que el autodisparo no da cargados. El brillo de carga y el disparo cargado, `// TODO(supervisor)`.
 
-## [ ] T78 — Arenas que cambian en los jefes
+## [x] T78 — Arenas que cambian en los jefes
 - En los jefes (no en los minijefes), al bajar al 66 % y al 33 % de PS la arena cambia de **fase** con aviso previo de 1,5 s: el suelo
   se rompe en zonas con peligro (daño continuo), se inunda en parte (más lento y resbaladizo) o se levantan bloques que cambian por dónde
   moverse. Qué pasa depende del bioma y del tipo del jefe, y siempre queda un camino libre por la sala y nunca se cubre la casilla del
