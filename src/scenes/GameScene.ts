@@ -46,6 +46,7 @@ import {
   timeTrialExtra,
   timeTrialSize,
 } from '../level/roomEvents';
+import { FISH_MAX_CASTS, FISH_PRIZE_LABEL, FISH_RARE_HP_MUL, canCast, fishBiteDelay, fishCoins, fishPrize, fishRareCoins, hookResult } from '../level/fishing';
 import { SLOT_BETS, SLOT_MAX_SPINS, SLOT_OUTCOME_LABEL, canSpin, spinSlot } from '../level/slotMachine';
 import { applyDifficulty, scaleHeal, scaleTickets, withDifficulty, type Difficulty } from '../data/difficulty';
 import { loadSpeciesIndex } from '../data/speciesIndex';
@@ -139,7 +140,7 @@ import { bakeBiomeTiles, shade, TILE as ART_TILE } from '../ui/art/tiles';
 import { decorateRoom } from '../ui/art/roomDecor';
 import { drawGlitchFigure, drawTruck, glitchFlash } from '../ui/art/easterArt';
 import { buildCenterArt, type CenterArt } from '../ui/art/centerArt';
-import { evolveMagikarp, MAGIKARP, MAGIKARP_PRICE, MEW_CHANCE, OAK_LINE, secretVariant, sellsMagikarp } from '../data/easterEggs';
+import { evolveMagikarp, GYARADOS, MAGIKARP, MAGIKARP_PRICE, MEW_CHANCE, OAK_LINE, secretVariant, sellsMagikarp } from '../data/easterEggs';
 import { drawPits, drawShapedWalls } from '../ui/art/roomShape';
 import { FINALE_BONUS, GIANT_HP_MUL, GIANT_RAGE_AT, GIANT_SIZE, isFinalFloor, isFinaleGate, pickFinale, TRIO_HP_MUL, type Finale } from '../data/finale';
 import type { FinalChoice } from './FinalPromptScene';
@@ -537,6 +538,9 @@ export class GameScene extends Phaser.Scene {
   private eventObjs: Phaser.GameObjects.GameObject[] = [];
   /** T68: tiradas hechas en cada sala de juegos del piso (sala -> tiradas). */
   private slotSpins = new Map<number, number>();
+  /** T69: lanzamientos hechos en cada laguna y la caña echada (cuándo pica; `token` invalida los avisos viejos). */
+  private fishCasts = new Map<number, number>();
+  private fishLine?: { roomId: number; biteAt: number; token: number };
   private eventSpots: { x: number; y: number; prompt: () => string; use: () => void }[] = [];
   /** Pokémon raro que huye: hasta cuándo se queda y su cuenta atrás. */
   private runaway?: { sprite: Sprite; until: number; label: Phaser.GameObjects.Text; name: string };
@@ -863,6 +867,8 @@ export class GameScene extends Phaser.Scene {
     this.secondChanceUsed = r?.secondChance ?? this.carry?.secondChance ?? false;
     this.eventsDone = new Set(r?.eventsDone ?? []);
     this.slotSpins = new Map();
+    this.fishCasts = new Map();
+    this.fishLine = undefined;
     this.eventObjs = [];
     this.eventSpots = [];
     this.runaway = undefined;
@@ -1441,6 +1447,28 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (kind === 'fishing') {
+      // T69: laguna de pesca. Un solo botón (Enter / A cerca, o clic en el agua): lanzar y, cuando pica, recoger
+      // TODO(supervisor): dibujo de la laguna (agua animada, orilla) y de la caña con su sedal y el corcho; ahora, formas básicas
+      const g = keep(this.add.graphics().setDepth(2));
+      g.fillStyle(0x0d47a1, 1).fillEllipse(i.cx, i.cy - 20, 300, 150);
+      g.fillStyle(0x29b6f6, 1).fillEllipse(i.cx, i.cy - 20, 280, 132);
+      const status = label(i.cx, i.cy - 120, 'Laguna de pesca', 18, '#b3e5fc');
+      const castsLeft = () => FISH_MAX_CASTS - (this.fishCasts.get(room.id) ?? 0);
+      const use = () => this.useFishingRod(room, status, rng);
+      clickable(keep(this.add.zone(i.cx, i.cy - 20, 300, 150)), use);
+      this.eventSpots.push({
+        x: i.cx,
+        y: i.cy + 70,
+        prompt: () =>
+          this.fishLine?.roomId === room.id
+            ? 'Enter / A / clic: ¡recoger cuando pique!'
+            : `Enter / A / clic: lanzar la caña (quedan ${castsLeft()} lanzamientos)`,
+        use,
+      });
+      return;
+    }
+
     if (kind === 'egg') {
       // Huevo misterioso: se lleva y eclosiona tras unas salas limpiadas
       const g = keep(this.add.graphics().setDepth(3));
@@ -1572,6 +1600,10 @@ export class GameScene extends Phaser.Scene {
       this.runaway = undefined;
       const t = this.giveTickets(runawayTickets(this.floorNum));
       this.notify(`¡Lo has vencido a tiempo! +${t} tickets\nHa caído un objeto`, { kind: 'reward', icon: 'ticket' });
+    } else if (enemy.getData('fished')) {
+      // T69: más botín que la trampa: el objeto y además monedas
+      this.spawnLoot(room.id, enemy.x, enemy.y, { kind: 'coin', value: fishRareCoins(this.floorNum) });
+      this.notify('¡Has vencido al Pokémon de la laguna!\nMonedas y un objeto', { kind: 'reward', icon: 'star' });
     } else this.notify('¡Has vencido a la trampa!\nHa caído un objeto', { kind: 'reward', icon: 'chestOpen' });
     const p = this.freeSpot(enemy.x, enemy.y);
     this.time.delayedCall(800, () => !this.ended && this.dropItem(room.id, p.x, p.y));
@@ -1596,7 +1628,7 @@ export class GameScene extends Phaser.Scene {
     this.eventObjs = [];
     this.eventSpots = [];
     this.runaway?.label.destroy();
-    this.runaway = undefined;
+    this.runaway = undefined;    this.fishLine = undefined; // T69: al salir, la caña echada se recoge sola (sin premio)
   }
 
   /**
@@ -1660,6 +1692,86 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.saveNow();
     }
+  }
+
+  /**
+   * T69: la caña. Sin sedal echado, lanza y programa el picotazo; con él, comprueba la ventana (fishing.ts). Si no
+   * pulsas a tiempo, el pez se va solo y gasta el lanzamiento igual.
+   */
+  private useFishingRod(room: Room, status: Phaser.GameObjects.Text, rng: () => number) {
+    if (this.ended || this.transitioning || this.eventsDone.has(room.id)) return;
+    const now = this.time.now;
+    const line = this.fishLine?.roomId === room.id ? this.fishLine : undefined;
+    if (!line) {
+      const done = this.fishCasts.get(room.id) ?? 0;
+      if (!canCast(done)) return;
+      this.fishCasts.set(room.id, done + 1);
+      const token = Math.random();
+      const delay = fishBiteDelay(Math.random());
+      this.fishLine = { roomId: room.id, biteAt: now + delay, token };
+      status.setText('Esperando a que pique…');
+      sfx('door');
+      // Aviso de que pica (fuera del centro, como todos) y, si no recoges, se escapa
+      this.time.delayedCall(delay, () => {
+        if (this.fishLine?.token !== token || this.current?.id !== room.id) return;
+        status.setText('¡Pica! ¡Recoge ya!');
+        sfx('pickup');
+        this.notify('¡Pica!\nEnter / A / clic para recoger', { kind: 'warning', icon: 'star' });
+      });
+      this.time.delayedCall(delay + 1500, () => this.fishLine?.token === token && this.endCast(room, status, 'late', rng));
+      return;
+    }
+    this.endCast(room, status, hookResult(line.biteAt, now), rng);
+  }
+
+  /** Fin de un lanzamiento: premio si ha picado a tiempo; al gastar el último, la laguna se acaba. */
+  private endCast(room: Room, status: Phaser.GameObjects.Text, res: 'early' | 'hooked' | 'late', rng: () => number) {
+    this.fishLine = undefined;
+    const last = !canCast(this.fishCasts.get(room.id) ?? FISH_MAX_CASTS);
+    if (res !== 'hooked') {
+      status.setText(res === 'early' ? 'Demasiado pronto: el pez se asusta' : 'Se ha escapado');
+      this.notify(res === 'early' ? 'Demasiado pronto\nEl pez se ha asustado' : 'Se ha escapado', { kind: 'warning', icon: 'clock' });
+    } else {
+      const prize = fishPrize(rng(), this.passives);
+      status.setText(FISH_PRIZE_LABEL[prize]);
+      const p = this.freeSpot(this.player.x, this.player.y + 60);
+      // TODO(supervisor): animación del pez saliendo del agua
+      if (prize === 'coins') this.spawnLoot(room.id, p.x, p.y, { kind: 'coin', value: fishCoins(this.floorNum) });
+      else if (prize === 'berry') this.spawnLoot(room.id, p.x, p.y, { kind: 'berry', id: rng() < 0.25 ? 'zidra' : 'aranja' });
+      else if (prize === 'item') this.dropItem(room.id, p.x, p.y);
+      else if (prize === 'magikarp' || prize === 'gyarados') {
+        // Easter egg (easterEggs.ts): el mismo pasivo que vende el mercader
+        const item = passiveById(prize === 'magikarp' ? MAGIKARP : GYARADOS);
+        if (item) this.gainItem({ kind: 'passive', item });
+        this.refreshInventory();
+      } else return this.hookRareFish(room, status);
+      this.notify(`¡Has pescado algo!\n${FISH_PRIZE_LABEL[prize]}`, { kind: 'reward', icon: 'star' });
+      sfx('pickup');
+    }
+    if (last) {
+      this.notify('La laguna se ha quedado en calma', { kind: 'info', icon: 'star' });
+      this.finishEvent(room);
+    } else this.saveNow();
+  }
+
+  /** Premio gordo: un Pokémon de agua raro sale a pelear; al vencerlo suelta un objeto y monedas (eventFoeDefeated). */
+  private hookRareFish(room: Room, status: Phaser.GameObjects.Text) {
+    const water = this.foeKinds.filter((k) => k.types.includes('water'));
+    const pool = water.length > 0 ? water : this.foeKinds;
+    if (pool.length === 0) return this.finishEvent(room);
+    const k = [...pool].sort((a, b) => b.bst - a.bst)[0];
+    const e = this.spawnEnemy(k, k.behavior);
+    const i = this.interior(room);
+    (e.body as Body).reset(i.cx, i.cy - 20);
+    const hp = Math.round((e.getData('maxHp') as number) * FISH_RARE_HP_MUL);
+    // Reutiliza el camino del cofre trampa («mimic»): puertas cerradas y premio al caer
+    e.setData('hp', hp).setData('maxHp', hp).setData('mimic', true).setData('fished', true);
+    this.glowAura(e, 0x29b6f6);
+    sparkle(this, e.x, e.y);
+    void cry(Number(k.key.replace('foe-', '')));
+    status.setText('¡Ha salido a pelear!');
+    this.notify('¡Un Pokémon acuático raro!\nVéncelo para llevarte su botín', { kind: 'danger', icon: 'star' });
+    this.setDoorsLocked(room, true, true);
   }
 
   private takeEgg(room: Room) {
@@ -2036,7 +2148,7 @@ export class GameScene extends Phaser.Scene {
     // Sala sorpresa (T39): con la semilla del piso (la misma al continuar), nunca la del minijefe ni las de cofre
     this.roomEvent =
       (this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)
-        ? pickRoomEvent(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x2545f491), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]))
+        ? pickRoomEvent(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x2545f491), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]), this.biome.types)
         : null;
     // T56: reglas de sala, con otra semilla del piso; nunca en la del evento ni la del minijefe (ya tienen lo suyo) ni
     // en las salas grandes (se puede entrar por cualquiera de sus casillas y la regla quedaría en otra)

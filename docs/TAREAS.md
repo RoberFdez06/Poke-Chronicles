@@ -510,7 +510,7 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
 - El dibujo de la máquina queda como `// TODO(supervisor)`. Tests de la lógica pura: premios, probabilidades (el valor esperado tiene
   que ser algo menor que la apuesta para que no sea una mina de monedas) y el tope de tiradas.
 
-## [ ] T69 — Safari y pesca
+## [x] T69 — Safari y pesca
 - Un evento de sala nuevo: **laguna de pesca** (solo en biomas con agua o al azar con poco peso en el resto). Botón de acción para lanzar
   la caña, ventana de tiempo corta para pulsar cuando pica (accesible con teclado, ratón y mando, dificultad suave). Premios: monedas,
   bayas, un objeto o un Pokémon acuático raro que sale a combatir con más botín. Hay una probabilidad muy pequeña de Magikarp y, más
