@@ -6164,6 +6164,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const f = this.finale;
     const name = final && f ? (f.kind === 'trio' ? f.name : this.finaleMembers[0]?.name ?? this.bossName) : ((b.getData('bname') as string | undefined) ?? this.bossName);
     const title = final ? (f?.kind === 'trio' ? 'Reto final · Tres legendarios a la vez' : `Reto final · ${bossTitle(b.getData('speciesId') as number | undefined, types)}`) : bossTitle(b.getData('speciesId') as number | undefined, types);
+    // Los límites de la sala grande impedían centrar al jefe (el zoom acababa en otro sitio): se quitan mientras dura y se ponen al acabar
+    const camHome = { x: this.cameras.main.scrollX, y: this.cameras.main.scrollY };
+    this.cameras.main.removeBounds();
     bossCinematic(this, {
       boss: b, others: bosses.filter((e) => e !== b), name: name.charAt(0).toUpperCase() + name.slice(1), title, color: typeColor(types[0] ?? 'normal'),
       final, low: lowFx(), hud: (o) => this.toHud(o), zoom: BOSS_CAM_ZOOM, follow: this.player, roar: () => sfx('roar'),
@@ -6171,6 +6174,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.physics.resume();
         for (const [e, hp] of hps) if (e.active) e.setData('hp', hp);
         this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 600);
+        this.time.delayedCall(700, () => {
+          this.setRoomCamera(this.current);
+          if (this.current.group === undefined) this.cameras.main.setScroll(camHome.x, camHome.y); // sala normal: cámara fija como antes
+        });
         then();
       },
     });
@@ -6643,6 +6650,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.load.once(Phaser.Loader.Events.COMPLETE, () => done());
       this.load.start();
     });
+    // Con su hoja de animación de andar/volar, como el jefe de verdad (antes salía un dibujo fijo que se deslizaba)
+    if (!this.shiny) for (const [pid, sheet] of await loadPmd(this, [boss.id]).catch(() => new Map<number, PmdSheet>())) this.pmd.set(pid, sheet);
     this.finale = undefined;
     this.bossId = boss.id;
     this.bossKey = key;
