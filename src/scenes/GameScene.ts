@@ -298,6 +298,7 @@ import { cancelCharge, chargedShapeFor, chargeProgress, CHARGE_DAMAGE_MUL, CHARG
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
 import { openConfirm } from './ConfirmScene';
+import { onFocusLost } from '../ui/focusPause';
 import { confirmText } from '../data/confirm';
 import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineFull, adrenalineSpeedMul, fillAdrenaline, gainAdrenaline, spendAdrenaline, newAdrenaline, tickAdrenaline, touchAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
 import { MEGA_STONE_ID, MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState, absorbWithShield, gmaxFormName, pickPower, pickTeraType, resolveTeraType, TERA_TYPES, TERA_GEM_ID, POWER_BLOCK_TEXT, powerCost, powerFormSizeMul, powerFormTeraType, useZMove, Z_MOVE_DAMAGE_MUL, type PowerChoice, type PowerContext } from '../data/powerForm';
@@ -2961,6 +2962,10 @@ export class GameScene extends Phaser.Scene {
     // Música del bioma (la del jefe la pone spawnBoss); al salir de la partida, la del menú
     playTrack(trackForBiome(this.biome.id));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => playMenuMusic());
+    // Al perder el foco la ventana o la pestaña, se abre la pausa (si no hay ya una pausa, confirmación o transición)
+    onFocusLost(this, () => {
+      if (this.scene.isActive() && !this.ended && !this.transitioning && !this.falling && !this.confirmOpen && !this.scene.isPaused()) this.openPause();
+    });
     // Llegada por la trampilla: cartel del piso y el jugador cae desde arriba (antes de entrar en la sala, para
     // que la intro del jefe de las arenas espere a que acabe)
     if (this.carry && !r) this.showFloorIntro();

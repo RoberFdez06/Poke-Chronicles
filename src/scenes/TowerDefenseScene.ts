@@ -37,6 +37,7 @@ import { waveSpawns } from '../data/towerDefense/waves';
 import { isLevelUnlocked, loadTdProgress, starsFor, submitTdOutcome, type TdRewards } from '../data/towerDefense/progress';
 import { tdMonKey, type TowerDefenseData } from './TowerDefenseMenuScene';
 import { openConfirm } from './ConfirmScene';
+import { onFocusLost } from '../ui/focusPause';
 import { accountInfo } from '../net/cloud';
 import type { BaseStats } from '../data/pokeStats';
 
@@ -165,6 +166,8 @@ export class TowerDefenseScene extends Phaser.Scene {
     bakeCombatFx(this);
     this.nav = new NavInput(this);
     this.pad = new PadButtons(this);
+    // Al perder el foco la ventana o la pestaña, se abre la pausa (openPause ya ignora si hay pausa, confirmación o fin)
+    onFocusLost(this, () => this.scene.isActive() && this.openPause());
     const kb = this.input.keyboard!;
     const add = (k: string) => kb.addKey(k, false);
     this.keys = { ONE: add('ONE'), TWO: add('TWO'), THREE: add('THREE'), N: add('N'), F: add('F'), Q: add('Q'), E: add('E'), U: add('U'), V: add('V'), T: add('T') };
