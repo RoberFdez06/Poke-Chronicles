@@ -256,7 +256,15 @@ export function phaseShock(scene: Phaser.Scene, x: number, y: number, color: num
  * Se encarga sola de desaparecer cuando el jefe deja de estar activo.
  */
 export function bossAura(scene: Phaser.Scene, boss: Phaser.GameObjects.Sprite, color: number, feet: () => number, depth = 3) {
-  const aura = scene.add.ellipse(boss.x, feet(), boss.displayWidth * 1.3, boss.displayWidth * 0.5).setFillStyle(color, 0.28).setStrokeStyle(2, color, 0.9).setDepth(depth);
+  // Resplandor suave (varias capas que se apagan hacia fuera, sin borde duro ni relleno plano): el color del tipo, aclarado
+  const aura = scene.add.graphics().setDepth(depth);
+  const soft = Phaser.Display.Color.Interpolate.ColorWithColor(Phaser.Display.Color.ValueToColor(color), Phaser.Display.Color.ValueToColor(0xffffff), 100, 40);
+  const glow = Phaser.Display.Color.GetColor(soft.r, soft.g, soft.b);
+  const aw = boss.displayWidth * 1.25;
+  for (let k = 0; k < 4; k++) {
+    const f = 1 - k * 0.2;
+    aura.fillStyle(glow, 0.07 + k * 0.045).fillEllipse(0, 0, aw * f, aw * 0.42 * f);
+  }
   let nextEmber = 0;
   const tick = (time: number) => {
     if (!boss.active) {
