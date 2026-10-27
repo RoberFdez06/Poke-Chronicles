@@ -81,7 +81,7 @@ import {
   MODE_LABEL,
 } from '../data/modes';
 import { acceptNpcMission, gainSeed, takeGardenBerries, updateGarden, addRunHistory, loadKeys, loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMissionEvent, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
-import { disableTips, markTipSeen, shouldShowTip, TIPS, type TipId } from '../data/tutorial';
+import { disableTips, markTipSeen, shouldShowTip, tipButtons, tipText, TIPS, type TipId } from '../data/tutorial';
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
 import { closeFloor, emptyCounters, floorTimes, noteParry, notePickup, noteRoomTime, openFloor, type RunCounters, type RunRecord } from '../data/runHistory';
 import { ToastStack, type ToastOptions } from '../ui/toast';
@@ -3012,6 +3012,7 @@ export class GameScene extends Phaser.Scene {
     badge(LX + HL.mega.x, HL.mega.badgeY, '↑', 'mega', HUD_BADGE_MAX_W.mega);
     activeBtn.on('pointerdown', () => this.useActive());
     // Poderes: cuatro cuadros abajo a la derecha (clic para lanzar)
+    const slotZones: (Phaser.GameObjects.Zone | Phaser.GameObjects.Text)[] = [];
     for (let i = 0; i < SLOT_COUNT; i++) {
       const y = this.slotY(i);
       this.slotBoxes.push(hud(this.add.graphics()));
@@ -3022,6 +3023,7 @@ export class GameScene extends Phaser.Scene {
       this.slotBadges.push(txt(RX + 30, y + 34, 13, '#ffffff', true).setOrigin(0.5).setShadow(1, 1, '#00000088', 0));
       this.hud.push(txt(RX + 50, y + 34, 18, '#f8f8f8', true).setOrigin(0, 0.5));
       const zone = over(hud(this.add.zone(RX + RW / 2, y + 32, RW, 64).setInteractive({ useHandCursor: true })));
+      slotZones.push(zone);
       zone.on('pointerdown', () => !this.ended && !this.transitioning && this.castSlot(i, this.time.now));
     }
     // Minimapa arriba a la derecha
@@ -3030,6 +3032,13 @@ export class GameScene extends Phaser.Scene {
     if (loadFx().showFps) this.fpsText = hud(this.add.text(W - 8, H - 6, '', { fontFamily: FONT, fontSize: '16px', color: '#9fe39a' }).setOrigin(1, 1));
     // Controles táctiles (T35), solo en móvil o tableta (en PC nunca)
     this.touch = touchOnlyDevice() ? new TouchControls(this, (o) => void hud(o)) : undefined;
+    // En táctil los joysticks y botones van encima de las ranuras de poderes y del objeto activo: esos cuadros se
+    // esconden y su estado (tipo, recarga, carga) lo enseñan los propios botones 1-4 y «Activo» (paintSlot/paintActive)
+    if (this.touch) {
+      [...slotZones, activeBtn].forEach((z) => z.disableInteractive());
+      this.slotShown = this.slotShown.map(() => '');
+      if (this.activeHud) this.activeHud.shown = '';
+    }
     this.hurtFlash = hud(this.add.rectangle(GAME_VIEW.x + GAME_VIEW.w / 2, GAME_VIEW.y + GAME_VIEW.h / 2, GAME_VIEW.w, GAME_VIEW.h, 0xff2a2a, 0));
     // Avisos (T37): tarjetas en la franja derecha, bajo el minimapa
     this.toasts?.clear();
@@ -4640,7 +4649,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const y = H - h - 2;
     const box = drawBox(this.add.graphics(), x, y, w, h, { radius: 12 }).setAlpha(0.96);
     const title = this.add.text(x + 20, y + h / 2, `Consejo · ${TIPS[id].title}`, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(0, 0.5);
-    const text = this.add.text(title.x + title.width + 14, y + h / 2, TIPS[id].text.replace(/\n/g, ' '), {
+    const touch = !!this.touch || currentInput() === 'touch';
+    const text = this.add.text(title.x + title.width + 14, y + h / 2, tipText(id, touch).replace(/\n/g, ' '), {
       fontFamily: FONT, fontSize: '14px', color: HEX.text, wordWrap: { width: w - title.width - 440 },
     }).setOrigin(0, 0.5);
     const button = (bx: number, label: string, onClick: () => void) => {
@@ -4654,9 +4664,20 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       });
       return b;
     };
-    const ok = button(x + w - 20, 'Vale (T · RT)', () => this.closeTip());
-    const off = button(ok.x - ok.width - 24, 'No más consejos (N · LT)', () => this.closeTip(true));
+    const labels = tipButtons(touch);
+    const ok = button(x + w - 20, labels.ok, () => this.closeTip());
+    const off = button(ok.x - ok.width - 24, labels.off, () => this.closeTip(true));
     this.tipObjects = [box, title, text, ok, off];
+    // Con la pausa abierta el consejo se esconde (su barra de ayuda va en la misma franja de abajo)
+    const objs = this.tipObjects;
+    const hideTip = () => objs.forEach((o) => (o as Phaser.GameObjects.Text).setVisible?.(false));
+    const showTip = () => objs.forEach((o) => o.active && (o as Phaser.GameObjects.Text).setVisible?.(true));
+    this.events.on(Phaser.Scenes.Events.PAUSE, hideTip);
+    this.events.on(Phaser.Scenes.Events.RESUME, showTip);
+    box.once(Phaser.GameObjects.Events.DESTROY, () => {
+      this.events.off(Phaser.Scenes.Events.PAUSE, hideTip);
+      this.events.off(Phaser.Scenes.Events.RESUME, showTip);
+    });
     for (const o of this.tipObjects) {
       this.hudLayer.add(o);
       if (this.hudCam) o.cameraFilter &= ~this.hudCam.id;
@@ -5458,6 +5479,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (h.shown === key) return;
     h.shown = key;
     const g = h.g.clear();
+    // En táctil el cuadro se esconde (lo tapa el joystick): el botón «Activo» se ilumina cuando está cargado
+    g.setVisible(!this.touch);
+    h.text.setVisible(!this.touch);
+    this.touch?.setActiveReady(!!a, !!a && isCharged(this.active!.charge, a.charge));
+    if (this.touch) return void this.activeIcon?.setVisible(false);
     const x = HUD.left.x + HUD.pad;
     const bw = HUD.left.w - HUD.pad * 2;
     const y = H - HUD.pad - 110;
@@ -10024,6 +10050,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!m) text.setText('—').setAlpha(0.6);
     else text.setText(shorten(pretty(m.name), 13)).setAlpha(ready ? 1 : 0.4);
     g.setAlpha(m ? 1 : 0.6);
+    const hide = !!this.touch;
+    g.setVisible(!hide);
+    text.setVisible(!hide);
+    this.slotTypes[i].setVisible(!hide);
+    this.slotGlyphs[i]?.setVisible(!hide);
+    this.touch?.setPower(i, m ? typeColor(m.type) : null, ready);
   }
 
   /** Glifo de tecla o botón en el HUD, centrado en (x, y) y encogido si pasa de `maxW`. */

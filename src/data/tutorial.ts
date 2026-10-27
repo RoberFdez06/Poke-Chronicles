@@ -86,3 +86,22 @@ export const markTipSeen = (s: TutorialState, id: TipId): TutorialState =>
   s.seen.includes(id) ? s : { ...s, seen: [...s.seen, id] };
 
 export const disableTips = (s: TutorialState): TutorialState => ({ ...s, off: true });
+
+/** Texto en móvil o tableta (sin teclas ni botones del mando): solo los que hablan de controles. */
+export const TOUCH_TIPS: Readonly<Partial<Record<TipId, string>>> = {
+  move: 'Arrastra el joystick de la izquierda hacia donde quieras ir.',
+  shoot: 'Arrastra el joystick de la derecha hacia donde quieras disparar. Limpia la sala para abrir las puertas.',
+  pause: 'Toca el botón ❚❚ de arriba a la izquierda. La partida se guarda sola.',
+  powers: 'Los ataques de tu tipo van a los botones 1-4 de la derecha (del color de su tipo; apagados mientras recargan).',
+  active: 'Se carga limpiando salas. Úsalo con el botón «Activo» de la izquierda (se ilumina cuando está listo).',
+  center: 'Te cura la mitad de los PS una vez por piso: toca «Usar» cerca del mostrador o písalo.',
+  shop: 'Gasta las monedas de la partida: toca «Usar» cerca de un artículo o písalo.',
+  chest: 'Los cofres se abren con una llave. Las bombas (botón «Bomba») rompen rocas y abren paredes.',
+};
+
+/** Texto del consejo según el dispositivo (en táctil, sin «W A S D» ni botones del mando). */
+export const tipText = (id: TipId, touch: boolean): string => (touch ? (TOUCH_TIPS[id] ?? TIPS[id].text) : TIPS[id].text);
+
+/** Botones del cartel del consejo: con sus teclas y gatillos, o sin ellos en táctil (se tocan). */
+export const tipButtons = (touch: boolean): { ok: string; off: string } =>
+  touch ? { ok: 'Vale', off: 'No más consejos' } : { ok: 'Vale (T · RT)', off: 'No más consejos (N · LT)' };

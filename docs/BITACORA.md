@@ -1331,3 +1331,38 @@ Panel para probarlo todo rápido. **Comodidad de pruebas, no seguridad fuerte**:
 Pendiente:
 - Probar en el navegador: panel encima de la pausa/Ajustes, F9 y L3+R3, saltar de piso, jefe por número, formas de poder.
 - Una partida admin guardada en un hueco y continuada en otra sesión ya no lleva la marca.
+
+## Animación al moverse para todos los Pokémon + interfaz táctil (rama `animar`)
+Queja de Roberto: muchos Pokémon «se deslizaban». Datos reales de `tracker.json` de PMDCollab/SpriteCollab (27-10-2026):
+- Las hojas shiny existen como `XXXX/0000/0001`; las regionales son subcarpetas de forma (`0019/0001` Rattata de Alola,
+  `0052/0002` Meowth de Galar, `0555/0002` Darmanitan de Galar…); Stunfisk de Galar no tiene. 63 especies no tienen hoja
+  (514, 516, 520… 1025: lista en `PMD_MISSING`). Megas con hoja: 33 (`MEGA_PMD_FORM`; Mewtwo X no, la de SpriteCollab es la Y). Gigamax: ninguna.
+- `src/data/pmdForms.ts` (nuevo, puro): ids de hoja codificados (`shiny·1e8 + forma·1e5 + especie`), carpeta de cada uno, tablas de
+  regionales/megas/sin hoja, `shinyHue` y `hueRotatePixels` (matriz de hue-rotate, sirve en Safari).
+- `src/ui/pmdSprites.ts`: ya no descarta las regionales; si un shiny no tiene hoja propia, carga la normal y la recolorea por código.
+- `GameScene`: el jugador shiny, los enemigos shiny y las megas usan su hoja animada (`playerPmdId`, `foePmdId`, `pmdMega` en
+  `applyMegaLook`). `applyPmd` pide la hoja que falte (`pmdLater`) y se la pone al sprite en cuanto llega (antes, si no estaba
+  precargada, se quedaba el dibujo fijo para siempre).
+- `src/data/locomotion.ts`: ahora por especie además del tipo (listas de voladores sin tipo volador, aves que corren, flotantes,
+  nadadores, serpientes, botadores y rodantes) y `locoPose`: andar = pasos con aplastar/estirar y balanceo alterno; volar = aleteo
+  con subida/bajada y sombra que se encoge; nadar/reptar = ondulación lateral; botar; rodar; flotar = deriva. `sheetHover`: los que
+  tienen hoja y vuelan o flotan (Charizard, Mewtwo…) van por el aire con la sombra más pequeña, aunque su hoja apenas se mueva.
+- `src/ui/locoAnim.ts` (nuevo): pone la pose sin mover el cuerpo físico (origen + desfase del cuerpo); el aplastar/estirar solo en
+  sprites sin cuerpo (en los que tienen, cambiar la escala cambiaría su caja de choque). Lo usan `dressSprites` (jugador, enemigos,
+  ayudantes, jefes, reto final), el aliado del huevo (`updateAlly`) y los enemigos de tierra sin hoja del Tower Defense.
+- Tests: `tests/pmdForms.test.ts`, `tests/locomotion.test.ts` (ampliado).
+
+Interfaz táctil (docs/TAREAS.md, «Interfaz móvil: pendiente»):
+- Las ranuras de poderes y el cuadro del objeto activo se esconden en táctil (los tapaban joystick y botones) y sus zonas de clic se
+  desactivan; los botones 1-4 toman el color del tipo del poder y se apagan mientras recargan; «Activo» se ilumina cuando está cargado
+  (`TouchControls.setPower` / `setActiveReady`).
+- Consejos: en táctil, texto sin teclas ni mando (`TOUCH_TIPS`, `tipText`) y botones «Vale» / «No más consejos» sin «T · RT» ni «N · LT».
+- La tira de consejos se esconde mientras la partida está en pausa (la barra de ayuda de la pausa iba en la misma franja).
+- `index.html`: `#game` con márgenes fijos de zona segura (con padding, Phaser medía la caja entera y el lienzo podía meterse bajo
+  el notch) y aviso «Gira el móvil» también en tabletas en vertical (hasta 1100 px).
+
+Pendiente / sin verificar:
+- No se ha podido ver en el navegador: el `npm run build` del worktree falla en la VM Linux (el `node_modules` enlazado no tiene el
+  binario de rollup para Linux) y no se puede arrancar otro servidor de desarrollo. tsc y tests pasan. Probar: shiny andando
+  (jugador y enemigo), Rattata de Alola, mega de Charizard X, Ekans/Magikarp/Voltorb sin hoja, interfaz táctil en un móvil real.
+- El tono del shiny recoloreado es aproximado (giro fijo por especie): solo se usa si SpriteCollab no trae la hoja shiny.

@@ -765,7 +765,7 @@ ratón y mando funcionan cada uno por separado. Lo visual nuevo, `// TODO(superv
 
 ## Interfaz móvil: pendiente (auditoría con Playwright, iPhone 13 y Pixel 7)
 - El lienzo es fijo de 1920×1080 (Scale.FIT): en un móvil apaisado se ve a ~0,36, así que textos de 14 px quedan en ~5 px CSS y las filas de menú en ~22 px. Solución de fondo: escala RESIZE o un diseño propio para móvil (menús con filas de 44 px reales). Hecho de momento: botones táctiles de la partida con zona de toque mínima de 44 px CSS (se calcula con el tamaño real), en dos columnas dentro de las franjas laterales.
-- Los botones táctiles 1-4 y el joystick derecho tapan las ranuras de poderes del HUD (abajo a la derecha) y el izquierdo tapa el cuadro del objeto activo: en táctil habría que mover esas ranuras arriba o esconderlas.
-- La tira de consejos (abajo) y su texto («W A S D…», «(N · LT)») no cambian con el dispositivo táctil.
-- En vertical sale un aviso «Gira el móvil» (index.html); zonas seguras (notch) con env(safe-area-inset-*), sin probar en un iPhone real.
-- La barra de ayuda de la pausa pisa la tira de consejos de abajo (ya pasaba antes).
+- [x] Los botones táctiles 1-4 y el joystick derecho tapan las ranuras de poderes del HUD (abajo a la derecha) y el izquierdo tapa el cuadro del objeto activo. Hecho: en táctil se esconden y los botones 1-4 / «Activo» enseñan tipo, recarga y carga.
+- [x] La tira de consejos (abajo) y su texto («W A S D…», «(N · LT)») no cambian con el dispositivo táctil. Hecho (`tipText`, `tipButtons`).
+- En vertical sale un aviso «Gira el móvil» (index.html, ahora también en tabletas); zonas seguras (notch) con márgenes env(safe-area-inset-*) en vez de padding. Sin probar en un iPhone real.
+- [x] La barra de ayuda de la pausa pisa la tira de consejos de abajo. Hecho: el consejo se esconde mientras hay pausa.

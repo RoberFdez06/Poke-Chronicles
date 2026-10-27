@@ -27,6 +27,9 @@ interface Btn {
   x: number;
   y: number;
   circle: Phaser.GameObjects.Arc;
+  color: number;
+  /** Apagado (recargando, vacío o sin carga). */
+  dim: boolean;
 }
 
 export class TouchControls {
@@ -71,7 +74,7 @@ export class TouchControls {
       const circle = keep(scene.add.circle(x, y, r, color, 0.55).setStrokeStyle(3, 0xffffff, 0.75));
       const size = Math.round(r * (label.length > 2 ? 0.46 : 0.8));
       keep(scene.add.text(x, y, label, { fontFamily: 'sans-serif', fontSize: `${size}px`, fontStyle: 'bold', color: '#ffffff' }).setOrigin(0.5).setStroke('#101828', 3));
-      this.buttons.push({ id, x, y, circle });
+      this.buttons.push({ id, x, y, circle, color, dim: false });
     };
     // Dos columnas dentro de cada franja lateral, encima de su joystick (no tapan la sala ni se pisan)
     const col = Math.min(62, HUD.right.w / 2 - r - 2);
@@ -96,6 +99,32 @@ export class TouchControls {
     scene.input.on('pointerup', this.onUp, this);
     scene.input.on('pointerupoutside', this.onUp, this);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
+  }
+
+  /**
+   * Botón de poder `i` (0-3) con el color del tipo del poder que tiene (gris si la ranura está vacía) y apagado
+   * mientras recarga: en táctil las ranuras del HUD se esconden (las tapaban estos botones) y esto las sustituye.
+   */
+  setPower(i: number, color: number | null, ready: boolean): void {
+    const b = this.buttons.find((x) => x.id === `power${i + 1}`);
+    if (!b) return;
+    b.color = color ?? 0x4a5468;
+    b.dim = color === null || !ready;
+    this.paint(b);
+  }
+
+  /** Botón «Activo»: gris sin objeto, apagado mientras se carga y encendido cuando está listo. */
+  setActiveReady(has: boolean, ready: boolean): void {
+    const b = this.buttons.find((x) => x.id === 'active');
+    if (!b) return;
+    b.color = has ? 0x8e44ad : 0x4a5468;
+    b.dim = !ready;
+    this.paint(b);
+  }
+
+  private paint(b: Btn) {
+    if (!b.circle.active) return;
+    b.circle.setFillStyle(b.color, b.dim ? 0.28 : 0.6).setStrokeStyle(3, 0xffffff, b.dim ? 0.35 : 0.85);
   }
 
   /** Dirección de movimiento (largo 0 a 1). */
@@ -127,7 +156,7 @@ export class TouchControls {
     if (b) {
       this.pressed.add(b.id);
       b.circle.setFillStyle(b.circle.fillColor, 0.9);
-      this.scene.time.delayedCall(120, () => b.circle.active && b.circle.setFillStyle(b.circle.fillColor, 0.5));
+      this.scene.time.delayedCall(120, () => b.circle.active && this.paint(b));
       return;
     }
     for (const s of [this.sticks.move, this.sticks.aim]) {
