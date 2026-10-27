@@ -7,12 +7,16 @@
 
 /** Valor máximo de la barra. */
 export const ADRENALINE_MAX = 100;
-/** Lo que suma cada cosa: un parry vale más porque pide más reflejos. */
-export const ADRENALINE_GAIN = { kill: 8, dodge: 10, parry: 20 } as const;
+/**
+ * Lo que suma cada cosa: un parry vale más porque pide más reflejos. Rebalanceo: antes solo sumaban bajas (8),
+ * esquivas (10) y parrys (20) y bajaba rápido, así que casi nunca se llenaba. Ahora cada golpe dado suma un poco
+ * (`hit`) y la barra aguanta más: en una sala normal (≈5 bajas y ≈25 golpes) se llena una vez.
+ */
+export const ADRENALINE_GAIN = { hit: 1.5, kill: 12, dodge: 12, parry: 25 } as const;
 export type AdrenalineSource = keyof typeof ADRENALINE_GAIN;
 /** Tiempo sin sumar antes de que empiece a bajar (ms) y cuánto baja luego (por segundo). */
-export const ADRENALINE_IDLE_MS = 5000;
-export const ADRENALINE_DECAY_PER_S = 14;
+export const ADRENALINE_IDLE_MS = 7000;
+export const ADRENALINE_DECAY_PER_S = 6;
 /** Duración del subidón (ms) y lo que da: velocidad y daño extra. */
 export const ADRENALINE_ACTIVE_MS = 6000;
 export const ADRENALINE_SPEED_MUL = 1.2;

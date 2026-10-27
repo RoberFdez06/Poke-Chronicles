@@ -1,5 +1,6 @@
 // T66: megaevolución de los jefes (y «forma furia» para los legendarios que no tienen megaevolución en los juegos).
 // Lógica pura, sin Phaser, para poder testearla. GameScene solo pregunta aquí cuándo, cuánto y cómo se llama.
+import { megaFormName } from './powerForm.ts';
 
 /**
  * Legendarios y singulares que sí tienen megaevolución en los juegos (Mewtwo X/Y, Latias, Latios, Kyogre y Groudon
@@ -20,7 +21,34 @@ export const MEGA_EXTRA_HELPERS = 2;
 
 export type MegaKind = 'mega' | 'furia';
 
-export const megaKind = (speciesId: number): MegaKind => (MEGA_BOSS_IDS.has(speciesId) ? 'mega' : 'furia');
+/** Formas mega de los singulares de Leyendas Z-A que no están en MEGA_FORMS (powerForm.ts). */
+const EXTRA_BOSS_FORMS: ReadonlyMap<number, string> = new Map([
+  [491, 'darkrai-mega'], [801, 'magearna-mega'], [802, 'marshadow-mega'], [807, 'zeraora-mega'],
+]);
+/** Especies con dos megas: el jefe sortea cuál (Mewtwo X/Y, Charizard X/Y). */
+const DUAL_MEGA: ReadonlyMap<number, readonly [string, string]> = new Map([
+  [150, ['mewtwo-mega-x', 'mewtwo-mega-y']], [6, ['charizard-mega-x', 'charizard-mega-y']],
+]);
+
+/**
+ * Megaevoluciona (en vez de forma furia) cualquier jefe cuya especie tenga mega en los juegos, no solo los
+ * legendarios de MEGA_BOSS_IDS: antes un Charizard jefe entraba en «forma furia».
+ */
+export const megaKind = (speciesId: number): MegaKind =>
+  MEGA_BOSS_IDS.has(speciesId) || megaFormName(speciesId) !== null ? 'mega' : 'furia';
+
+/** Forma mega en PokeAPI para el jefe (sprite), o null si es forma furia. Con dos megas, sortea con `rng`. */
+export function bossMegaForm(speciesId: number, rng: () => number = Math.random): string | null {
+  const dual = DUAL_MEGA.get(speciesId);
+  if (dual) return dual[rng() < 0.5 ? 0 : 1];
+  return megaFormName(speciesId) ?? EXTRA_BOSS_FORMS.get(speciesId) ?? null;
+}
+
+/**
+ * Legendario de la cacería (T88): no es «jefe» para la IA, así que nunca pasaba por shouldMegaEvolve (por eso un
+ * Mewtwo de la cacería no megaevolucionaba). Megaevoluciona al pasar a la fase 2 si su especie tiene mega.
+ */
+export const legendMegaAtPhase = (speciesId: number, phase: number): boolean => phase === 1 && megaKind(speciesId) === 'mega';
 
 /** Nombre de la forma nueva para el aviso: «Mega Rayquaza» o «Zekrom (forma furia)». */
 export function megaName(speciesId: number, name: string): string {

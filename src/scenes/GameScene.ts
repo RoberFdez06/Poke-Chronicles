@@ -142,7 +142,9 @@ import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
 import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_GLOW, FALL_HAZARD, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
-import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
+import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve, legendMegaAtPhase } from '../data/megaBoss';
+import { rollTemperament, tempoCooldown, tempoShot, type Temperament } from '../data/temperament';
+import { debugEnabled } from '../data/debugFlags';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
 import { fallConceptFx, sacredFlame } from '../ui/art/fallArt';
 import { pixRing } from '../ui/art/pixelFx';
@@ -449,6 +451,8 @@ interface EnemyAI {
   phase?: 1 | 2;
   /** T51: hacia dónde mira el escudado (rad). */
   facing?: number;
+  /** Temperamento del individuo (temperament.ts). */
+  tempo?: Temperament;
 }
 
 /** Velocidad de los proyectiles enemigos (px/s) y cuánto duran. */
@@ -646,6 +650,8 @@ export class GameScene extends Phaser.Scene {
   private powerFormLoopAt = 0;
   private megaPulseAt = 0;
   private megaKey: string | null = null;
+  /** Próximo momento en que un golpe puede sumar adrenalina. */
+  private adrHitAt = 0;
   /** T75: medidor de poder (Dinamax, Tera, Z), si ya se usó el Cristal Z y su barra del HUD. */
   private powerMeter: PowerMeterState = newPowerMeter();
   private zUsed = false;
@@ -2407,6 +2413,8 @@ export class GameScene extends Phaser.Scene {
         e.setData('speed', (e.getData('speed') as number) * 1.2).setData('dmg', Math.round((e.getData('dmg') as number) * 1.2));
         ai.eliteAt = this.time.now + 600;
         this.cameras.main.shake(200, 0.006);
+        // El legendario de la cacería no es «jefe» para la IA: su megaevolución va aquí, al pasar a la fase 2
+        if (legendMegaAtPhase(id, p)) this.megaLook(e, id, this.legendName());
         this.notify(p === 2 ? `¡${this.legendName()} está agotado! Fase 3/3\nLánzale la Poké Ball` : `¡${this.legendName()} se enfurece! Fase 2/3`, { kind: 'danger', icon: 'star' });
       },
     });
@@ -2980,6 +2988,7 @@ export class GameScene extends Phaser.Scene {
     // Música del bioma (la del jefe la pone spawnBoss); al salir de la partida, la del menú
     playTrack(trackForBiome(this.biome.id));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => playMenuMusic());
+    this.installDebug();
     // Al perder el foco la ventana o la pestaña, se abre la pausa (si no hay ya una pausa, confirmación o transición)
     onFocusLost(this, () => {
       if (this.scene.isActive() && !this.ended && !this.transitioning && !this.falling && !this.confirmOpen && !this.scene.isPaused()) this.openPause();
@@ -5774,6 +5783,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.mission({ kind: 'shiny' });
     }
     const ai = this.newAI(behavior, kind.type, false);
+    // Temperamento: ágil / normal / pesado (ritmo, velocidad y alcance de sus ataques); se nota en el tamaño
+    ai.tempo = rollTemperament(Math.random);
+    if (ai.tempo.sizeMul !== 1) e.setDisplaySize(60 * ai.tempo.sizeMul, 60 * ai.tempo.sizeMul);
     e.setData('ai', ai).setData('types', kind.types).setData('speciesId', Number(kind.key.replace('foe-', '')));
     // Élites: cada piso salen más. Más vida, algo más rápidos, brillo de su tipo y un ataque extra de su tipo
     if (!helper && Math.random() < eliteChance(this.level())) {
@@ -6360,10 +6372,73 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const stopAura = megaAura(this, b, 0xb388ff, () => { const q = b.body as Body | null; return q ? q.bottom : b.y + b.displayHeight / 2; });
       b.once(Phaser.GameObjects.Events.DESTROY, stopAura);
       b.clearTint();
+      this.megaGrow(b);
       this.notify(`¡${megaName(id, name)}!`, { kind: 'danger', icon: 'star' });
       ai.nextAttack = time + 700;
     }
     return false;
+  }
+
+  /**
+   * Modo de depuración (data/debugFlags.ts): con `?debug`, localStorage['pokeisaac.debug']='1' o en el dev server,
+   * expone window.__POKEISAAC_DEBUG__ para probar megas y adrenalina desde la consola. En producción normal no existe.
+   */
+  private installDebug() {
+    let stored: string | null = null;
+    try { stored = localStorage.getItem('pokeisaac.debug'); } catch { /* sin almacenamiento */ }
+    if (!debugEnabled(location.search, stored, !!import.meta.env.DEV)) return;
+    const boss = () => this.enemies.getChildren().find((c) => {
+      const s = c as Sprite;
+      return s.active && ((s.getData('ai') as EnemyAI | undefined)?.boss || s.getData('legendHunt'));
+    }) as Sprite | undefined;
+    const api = {
+      /** Llena la adrenalina (y activa el subidón). */
+      fillAdrenaline: () => { fillAdrenaline(this.adrenaline); return 'adrenalina llena'; },
+      /** Da la Mega Piedra al jugador. */
+      giveMegaStone: () => {
+        if (!this.passives.includes(MEGA_STONE_ID)) this.passives.push(MEGA_STONE_ID);
+        return 'Mega Piedra añadida';
+      },
+      /** Megaevoluciona: al jefe/legendario vivo de la sala (baja su vida al 45 %) o, si no hay, al jugador. */
+      forceMega: () => {
+        const b = boss();
+        if (b) {
+          b.setData('hp', Math.max(1, Math.round((b.getData('maxHp') as number) * 0.45)));
+          if (b.getData('legendHunt')) this.megaLook(b, this.hunt.legendId, this.legendName());
+          return 'jefe al 45 %: megaevoluciona (o forma furia) en el siguiente fotograma';
+        }
+        api.giveMegaStone();
+        fillAdrenaline(this.adrenaline);
+        if (!powerFormActive(this.powerForm)) this.powerForm = { ...this.powerForm, usedThisFloor: false };
+        this.megaEvolve();
+        return megaFormName(this.formId) ? 'megaevolución del jugador' : `especie ${this.formId} sin mega`;
+      },
+      /** Saca el jefe del piso en la sala actual (megaevoluciona al bajar del 50 % si su especie tiene mega). */
+      spawnBoss: () => { this.spawnBoss(); return `jefe ${this.bossId} (${this.bossName})`; },
+    };
+    (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__ = api;
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { delete (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__; });
+  }
+
+  /** Megaevolución visible: crece un poco (el cuerpo físico no cambia). */
+  private megaGrow(b: Sprite) {
+    const w = b.displayWidth * 1.15;
+    const h = b.displayHeight * 1.15;
+    if (lowFx()) b.setDisplaySize(w, h);
+    else this.tweens.add({ targets: b, displayWidth: w, displayHeight: h, duration: 400, ease: 'Back.Out' });
+  }
+
+  /** Megaevolución del legendario de la cacería (sin aviso largo: sus fases ya lo frenan). */
+  private megaLook(b: Sprite, id: number, name: string) {
+    if (b.getData('mega')) return;
+    b.setData('mega', true).setData('megaDone', true).setData('bname', megaName(id, name));
+    const bb = b.body as Body | null;
+    megaEvolveFx(this, b.x, b.y, bb ? bb.bottom : b.y + b.displayHeight / 2, 0xb388ff);
+    const stop = megaAura(this, b, 0xb388ff, () => { const q = b.body as Body | null; return q ? q.bottom : b.y + b.displayHeight / 2; });
+    b.once(Phaser.GameObjects.Events.DESTROY, stop);
+    this.megaGrow(b);
+    sfx('enrage');
+    this.notify(`¡${megaName(id, name)}!`, { kind: 'danger', icon: 'star' });
   }
 
   /** T78: qué suceso del jefe toca ahora (fase de arena o megaevolución): siempre en orden, uno a uno y con margen. */
@@ -6994,7 +7069,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (ai && !ai.boss && dist < 95 && time >= ai.until) {
         e.setVelocity(toPlayer.x * speed * 2.8, toPlayer.y * speed * 2.8);
         ai.knockUntil = time + 160;
-        ai.until = time + Phaser.Math.Between(900, 1400);
+        ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(900, 1400));
       }
       return;
     }
@@ -7022,7 +7097,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           }
         } else if (time >= ai.until) {
           ai.state = 'walk';
-          ai.until = time + Phaser.Math.Between(1200, 2000);
+          ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(1200, 2000));
         }
         break;
 
@@ -7070,7 +7145,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           if (time >= ai.until) {
             e.setAlpha(1);
             ai.state = 'walk';
-            ai.until = time + Phaser.Math.Between(1600, 2500);
+            ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(1600, 2500));
           }
         }
         break;
@@ -7080,7 +7155,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         if (ai.state === 'dash') {
           if (time >= ai.until) {
             ai.state = 'walk';
-            ai.until = time + Phaser.Math.Between(1800, 2800);
+            ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(1800, 2800));
           }
           break;
         }
@@ -7143,7 +7218,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         } else if (ai.state === 'dash') {
           if (time >= ai.until) {
             ai.state = 'walk';
-            ai.until = time + Phaser.Math.Between(2200, 3200);
+            ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(2200, 3200));
           }
         } else {
           walk(toward);
@@ -7192,7 +7267,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           this.face(e, toPlayer);
           if (time >= ai.until) {
             ai.state = 'walk';
-            ai.until = time + Phaser.Math.Between(1500, 2500);
+            ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(1500, 2500));
           }
         }
         break;
@@ -7305,7 +7380,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           this.face(e, ai.dir);
           if (time >= ai.until) {
             ai.state = 'walk';
-            ai.until = time + Phaser.Math.Between(900, 1400);
+            ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(900, 1400));
           }
         } else {
           if (dist < 260) walk(toPlayer.clone().negate().rotate(0.6 * ai.side));
@@ -7341,10 +7416,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private fireFoeShot(e: Sprite, dir: Phaser.Math.Vector2, type: string): Sprite {
     const s = this.foeShots.create(e.x, e.y, 'foe-shot') as Sprite;
     s.setTint(typeColor(type)).setScale(0.75).setDepth(4);
-    s.setVelocity(dir.x * FOE_SHOT_SPEED, dir.y * FOE_SHOT_SPEED);
+    const shot = tempoShot((e.getData('ai') as EnemyAI | undefined)?.tempo, FOE_SHOT_SPEED, FOE_SHOT_LIFE);
+    s.setVelocity(dir.x * shot.speed, dir.y * shot.speed);
     const weak = enemyDamageMul((e.getData('statuses') as ActiveStatus[] | undefined) ?? [], this.time.now);
     s.setData('dmg', Math.max(1, Math.round((e.getData('dmg') as number) * 0.8 * weak)));
-    this.time.delayedCall(FOE_SHOT_LIFE, () => s.active && s.destroy());
+    this.time.delayedCall(shot.life, () => s.active && s.destroy());
     return s;
   }
 
@@ -8444,7 +8520,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private countDamage(e: Sprite, dmg: number) {
     const done = Math.max(0, Math.min(dmg, e.getData('hp') as number));
     this.counters.damage += done;
-    if (done > 0) touchAdrenaline(this.adrenaline);
+    if (done > 0) {
+      touchAdrenaline(this.adrenaline);
+      // Cada golpe suma un poco de adrenalina (como mucho uno cada 150 ms: el daño por estado no la dispara)
+      if (this.time.now >= this.adrHitAt) {
+        this.adrHitAt = this.time.now + 150;
+        this.addAdrenaline('hit');
+      }
+    }
     // T75: el daño que haces llena el medidor de poder
     meterOnDamage(this.powerMeter, done);
   }

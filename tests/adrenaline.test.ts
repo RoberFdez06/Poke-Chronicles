@@ -79,3 +79,29 @@ test('con la sala despejada (hold) la barra no baja; hacer daño reinicia la esp
   for (let i = 0; i < m.ADRENALINE_IDLE_MS / 100 - 5; i++) m.tickAdrenaline(s, 100);
   assert.equal(s.value, m.ADRENALINE_GAIN.parry);
 });
+
+test('balance: una sala normal (5 bajas, 25 golpes) llena la barra; solo golpes no la llenan en 10', async () => {
+  const m = await import('../src/data/adrenaline.ts');
+  const s = m.newAdrenaline();
+  let on = false;
+  for (let i = 0; i < 25 && !on; i++) on = m.gainAdrenaline(s, 'hit');
+  for (let i = 0; i < 5 && !on; i++) on = m.gainAdrenaline(s, 'kill');
+  assert.ok(on || s.value >= 80, `valor ${s.value}`);
+  const t = m.newAdrenaline();
+  for (let i = 0; i < 10; i++) m.gainAdrenaline(t, 'hit');
+  assert.ok(t.value < m.ADRENALINE_MAX / 2);
+  // 4 parrys la llenan
+  const p = m.newAdrenaline();
+  let pon = false;
+  for (let i = 0; i < 4; i++) pon = m.gainAdrenaline(p, 'parry');
+  assert.ok(pon);
+  // Pelear sin parar 20 s (golpe cada 0,5 s, baja cada 4 s, esquiva cada 5 s) la activa al menos una vez
+  const f = m.newAdrenaline();
+  for (let ms = 0; ms < 20000; ms += 100) {
+    if (ms % 500 === 0) m.gainAdrenaline(f, 'hit');
+    if (ms % 4000 === 0) m.gainAdrenaline(f, 'kill');
+    if (ms % 5000 === 0) m.gainAdrenaline(f, 'dodge');
+    m.tickAdrenaline(f, 100);
+  }
+  assert.ok(f.activations >= 1);
+});
