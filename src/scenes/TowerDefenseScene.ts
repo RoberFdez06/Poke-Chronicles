@@ -1,9 +1,11 @@
 // Defensa de torres: la partida. Dibuja el motor (src/data/towerDefense/engine.ts) y le pasa lo que hace el jugador.
-// Ratón: clic en un Pokémon del equipo y luego en una casilla; clic en una torre para mejorarla o venderla.
-// Teclado y mando: un cursor de casillas (flechas/cruceta) que pasa también al equipo (derecha) y a la barra de
-// abajo (habilidades, oleada, velocidad y pausa); Enter/A elige, Esc/B cancela. Atajos: 1-3 habilidades,
-// N siguiente oleada, F velocidad, Q/E Pokémon anterior/siguiente, U mejorar, V vender, T objetivo; en el mando,
-// X oleada, Y velocidad, LB/RB equipo y LT/RT Rayo y Ventisca.
+// Controles (cada dispositivo vale solo; teclas y botones en data/towerDefense/controls.ts):
+// - Un cursor de casillas: flechas/WASD, cruceta o stick (mantener = avanza solo), o el ratón encima.
+// - Aceptar (Enter/Espacio, A, clic): con un Pokémon elegido lo coloca; sobre una torre la abre; en una casilla libre
+//   sin nada elegido, elige el último Pokémon usado. Cancelar (Esc, B, clic derecho): suelta lo elegido; sin nada, pausa.
+// - Equipo: Q/E, LB/RB, rueda o clic. Torre abierta: panel con acciones numeradas (1-4, cruceta y A, o clic).
+// - Habilidades Z/X/C (LT/RT/Y), oleada N (X), velocidad F (R3), pausa P (Start): cada botón enseña su tecla.
+// Abajo a la derecha, una barra de ayuda cambia según lo elegido y el dispositivo con el que se juega.
 import Phaser from 'phaser';
 import { fitDesign } from '../ui/layout';
 import { NavInput, PadButtons, UI, MenuList } from '../ui/nav';
@@ -11,6 +13,7 @@ import { drawBox, fadeIn, goTo, lowFx, RARITY_COLORS, shorten } from '../ui/them
 import { ToastStack } from '../ui/toast';
 import { sfx } from '../ui/audio';
 import { currentInput } from '../ui/inputMode';
+import { HoldRepeat, cycle, stepCursor, tdHelp, tdKeyLabel, type TdDevice, type TdHelpContext, type TdKeyAction } from '../data/towerDefense/controls';
 import { loadPmd, pmdAnimKey, pmdKey, type PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
 import { fetchFormSprites, fetchNextEvolutions, fetchPokemonCard, fetchSpeciesName } from '../data/pokeapi';
@@ -82,7 +85,8 @@ interface TowerView {
   pmd: boolean;
 }
 
-type Focus = { zone: 'grid' } | { zone: 'team'; i: number } | { zone: 'bar'; i: number } | { zone: 'panel'; i: number };
+/** Dónde va el teclado o el mando: el cursor del mapa o las acciones de la torre abierta. */
+type Focus = { zone: 'grid' } | { zone: 'panel'; i: number };
 
 export class TowerDefenseScene extends Phaser.Scene {
   private args!: TowerDefenseData;
@@ -116,6 +120,13 @@ export class TowerDefenseScene extends Phaser.Scene {
   private focus: Focus = { zone: 'grid' };
   private placing: number | null = null;
   private selected: number | null = null;
+  /** Último Pokémon del equipo elegido (aceptar en una casilla libre sin nada elegido lo toma). */
+  private teamSel = 0;
+  private repeat = new HoldRepeat();
+  private help: Phaser.GameObjects.Text[] = [];
+  private helpKey = '';
+  private teamHead!: Phaser.GameObjects.Text;
+  private keyTexts: { t: Phaser.GameObjects.Text; a: TdKeyAction; fmt?: (k: string) => string }[] = [];
   private teamBtns: Btn[] = [];
   private barBtns: Btn[] = [];
   private panelBtns: Btn[] = [];
@@ -146,6 +157,12 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.shotViews = new Map();
     this.placing = null;
     this.selected = null;
+    this.teamSel = 0;
+    this.repeat = new HoldRepeat();
+    this.help = [];
+    this.helpKey = '';
+    this.keyTexts = [];
+    this.hover = null;
     this.focus = { zone: 'grid' };
     this.cursor = { x: 0, y: 0 };
     this.overlay = null;
@@ -172,7 +189,8 @@ export class TowerDefenseScene extends Phaser.Scene {
     onFocusLost(this, () => this.scene.isActive() && this.openPause());
     const kb = this.input.keyboard!;
     const add = (k: string) => kb.addKey(k, false);
-    this.keys = { ONE: add('ONE'), TWO: add('TWO'), THREE: add('THREE'), N: add('N'), F: add('F'), Q: add('Q'), E: add('E'), U: add('U'), V: add('V'), T: add('T') };
+    const names = ['ONE', 'TWO', 'THREE', 'FOUR', 'Z', 'X', 'C', 'N', 'F', 'Q', 'E', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'W', 'A', 'S', 'D'];
+    this.keys = Object.fromEntries(names.map((n) => [n, add(n)]));
     this.input.mouse?.disableContextMenu();
     this.loadingText = this.add.text(480, 320, 'Preparando el mapa…', { fontFamily: UI.FONT, fontSize: '24px', color: '#ffffff' }).setOrigin(0.5);
     void this.prepare();
@@ -271,8 +289,10 @@ export class TowerDefenseScene extends Phaser.Scene {
 
     // Zona del mapa: ratón
     const zone = this.add.zone(OX, OY, W, H).setOrigin(0).setInteractive().setDepth(1);
+    // El ratón mueve el mismo cursor que el teclado y el mando (así solo hay un cursor en pantalla)
     zone.on('pointermove', (p: Phaser.Input.Pointer) => {
       this.hover = this.cellAt(p);
+      if (this.hover && this.canAct()) this.cursor = { ...this.hover };
     });
     zone.on('pointerout', () => (this.hover = null));
     zone.on('pointerdown', (p: Phaser.Input.Pointer) => {
@@ -281,8 +301,11 @@ export class TowerDefenseScene extends Phaser.Scene {
       const c = this.cellAt(p);
       if (!c) return;
       this.cursor = { ...c };
-      this.focus = { zone: 'grid' };
       this.activateCell(c.x, c.y);
+    });
+    // Rueda del ratón: Pokémon anterior o siguiente del equipo
+    this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => {
+      if (this.canAct() && dy) this.cycleTeam(dy > 0 ? 1 : -1);
     });
 
     this.buildHud();
@@ -333,7 +356,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.hud.title.setText(shorten(`${this.map.name} · ${this.td.endless ? 'Infinito' : `Nv. ${this.args.level}`}`, 26));
     const side = this.add.graphics().setDepth(55);
     drawBox(side, PANEL_X, 4, 164, 588, { radius: 10 });
-    this.add.text(PANEL_X + 82, 24, 'Tu equipo', { fontFamily: UI.FONT, fontSize: '16px', fontStyle: 'bold', color: NAVY }).setOrigin(0.5).setDepth(62);
+    this.teamHead = this.add.text(PANEL_X + 82, 24, 'Tu equipo', { fontFamily: UI.FONT, fontSize: '15px', fontStyle: 'bold', color: NAVY }).setOrigin(0.5).setDepth(62);
     const bottom = this.add.graphics().setDepth(55);
     drawBox(bottom, 4, 596, 952, 42, { radius: 10 });
   }
@@ -353,20 +376,28 @@ export class TowerDefenseScene extends Phaser.Scene {
   }
 
   private buildBar() {
+    const keyText = (x: number, a: TdKeyAction, fmt?: (k: string) => string) => {
+      const t = this.add.text(x, 617, '', { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: NAVY }).setOrigin(0, 0.5).setDepth(64);
+      this.keyTexts.push({ t, a, fmt });
+      return t;
+    };
     ABILITIES.forEach((id, i) => {
-      const b = this.makeBtn(16 + i * 50, 601, 34, 32, '', () => this.useAbility(id));
-      b.icon = tdIcon(this, b.x + 17, b.y + 16, id, 2.2).setDepth(62);
+      // Cada habilidad: su botón cuadrado y, al lado, la tecla o el botón del mando que la lanza
+      const b = this.makeBtn(12 + i * 58, 601, 32, 32, '', () => this.useAbility(id));
+      b.zone.setSize(54, 32);
+      b.icon = tdIcon(this, b.x + 16, b.y + 16, id, 2.2).setDepth(62);
       b.color = ABILITY_INFO[id].color;
-      this.cdTexts.push(this.add.text(b.x + 17, b.y + 16, '', { fontFamily: UI.FONT, fontSize: '14px', fontStyle: 'bold', color: '#ffffff' }).setOrigin(0.5).setStroke('#18202c', 4).setDepth(64));
+      this.cdTexts.push(this.add.text(b.x + 16, b.y + 16, '', { fontFamily: UI.FONT, fontSize: '14px', fontStyle: 'bold', color: '#ffffff' }).setOrigin(0.5).setStroke('#18202c', 4).setDepth(64));
+      keyText(b.x + 37, id);
       this.barBtns.push(b);
     });
-    this.barBtns.push(this.makeBtn(170, 601, 230, 32, 'Siguiente oleada', () => this.callWave(), () => this.td.phase === 'prep', 14));
-    this.barBtns.push(this.makeBtn(412, 601, 64, 32, 'x1', () => this.cycleSpeed(), () => true, 16));
-    this.barBtns.push(this.makeBtn(488, 601, 76, 32, 'Pausa', () => this.openPause(), () => true, 15));
-    this.add
-      .text(948, 617, '1-3 habilidades · N oleada · F velocidad\nQ/E equipo · U mejorar · V vender · Esc cancelar', { fontFamily: UI.FONT, fontSize: '11px', color: NAVY, align: 'right' })
-      .setOrigin(1, 0.5)
-      .setDepth(62);
+    this.barBtns.push(this.makeBtn(188, 601, 214, 32, 'Siguiente oleada', () => this.callWave(), () => this.td.phase === 'prep', 13));
+    this.barBtns.push(this.makeBtn(410, 601, 74, 32, 'x1', () => this.cycleSpeed(), () => true, 14));
+    this.barBtns.push(this.makeBtn(492, 601, 84, 32, 'Pausa', () => this.openPause(), () => true, 14));
+    // Barra de ayuda: cambia con lo elegido y con el dispositivo (drawUi)
+    for (let i = 0; i < 2; i++) {
+      this.help.push(this.add.text(586, 607 + i * 19, '', { fontFamily: UI.FONT, fontSize: '12px', color: NAVY }).setOrigin(0, 0.5).setDepth(62));
+    }
   }
 
   private monTexture(id: number): { key: string; frame?: number; pmd: boolean } {
@@ -383,24 +414,46 @@ export class TowerDefenseScene extends Phaser.Scene {
 
   // --- Acciones del jugador ---
 
+  /** Clic o toque en un Pokémon del equipo: lo elige (otra vez, lo suelta). */
   private pickSlot(i: number) {
     if (this.placing === i) return this.cancel();
+    this.setPlacing(i);
+  }
+
+  private setPlacing(i: number) {
     this.placing = i;
+    this.teamSel = i;
     this.selected = null;
-    if (this.focus.zone !== 'grid' && this.focus.zone !== 'team') this.focus = { zone: 'grid' };
+    this.focus = { zone: 'grid' };
+    sfx('select');
+  }
+
+  /** Q/E, LB/RB o la rueda: Pokémon anterior o siguiente (sin nada elegido, empieza por el último usado). */
+  private cycleTeam(d: number) {
+    const n = this.td.team.length;
+    if (!n) return;
+    this.setPlacing(this.placing === null && this.selected === null ? this.teamSel : cycle(this.placing ?? this.teamSel, d, n));
   }
 
   private cancel() {
     this.placing = null;
     this.selected = null;
-    if (this.focus.zone === 'panel') this.focus = { zone: 'grid' };
+    this.focus = { zone: 'grid' };
   }
 
+  /** Esc o B: cierra la torre, suelta el Pokémon o, si no hay nada elegido, abre la pausa. */
+  private back() {
+    if (this.placing !== null || this.selected !== null) return this.cancel();
+    this.openPause();
+  }
+
+  /** Aceptar sobre una casilla (Enter, Espacio, A, clic o toque). */
   private activateCell(x: number, y: number) {
     const t = this.td.towerAt(x, y);
     if (t) {
       this.placing = null;
       this.selected = t.id;
+      this.focus = { zone: 'panel', i: 0 };
       sfx('select');
       return;
     }
@@ -421,7 +474,23 @@ export class TowerDefenseScene extends Phaser.Scene {
       if (this.td.placedOf(this.placing) >= this.td.limitOf(this.placing)) this.placing = null;
       return;
     }
-    this.selected = null;
+    // Con una torre abierta, aceptar fuera la cierra
+    if (this.selected !== null) return this.cancel();
+    // Casilla libre sin nada elegido: se elige el último Pokémon usado (el siguiente aceptar lo coloca)
+    if (this.freeCells.some((c) => c.x === x && c.y === y) && this.td.team.length) this.setPlacing(Math.min(this.teamSel, this.td.team.length - 1));
+  }
+
+  /** Acción `i` del panel de la torre abierta (tecla 1-4, A o clic). */
+  private pressPanel(i: number) {
+    const b = this.panelBtns[i];
+    if (!b) return;
+    if (this.focus.zone === 'panel') this.focus.i = i;
+    if (!b.enabled()) {
+      sfx('warn');
+      return;
+    }
+    sfx('select');
+    b.act();
   }
 
   private selectedTower(): TdTower | undefined {
@@ -442,7 +511,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       sfx('warn');
       this.toast('No tienes bastante dinero', 'warning');
     } else if (r === 'branch') {
-      this.toast('Elige una rama en el panel', 'info');
+      this.toast('Elige una rama en el panel (1 o 2)', 'info');
       this.focus = { zone: 'panel', i: 0 };
     }
   }
@@ -466,7 +535,6 @@ export class TowerDefenseScene extends Phaser.Scene {
 
   private cycleSpeed() {
     this.speedIdx = (this.speedIdx + 1) % SPEEDS.length;
-    this.barBtns[4].text?.setText(`x${SPEEDS[this.speedIdx]}`);
   }
 
   private useAbility(id: AbilityId) {
@@ -649,7 +717,7 @@ export class TowerDefenseScene extends Phaser.Scene {
 
   update(time: number, delta: number) {
     if (!this.ready) return;
-    this.readInput();
+    this.readInput(delta);
     if (!this.paused && !this.ended && !this.overlay) {
       this.td.step((Math.min(delta, 100) / 1000) * SPEEDS[this.speedIdx]);
       for (const e of this.td.drainEvents()) this.onEvent(e);
@@ -667,85 +735,58 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.drawUi(time);
   }
 
-  private readInput() {
+  /** Dirección que se mantiene pulsada ahora (teclado y mando), para el cursor con repetición. */
+  private heldDir(): { dx: number; dy: number } {
+    const k = this.keys;
+    const pad = this.input.gamepad?.getPad(0);
+    const p = pad && pad.connected ? pad : null;
+    const right = k.RIGHT.isDown || k.D.isDown || !!(p && (p.right || p.leftStick.x > 0.5));
+    const left = k.LEFT.isDown || k.A.isDown || !!(p && (p.left || p.leftStick.x < -0.5));
+    const down = k.DOWN.isDown || k.S.isDown || !!(p && (p.down || p.leftStick.y > 0.5));
+    const up = k.UP.isDown || k.W.isDown || !!(p && (p.up || p.leftStick.y < -0.5));
+    return { dx: (right ? 1 : 0) - (left ? 1 : 0), dy: (down ? 1 : 0) - (up ? 1 : 0) };
+  }
+
+  private readInput(delta: number) {
     const s = this.nav.read();
     const pb = this.pad.read();
+    const J = Phaser.Input.Keyboard.JustDown;
+    const k = this.keys;
+    // Se leen siempre (si no, una pulsación vieja saltaría al abrir una torre)
+    const num = [k.ONE, k.TWO, k.THREE, k.FOUR].findIndex((key) => J(key));
     if (this.overlayList) {
+      this.repeat.update(0, 0, delta);
       if (this.paused && (s.back || s.pause)) return this.closePause();
       if (s.dy) this.overlayList.move(s.dy);
       if (s.ok) this.overlayList.activate();
       return;
     }
     if (this.ended) return;
-    const J = Phaser.Input.Keyboard.JustDown;
-    const k = this.keys;
     if (s.pause) return this.openPause();
-    if (J(k.ONE) || pb.has('LT')) this.useAbility('rayo');
-    if (J(k.TWO) || pb.has('RT')) this.useAbility('ventisca');
-    if (J(k.THREE)) this.useAbility('curar');
+    if (J(k.Z) || pb.has('LT')) this.useAbility('rayo');
+    if (J(k.X) || pb.has('RT')) this.useAbility('ventisca');
+    if (J(k.C) || pb.has('Y')) this.useAbility('curar');
     if (J(k.N) || pb.has('X')) this.callWave();
-    if (J(k.F) || pb.has('Y')) this.cycleSpeed();
-    const n = this.td.team.length;
-    if (J(k.Q) || pb.has('LB')) this.pickSlot(((this.placing ?? 0) - 1 + n) % n);
-    if (J(k.E) || pb.has('RB')) this.pickSlot(((this.placing ?? -1) + 1) % n);
-    if (this.selected !== null) {
-      if (J(k.U)) this.doUpgrade();
-      if (J(k.V)) this.doSell();
-      if (J(k.T)) this.td.cycleTargeting(this.selected);
-    }
-    if (s.back) {
-      if (this.focus.zone !== 'grid') this.focus = { zone: 'grid' };
-      else if (this.placing !== null || this.selected !== null) this.cancel();
-      else this.openPause();
+    if (J(k.F) || pb.has('R3')) this.cycleSpeed();
+    if (J(k.Q) || pb.has('LB')) this.cycleTeam(-1);
+    if (J(k.E) || pb.has('RB')) this.cycleTeam(1);
+    if (s.back) return this.back();
+    const d = this.heldDir();
+    const step = this.repeat.update(d.dx, d.dy, delta);
+    const f = this.focus;
+    if (f.zone === 'panel') {
+      const m = this.panelBtns.length;
+      if (!m || !this.selectedTower()) {
+        this.focus = { zone: 'grid' };
+        return;
+      }
+      if (step.dy || step.dx) f.i = cycle(f.i, step.dy || step.dx, m);
+      if (num >= 0 && num < m) this.pressPanel(num);
+      else if (s.ok) this.pressPanel(f.i);
       return;
     }
-    const f = this.focus;
-    if (f.zone === 'grid') {
-      if (s.dx || s.dy) {
-        const nx = this.cursor.x + s.dx;
-        const ny = this.cursor.y + s.dy;
-        if (nx >= TD_COLS) this.focus = { zone: 'team', i: Math.min(n - 1, Math.min(2, Math.floor(this.cursor.y / 4)) * 2) };
-        else if (ny >= TD_ROWS) this.focus = { zone: 'bar', i: Math.min(this.barBtns.length - 1, Math.floor(this.cursor.x / 3)) };
-        else this.cursor = { x: Math.max(0, nx), y: Math.max(0, ny) };
-      }
-      if (s.ok) {
-        this.activateCell(this.cursor.x, this.cursor.y);
-        // Con teclado o mando, al elegir una torre el foco pasa a su panel
-        if (this.selected !== null) this.focus = { zone: 'panel', i: 0 };
-      }
-    } else if (f.zone === 'team') {
-      if (s.dx < 0 && f.i % 2 === 0) this.focus = { zone: 'grid' };
-      else if (s.dy > 0 && f.i + 2 >= n) this.focus = this.selectedTower() ? { zone: 'panel', i: 0 } : { zone: 'bar', i: this.barBtns.length - 1 };
-      else if (s.dx || s.dy) f.i = Math.max(0, Math.min(n - 1, f.i + s.dx + s.dy * 2));
-      if (s.ok) {
-        this.pickSlot(f.i);
-        this.focus = { zone: 'grid' };
-      }
-    } else if (f.zone === 'bar') {
-      if (s.dy < 0) this.focus = { zone: 'grid' };
-      else if (s.dx) f.i = (f.i + s.dx + this.barBtns.length) % this.barBtns.length;
-      if (s.ok) {
-        const b = this.barBtns[f.i];
-        if (b.enabled()) {
-          sfx('select');
-          b.act();
-        }
-      }
-    } else {
-      const m = this.panelBtns.length;
-      if (!m) this.focus = { zone: 'grid' };
-      else {
-        const d = s.dy || s.dx;
-        if (d) f.i = (f.i + d + m) % m;
-        if (s.ok) {
-          const b = this.panelBtns[f.i];
-          if (b?.enabled()) {
-            sfx('select');
-            b.act();
-          }
-        }
-      }
-    }
+    if (step.dx || step.dy) this.cursor = stepCursor(this.cursor, step.dx, step.dy, TD_COLS, TD_ROWS);
+    if (s.ok) this.activateCell(this.cursor.x, this.cursor.y);
   }
 
   // --- Eventos del motor → efectos ---
@@ -1146,8 +1187,9 @@ export class TowerDefenseScene extends Phaser.Scene {
     // Alcance de la torre elegida y fantasma al colocar
     const sel = this.selectedTower();
     if (sel) drawRange(g, sx(sel.x) + CELL / 2, sy(sel.y) + CELL / 2, this.td.statsOf(sel).range * CELL, true, t);
-    const kbd = currentInput() === 'keyboard' || currentInput() === 'gamepad';
-    const target = kbd ? (this.focus.zone === 'grid' ? this.cursor : null) : this.hover;
+    // Un solo cursor para todo: lo mueven las flechas, la cruceta o el ratón (en táctil, solo con el dedo encima)
+    const touch = currentInput() === 'touch';
+    const target = touch ? this.hover : this.cursor;
     if (this.placing !== null && !this.ended) {
       const m = this.td.team[this.placing];
       // Casillas libres en verde suave
@@ -1161,14 +1203,14 @@ export class TowerDefenseScene extends Phaser.Scene {
         g.fillStyle(ok ? 0x7cf07a : 0xff5a4a, 0.35).fillRect(sx(target.x), sy(target.y), CELL, CELL);
       }
     }
-    if (kbd && this.focus.zone === 'grid' && !this.overlay && !this.ended) drawCursor(g, sx(this.cursor.x), sy(this.cursor.y), CELL, 0xffd34d, t);
+    if (!touch && this.focus.zone === 'grid' && !this.overlay && !this.ended) drawCursor(g, sx(this.cursor.x), sy(this.cursor.y), CELL, this.placing !== null ? 0x7cf07a : 0xffd34d, t);
   }
 
   private drawUi(t: number) {
     const g = this.uiG;
     g.clear();
     const game = this.td;
-    const kbd = currentInput() === 'keyboard' || currentInput() === 'gamepad';
+    const dev = currentInput() as TdDevice;
     const hr = game.hp / game.maxHp;
     drawBar(g, 46, 24, 96, 12, hr, hr > 0.5 ? 0x4cd964 : hr > 0.25 ? 0xffcc00 : 0xff3b30);
     this.hud.hp.setText(`${game.hp}/${game.maxHp}`);
@@ -1181,19 +1223,19 @@ export class TowerDefenseScene extends Phaser.Scene {
       const afford = game.money >= towerCost(m);
       const full = game.placedOf(i) >= game.limitOf(i);
       const on = this.placing === i;
-      const foc = kbd && this.focus.zone === 'team' && this.focus.i === i;
+      const foc = !on && this.placing === null && this.teamSel === i;
       g.fillStyle(0x18202c, 1).fillRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4);
       g.fillStyle(on ? 0xffd34d : full ? 0x8a90a0 : afford ? 0xe8ecf4 : 0xc8ccd4, 1).fillRect(b.x, b.y, b.w, b.h);
       g.fillStyle(0xffffff, 0.5).fillRect(b.x, b.y, b.w, 3);
       g.fillStyle(RARITY_COLORS[m.rarity], 1).fillRect(b.x, b.y + b.h - 4, b.w, 4);
       for (let q = 0; q < game.limitOf(i); q++) g.fillStyle(q < game.placedOf(i) ? 0x2e86de : 0xb8bcc6, 1).fillRect(b.x + 4 + q * 8, b.y + 5, 6, 6);
-      if (foc) g.lineStyle(3, 0xffffff, 1).strokeRect(b.x - 4, b.y - 4, b.w + 8, b.h + 8);
+      if (foc) g.lineStyle(2, 0xffd34d, 0.8).strokeRect(b.x - 4, b.y - 4, b.w + 8, b.h + 8);
       b.icon?.setAlpha(afford && !full ? 1 : 0.45);
       b.text?.setColor(afford ? NAVY : '#a04040');
     });
     // Barra de abajo
     this.barBtns.forEach((b, i) => {
-      const foc = kbd && this.focus.zone === 'bar' && this.focus.i === i;
+      const foc = false;
       if (i < 3) {
         const id = ABILITIES[i];
         const left = game.cooldowns[id];
@@ -1206,8 +1248,11 @@ export class TowerDefenseScene extends Phaser.Scene {
         const base = i === 3 ? (en ? 0x7cf07a : 0xb8bcc6) : 0xe8ecf4;
         g.fillStyle(foc ? 0xffd34d : base, 1).fillRect(b.x, b.y, b.w, b.h);
         g.fillStyle(0xffffff, 0.5).fillRect(b.x, b.y, b.w, 3);
+        const key = (a: TdKeyAction) => (tdKeyLabel(a, dev) ? ` [${tdKeyLabel(a, dev)}]` : '');
+        if (i === 4) b.text?.setText(`x${SPEEDS[this.speedIdx]}${key('speed')}`);
+        if (i === 5) b.text?.setText(`Pausa${key('pause')}`);
         if (i === 3) {
-          b.text?.setText(game.phase === 'prep' ? `Siguiente oleada (+${Math.max(0, Math.floor(game.prepLeft))} $)` : game.phase === 'wave' ? 'Oleada en curso' : '—');
+          b.text?.setText(game.phase === 'prep' ? `Oleada ya (+${Math.max(0, Math.floor(game.prepLeft))} $)${key('wave')}` : game.phase === 'wave' ? 'Oleada en curso' : '—');
           // Flecha que empuja cuando se puede llamar
           if (en && !lowFx()) {
             const k = Math.floor(t / 200) % 3;
@@ -1216,10 +1261,34 @@ export class TowerDefenseScene extends Phaser.Scene {
         }
       }
     });
-    this.updatePanel(g, kbd);
+    this.updatePanel(g);
+    this.updateHelp(dev);
   }
 
-  private updatePanel(g: Phaser.GameObjects.Graphics, kbd: boolean) {
+  /** Teclas de los botones, cabecera del equipo y barra de ayuda (solo se reescriben si cambian). */
+  private updateHelp(dev: TdDevice) {
+    const tw = this.selectedTower();
+    const ctx: TdHelpContext = tw
+      ? { kind: 'tower', actions: this.panelBtns.length }
+      : this.placing !== null
+        ? { kind: 'placing', name: this.td.team[this.placing].name, cost: towerCost(this.td.team[this.placing]), canPlace: this.td.money >= towerCost(this.td.team[this.placing]) }
+        : { kind: 'idle' };
+    const key = `${dev}|${JSON.stringify(ctx)}`;
+    if (key === this.helpKey) return;
+    this.helpKey = key;
+    const lines = tdHelp(dev, ctx);
+    this.help.forEach((t, i) => {
+      t.setScale(1).setText(lines[i]);
+      // Que no se salga de la barra
+      if (t.width > 362) t.setScale(362 / t.width, 1);
+    });
+    for (const { t, a } of this.keyTexts) t.setText(tdKeyLabel(a, dev));
+    const prev = tdKeyLabel('prev', dev);
+    const next = tdKeyLabel('next', dev);
+    this.teamHead.setText(prev ? `${prev} ◀ Tu equipo ▶ ${next}` : 'Tu equipo');
+  }
+
+  private updatePanel(g: Phaser.GameObjects.Graphics) {
     const tw = this.selectedTower();
     const key = tw ? `t${tw.id}-${tw.level}-${tw.branch}-${tw.targeting}-${tw.evolved}-${tw.mega}` : this.placing !== null ? `p${this.placing}` : `i${this.td.wave}-${this.td.phase}`;
     if (key !== this.panelKey) {
@@ -1229,7 +1298,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     g.fillStyle(0x18202c, 0.1).fillRect(PANEL_X + 8, 264, 148, 322);
     this.panelBtns.forEach((b, i) => {
       const en = b.enabled();
-      const foc = kbd && this.focus.zone === 'panel' && this.focus.i === i;
+      const foc = this.focus.zone === 'panel' && this.focus.i === i && currentInput() !== 'mouse' && currentInput() !== 'touch';
       g.fillStyle(0x18202c, 1).fillRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4);
       g.fillStyle(foc ? 0xffd34d : en ? b.color ?? 0xe8ecf4 : 0xb8bcc6, 1).fillRect(b.x, b.y, b.w, b.h);
       g.fillStyle(0xffffff, 0.45).fillRect(b.x, b.y, b.w, 3);
@@ -1266,8 +1335,9 @@ export class TowerDefenseScene extends Phaser.Scene {
       showTdTip(this, 'td_upgrade');
       txt(y0 + 40, '', 12);
       let by = y0 + 130;
+      // Acciones numeradas: la tecla 1-4 hace la de su número
       const btn = (label: string, act: () => void, en: () => boolean, color?: number, h = 34) => {
-        this.panelBtns.push(this.makeBtn(x, by, 140, h, label, act, en, 12, color));
+        this.panelBtns.push(this.makeBtn(x, by, 140, h, `${this.panelBtns.length + 1} · ${label}`, act, en, 12, color));
         by += h + 8;
       };
       const cost = this.td.upgradeCost(tw);
@@ -1298,7 +1368,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       txt(y0, shorten(m.name, 14), 16, NAVY, true);
       txt(
         y0 + 24,
-        `${STYLE_LABEL[s.style]} · ${m.types.map(typeNameEs).join('/')}\nCoste ${towerCost(m)} $\nDaño ${s.damage}  Cad. ${s.rate}/s\nAlcance ${s.range.toFixed(1)}${s.air ? ' · aéreo' : ''}${s.income ? `\nGranja: +${s.income} $/oleada` : ''}\n\nColocados ${this.td.placedOf(this.placing)}/${this.td.limitOf(this.placing)}\n\nElige una casilla libre (Esc o clic derecho: cancelar).`,
+        `${STYLE_LABEL[s.style]} · ${m.types.map(typeNameEs).join('/')}\nCoste ${towerCost(m)} $\nDaño ${s.damage}  Cad. ${s.rate}/s\nAlcance ${s.range.toFixed(1)}${s.air ? ' · aéreo' : ''}${s.income ? `\nGranja: +${s.income} $/oleada` : ''}\n\nColocados ${this.td.placedOf(this.placing)}/${this.td.limitOf(this.placing)}\n\nElige una casilla libre: mira la ayuda de abajo.`,
         12,
       );
       return;

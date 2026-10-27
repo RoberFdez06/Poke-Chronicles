@@ -45,11 +45,11 @@ export const TIPS: Readonly<Record<TipId, { title: string; text: string }>> = {
   // Defensa de torres (salen en TowerDefenseScene la primera vez que toca)
   td_place: {
     title: 'Colocar torres',
-    text: 'Elige un Pokémon del equipo (clic, teclas Q/E o LB/RB) y ponlo en una casilla libre fuera del camino: clic o Enter/A. Pulsa N, X o "Siguiente oleada" cuando estés listo.',
+    text: 'Elige un Pokémon del equipo (clic, rueda, Q/E o LB/RB), mueve el cursor a una casilla libre fuera del camino y pulsa clic, Enter o A. Abajo tienes siempre la ayuda. Oleada: N, X o su botón.',
   },
   td_upgrade: {
     title: 'Mejorar torres',
-    text: 'Elige una torre (clic o Enter/A) y mejórala con U o el botón verde. Al nivel 3 eliges rama; al 5 evoluciona y, si puede, megaevoluciona al 6. V o el botón vende; T cambia el objetivo.',
+    text: 'Abre una torre (clic, Enter o A) y elige en el panel: teclas 1-4, cruceta y A o clic. Al nivel 3 eliges rama; al 5 evoluciona y, si puede, megaevoluciona al 6. Esc, B o clic derecho la cierran.',
   },
   td_air: {
     title: 'Voladores',
@@ -57,7 +57,7 @@ export const TIPS: Readonly<Record<TipId, { title: string; text: string }>> = {
   },
   td_skills: {
     title: 'Habilidades',
-    text: 'Rayo, Ventisca y Curar base se usan con 1, 2 y 3, con LT y RT en el mando (Curar, solo con clic o tecla 3) o con clic en su botón de abajo. Tardan en recargarse.',
+    text: 'Rayo, Ventisca y Curar base: teclas Z, X y C, LT, RT e Y en el mando o clic en su botón de abajo (cada botón enseña su tecla). Tardan en recargarse.',
   },
 };
 
