@@ -146,6 +146,7 @@ import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, meg
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
 import { fallConceptFx, sacredFlame } from '../ui/art/fallArt';
 import { pixRing } from '../ui/art/pixelFx';
+import { armMuzzle, drawBossLaser, drawShockRing, hazardBlast, hazardWarn, laserWarn, ringWarn, shockLaunch, shockWarn, shotTrails, spiralEndBurst, spiralWarn, vortexCharge } from '../ui/art/bossPatternFx';
 import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
 import { dynamaxBurst, teraBurst, zMoveFx } from '../ui/art/formsFx';
 import { drawMegaStoneHud, drawPowerMeterFill, playerFormAura, playerMegaFx } from '../ui/art/megaFx';
@@ -250,6 +251,8 @@ import {
   rollItem,
   toMovePower,
   moveRarity,
+  pickStarterMoves,
+  starterMoveCount,
   MOVE_RARITY_COLOR,
   MOVE_RARITY_LABEL,
   UPGRADE_MAX,
@@ -1248,13 +1251,14 @@ export class GameScene extends Phaser.Scene {
     this.playerKey = `starter-${starter.id}${this.shiny ? '-s' : ''}`;
     this.bossKey = `boss-${boss.id}`;
     await poolReady;
-    // Partida nueva: empiezas con un ataque especial al azar del tipo de tu Pokémon (de los más comunes)
+    // Partida nueva: empiezas con un ataque especial al azar del tipo de tu Pokémon (de los más comunes); en el Rush
+    // de jefes, con dos ya equipados (uno ligero y uno pesado)
     if (!r && !this.carry && this.slots.every((m: MovePower | null) => !m) && this.movePool.length > 0) {
-      const easy = this.movePool.filter((m) => moveRarity(m.power) !== 'epic' && moveRarity(m.power) !== 'legendary');
-      const list = easy.length > 0 ? easy : this.movePool;
-      const first = list[Math.floor(Math.random() * list.length)];
-      this.movePool.splice(this.movePool.indexOf(first), 1);
-      (this.slots as (MovePower | null)[])[0] = first;
+      const picks = pickStarterMoves(this.movePool, Math.min(SLOT_COUNT, starterMoveCount(this.mode)), Math.random, this.tearType);
+      picks.forEach((m, k) => {
+        this.movePool.splice(this.movePool.indexOf(m), 1);
+        (this.slots as (MovePower | null)[])[k] = m;
+      });
     }
 
     this.load.crossOrigin = 'anonymous';
@@ -6492,17 +6496,25 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Ráfaga en círculo: el jefe brilla y crece un anillo de aviso; luego salen proyectiles en todas direcciones. */
   private bossRing(b: Sprite, ai: EnemyAI) {
-    const warn = this.add.circle(b.x, b.y, 30).setStrokeStyle(4, typeColor(ai.type), 0.9).setDepth(5);
-    this.tweens.add({ targets: warn, radius: 120, alpha: 0.2, duration: TELEGRAPH_MS, onComplete: () => warn.destroy() });
+    const color = typeColor(ai.type);
+    const n = ringCount(ai.phase ?? 1);
+    const offset = Math.random() * Math.PI;
+    const low = lowFx();
+    if (low) {
+      const warn = this.add.circle(b.x, b.y, 30).setStrokeStyle(4, color, 0.9).setDepth(5);
+      this.tweens.add({ targets: warn, radius: 120, alpha: 0.2, duration: TELEGRAPH_MS, onComplete: () => warn.destroy() });
+    } else ringWarn(this, () => b, n, offset, color, TELEGRAPH_MS);
     b.setData('flashUntil', this.time.now + TELEGRAPH_MS).setTintFill(0xffffff);
     this.time.delayedCall(TELEGRAPH_MS, () => {
       if (!b.active || this.ended) return;
-      const n = ringCount(ai.phase ?? 1);
-      const offset = Math.random() * Math.PI;
+      const trails = low ? null : shotTrails(this, ai.type, color, 360);
       for (let k = 0; k < n; k++) {
         const a = offset + (k / n) * Math.PI * 2;
-        this.fireFoeShot(b, new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), ai.type);
+        const s = this.fireFoeShot(b, new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), ai.type);
+        trails?.add(s);
       }
+      trails?.done();
+      if (!low) pixRing(this, b.x, b.y, 60, color, 260, 7, 0.8);
     });
   }
 
@@ -6567,20 +6579,39 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const lvl = this.level();
     if (attack === 'spiral') {
       const sp = spiralSpec(lvl, phase);
-      const warn = this.add.circle(b.x, b.y, 20).setStrokeStyle(4, color, 0.9).setDepth(5);
-      this.tweens.add({ targets: warn, radius: 90, angle: 360, alpha: 0.2, duration: TELEGRAPH_MS, onComplete: () => warn.destroy() });
       const base = Math.random() * Math.PI * 2;
+      const low = lowFx();
+      if (low) {
+        const warn = this.add.circle(b.x, b.y, 20).setStrokeStyle(4, color, 0.9).setDepth(5);
+        this.tweens.add({ targets: warn, radius: 90, angle: 360, alpha: 0.2, duration: TELEGRAPH_MS, onComplete: () => warn.destroy() });
+      } else {
+        // Glifo de espiral con la curvatura real de los brazos (giro por disparo / distancia entre disparos)
+        const curl = sp.turn / ((FOE_SHOT_SPEED * sp.everyMs) / 1000);
+        spiralWarn(this, () => b, sp.arms, base, curl, color, TELEGRAPH_MS);
+        vortexCharge(this, () => b, ai.type, color, TELEGRAPH_MS);
+      }
       this.time.delayedCall(TELEGRAPH_MS, () => {
         let i = 0;
+        const trails = low ? null : shotTrails(this, ai.type, color);
+        const end = () => {
+          trails?.done();
+          if (!low && b.active && !this.ended) spiralEndBurst(this, b.x, b.y, sp.arms, base + i * sp.turn, ai.type, color);
+        };
         const ev = this.time.addEvent({
           delay: sp.everyMs, repeat: sp.shots - 1,
           callback: () => {
-            if (!b.active || this.ended) return ev.remove();
+            if (!b.active || this.ended) {
+              trails?.done();
+              return ev.remove();
+            }
             for (let k = 0; k < sp.arms; k++) {
               const a = base + (k / sp.arms) * Math.PI * 2 + i * sp.turn;
-              this.fireFoeShot(b, new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), ai.type);
+              const s = this.fireFoeShot(b, new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), ai.type);
+              trails?.add(s);
+              if (!low && i % 3 === 0) armMuzzle(this, b.x, b.y, a, ai.type, color);
             }
             i++;
+            if (i >= sp.shots) end();
           },
         });
       });
@@ -6590,9 +6621,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const sw = shockwaveSpec(lvl, phase);
       // Aviso: el suelo tiembla y se marca por dónde estará el hueco de la primera onda
       const gapAt0 = Math.random() * Math.PI * 2;
-      const mark = this.add.graphics().setDepth(4);
-      mark.lineStyle(6, 0xffffff, 0.8).beginPath().arc(b.x, b.y, 70, gapAt0 - sw.gap / 2, gapAt0 + sw.gap / 2).strokePath();
-      this.tweens.add({ targets: mark, alpha: 0.2, yoyo: true, repeat: 2, duration: TELEGRAPH_MS / 6, onComplete: () => mark.destroy() });
+      const low = lowFx();
+      if (low) {
+        const mark = this.add.graphics().setDepth(4);
+        mark.lineStyle(6, 0xffffff, 0.8).beginPath().arc(b.x, b.y, 70, gapAt0 - sw.gap / 2, gapAt0 + sw.gap / 2).strokePath();
+        this.tweens.add({ targets: mark, alpha: 0.2, yoyo: true, repeat: 2, duration: TELEGRAPH_MS / 6, onComplete: () => mark.destroy() });
+      } else shockWarn(this, () => b, gapAt0, sw.gap, color, TELEGRAPH_MS);
       this.cameras.main.shake(TELEGRAPH_MS, 0.002);
       for (let w = 0; w < sw.waves; w++) {
         // Cada onda con el hueco en otro sitio (giro de 90-150°)
@@ -6603,11 +6637,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           const cy = b.y;
           const g = this.add.graphics().setDepth(5);
           const st = { r: 30 };
+          if (!low) shockLaunch(this, cx, cy, ai.type, color);
           this.tweens.add({
             targets: st, r: sw.maxRadius, duration: ((sw.maxRadius - 30) / sw.speed) * 1000,
             onUpdate: () => {
-              g.clear().lineStyle(16, color, 0.85).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
-              g.lineStyle(4, 0xffffff, 0.7).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
+              g.clear();
+              if (low) {
+                g.lineStyle(16, color, 0.85).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
+                g.lineStyle(4, 0xffffff, 0.7).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
+              } else drawShockRing(g, cx, cy, st.r, gapAt, sw.gap, ai.type, color, this.time.now);
               if (b.active && !this.ended && shockwaveHits(cx, cy, st.r, gapAt, sw.gap, this.player.x, this.player.y)) this.hurtPlayer(b, true);
             },
             onComplete: () => g.destroy(),
@@ -6622,9 +6660,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const dirSign = Math.random() < 0.5 ? 1 : -1;
       const angles = (t: number) => Array.from({ length: ls.beams }, (_, k) => start + (k / ls.beams) * Math.PI * 2 + dirSign * ls.turnSpeed * t);
       // Aviso: líneas finas donde saldrán los rayos; el jefe se queda quieto mientras dispara
-      const warn = this.add.graphics().setDepth(4);
-      for (const a of angles(0)) warn.lineStyle(3, color, 0.6).lineBetween(b.x, b.y, b.x + Math.cos(a) * ls.length, b.y + Math.sin(a) * ls.length);
-      this.tweens.add({ targets: warn, alpha: 0.15, yoyo: true, repeat: 2, duration: TELEGRAPH_MS / 6, onComplete: () => warn.destroy() });
+      const low = lowFx();
+      if (low) {
+        const warn = this.add.graphics().setDepth(4);
+        for (const a of angles(0)) warn.lineStyle(3, color, 0.6).lineBetween(b.x, b.y, b.x + Math.cos(a) * ls.length, b.y + Math.sin(a) * ls.length);
+        this.tweens.add({ targets: warn, alpha: 0.15, yoyo: true, repeat: 2, duration: TELEGRAPH_MS / 6, onComplete: () => warn.destroy() });
+      } else laserWarn(this, () => b, angles(0), ls.length, color, TELEGRAPH_MS);
       ai.knockUntil = this.time.now + TELEGRAPH_MS + ls.durationMs;
       b.setVelocity(0, 0);
       this.time.delayedCall(TELEGRAPH_MS, () => {
@@ -6640,8 +6681,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             for (const a of angles(st.t)) {
               const x2 = b.x + Math.cos(a) * ls.length;
               const y2 = b.y + Math.sin(a) * ls.length;
-              g.lineStyle(26, color, 0.35).lineBetween(b.x, b.y, x2, y2);
-              g.lineStyle(10, 0xffffff, 0.9).lineBetween(b.x, b.y, x2, y2);
+              if (low) {
+                g.lineStyle(26, color, 0.35).lineBetween(b.x, b.y, x2, y2);
+                g.lineStyle(10, 0xffffff, 0.9).lineBetween(b.x, b.y, x2, y2);
+              } else drawBossLaser(g, b.x, b.y, a, ls.length, color, this.time.now);
               if (laserHits(b.x, b.y, a, ls.length, this.player.x, this.player.y)) this.hurtPlayer(b, true);
             }
           },
@@ -6659,7 +6702,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         ? { x: this.player.x, y: this.player.y }
         : { x: Phaser.Math.Between(i.x0 + R, i.x1 - R), y: Phaser.Math.Between(i.y0 + R, i.y1 - R) },
     );
-    const marks = spots.map((sp) => {
+    const lowHz = lowFx();
+    if (!lowHz) for (const sp of spots) hazardWarn(this, sp.x, sp.y, R, color, TELEGRAPH_MS + hz.warnMs);
+    const marks = (lowHz ? spots : []).map((sp) => {
       const c = this.add.circle(sp.x, sp.y, R, color, 0.12).setStrokeStyle(4, 0xff3d00, 0.85).setDepth(3);
       this.tweens.add({ targets: c, fillAlpha: 0.45, duration: TELEGRAPH_MS + hz.warnMs });
       const inner = this.add.circle(sp.x, sp.y, 4, 0xff3d00, 0.5).setDepth(3);
@@ -6674,8 +6719,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (this.ended) return;
       this.cameras.main.shake(140, 0.005);
       for (const sp of spots) {
-        const fx = this.add.circle(sp.x, sp.y, R, 0xff7043, 0.75).setDepth(12);
-        this.tweens.add({ targets: fx, alpha: 0, scale: 1.25, duration: 280, onComplete: () => fx.destroy() });
+        if (lowHz) {
+          const fx = this.add.circle(sp.x, sp.y, R, 0xff7043, 0.75).setDepth(12);
+          this.tweens.add({ targets: fx, alpha: 0, scale: 1.25, duration: 280, onComplete: () => fx.destroy() });
+        } else hazardBlast(this, sp.x, sp.y, R, color);
         if (b.active && inBlast(sp.x, sp.y, this.player.x, this.player.y, R)) this.hurtPlayer(b, true);
       }
     });
@@ -7078,13 +7125,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Proyectil enemigo del color de su tipo, con borde oscuro para no confundirlo con los tuyos. */
-  private fireFoeShot(e: Sprite, dir: Phaser.Math.Vector2, type: string) {
+  private fireFoeShot(e: Sprite, dir: Phaser.Math.Vector2, type: string): Sprite {
     const s = this.foeShots.create(e.x, e.y, 'foe-shot') as Sprite;
     s.setTint(typeColor(type)).setScale(0.75).setDepth(4);
     s.setVelocity(dir.x * FOE_SHOT_SPEED, dir.y * FOE_SHOT_SPEED);
     const weak = enemyDamageMul((e.getData('statuses') as ActiveStatus[] | undefined) ?? [], this.time.now);
     s.setData('dmg', Math.max(1, Math.round((e.getData('dmg') as number) * 0.8 * weak)));
     this.time.delayedCall(FOE_SHOT_LIFE, () => s.active && s.destroy());
+    return s;
   }
 
   // --- T72: Torre de 100 pisos (level/tower.ts) ---
