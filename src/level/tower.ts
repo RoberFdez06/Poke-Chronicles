@@ -25,7 +25,7 @@ export const TOWER_MINIBOSS_DMG_MUL = 1.35;
 
 export type TowerFloorKind = 'combat' | 'miniboss' | 'boss' | 'final' | 'rest' | 'supply';
 /** Forma de la sala: pequeña (plantilla con muros), normal, grande 2x1, 1x2, en L (3 casillas) o 2x2 (4 casillas). */
-export type TowerShape = 'small' | 'normal' | 'wide' | 'tall' | 'ell' | 'square';
+export type TowerShape = 'small' | 'normal' | 'wide' | 'tall' | 'ell' | 'square' | 'wide3' | 'tall3' | 'huge';
 export type TowerHazard = 'spikes' | 'lava' | 'ice';
 
 export const TOWER_HAZARD_LABEL: Record<TowerHazard, string> = { spikes: 'pinchos', lava: 'lava', ice: 'hielo' };
@@ -60,7 +60,12 @@ const SHAPE_CELLS: Record<TowerShape, [number, number][]> = {
   tall: [[0, 0], [0, 1]],
   ell: [[0, 0], [1, 0], [0, 1]],
   square: [[0, 0], [1, 0], [0, 1], [1, 1]],
+  wide3: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]],
+  tall3: [[0, 0], [1, 0], [0, 1], [1, 1], [0, 2], [1, 2]],
+  huge: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1], [0, 2], [1, 2], [2, 2]],
 };
+/** Arenas de jefe (y del final): siempre de 4 a 9 casillas. */
+export const BOSS_TOWER_SHAPES: readonly TowerShape[] = ['square', 'wide3', 'tall3', 'huge'];
 const BIG_SHAPES: readonly TowerShape[] = ['wide', 'tall', 'ell', 'square'];
 const ALL_SHAPES: readonly TowerShape[] = ['small', 'normal', 'wide', 'tall', 'ell', 'square'];
 /** Plantillas con muros 'X' (salas pequeñas: los muros recortan la sala). */
@@ -163,7 +168,8 @@ function pickShapeAndTemplate(f: number, kind: TowerFloorKind, prev: Picked | nu
     return from[Math.floor(rng() * from.length)];
   };
   let shapes: readonly TowerShape[];
-  if (kind === 'boss' || kind === 'final' || kind === 'miniboss') shapes = BIG_SHAPES;
+  if (kind === 'boss' || kind === 'final') shapes = BOSS_TOWER_SHAPES;
+  else if (kind === 'miniboss') shapes = BIG_SHAPES;
   else if (kind === 'rest' || kind === 'supply') shapes = ['normal'];
   else shapes = ALL_SHAPES;
   const shape = choose(shapes, prev?.shape);
@@ -235,7 +241,7 @@ export function towerFloor(spec: TowerFloorSpec, seed: number): Floor {
       if (b.gy === a.gy + 1 && b.gx === a.gx) { a.doors.down = b.id; b.doors.up = a.id; }
     }
   return {
-    seed, cols: 2, rows: 2, rooms, startId: 0, itemId: 0, bossId: 0,
+    seed, cols: Math.max(...spec.cells.map((c) => c[0])) + 1, rows: Math.max(...spec.cells.map((c) => c[1])) + 1, rooms, startId: 0, itemId: 0, bossId: 0,
     ...(kind === 'center' ? { centerId: 0 } : {}),
     ...(big ? { groups: [rooms.map((r) => r.id)] } : {}),
   };

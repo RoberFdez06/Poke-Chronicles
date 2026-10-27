@@ -64,6 +64,8 @@ export interface FloorOptions {
   extra?: boolean;
   /** Además: salas grandes (diseño 4; también con un generador aparte). */
   big?: boolean;
+  /** Además: la sala del jefe es una arena grande de 4 a 9 casillas (addBossArena). */
+  bossArena?: boolean;
 }
 
 /** PRNG mulberry32: rápido y reproducible a partir de una semilla de 32 bits. */
@@ -98,7 +100,8 @@ export function generateFloor(opts: FloorOptions): Floor {
     if (!floor) continue;
     const withSpecial = opts.special || opts.extra ? addSpecialRooms(floor) : floor;
     const withExtra = opts.extra ? addExtraRooms(withSpecial) : withSpecial;
-    return opts.big ? addBigRooms(withExtra) : withExtra;
+    const withBig = opts.big ? addBigRooms(withExtra) : withExtra;
+    return opts.bossArena ? addBossArena(withBig) : withBig;
   }
   throw new Error(`No se pudo generar un piso con ${target} salas`);
 }
@@ -313,4 +316,95 @@ function shuffled<T>(items: readonly T[], rng: () => number): T[] {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
+}
+
+// --- Arena del jefe: siempre una sala grande de 4 a 9 casillas ---
+
+/** Casillas mínimas y máximas de una arena de jefe (todos los modos). */
+export const BOSS_ARENA_MIN = 4;
+export const BOSS_ARENA_MAX = 9;
+/** Formas de arena de jefe [ancho, alto]: 2×2, 2×3, 3×2 y 3×3 (todas entre 4 y 9 casillas). */
+export const BOSS_ARENA_SHAPES: readonly (readonly [number, number])[] = [[2, 2], [3, 2], [2, 3], [3, 3]];
+
+/** Forma de la arena del jefe para esta semilla (variedad pseudoaleatoria). */
+export function bossArenaShape(seed: number): readonly [number, number] {
+  const rng = mulberry32((seed ^ 0x51ed270b) >>> 0);
+  return BOSS_ARENA_SHAPES[Math.floor(rng() * BOSS_ARENA_SHAPES.length)];
+}
+
+/**
+ * Agranda la sala del jefe a una arena de bossArenaShape(seed) casillas (o la mayor que quepa) en celdas libres de la
+ * cuadrícula, pegada a la sala del jefe original, que sigue siendo la entrada (misma id y misma puerta). Las casillas
+ * nuevas van al final de `rooms` (las ids de siempre no cambian) y forman un grupo. Si no cabe ni 2×2, ensancha la
+ * cuadrícula (mueve todas las salas) y vuelve a probar.
+ */
+export function addBossArena(floor: Floor): Floor {
+  for (let pad = 0; pad <= 4; pad += 2) {
+    const f = pad === 0 ? floor : padFloor(floor, pad);
+    const out = tryBossArena(f);
+    if (out) return out;
+  }
+  return floor;
+}
+
+function padFloor(floor: Floor, pad: number): Floor {
+  return { ...floor, cols: floor.cols + pad * 2, rows: floor.rows + pad * 2, rooms: floor.rooms.map((r) => ({ ...r, gx: r.gx + pad, gy: r.gy + pad, doors: { ...r.doors } })) };
+}
+
+function tryBossArena(floor: Floor): Floor | null {
+  const rng = mulberry32((floor.seed ^ 0x1b873593) >>> 0);
+  const boss = floor.rooms[floor.bossId];
+  if (!boss || boss.group !== undefined) return floor;
+  const taken = new Set(floor.rooms.map((r) => `${r.gx},${r.gy}`));
+  const first = bossArenaShape(floor.seed);
+  // Primero la forma de la semilla, luego las demás de mayor a menor
+  const rest = [...BOSS_ARENA_SHAPES].filter((s) => s !== first).sort((a, b) => b[0] * b[1] - a[0] * a[1]);
+  for (const [w, h] of [first, ...rest]) {
+    const spots: [number, number][] = [];
+    for (let ox = 0; ox < w; ox++)
+      for (let oy = 0; oy < h; oy++) {
+        const x0 = boss.gx - ox;
+        const y0 = boss.gy - oy;
+        if (x0 < 0 || y0 < 0 || x0 + w > floor.cols || y0 + h > floor.rows) continue;
+        let ok = true;
+        for (let x = x0; x < x0 + w && ok; x++) for (let y = y0; y < y0 + h && ok; y++) if (!(x === boss.gx && y === boss.gy) && taken.has(`${x},${y}`)) ok = false;
+        if (ok) spots.push([x0, y0]);
+      }
+    if (spots.length === 0) continue;
+    const [x0, y0] = spots[Math.floor(rng() * spots.length)];
+    const group = floor.groups?.length ?? 0;
+    const rooms = floor.rooms.map((r) => ({ ...r, doors: { ...r.doors } }));
+    const cells: Room[] = [];
+    for (let y = y0; y < y0 + h; y++)
+      for (let x = x0; x < x0 + w; x++) {
+        if (x === boss.gx && y === boss.gy) {
+          rooms[boss.id].group = group;
+          cells.push(rooms[boss.id]);
+        } else {
+          const r: Room = { id: rooms.length, gx: x, gy: y, kind: 'boss', depth: boss.depth, doors: {}, group };
+          rooms.push(r);
+          cells.push(r);
+        }
+      }
+    for (const a of cells)
+      for (const b of cells) {
+        if (b.gx === a.gx + 1 && b.gy === a.gy) { a.doors.right = b.id; b.doors.left = a.id; }
+        if (b.gy === a.gy + 1 && b.gx === a.gx) { a.doors.down = b.id; b.doors.up = a.id; }
+      }
+    return { ...floor, rooms, groups: [...(floor.groups ?? []), cells.map((c) => c.id).sort((a, b) => a - b)] };
+  }
+  return null;
+}
+
+/** Piso de una sola arena de jefe (Rush, reto final) con la forma de la semilla; entrada en la casilla 0. */
+export function bossArenaFloor(seed: number): Floor {
+  const [w, h] = bossArenaShape(seed);
+  const rooms: Room[] = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) rooms.push({ id: rooms.length, gx: x, gy: y, kind: 'boss', depth: 0, doors: {}, group: 0 });
+  for (const a of rooms)
+    for (const b of rooms) {
+      if (b.gx === a.gx + 1 && b.gy === a.gy) { a.doors.right = b.id; b.doors.left = a.id; }
+      if (b.gy === a.gy + 1 && b.gx === a.gx) { a.doors.down = b.id; b.doors.up = a.id; }
+    }
+  return { seed, cols: w, rows: h, rooms, startId: 0, itemId: 0, bossId: 0, groups: [rooms.map((r) => r.id)] };
 }

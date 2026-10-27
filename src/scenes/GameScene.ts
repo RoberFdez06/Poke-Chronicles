@@ -710,7 +710,7 @@ export class GameScene extends Phaser.Scene {
   private hazardTickAt = 0;
   /** T78: arena del jefe. Fase ya aplicada, aviso en curso y casillas con grietas (daño) de la sala del jefe. */
   private arenaDone: 0 | 1 | 2 = 0;
-  private arenaWarn?: { at: number; roomId: number; phase: ArenaPhase; marks: Phaser.GameObjects.GameObject[] };
+  private arenaWarn?: { at: number; parts: { roomId: number; phase: ArenaPhase }[]; marks: Phaser.GameObjects.GameObject[] };
   /** Casillas que queman al pisarlas ("sala:x,y"): grietas de la fase 1 (poco) y lava de la fase 2 (más). */
   private arenaCracks = new Map<string, 'grieta' | 'lava'>();
   /** Casillas de hielo de la fase 2 ("sala:x,y"): resbalan. */
@@ -722,6 +722,8 @@ export class GameScene extends Phaser.Scene {
   private arenaFallAt: number | undefined;
   /** Dibujos de la arena (fase 1 y 2) y obstáculos de cada sala, para poder quitarlos al caer a la arena nueva. */
   private arenaObjs: Phaser.GameObjects.GameObject[] = [];
+  /** Peligros del suelo de la Torre (se quitan al caer a la arena nueva del jefe). */
+  private towerHazardG?: Phaser.GameObjects.GameObject;
   private obstacleObjs = new Map<number, Phaser.GameObjects.GameObject[]>();
   /** Objetos que hay en el suelo (para guardarlos). */
   private floorItems: FloorItemSave[] = [];
@@ -1189,6 +1191,7 @@ export class GameScene extends Phaser.Scene {
         special: this.layout >= 2,
         extra: this.layout >= 3,
         big: this.layout >= 4,
+        bossArena: true,
       });
       // Santuario obligatorio: si el piso no tiene sala normal para él, una sala de cofre pasa a ser normal
       this.floor = reserveSanctuaryRoom(this.floor);
@@ -2676,6 +2679,10 @@ export class GameScene extends Phaser.Scene {
     bakeCombatFx(this);
     bakeItemIcons(this);
     this.tiles = bakeBiomeTiles(this, this.biome);
+    // Baldosas sin suavizado: con la cámara que sigue al jugador (salas grandes, Torre) y el zoom, el filtro lineal
+    // dejaba costuras y bandas claras/oscuras (moiré) cruzando el suelo
+    for (const k of Object.values(this.tiles)) if (typeof k === 'string' && this.textures.exists(k)) this.textures.get(k).setFilter(Phaser.Textures.FilterMode.NEAREST);
+    if (this.textures.exists(`outside-${this.biome.id}`)) this.textures.get(`outside-${this.biome.id}`).setFilter(Phaser.Textures.FilterMode.NEAREST);
     this.walls = this.physics.add.staticGroup();
     this.bushes = this.physics.add.staticGroup();
     this.holes = this.physics.add.staticGroup();
@@ -3676,6 +3683,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
   }
 
+  /** Rectángulo de la sala grande de `room` (o de ella sola). */
+  private groupRect(room: Room) {
+    const cells = this.groupIds(room).map((id) => this.interior(this.floor.rooms[id]));
+    const x0 = Math.min(...cells.map((c) => c.x0));
+    const y0 = Math.min(...cells.map((c) => c.y0));
+    const x1 = Math.max(...cells.map((c) => c.x1));
+    const y1 = Math.max(...cells.map((c) => c.y1));
+    return { x0, y0, x1, y1, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 };
+  }
+
   /** La sala (casilla del piso) que hay en (x, y): dentro de una sala grande, la que toque; si no, la actual. */
   private cellRoom(x: number, y: number): Room {
     if (this.current.group === undefined) return this.current;
@@ -3713,6 +3730,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const x1 = (Math.max(...cells.map((r) => r.gx)) + 1) * VIEW.w;
     const y1 = (Math.max(...cells.map((r) => r.gy)) + 1) * VIEW.h;
     cam.setBounds(x0, y0, x1 - x0, y1 - y0);
+    cam.setRoundPixels(true);
     cam.startFollow(this.player, true, 0.12, 0.12);
   }
 
@@ -6075,10 +6093,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!b) return false;
     const types = (b.getData('btypes') as string[] | undefined) ?? this.bossTypes;
     const theme = fallTheme(types, b.getData('speciesId') as number | undefined);
-    const i = this.interior(this.current);
+    const i = this.arena();
     this.bossFx?.destroy();
     this.bossHot = false;
-    this.bossFx = bossAmbience(this, { x0: i.x0, y0: i.y0, w: ROOM.w, h: ROOM.h, glow: FALL_GLOW[theme], tint: FALL_TINT[theme], final, low: lowFx() });
+    this.bossFx = bossAmbience(this, { x0: i.x0, y0: i.y0, w: i.x1 - i.x0, h: i.y1 - i.y0, glow: FALL_GLOW[theme], tint: FALL_TINT[theme], final, low: lowFx() });
     const key = `${this.floorSeed}:${this.current.id}`;
     let seen = false;
     try {
@@ -6290,16 +6308,32 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Fase 3: la arena se agrieta como en la fase 1 de arena de los jefes normales (aviso, grietas, escombros y charcos). */
   private finaleArena(b: Sprite, time: number) {
     if (this.arenaDone !== 0 || this.arenaWarn || this.arenaFallAt !== undefined) return;
-    const room = this.cellRoom(b.x, b.y);
-    const grid = this.grids.get(room.id);
-    if (!grid || room !== this.current) return;
-    const seed = (this.floorSeed ^ Math.imul(room.id + 7, 0x9e3779b1)) >>> 0;
-    const phase = arenaPhase({ grid, seed, player: this.tileOf(this.player.x, this.player.y, room), boss: this.tileOf(b.x, b.y, room) });
-    if (phase.cells.length === 0) return;
+    const w = this.arenaWarnAll(b, time, 7);
+    if (!w) return;
     this.arenaDone = 1;
-    const i = this.interior(room);
-    const marks = phase.cells.map((c) => arenaWarnTile(this, i.x0 + c.x * TILE, i.y0 + c.y * TILE, TILE, c.kind === 'grieta' ? 'grieta' : c.kind === 'charco' ? 'charco' : 'escombro'));
-    this.arenaWarn = { at: time, roomId: room.id, phase, marks };
+    this.arenaWarn = w;
+  }
+
+  /**
+   * Fase 1 de arena en TODAS las casillas de la sala grande (no solo donde está el jefe): una fase por casilla, con su
+   * semilla, y las marcas de aviso. undefined si no hay nada que marcar.
+   */
+  private arenaWarnAll(b: Sprite, time: number, salt: number): { at: number; parts: { roomId: number; phase: ArenaPhase }[]; marks: Phaser.GameObjects.GameObject[] } | undefined {
+    if (!this.groupIds(this.current).includes(this.cellRoom(b.x, b.y).id)) return undefined;
+    const parts: { roomId: number; phase: ArenaPhase }[] = [];
+    const marks: Phaser.GameObjects.GameObject[] = [];
+    for (const id of this.groupIds(this.current)) {
+      const room = this.floor.rooms[id];
+      const grid = this.grids.get(id);
+      if (!grid) continue;
+      const seed = (this.floorSeed ^ Math.imul(id + salt, 0x9e3779b1)) >>> 0;
+      const phase = arenaPhase({ grid, seed, player: this.tileOf(this.player.x, this.player.y, room), boss: this.tileOf(b.x, b.y, room) });
+      if (phase.cells.length === 0) continue;
+      parts.push({ roomId: id, phase });
+      const i = this.interior(room);
+      for (const c of phase.cells) marks.push(arenaWarnTile(this, i.x0 + c.x * TILE, i.y0 + c.y * TILE, TILE, c.kind === 'grieta' ? 'grieta' : c.kind === 'charco' ? 'charco' : 'escombro'));
+    }
+    return parts.length > 0 ? { at: time, parts, marks } : undefined;
   }
 
   /** Ataque del jefe final según su fase (sin repetir el último); los grandes (juicio y nova) nunca a la vez. */
@@ -6485,7 +6519,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (ev !== 'arena1' && ev !== 'arena2') return false;
     const room = this.cellRoom(b.x, b.y);
     const grid = this.grids.get(room.id);
-    if (!grid || room !== this.current) return false;
+    if (!grid || !this.groupIds(this.current).includes(room.id)) return false;
     const seed = (this.floorSeed ^ Math.imul(room.id + 1, 0x9e3779b1)) >>> 0;
     const player = this.tileOf(this.player.x, this.player.y, room);
     const boss = this.tileOf(b.x, b.y, room);
@@ -6493,15 +6527,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.startFall(room, b, seed, player, boss, time);
       return true;
     }
+    const w = this.arenaWarnAll(b, time, 1);
+    if (!w) return false;
     this.arenaDone = 1;
     this.bossBusyUntil = time + ARENA_WARN_MS;
-    const phase = arenaPhase({ grid, seed, player, boss });
-    if (phase.cells.length === 0) return false;
-    const i = this.interior(room);
-    const marks = phase.cells.map((c) => {
-      return arenaWarnTile(this, i.x0 + c.x * TILE, i.y0 + c.y * TILE, TILE, c.kind === 'grieta' ? 'grieta' : c.kind === 'charco' ? 'charco' : 'escombro');
-    });
-    this.arenaWarn = { at: time, roomId: room.id, phase, marks };
+    this.arenaWarn = w;
     this.cameras.main.shake(200, 0.003);
     this.notify('¡El suelo empieza a resquebrajarse!', { kind: 'danger', icon: 'star' });
     return false;
@@ -6536,14 +6566,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     this.flow = undefined;
     if (rocks) this.unstickAll();
-    this.arenaBeat(i, phase);
   }
 
   /**
    * Fase 1 aplicada: pausa de ARENA_BEAT_MS (0,5 s) en la que nadie se mueve ni recibe daño (jugador y jefe) para que se
    * aprecie la sala nueva; con una onda de polvo que recorre la sala. Con pocos efectos solo la pausa y un anillo.
    */
-  private arenaBeat(i: { x0: number; y0: number }, phase: ArenaPhase) {
+  private arenaBeat(i: { x0: number; y0: number }, cells: ArenaPhase['cells']) {
     const ARENA_BEAT_MS = 500;
     const now = this.time.now;
     this.invulnUntil = Math.max(this.invulnUntil, now + ARENA_BEAT_MS + 150);
@@ -6561,7 +6590,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       e.setVelocity(0, 0);
     }
     this.cameras.main.flash(160, 255, 235, 200);
-    for (const c of phase.cells) {
+    for (const c of cells) {
       const cx = i.x0 + c.x * TILE + TILE / 2;
       const cy = i.y0 + c.y * TILE + TILE / 2;
       this.time.delayedCall(Math.min(300, Math.hypot(cx - this.player.x, cy - this.player.y) * 0.6), () => pixRing(this, cx, cy, TILE * 0.9, c.kind === 'charco' ? 0x7ec8ff : c.kind === 'grieta' ? 0xff8a4a : 0xcdb88c, 340));
@@ -6625,16 +6654,18 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.time.delayedCall(FALL_SHAKE_MS * 0.55, () => cam.flash(140, 255, 220, 160));
       this.time.delayedCall(FALL_SHAKE_MS * 0.85, () => cam.flash(140, 255, 220, 160));
     }
-    const i = this.interior(room);
-    this.arenaObjs.push(...arenaQuake(this, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS));
+    const i = this.arena();
+    const AW = i.x1 - i.x0;
+    const AH = i.y1 - i.y0;
+    this.arenaObjs.push(...arenaQuake(this, i.x0, i.y0, AW, AH, b.x, b.y, FALL_SHAKE_MS));
     if (!lowFx()) {
       // Cinemática corta: bandas de cine, gran grieta que parte la sala por el jefe, rugido con cámara lenta y sacudida del jefe
       arenaLetterbox(this, this.scale.width, this.scale.height, 260, FALL_SHAKE_MS - 260 + FALL_FADE_MS, 300);
       // Derrumbe propio de cada jefe según su concepto (Dialga rebobina el tiempo, Palkia rasga el espacio, Giratina voltea
       // el suelo…); los de un solo elemento y los demás, el de su tipo (Moltres fuego, Articuno ventisca…)
-      this.arenaObjs.push(arenaChasm(this, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS, FALL_GLOW[fall.theme]));
+      this.arenaObjs.push(arenaChasm(this, i.x0, i.y0, AW, AH, b.x, b.y, FALL_SHAKE_MS, FALL_GLOW[fall.theme]));
       const style = fallStyleOf(b.getData('speciesId') as number | undefined, (b.getData('btypes') as string[] | undefined) ?? this.bossTypes);
-      this.arenaObjs.push(fallConceptFx(this, fall.theme, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS) ?? arenaFallFx(this, style, i.x0, i.y0, ROOM.w, ROOM.h, b.x, b.y, FALL_SHAKE_MS));
+      this.arenaObjs.push(fallConceptFx(this, fall.theme, i.x0, i.y0, AW, AH, b.x, b.y, FALL_SHAKE_MS) ?? arenaFallFx(this, style, i.x0, i.y0, AW, AH, b.x, b.y, FALL_SHAKE_MS));
       this.time.delayedCall(FALL_SHAKE_MS * 0.3, () => {
         sfx('enrage');
         cam.flash(180, 255, 255, 255);
@@ -6644,7 +6675,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       });
     }
     this.time.delayedCall(FALL_SHAKE_MS, () => cam.fadeOut(FALL_FADE_MS, 0, 0, 0));
-    this.time.delayedCall(FALL_SHAKE_MS + FALL_FADE_MS, () => this.swapArena(room, fall));
+    this.time.delayedCall(FALL_SHAKE_MS + FALL_FADE_MS, () => this.swapArena(room, fall, b));
     this.time.delayedCall(FALL_SHAKE_MS + FALL_FADE_MS + FALL_HOLD_MS, () => {
       cam.fadeIn(FALL_FADE_MS, 0, 0, 0);
       cam.shake(320, 0.018);
@@ -6658,24 +6689,52 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** T78: cambia la sala por la arena nueva (con la pantalla en negro). */
-  private swapArena(room: Room, fall: ReturnType<typeof arenaFall>) {
+  private swapArena(room: Room, fall: ReturnType<typeof arenaFall>, b?: Sprite) {
     this.clearArenaShots();
     if (this.arenaWarn) {
       this.arenaWarn.marks.forEach((m) => m.destroy());
       this.arenaWarn = undefined;
     }
+    this.arenaObjs.forEach((o) => o.destroy());
+    this.arenaObjs = [];
+    // Torre: los pinchos/lava/hielo del piso no siguen dibujados ni haciendo daño debajo de la arena nueva
+    if (this.towerSpec && this.towerSpec.hazards.length > 0) {
+      this.towerSpec.hazards = [];
+      this.towerHazardG?.destroy();
+      this.towerHazardG = undefined;
+    }
+    // Fondo animado de la arena en TODA la sala grande (no solo la casilla del jefe): el de su tipo o el del concepto
+    const a = this.groupIds(room).includes(this.current.id) ? this.arena() : this.interior(room);
+    this.arenaObjs.push(arenaBackdrop(this, a.x0, a.y0, a.x1 - a.x0, a.y1 - a.y0, fall.theme, FALL_TINT[fall.theme]));
+    for (const id of this.groupIds(room)) {
+      const cell = this.floor.rooms[id];
+      // Cada casilla con su propia arena nueva (misma temática) y obstáculos/colisiones a juego con lo dibujado
+      const f = id === room.id ? fall : arenaFall({
+        bossTypes: (b?.getData('btypes') as string[] | undefined) ?? this.bossTypes,
+        speciesId: b?.getData('speciesId') as number | undefined,
+        seed: (this.floorSeed ^ Math.imul(id + 1, 0x9e3779b1)) >>> 0,
+        player: this.tileOf(this.player.x, this.player.y, cell),
+        boss: b ? this.tileOf(b.x, b.y, cell) : undefined,
+      });
+      this.swapCell(cell, f);
+    }
+    this.flow = undefined;
+    this.unstickAll();
+    this.cameras.main.shake(200, 0.01);
+    this.notify(FALL_LANDING[fall.theme], { kind: 'danger', icon: 'star' });
+  }
+
+  /** Una casilla de la arena: quita sus obstáculos, rocas y grietas y pone los de la arena nueva. */
+  private swapCell(room: Room, fall: ReturnType<typeof arenaFall>) {
     for (const o of this.obstacleObjs.get(room.id) ?? []) o.destroy();
     for (const k of [...this.rocks.keys()]) {
       if (!k.startsWith(`${room.id}:`)) continue;
       this.rocks.get(k)?.forEach((o) => o.destroy());
       this.rocks.delete(k);
     }
-    this.arenaObjs.forEach((o) => o.destroy());
-    this.arenaObjs = [];
     for (const k of [...this.arenaCracks.keys()]) if (k.startsWith(`${room.id}:`)) this.arenaCracks.delete(k);
+    for (const k of [...this.arenaIce]) if (k.startsWith(`${room.id}:`)) this.arenaIce.delete(k);
     const i = this.interior(room);
-    // Fondo animado de la arena: el de su tipo o el del concepto del legendario (cámara del tiempo, vacío estelar…)
-    this.arenaObjs.push(arenaBackdrop(this, i.x0, i.y0, ROOM.w, ROOM.h, fall.theme, FALL_TINT[fall.theme]));
     this.renderObstacles(room, fall.grid);
     for (const [tx, ty] of fall.hazards) {
       const k = `${room.id}:${tx},${ty}`;
@@ -6691,10 +6750,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.arenaObjs.push(arenaIce(this, cx - TILE / 2, cy - TILE / 2, TILE, 0.5, fall.theme === 'psique' ? 0xe8a8f8 : 0xcfeeff));
       }
     }
-    this.flow = undefined;
-    this.unstickAll();
-    this.cameras.main.shake(200, 0.01);
-    this.notify(FALL_LANDING[fall.theme], { kind: 'danger', icon: 'star' });
   }
 
   /**
@@ -6706,7 +6761,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (w && time >= w.at + ARENA_WARN_MS) {
       this.arenaWarn = undefined;
       w.marks.forEach((m) => m.destroy());
-      this.applyArena(w.roomId, w.phase);
+      for (const p of w.parts) this.applyArena(p.roomId, p.phase);
+      const a = this.arena();
+      this.arenaBeat({ x0: a.x0, y0: a.y0 }, w.parts.flatMap((p) => {
+        const i = this.interior(this.floor.rooms[p.roomId]);
+        return p.phase.cells.map((c) => ({ ...c, x: c.x + (i.x0 - a.x0) / TILE, y: c.y + (i.y0 - a.y0) / TILE }));
+      }));
     }
     if (this.arenaCracks.size === 0 || this.ended || this.transitioning || this.hp <= 1 || time < this.arenaTickAt) return;
     if (this.time.now < this.invulnUntil) return;
@@ -7673,7 +7733,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const i = this.interior(this.floor.rooms[h.cell]);
       return { x: i.x0 + h.tx * TILE + TILE / 2, y: i.y0 + h.ty * TILE + TILE / 2 };
     });
-    if (tiles.length > 0) buildHazards(this, spec.hazard, tiles, TILE);
+    this.towerHazardG?.destroy();
+    this.towerHazardG = tiles.length > 0 ? buildHazards(this, spec.hazard, tiles, TILE) : undefined;
   }
 
   /** T72: ¿estás pisando una casilla de hielo de la Torre? */
@@ -7709,7 +7770,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   // --- Trampilla al piso siguiente ---
 
   private spawnTrapdoor(final = false) {
-    const i = this.interior(this.floor.rooms[this.floor.bossId]);
+    // En el centro de toda la arena del jefe (sala grande de 4 a 9 casillas)
+    const i = this.groupRect(this.floor.rooms[this.floor.bossId]);
     if (this.mode === 'tower') {
       // T72: columna de luz en el centro (en reposo, towerArt; al pisarla, towerFx)
       // En el descanso (con Centro, forja, altar y tienda) va abajo en medio para no pisar nada (TOWER_REST_LAYOUT)
@@ -7759,7 +7821,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Pisar la trampilla: se activa cuando te has alejado de ella (así no bajas sin querer). */
   private checkTrapdoor() {
     const t = this.trapdoor;
-    if (!t || this.current.id !== this.floor.bossId) return;
+    if (!t || !this.groupIds(this.current).includes(this.floor.bossId)) return;
     const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, t.x, t.y);
     if (!t.armed) {
       if (dist > 90) t.armed = true;

@@ -53,13 +53,24 @@ test('las oleadas se endurecen y dan objeto cada 3 rondas', () => {
   assert.ok(!waveDropsItem(0));
 });
 
-test('la arena es una sola sala sin puertas', () => {
-  const f = arenaFloor(5, 'boss');
+test('la arena de oleadas es una sola sala sin puertas', () => {
+  const f = arenaFloor(5, 'combat');
   assert.equal(f.rooms.length, 1);
-  assert.equal(f.rooms[0].kind, 'boss');
   assert.deepEqual(f.rooms[0].doors, {});
-  assert.equal(f.bossId, 0);
-  assert.equal(f.startId, 0);
+});
+
+test('la arena de jefe (Rush, reto final) es una sala grande de 4 a 9 casillas', () => {
+  const sizes = new Set<number>();
+  for (let seed = 1; seed < 60; seed++) {
+    const f = arenaFloor(seed, 'boss');
+    assert.ok(f.rooms.length >= 4 && f.rooms.length <= 9);
+    assert.ok(f.rooms.every((r) => r.kind === 'boss' && r.group === 0));
+    assert.equal(f.groups?.[0].length, f.rooms.length);
+    assert.equal(f.bossId, 0);
+    assert.equal(f.startId, 0);
+    sizes.add(f.rooms.length);
+  }
+  assert.ok(sizes.size > 1, 'varía con la semilla');
 });
 
 test('los récords solo suben y se leen aunque estén corruptos', () => {

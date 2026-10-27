@@ -1,6 +1,7 @@
 // Modos de juego: Normal, Oleadas, Infinito, Rush de jefes y Torre (T72). Récords y reglas de cada modo.
 // Lógica pura, sin Phaser ni red, para poder testearla.
 import type { Floor, RoomKind } from '../level/floorGen.ts';
+import { bossArenaFloor } from '../level/floorGen.ts';
 import { FLOOR_COUNT } from '../level/progression.ts';
 // Constante copiada aquí (y comprobada en tests/tower.test.ts) para no importar tower.ts, que arrastra biomes.ts y crearía un ciclo
 export const TOWER_FLOORS = 100;
@@ -90,6 +91,8 @@ export const waveTickets = (round: number): number => 1 + Math.floor(Math.max(0,
 
 /** "Piso" de una sola sala, sin puertas: arena de combate (Oleadas) o del jefe (Rush). */
 export function arenaFloor(seed: number, kind: Extract<RoomKind, 'combat' | 'boss'>): Floor {
+  // Toda arena de jefe es una sala grande de 4 a 9 casillas
+  if (kind === 'boss') return bossArenaFloor(seed);
   return {
     seed,
     cols: 1,

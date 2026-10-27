@@ -119,3 +119,13 @@ test('puntos de control, coste y récord', () => {
   assert.equal(recordText('tower', 23), 'Récord: piso 23/100');
   assert.equal(SUPPLY_CHOICES.length, 3);
 });
+
+test('las arenas de jefe de la Torre tienen de 4 a 9 casillas', () => {
+  for (const seed of SEEDS)
+    for (let f = 10; f <= TOWER_FLOORS; f += 10) {
+      const spec = towerFloorSpec(f, seed);
+      assert.ok(spec.cells.length >= 4 && spec.cells.length <= 9, `piso ${f}: ${spec.cells.length}`);
+      const fl = towerFloor(spec, seed);
+      assert.ok(fl.rooms.every((r) => r.gx < fl.cols && r.gy < fl.rows));
+    }
+});

@@ -184,3 +184,31 @@ test('salas grandes: grupos de 2 o 3 salas de combate contiguas, sin tocar el re
   }
   assert.ok(withGroups > 100, `suficientes grupos (${withGroups})`);
 });
+
+test('arena del jefe: sala grande de 4 a 9 casillas, rectangular, sin pisar otras salas y con la entrada de siempre', () => {
+  const shapes = new Set<string>();
+  for (const seed of SEEDS) {
+    for (const opts of [{}, { special: true, extra: true, big: true }]) {
+      const base = generateFloor({ seed, roomCount: 10, ...opts });
+      const f = generateFloor({ seed, roomCount: 10, ...opts, bossArena: true });
+      const boss = f.rooms[f.bossId];
+      assert.ok(boss.group !== undefined);
+      const ids = f.groups![boss.group!];
+      assert.ok(ids.length >= 4 && ids.length <= 9, `${ids.length} casillas`);
+      const cells = ids.map((id) => f.rooms[id]);
+      assert.ok(cells.every((c) => c.kind === 'boss'));
+      const xs = cells.map((c) => c.gx);
+      const ys = cells.map((c) => c.gy);
+      const w = Math.max(...xs) - Math.min(...xs) + 1;
+      const h = Math.max(...ys) - Math.min(...ys) + 1;
+      assert.equal(w * h, ids.length, 'rectángulo lleno');
+      shapes.add(`${w}x${h}`);
+      // Ninguna casilla repetida y las salas de siempre conservan sus ids
+      assert.equal(new Set(f.rooms.map((r) => `${r.gx},${r.gy}`)).size, f.rooms.length);
+      assert.ok(base.rooms.every((r) => f.rooms[r.id].kind === r.kind));
+      // Sigue llegándose al jefe por la misma puerta
+      assert.ok(reachable(f).has(f.bossId));
+    }
+  }
+  assert.ok(shapes.size >= 3, `variedad de formas: ${[...shapes]}`);
+});

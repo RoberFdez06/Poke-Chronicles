@@ -32,19 +32,14 @@ export function bossAmbience(sc: Phaser.Scene, o: BossAmbienceOpts) {
   let level = 1;
   const t0 = sc.time.now;
 
-  // Tinte de la sala (sobre el suelo, debajo de todo lo demás)
-  const tint = sc.add.rectangle(cx, cy, w, h, mixColor(o.tint, glow, 0.4), 0).setDepth(0.42).setBlendMode(Phaser.BlendModes.MULTIPLY);
-  objs.push(tint);
-  sc.tweens.add({ targets: tint, fillAlpha: final ? 0.4 : 0.28, duration: low ? 1 : 900 });
+  // Sin tinte ni viñeta a franjas sobre el suelo: en arenas grandes se veían como un filtro con bandas y costuras
   const floor = sc.add.graphics().setDepth(0.44);
   objs.push(floor);
-  const vign = sc.add.graphics().setDepth(3.9);
-  objs.push(vign);
   const motes = sc.add.graphics().setDepth(4.2);
   objs.push(motes);
 
   // Motas que suben (posiciones fijas por semilla, se mueven con el tiempo)
-  const N = final ? 34 : 20;
+  const N = Math.round((final ? 34 : 20) * Math.max(1, (w * h) / (880 * 560)));
   const seeds = Array.from({ length: N }, (_, i) => ({ x: ((i * 7919) % 997) / 997, sp: 0.4 + ((i * 131) % 17) / 17, ph: ((i * 613) % 101) / 101, big: i % 5 === 0 }));
 
   // Sala del final: sello, pilares y antorchas
@@ -122,21 +117,12 @@ export function bossAmbience(sc: Phaser.Scene, o: BossAmbienceOpts) {
     const now = sc.time.now;
     const t = now - t0;
     floor.clear();
-    vign.clear();
     motes.clear();
     // Luz del suelo: halo del color del tema que respira
     const breath = low ? 0.5 : 0.5 + 0.5 * Math.sin(t / (level > 1 ? 380 : 700));
     floor.fillStyle(glow, (0.06 + 0.05 * breath) * (level > 1 ? 1.5 : 1)).fillEllipse(cx, cy, w * 0.9, h * 0.8);
+    if (!final) floor.fillStyle(glow, 0.04 * breath).fillEllipse(cx, cy, w * 0.5, h * 0.45);
     if (final) drawSeal(floor, t);
-    // Viñeta: bandas del color del tema hacia los bordes (en escalones de píxel)
-    const va = (final ? 0.34 : 0.24) * (level > 1 ? 1.35 : 1) * (0.8 + 0.2 * breath);
-    for (let k = 0; k < 4; k++) {
-      const d = 12 + k * 12;
-      const c = mixColor(darkOf(glow), 0x000000, 0.3 + k * 0.1);
-      vign.fillStyle(c, va * (1 - k * 0.22));
-      vign.fillRect(x0, y0 + k * 12, w, 12).fillRect(x0, y0 + h - d, w, 12);
-      vign.fillRect(x0 + k * 12, y0, 12, h).fillRect(x0 + w - d, y0, 12, h);
-    }
     if (low) return;
     // Motas que suben y parpadean
     for (const s of seeds) {
@@ -181,7 +167,6 @@ export function bossAmbience(sc: Phaser.Scene, o: BossAmbienceOpts) {
     intensify() {
       if (level > 1) return;
       level = 2;
-      if (!low) sc.tweens.add({ targets: tint, fillAlpha: final ? 0.5 : 0.36, duration: 600 });
       paint();
     },
     destroy() {
