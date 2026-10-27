@@ -593,6 +593,8 @@ export const PROGRESS_KEYS: readonly string[] = [
   KONAMI_KEY,
   TUTORIAL_KEY,
   HISTORY_KEY,
+  // Defensa de torres (src/data/towerDefense/progress.ts, TD_KEY)
+  'pokeisaac.towerdef',
   'pokeisaac.run.0',
   'pokeisaac.run.1',
   'pokeisaac.run.2',
