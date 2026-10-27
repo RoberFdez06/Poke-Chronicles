@@ -8,3 +8,8 @@ playwright-report/
 # Configuración local (Firebase)
 .env.local
 *.local
+
+# Worktrees y simulaciones locales
+_wt/
+_sim/
+.bench/

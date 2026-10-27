@@ -79,13 +79,6 @@ export function ballEscape(scene: Phaser.Scene, x: number, y: number, depth = 11
   });
 }
 
-/** Icono de la Poké Ball para el HUD (devuelve el Graphics para colocarlo y atenuarlo si no hay captura posible). */
-export function ballHudIcon(scene: Phaser.Scene, x: number, y: number, depth = 20): Phaser.GameObjects.Graphics {
-  const g = scene.add.graphics().setDepth(depth).setScrollFactor(0);
-  ballShape(g, x, y, PX * 2);
-  return g;
-}
-
 /**
  * Megaevolución de un jefe: columna de luz, anillo doble, ráfaga de estrellas y aura que sube. `color` es el del jefe.
  * Dura ~1,5 s (lo que el jefe está quieto e invulnerable). Con pocos efectos, solo un anillo y un destello corto.

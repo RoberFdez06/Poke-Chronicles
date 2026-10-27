@@ -157,16 +157,6 @@ export function arenaIce(scene: Phaser.Scene, x: number, y: number, size: number
   });
 }
 
-/** Placas oscuras que se agrietan y se hunden al empezar la caída: crecen y se oscurecen durante `ms`. */
-export function arenaCollapse(scene: Phaser.Scene, x: number, y: number, ms: number, depth = 0.58) {
-  const g = scene.add.graphics().setDepth(depth).setAlpha(0);
-  const path = crackPath(Math.round(x * 3 + y), 80);
-  g.fillStyle(0x120c08, 1).fillRect(x - 40, y - 12, 80, 24);
-  for (const [cx, cy] of path.slice(0, 8)) px(g, x - 40 + cx, y - 12 + (cy % 24), 0xff9a4a, 0.9, P, P / 2);
-  scene.tweens.add({ targets: g, alpha: 0.9, duration: ms });
-  return g;
-}
-
 /** Fondo de la arena nueva: tinte + trama de píxeles propia del tema (lava con brasas, agua con ondas, hielo con grietas…). */
 export function arenaBackdrop(scene: Phaser.Scene, x: number, y: number, w: number, h: number, theme: ArenaTheme, tint: number, depth = 0.33) {
   if (CONCEPT_THEMES.includes(theme)) return fallBackdrop(scene, x, y, w, h, theme, tint, depth);

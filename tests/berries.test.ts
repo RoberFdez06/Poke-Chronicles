@@ -5,7 +5,7 @@ import {
   rollSeed, runsLeft, shouldAutoHeal, takeBasket, useCarried,
 } from '../src/data/berries.ts';
 import { mulberry32 } from '../src/level/floorGen.ts';
-import { GARDEN_KEY, gainSeed, loadGarden, PROGRESS_KEYS, takeGardenBerries, updateGarden } from '../src/data/save.ts';
+import { GARDEN_KEY, gainSeed, loadGarden, PROGRESS_KEYS, resetProgress, takeGardenBerries, updateGarden } from '../src/data/save.ts';
 import { MemoryStorage } from '../src/data/storage.ts';
 
 test('huerto nuevo: parcelas vacías y una semilla de Aranja', () => {
@@ -90,4 +90,18 @@ test('save.ts: guarda el huerto, da semillas, crece y se borra con el progreso',
   assert.deepEqual(takeGardenBerries(st), ['aranja', 'aranja']);
   assert.equal(loadGarden(st).basket.aranja, 0);
   assert.deepEqual(takeGardenBerries(st), []);
+});
+
+test('Borrar progreso: se borran todas las claves pokeisaac.* de progreso (y solo los ajustes del aparato se quedan)', () => {
+  const ajustes = ['pokeisaac.audio', 'pokeisaac.fx', 'pokeisaac.keys', 'pokeisaac.dev.local'];
+  const progreso = [
+    'pokeisaac.towerdef', 'pokeisaac.towerdef.team', 'pokeisaac.gachaHistory', 'pokeisaac.history', 'pokeisaac.garden',
+    'pokeisaac.run.0', 'pokeisaac.run.1', 'pokeisaac.run.2', 'pokeisaac.tickets', 'pokeisaac.unlocked',
+  ];
+  const st = new MemoryStorage();
+  for (const k of [...ajustes, ...progreso]) st.setItem(k, 'x');
+  resetProgress(st);
+  for (const k of progreso) assert.ok(PROGRESS_KEYS.includes(k), `falta ${k} en PROGRESS_KEYS`);
+  for (const k of progreso) assert.ok(!st.getItem(k), `${k} sigue guardada`);
+  for (const k of ajustes) assert.equal(st.getItem(k), 'x');
 });

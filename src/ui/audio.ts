@@ -139,12 +139,6 @@ export function playMusic() {
   startLoop();
 }
 
-export function stopMusic() {
-  musicWanted = false;
-  if (musicTimer !== undefined) window.clearInterval(musicTimer);
-  musicTimer = undefined;
-}
-
 function startLoop() {
   const c = ctx;
   if (!c || !musicGain || musicTimer !== undefined) return;

@@ -14,11 +14,6 @@ export function setInput(d: InputDevice) {
   listeners.forEach((f) => f(d));
 }
 
-export function onInputChange(f: (d: InputDevice) => void): () => void {
-  listeners.add(f);
-  return () => listeners.delete(f);
-}
-
 /** Teclado y ratón van juntos en PC: se enseñan las dos secciones; el mando y el táctil, solos. */
 export function controlModesFor(d: InputDevice): InputDevice[] {
   return d === 'gamepad' ? ['gamepad'] : d === 'touch' ? ['touch'] : ['keyboard', 'mouse'];
