@@ -1302,3 +1302,32 @@ Pendiente:
   - `__POKEISAAC_DEBUG__.giveMegaStone()` — da la Mega Piedra.
   - `__POKEISAAC_DEBUG__.forceMega()` — si hay jefe/legendario en la sala, lo deja al 45 % y megaevoluciona; si no, megaevoluciona al jugador (si su especie tiene mega).
   - `__POKEISAAC_DEBUG__.spawnBoss()` — saca el jefe del piso en la sala actual.
+
+## Modo admin (pruebas del desarrollador)
+
+Panel para probarlo todo rápido. **Comodidad de pruebas, no seguridad fuerte**: lo que hace afecta solo al guardado propio
+(las reglas de Firestore no cambian; ver la nota en `firestore.rules`).
+
+- **Puertas** (`src/data/admin.ts`): 1) `npm run dev` (`import.meta.env.DEV`), nunca en la build; 2) cuenta en la nube cuyo correo, en minúsculas,
+  tenga el SHA-256 de `VITE_ADMIN_EMAIL_SHA256` (`.env.local`; ejemplo vacío en `.env.example`). Sin esa variable nadie es admin. El correo no
+  está en claro ni en el repo ni en el bundle: solo su hash. Se comprueba al entrar (`src/net/cloud.ts`).
+- **Sacar el hash** del correo con el que te registres (no se crean cuentas ni se guardan contraseñas: la cuenta la creas tú en el juego):
+  ```
+  node -e "console.log(require('crypto').createHash('sha256').update(process.argv[1].trim().toLowerCase()).digest('hex'))" "tu@correo.com"
+  ```
+  y pon el resultado en `.env.local`: `VITE_ADMIN_EMAIL_SHA256=<64 caracteres hex>`. Para la web publicada, la misma variable en el entorno de la build.
+- **Abrir**: Ajustes → «Panel admin», **F9** en partida, **L3 + R3** a la vez con mando, o clic en la placa «ADMIN» arriba a la derecha del HUD.
+  Teclado (↑/↓, ←/→, Mayús ×10, números para escribir), ratón (clic y rueda) y mando (cruceta, A, B, LB/RB ×10).
+- **Qué hace** (`src/scenes/AdminScene.ts`, `src/ui/adminPanel.ts`, `src/data/adminUnlock.ts`):
+  - Desbloquear todo: Pokédex completa, colección del gacha (y shinies), mejoras al máximo, logros (objetos bloqueados), medallas, huerto lleno,
+    999 999 tickets y caramelos. Antes hace una copia (`pokeisaac.adminBackup`); «Restaurar el guardado anterior» la devuelve.
+  - Modo dios (vida, daño, cadencia, velocidad y alcance enormes; no recibe daño), adrenalina llena, megaevolución, Dinamax/Gigamax/Tera/Z al momento.
+  - Ir al piso N, elegir jefe por número de Pokédex (y generarlo en la sala) y bioma, ir a la sala del jefe, partida nueva en otro modo.
+  - Consola (`__POKEISAAC_DEBUG__`, ampliado): `godMode(true)`, `goFloor(n)`, `bossHere(id)`, `panel()`.
+- **Partidas admin no cuentan**: al usar cualquier truco la partida se marca (`markCheatRun`) y `save.ts` ignora récords, medallas, misiones,
+  tickets, caramelos, desbloqueos, shinies, huerto, registro de combate, diario e historial. El HUD lo enseña («PARTIDA ADMIN»). Se olvida al volver al menú.
+  Los invitados siguen sin guardar (memoria).
+- Tests: `tests/admin.test.ts`.
+Pendiente:
+- Probar en el navegador: panel encima de la pausa/Ajustes, F9 y L3+R3, saltar de piso, jefe por número, formas de poder.
+- Una partida admin guardada en un hueco y continuada en otra sesión ya no lleva la marca.

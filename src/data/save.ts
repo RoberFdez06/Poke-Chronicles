@@ -20,6 +20,7 @@ import { parseTutorial, type TutorialState } from './tutorial.ts';
 import { parseHistory, withRun, type RunRecord } from './runHistory.ts';
 import { parseKeys, type KeyMap } from './keybinds.ts';
 import { parseSeedBests, seedBest, withSeedBest } from './seedCode.ts';
+import { isCheatRun } from './admin.ts';
 
 export type { StorageLike } from './storage.ts';
 
@@ -86,6 +87,8 @@ export const needsFirstStarter = (storage: StorageLike | null = browserStorage()
 /** Desbloquea un Pokémon y devuelve la lista actualizada. */
 export function unlockPokemon(id: number, storage: StorageLike | null = browserStorage()): number[] {
   const list = loadUnlocked(storage);
+  // Modo admin (admin.ts): la partida con trucos no desbloquea nada de verdad
+  if (isCheatRun()) return list;
   if (Number.isInteger(id) && id > 0 && !list.includes(id)) list.push(id);
   try {
     storage?.setItem(UNLOCKED_KEY, JSON.stringify({ v: UNLOCKED_VERSION, ids: list }));
@@ -138,6 +141,7 @@ function saveCandies(n: number, storage: StorageLike | null) {
 }
 
 export function addCandies(amount: number, storage: StorageLike | null = browserStorage()): number {
+  if (isCheatRun()) return loadCandies(storage);
   const total = loadCandies(storage) + (Number.isInteger(amount) && amount > 0 ? amount : 0);
   saveCandies(total, storage);
   return total;
@@ -178,6 +182,7 @@ function saveTickets(n: number, storage: StorageLike | null) {
 
 /** Suma tickets (ignora cantidades no válidas) y devuelve el total. */
 export function addTickets(amount: number, storage: StorageLike | null = browserStorage()): number {
+  if (isCheatRun()) return loadTickets(storage);
   const total = loadTickets(storage) + (Number.isInteger(amount) && amount > 0 ? amount : 0);
   saveTickets(total, storage);
   return total;
@@ -204,6 +209,7 @@ export function loadDefeated(storage: StorageLike | null = browserStorage()): nu
 }
 
 export function saveDefeated(ids: readonly number[], storage: StorageLike | null = browserStorage()) {
+  if (isCheatRun()) return;
   try {
     storage?.setItem(DEX_KEY, JSON.stringify(parseDefeated(JSON.stringify(ids))));
   } catch {
@@ -223,6 +229,7 @@ export function loadMedals(storage: StorageLike | null = browserStorage()): stri
 
 /** Anota la medalla del bioma si es nueva y suma sus tickets. */
 export function earnMedal(biomeId: string, storage: StorageLike | null = browserStorage()): MedalAward {
+  if (isCheatRun()) return { medals: loadMedals(storage), tickets: 0, complete: false };
   const award = awardMedal(loadMedals(storage), biomeId);
   if (award.gained) {
     try {
@@ -249,6 +256,7 @@ export function loadRecords(storage: StorageLike | null = browserStorage(), diff
 
 /** Guarda el resultado si mejora el récord del modo; devuelve si lo ha mejorado. */
 export function submitRecord(mode: GameMode, value: number, storage: StorageLike | null = browserStorage(), diff: Difficulty = 'normal'): boolean {
+  if (isCheatRun()) return false;
   const { records, improved } = withRecord(loadRecords(storage, diff), mode, value);
   if (improved) {
     try {
@@ -289,6 +297,7 @@ export function beginDaily(day: number, storage: StorageLike | null = browserSto
 
 /** Resultado de la partida que contaba ese día (pisos completados); devuelve si es el mejor de siempre. */
 export function submitDaily(day: number, floors: number, storage: StorageLike | null = browserStorage()): boolean {
+  if (isCheatRun()) return false;
   const { state, newBest } = withDailyResult(loadDaily(storage), day, floors);
   saveDaily(state, storage);
   return newBest;
@@ -309,6 +318,7 @@ export function loadSeedBest(code: string, storage: StorageLike | null = browser
 
 /** Guarda el resultado de una partida con código si mejora el suyo; devuelve si lo ha mejorado. */
 export function submitSeedBest(code: string, value: number, storage: StorageLike | null = browserStorage()): boolean {
+  if (isCheatRun()) return false;
   try {
     const { bests, improved } = withSeedBest(parseSeedBests(storage?.getItem(SEED_BESTS_KEY) ?? null), code, value);
     if (improved) storage?.setItem(SEED_BESTS_KEY, JSON.stringify(bests));
@@ -404,6 +414,7 @@ export function loadShinies(storage: StorageLike | null = browserStorage()): num
 
 /** Guarda un shiny (y desbloquea el Pokémon si no lo tenías). Devuelve si era nuevo. */
 export function addShiny(id: number, storage: StorageLike | null = browserStorage()): boolean {
+  if (isCheatRun()) return false;
   const list = loadShinies(storage);
   unlockPokemon(id, storage);
   if (list.includes(id)) return false;
@@ -442,6 +453,7 @@ export function recordMissionEvent(
   day = dayNumber(),
   storage: StorageLike | null = browserStorage(),
 ): { completed: Completed[]; expired: NpcMission[] } {
+  if (isCheatRun()) return { completed: [], expired: [] };
   const { state, completed, expired } = applyMissionEvent(loadMissions(day, storage), e, day);
   try {
     storage?.setItem(MISSIONS_KEY, JSON.stringify(state));
@@ -460,6 +472,7 @@ export function recordMissionEvent(
  * Los invitados juegan con almacenamiento en memoria (storage.ts): lo pueden hacer, pero no se guarda al cerrar.
  */
 export function acceptNpcMission(seed: number, day = dayNumber(), storage: StorageLike | null = browserStorage()): NpcMission | null {
+  if (isCheatRun()) return null;
   const r = offerNpcMission(loadMissions(day, storage), seed);
   if (!r) return null;
   try {
@@ -492,6 +505,7 @@ export function saveGarden(state: GardenState, storage: StorageLike | null = bro
 
 /** Cambia el huerto con `f` y lo guarda. */
 export function updateGarden(f: (g: GardenState) => GardenState, storage: StorageLike | null = browserStorage()): GardenState {
+  if (isCheatRun()) return loadGarden(storage);
   const next = f(loadGarden(storage));
   saveGarden(next, storage);
   return next;
@@ -542,6 +556,7 @@ export function loadRunHistory(storage: StorageLike | null = browserStorage()): 
 
 /** Apunta una partida terminada (se quedan las últimas 20). */
 export function addRunHistory(r: RunRecord, storage: StorageLike | null = browserStorage()): RunRecord[] {
+  if (isCheatRun()) return loadRunHistory(storage);
   const list = withRun(loadRunHistory(storage), r);
   try {
     storage?.setItem(HISTORY_KEY, JSON.stringify(list));
