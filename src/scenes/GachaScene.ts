@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { DCX, DCY, COVER_W, COVER_H, fitDesign } from '../ui/layout';
 import { fetchPokemonCard, type PokemonCard } from '../data/pokeapi';
 import {
@@ -129,8 +130,7 @@ export class GachaScene extends Phaser.Scene {
         fontFamily: FONT, fontSize: '14px', color: '#ffd34d',
       })
       .setOrigin(0.5).setShadow(1, 1, '#101828', 0);
-    this.add
-      .text(480, 616, 'Flechas, ratón o mando para elegir · Enter, clic o A para tirar · Esc, Retroceso o B para volver', {
+    addHelpBar(this, 480, 616, 'Flechas o ratón para elegir · Enter o clic para tirar · Esc o Retroceso para volver', {
         fontFamily: FONT, fontSize: '14px', color: '#ffffff',
       })
       .setOrigin(0.5).setAlpha(0.6);

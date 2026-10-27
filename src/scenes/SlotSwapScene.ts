@@ -1,5 +1,6 @@
 import { MOVE_RARITY_LABEL, moveRarity } from '../data/items';
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { MenuList, NavInput } from '../ui/nav';
 import { drawBox, FONT, HEX } from '../ui/theme';
@@ -54,7 +55,7 @@ export class SlotSwapScene extends Phaser.Scene {
     const labels = this.args.slots.map((s, i) => (s ? `${i + 1} · ${pretty(s.name)} (${typeNameEs(s.type)}, pot. ${s.power})` : `${i + 1} · vacío`));
     labels.push('Dejarlo como está');
     this.menu = new MenuList(this, 480, 250, labels, (i) => this.pick(i), { w: 500, h: 46, gap: 8, fontSize: 18 });
-    this.add.text(480, 542, 'Flechas, ratón o mando · Enter, clic o A · 1-4 elige · Esc o B: dejarlo', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0.5);
+    addHelpBar(this, 480, 542, 'Flechas o ratón · Enter o clic · 1-4 elige · Esc: dejarlo', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0.5);
     (['ONE', 'TWO', 'THREE', 'FOUR'] as const).forEach((k, i) => this.input.keyboard?.on(`keydown-${k}`, () => this.pick(i)));
     sfx('select');
   }

@@ -299,6 +299,8 @@ import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBeh
   turnToward,
 } from '../data/enemies';
 import { drawMinimap } from './minimap';
+import { drawKeyGlyph } from '../ui/art/keyGlyphs';
+import { bossCallout, floatPopup, PromptPanel } from '../ui/floatText';
 import { cancelCharge, chargedShapeFor, chargeProgress, CHARGE_DAMAGE_MUL, CHARGE_MOVE_MUL, CHARGE_SOURCES, isCharging, newCharge, stepCharge, type ChargeSource, type ChargeState } from '../data/charge.ts';
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
@@ -775,7 +777,7 @@ export class GameScene extends Phaser.Scene {
   /** Artículo de la tienda que estás pisando (para no repetir el aviso de "te faltan monedas"). */
   private shopTouch = -1;
   private counterTouch = false;
-  private prompt!: Phaser.GameObjects.Text;
+  private prompt!: PromptPanel;
   private enterKey!: Key;
   private coinsHud!: Phaser.GameObjects.Text;
   private keysHud!: Phaser.GameObjects.Text;
@@ -862,8 +864,10 @@ export class GameScene extends Phaser.Scene {
   private slotTypes: Phaser.GameObjects.Text[] = [];
   /** Botón con el que se lanza cada poder (tecla o botón del mando, según con qué juegues). */
   private slotBadges: Phaser.GameObjects.Text[] = [];
+  /** Glifos pixel art de la tecla o botón de cada ranura de poder. */
+  private slotGlyphs: (Phaser.GameObjects.Container | undefined)[] = [];
   /** Botón de la bomba, la poción y el objeto activo (tecla o botón del mando), junto a cada uno en el HUD. */
-  private actionBadges: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; x: number; y: number; pad: string; action: 'active' | 'bomb' | 'potion' | 'parry' | 'ball' | 'mega'; maxW: number }[] = [];
+  private actionBadges: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; x: number; y: number; pad: string; action: 'active' | 'bomb' | 'potion' | 'parry' | 'ball' | 'mega'; maxW: number; gl?: Phaser.GameObjects.Container }[] = [];
   private badgeShown = '';
   private banner!: Phaser.GameObjects.Text;
   private toasts?: ToastStack;
@@ -2960,11 +2964,8 @@ export class GameScene extends Phaser.Scene {
       if (this.shop.length === 0) this.shop = rollShop(this.rng(RNG.shop), new Set(this.passives), this.movePool, this.passivePool(), this.floorNum);
       this.buildShop(this.floor.rooms[this.floor.shopId]);
     }
-    this.prompt = this.add
-      .text(0, 0, '', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#ffffff', align: 'center' })
-      .setOrigin(0.5, 1)
-      .setDepth(12)
-      .setStroke('#1d2848', 5);
+    // «Enter / A / clic: …» en un panel fijo en la franja de abajo (antes flotaba sobre cada cosa)
+    this.prompt = new PromptPanel(this, GAME_VIEW.x + 12, HUD.bottom.y + HUD.bottom.h / 2, GAME_VIEW.w - 24, (o) => this.toHud(o));
 
     // Si ya habías vencido al jefe, la trampilla sigue ahí
     if (this.mode === 'tower') this.towerEnter();
@@ -5306,24 +5307,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     for (const b of this.actionBadges) {
       b.g.clear();
       // T74: la etiqueta de la megaevolución solo si se ofrece (Mega Piedra y Pokémon con mega)
-      if (b.action === 'mega' && !this.powerButtonOffered()) {
-        b.t.setVisible(false);
-        continue;
-      }
-      if (device === 'touch') {
-        b.t.setVisible(false);
-        continue;
-      }
+      b.t.setVisible(false);
+      b.gl?.destroy();
+      b.gl = undefined;
+      if (b.action === 'mega' && !this.powerButtonOffered()) continue;
+      if (device === 'touch') continue;
+      // Glifo pixel art de la tecla o del botón (nunca más ancho que su hueco)
       const pad = device === 'gamepad';
-      const label = pad ? b.pad : keyLabel(keys[b.action]);
-      // Nunca más ancho que su hueco (las teclas de nombre largo encogen el texto)
-      const want = Math.max(22, 10 + label.length * 7);
-      const w = Math.min(want, b.maxW);
-      b.t.setScale(want > w ? Math.max(0.6, (w - 6) / (want - 10)) : 1);
-      b.g.fillStyle(0x101828, 1).fillRoundedRect(b.x - w / 2 - 2, b.y - 10, w + 4, 20, 6);
-      b.g.fillStyle(pad ? 0x4a5468 : 0xe8e8f0, 1).fillRoundedRect(b.x - w / 2, b.y - 8, w, 16, 5);
-      if (!pad) b.g.fillStyle(0xb8bcc8, 1).fillRect(b.x - w / 2 + 2, b.y + 5, w - 4, 2);
-      b.t.setText(label).setColor(pad ? '#ffffff' : '#1d2848').setPosition(b.x, b.y - 1).setVisible(true);
+      const name = pad ? (b.pad === '↑' ? 'pad:dpad-up' : `pad:${b.pad}`) : `key:${keyLabel(keys[b.action])}`;
+      b.gl = this.hudGlyph(b.x, b.y, name, 22, b.maxW);
     }
   }
 
@@ -6258,7 +6250,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const plan = judgmentPlan(W, H, spec, Math.random);
     const rects = judgmentRects(i.x0, i.y0, W, H, plan);
     const color = typeColor(ai.type);
-    this.popup(b.x, b.y - (b.displayHeight / 2 + 20), FINALE_ATTACK_LABEL.judgment, color);
+    this.bossLabel(FINALE_ATTACK_LABEL.judgment, color);
     b.setData('flashUntil', this.time.now + spec.warnMs).setTintFill(0xffffff);
     ai.knockUntil = this.time.now + spec.warnMs;
     b.setVelocity(0, 0);
@@ -6283,7 +6275,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const dir: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
     const start = Math.atan2(this.player.y - b.y, this.player.x - b.x) + (Math.random() - 0.5) * 1.2;
     const total = spec.warnMs + novaDurationMs(spec);
-    this.popup(b.x, b.y - (b.displayHeight / 2 + 20), FINALE_ATTACK_LABEL.nova, color);
+    this.bossLabel(FINALE_ATTACK_LABEL.nova, color);
     b.setData('flashUntil', this.time.now + spec.warnMs).setTintFill(0xffffff);
     ai.knockUntil = this.time.now + total;
     b.setVelocity(0, 0);
@@ -6638,7 +6630,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private bossMegaBlast(b: Sprite, ai: EnemyAI): number {
     const spec = megaBlastSpec(this.level());
     const color = typeColor(ai.type);
-    this.popup(b.x, b.y - (b.displayHeight / 2 + 20), MEGA_ATTACK_LABEL, color);
+    this.bossLabel(MEGA_ATTACK_LABEL, color);
     const offset = Math.random() * Math.PI * 2;
     for (let w = 0; w < spec.waves; w++) {
       const delay = w * (spec.warnMs + 250);
@@ -6787,7 +6779,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Lanza un ataque extra (con aviso) y devuelve cuánto dura después del aviso (ms). */
   private bossExtra(b: Sprite, ai: EnemyAI, attack: ExtraAttack, phase: 1 | 2): number {
     const color = typeColor(ai.type);
-    this.popup(b.x, b.y - (b.displayHeight / 2 + 20), BOSS_ATTACK_LABEL[attack], color);
+    this.bossLabel(BOSS_ATTACK_LABEL[attack], color);
     b.setData('flashUntil', this.time.now + TELEGRAPH_MS).setTintFill(0xffffff);
     const lvl = this.level();
     if (attack === 'spiral') {
@@ -9100,12 +9092,23 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Texto que sube y se desvanece (estados, curación). */
   private popup(x: number, y: number, text: string, color: number) {
-    const t = this.add
-      .text(x, y, text, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#' + color.toString(16).padStart(6, '0') })
-      .setOrigin(0.5)
-      .setDepth(15)
-      .setStroke('#1d2848', 4);
-    this.tweens.add({ targets: t, y: y - 30, alpha: 0, duration: 800, onComplete: () => t.destroy() });
+    // Icono pixel art + cifra, o la palabra pequeña, según «Textos en pantalla» (ui/floatText.ts)
+    floatPopup(this, x, y, text, color);
+  }
+
+  /** Nombre del ataque del jefe: en una franja fija bajo su barra, no sobre su cabeza. */
+  private bossLabel(text: string, color: number) {
+    bossCallout(this, CX - 440, HUD.top.h + 24, text, color, (o) => this.toHud(o));
+  }
+
+  /** Mete un objeto en la capa del HUD (y en su cámara). */
+  private toHud<T extends Phaser.GameObjects.GameObject>(o: T): T {
+    this.hudLayer.add(o);
+    const id = this.hudCam?.id ?? 0;
+    o.cameraFilter &= ~id;
+    const c = o as unknown as Phaser.GameObjects.Container;
+    if (typeof c.each === 'function') c.each((ch: Phaser.GameObjects.GameObject) => void (ch.cameraFilter &= ~id));
+    return o;
   }
 
   // --- Oleadas ---
@@ -9326,30 +9329,33 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const bx = x + 22;
     let textX = x + 42;
     const by = y + 34;
-    if (device === 'gamepad') {
-      const PAD = [['A', 0x3cb043], ['B', 0xd83a3a], ['X', 0x2f6fd8], ['Y', 0xe0b020]] as const;
-      g.fillStyle(0x101828, 1).fillCircle(bx, by, 14);
-      g.fillStyle(PAD[i][1], 1).fillCircle(bx, by, 12);
-      g.fillStyle(0xffffff, 0.35).fillCircle(bx - 3, by - 4, 4);
-      badge.setText(PAD[i][0]).setFontSize(15).setVisible(true);
-    } else if (device === 'touch') {
-      badge.setVisible(false);
-      textX = x + 14;
-    } else {
-      const label = keyLabel(loadKeys()[`power${i + 1}` as 'power1']);
-      const kw = Math.max(26, 12 + label.length * 9);
-      g.fillStyle(0x101828, 1).fillRoundedRect(bx - kw / 2 - 2, by - 14, kw + 4, 28, 6);
-      g.fillStyle(0xe8e8f0, 1).fillRoundedRect(bx - kw / 2, by - 12, kw, 24, 5);
-      g.fillStyle(0xb8bcc8, 1).fillRect(bx - kw / 2 + 2, by + 7, kw - 4, 3);
-      badge.setText(label).setFontSize(label.length > 2 ? 11 : 14).setColor('#1d2848').setShadow(0, 0, '#00000000', 0).setVisible(true);
-      textX = Math.max(textX, bx + kw / 2 + 8);
+    // Glifo pixel art: A B X Y del mando o la tecla configurada (nada en táctil)
+    badge.setVisible(false);
+    this.slotGlyphs[i]?.destroy();
+    this.slotGlyphs[i] = undefined;
+    if (device === 'touch') textX = x + 14;
+    else {
+      const name = device === 'gamepad' ? `pad:${'ABXY'[i]}` : `key:${keyLabel(loadKeys()[`power${i + 1}` as 'power1'])}`;
+      const gl = this.hudGlyph(bx, by, name, 28, 80).setAlpha(m && !ready ? 0.5 : 1);
+      this.slotGlyphs[i] = gl;
+      textX = Math.max(textX, bx + (gl.width * gl.scaleX) / 2 + 8);
     }
-    if (device === 'gamepad') badge.setColor('#ffffff').setShadow(1, 1, '#00000088', 0);
-    badge.setPosition(bx, by).setAlpha(m && !ready ? 0.5 : 1);
     const text = this.hud[i].setX(textX);
     if (!m) text.setText('—').setAlpha(0.6);
     else text.setText(shorten(pretty(m.name), 13)).setAlpha(ready ? 1 : 0.4);
     g.setAlpha(m ? 1 : 0.6);
+  }
+
+  /** Glifo de tecla o botón en el HUD, centrado en (x, y) y encogido si pasa de `maxW`. */
+  private hudGlyph(x: number, y: number, name: string, h: number, maxW = Infinity): Phaser.GameObjects.Container {
+    const c = drawKeyGlyph(this, 0, 0, name, h);
+    const k = Math.min(1, maxW / c.glyphW);
+    c.setScale(k).setPosition(x - (c.glyphW * k) / 2, y - (h * k) / 2);
+    this.hudLayer.add(c);
+    const id = this.hudCam?.id ?? 0;
+    c.cameraFilter &= ~id;
+    c.each((ch: Phaser.GameObjects.GameObject) => void (ch.cameraFilter &= ~id));
+    return c;
   }
 
   /** "Sin conexión": una vez por sesión (también si se pierde la red a mitad de partida). */

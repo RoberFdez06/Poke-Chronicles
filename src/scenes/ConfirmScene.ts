@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { NavInput } from '../ui/nav';
 import { drawBox, FONT, HEX } from '../ui/theme';
@@ -69,7 +70,7 @@ export class ConfirmScene extends Phaser.Scene {
       zone.on('pointerover', () => !this.state.result && this.focusOn(c));
       zone.on('pointerdown', () => this.armed() && this.apply(choose(this.state, c)));
     });
-    this.add.text(DCX, BOX.y + BOX.h - 22, '←/→ o A/D: elegir · Enter: aceptar · Esc o B: cancelar', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0.5);
+    addHelpBar(this, DCX, BOX.y + BOX.h - 22, '←/→ o A/D: elegir · Enter: aceptar · Esc: cancelar', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0.5);
     this.paint();
     sfx('select');
   }

@@ -10,12 +10,12 @@ function fakeStorage(): StorageLike & { data: Map<string, string> } {
 }
 
 test('ajustes de efectos: por defecto altos y sin FPS; aguanta datos rotos', () => {
-  assert.deepEqual(parseFx(null), { low: false, showFps: false });
+  assert.deepEqual(parseFx(null), { low: false, showFps: false, texts: 'reduced' });
   assert.deepEqual(parseFx('{malo'), DEFAULT_FX);
-  assert.deepEqual(parseFx(JSON.stringify({ low: true, showFps: 'sí' })), { low: true, showFps: false });
+  assert.deepEqual(parseFx(JSON.stringify({ low: true, showFps: 'sí' })), { low: true, showFps: false, texts: 'reduced' });
   const st = fakeStorage();
-  saveFx({ low: true, showFps: true }, st);
-  assert.deepEqual(loadFx(st), { low: true, showFps: true });
+  saveFx({ low: true, showFps: true, texts: 'minimal' }, st);
+  assert.deepEqual(loadFx(st), { low: true, showFps: true, texts: 'minimal' });
   // Es un ajuste del aparato, como el volumen: no se borra con el progreso
   assert.ok(!PROGRESS_KEYS.includes(FX_KEY));
 });

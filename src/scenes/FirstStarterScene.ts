@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { startWithStarter } from './runLaunch';
 import { fitDesign } from '../ui/layout';
 import { fetchPokemonCard, PokemonCard } from '../data/pokeapi';
@@ -64,8 +65,7 @@ export class FirstStarterScene extends Phaser.Scene {
     this.clear();
     this.step = 'region';
     const title = this.add.text(480, 40, '¿De qué región es tu primer Pokémon?', { fontFamily: UI.FONT, fontSize: '30px', color: '#ffffff' }).setOrigin(0.5);
-    const hint = this.add
-      .text(480, 616, 'Flechas, ratón o mando para elegir · Enter, clic o A para seguir · Esc, B o "Volver" para salir', {
+    const hint = addHelpBar(this, 480, 616, 'Flechas o ratón para elegir · Enter o clic para seguir · Esc o "Volver" para salir', {
         fontFamily: UI.FONT,
         fontSize: '15px',
         color: '#ffffff',
@@ -108,8 +108,7 @@ export class FirstStarterScene extends Phaser.Scene {
     this.step = 'starter';
     const parts: Phaser.GameObjects.GameObject[] = [
       this.add.text(480, 40, `Iniciales de ${this.region!.name}`, { fontFamily: UI.FONT, fontSize: '34px', color: '#ffffff' }).setOrigin(0.5),
-      this.add
-        .text(480, 616, 'Flechas, ratón o mando para elegir · Enter, clic o A para empezar · Esc, B o "Volver" para cambiar de región', {
+      addHelpBar(this, 480, 616, 'Flechas o ratón para elegir · Enter o clic para empezar · Esc o "Volver" para cambiar de región', {
           fontFamily: UI.FONT,
           fontSize: '15px',
           color: '#ffffff',

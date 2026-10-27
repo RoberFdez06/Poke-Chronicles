@@ -2,6 +2,7 @@
 // final de los jefes, caída del jugador y pequeños detalles (fogonazo al disparar, chispa contra la pared).
 // Todo es visual: nunca toca cuerpos físicos ni la lógica. Coordenadas del mundo (cámara de la sala).
 import Phaser from 'phaser';
+import { textsLevel } from '../floatText';
 import { FONT } from '../theme';
 
 const SPARK = 'cfx-spark';
@@ -55,9 +56,12 @@ export function hitSpark(scene: Phaser.Scene, x: number, y: number, color = 0xff
  */
 export function damageNumber(scene: Phaser.Scene, x: number, y: number, amount: number, o: { crit?: boolean; color?: string; heal?: boolean; depth?: number } = {}) {
   const n = Math.max(1, Math.round(amount));
+  // «Textos en pantalla»: reducidos, cifras más pequeñas; mínimos, solo críticos y el daño que recibes (color propio)
+  const level = textsLevel();
+  if (level === 'minimal' && !o.crit && !o.color && !o.heal) return;
   const text = o.heal ? `+${n}` : o.crit ? `${n}!` : `${n}`;
   const color = o.color ?? (o.heal ? '#7cf07a' : o.crit ? '#ffd34d' : '#ffffff');
-  const size = o.crit ? 26 : 18;
+  const size = level === 'full' ? (o.crit ? 26 : 18) : o.crit ? 20 : 14;
   const t = scene.add
     .text(x + Phaser.Math.Between(-8, 8), y, text, { fontFamily: FONT, fontSize: `${size}px`, fontStyle: 'bold', color })
     .setOrigin(0.5)

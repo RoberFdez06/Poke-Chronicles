@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { fitDesign } from '../ui/layout';
 import { loadAllRuns, RunSave } from '../data/runSave';
 import { MODE_LABEL, progressText } from '../data/modes';
@@ -75,8 +76,7 @@ export class SlotsScene extends Phaser.Scene {
     this.runs.forEach((run, i) => this.cards.push(this.buildCard(run, i, 480, top + i * (CARD.h + CARD.gap))));
     EXTRA_BUTTONS.forEach((b, k) => this.cards.push(this.buildExtraButton(b.label, b.x, 3 + k)));
 
-    this.add
-      .text(480, 616, 'Flechas o ratón para elegir · Enter o clic para abrir · Esc o "Volver": cambiar de modo', {
+    addHelpBar(this, 480, 616, 'Flechas o ratón para elegir · Enter o clic para abrir · Esc o "Volver": cambiar de modo', {
         fontFamily: UI.FONT, fontSize: '15px', color: '#ffffff',
       })
       .setOrigin(0.5).setAlpha(0.6);

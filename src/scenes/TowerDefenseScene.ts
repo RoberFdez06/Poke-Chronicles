@@ -13,6 +13,7 @@ import { drawBox, fadeIn, goTo, lowFx, RARITY_COLORS, shorten } from '../ui/them
 import { ToastStack } from '../ui/toast';
 import { sfx } from '../ui/audio';
 import { currentInput } from '../ui/inputMode';
+import { GlyphText } from '../ui/art/keyGlyphs';
 import { HoldRepeat, cycle, stepCursor, tdHelp, tdKeyLabel, type TdDevice, type TdHelpContext, type TdKeyAction } from '../data/towerDefense/controls';
 import { loadPmd, pmdAnimKey, pmdKey, type PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
@@ -123,10 +124,10 @@ export class TowerDefenseScene extends Phaser.Scene {
   /** Último Pokémon del equipo elegido (aceptar en una casilla libre sin nada elegido lo toma). */
   private teamSel = 0;
   private repeat = new HoldRepeat();
-  private help: Phaser.GameObjects.Text[] = [];
+  private help: GlyphText[] = [];
   private helpKey = '';
-  private teamHead!: Phaser.GameObjects.Text;
-  private keyTexts: { t: Phaser.GameObjects.Text; a: TdKeyAction; fmt?: (k: string) => string }[] = [];
+  private teamHead!: GlyphText;
+  private keyTexts: { t: GlyphText; a: TdKeyAction }[] = [];
   private teamBtns: Btn[] = [];
   private barBtns: Btn[] = [];
   private panelBtns: Btn[] = [];
@@ -356,7 +357,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.hud.title.setText(shorten(`${this.map.name} · ${this.td.endless ? 'Infinito' : `Nv. ${this.args.level}`}`, 26));
     const side = this.add.graphics().setDepth(55);
     drawBox(side, PANEL_X, 4, 164, 588, { radius: 10 });
-    this.teamHead = this.add.text(PANEL_X + 82, 24, 'Tu equipo', { fontFamily: UI.FONT, fontSize: '15px', fontStyle: 'bold', color: NAVY }).setOrigin(0.5).setDepth(62);
+    this.teamHead = new GlyphText(this, PANEL_X + 82, 24, 'Tu equipo', { size: 15, color: NAVY, originX: 0.5, auto: false, maxWidth: 156 }).setDepth(62);
     const bottom = this.add.graphics().setDepth(55);
     drawBox(bottom, 4, 596, 952, 42, { radius: 10 });
   }
@@ -376,9 +377,10 @@ export class TowerDefenseScene extends Phaser.Scene {
   }
 
   private buildBar() {
-    const keyText = (x: number, a: TdKeyAction, fmt?: (k: string) => string) => {
-      const t = this.add.text(x, 617, '', { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: NAVY }).setOrigin(0, 0.5).setDepth(64);
-      this.keyTexts.push({ t, a, fmt });
+    // Tecla o botón del mando dibujado en pixel art (no escrito)
+    const keyText = (x: number, a: TdKeyAction, originX = 0, size = 13) => {
+      const t = new GlyphText(this, x, 617, '', { size, color: NAVY, auto: false, originX }).setDepth(64);
+      this.keyTexts.push({ t, a });
       return t;
     };
     ABILITIES.forEach((id, i) => {
@@ -394,9 +396,12 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.barBtns.push(this.makeBtn(188, 601, 214, 32, 'Siguiente oleada', () => this.callWave(), () => this.td.phase === 'prep', 13));
     this.barBtns.push(this.makeBtn(410, 601, 74, 32, 'x1', () => this.cycleSpeed(), () => true, 14));
     this.barBtns.push(this.makeBtn(492, 601, 84, 32, 'Pausa', () => this.openPause(), () => true, 14));
+    keyText(188 + 214 - 4, 'wave', 1, 10);
+    keyText(410 + 74 - 4, 'speed', 1, 10);
+    keyText(492 + 84 - 4, 'pause', 1, 10);
     // Barra de ayuda: cambia con lo elegido y con el dispositivo (drawUi)
     for (let i = 0; i < 2; i++) {
-      this.help.push(this.add.text(586, 607 + i * 19, '', { fontFamily: UI.FONT, fontSize: '12px', color: NAVY }).setOrigin(0, 0.5).setDepth(62));
+      this.help.push(new GlyphText(this, 586, 607 + i * 19, '', { size: 12, color: NAVY, bold: false, maxWidth: 362 }).setDepth(62));
     }
   }
 
@@ -1248,11 +1253,13 @@ export class TowerDefenseScene extends Phaser.Scene {
         const base = i === 3 ? (en ? 0x7cf07a : 0xb8bcc6) : 0xe8ecf4;
         g.fillStyle(foc ? 0xffd34d : base, 1).fillRect(b.x, b.y, b.w, b.h);
         g.fillStyle(0xffffff, 0.5).fillRect(b.x, b.y, b.w, 3);
-        const key = (a: TdKeyAction) => (tdKeyLabel(a, dev) ? ` [${tdKeyLabel(a, dev)}]` : '');
-        if (i === 4) b.text?.setText(`x${SPEEDS[this.speedIdx]}${key('speed')}`);
-        if (i === 5) b.text?.setText(`Pausa${key('pause')}`);
+        // La tecla va dibujada a la derecha del botón (keyTexts); el texto se corre un poco a la izquierda
+        const shift = dev === 'touch' ? 0 : -8;
+        if (b.text) b.text.x = b.x + b.w / 2 + shift;
+        if (i === 4) b.text?.setText(`x${SPEEDS[this.speedIdx]}`);
+        if (i === 5) b.text?.setText('Pausa');
         if (i === 3) {
-          b.text?.setText(game.phase === 'prep' ? `Oleada ya (+${Math.max(0, Math.floor(game.prepLeft))} $)${key('wave')}` : game.phase === 'wave' ? 'Oleada en curso' : '—');
+          b.text?.setText(game.phase === 'prep' ? `Oleada ya (+${Math.max(0, Math.floor(game.prepLeft))} $)` : game.phase === 'wave' ? 'Oleada en curso' : '—');
           // Flecha que empuja cuando se puede llamar
           if (en && !lowFx()) {
             const k = Math.floor(t / 200) % 3;
@@ -1277,15 +1284,13 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (key === this.helpKey) return;
     this.helpKey = key;
     const lines = tdHelp(dev, ctx);
-    this.help.forEach((t, i) => {
-      t.setScale(1).setText(lines[i]);
-      // Que no se salga de la barra
-      if (t.width > 362) t.setScale(362 / t.width, 1);
-    });
-    for (const { t, a } of this.keyTexts) t.setText(tdKeyLabel(a, dev));
-    const prev = tdKeyLabel('prev', dev);
-    const next = tdKeyLabel('next', dev);
-    this.teamHead.setText(prev ? `${prev} ◀ Tu equipo ▶ ${next}` : 'Tu equipo');
+    // Con teclas y botones dibujados; se encoge si no cabe en la barra
+    this.help.forEach((t, i) => t.setText(lines[i], dev));
+    const glyph = (a: TdKeyAction) => (tdKeyLabel(a, dev) ? `{${dev === 'gamepad' ? 'pad' : 'key'}:${tdKeyLabel(a, dev)}}` : '');
+    for (const { t, a } of this.keyTexts) t.setText(glyph(a), dev);
+    const prev = glyph('prev');
+    const next = glyph('next');
+    this.teamHead.setText(prev ? `${prev} ◀ Tu equipo ▶ ${next}` : 'Tu equipo', dev);
   }
 
   private updatePanel(g: Phaser.GameObjects.Graphics) {
