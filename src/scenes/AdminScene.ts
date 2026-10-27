@@ -60,6 +60,9 @@ export class AdminScene extends Phaser.Scene {
     this.done = false;
     this.typed = '';
     this.scroll = 0;
+    this.texts = [];
+    this.bgs = [];
+    this.rows = [];
     this.sys.settings.data = {};
   }
 

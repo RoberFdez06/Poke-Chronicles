@@ -201,6 +201,7 @@ import { castPattern, setMotion, updateShots, type AttackHost, type ShootOpts, t
 import { basicShotFor, bossStyles, foeStyleFor, styleForMove, TYPE_STYLES, type Anim, type Motion, type MoveStyle } from '../data/movePatterns';
 import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
+import { locomotionProfile } from '../data/locomotion';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, W } from '../ui/layout';
 import { hudLayout, itemGrid, nameFontSize, HUD_BADGE_MAX_W, HUD_ITEM_R, HUD_PROGRESS_FONT } from '../data/hudLayout';
 import {
@@ -1481,8 +1482,10 @@ export class GameScene extends Phaser.Scene {
       const moving = body.velocity.lengthSq() > 400;
       const pmd = !!s.getData('pmd');
       // Saltito al andar: el sprite sube y la sombra se encoge un poco; el balanceo va con cada paso
-      const phase = time / (pmd ? 85 : 70) + ((s.getData('stepSeed') as number | undefined) ?? (s.setData('stepSeed', Math.random() * 6), 0));
-      const hop = moving ? Math.abs(Math.sin(phase)) : 0;
+      // Sin hoja de animación: anda, vuela, nada o flota según su tipo (data/locomotion.ts), no el mismo saltito para todos
+      const loco = locomotionProfile((s.getData('types') as string[] | undefined) ?? (s === this.player ? this.playerTypes : [(s.getData('ai') as EnemyAI | undefined)?.type ?? 'normal']));
+      const phase = time / (pmd ? 85 : loco.slow) + ((s.getData('stepSeed') as number | undefined) ?? (s.setData('stepSeed', Math.random() * 6), 0));
+      const hop = moving ? (loco.bounce ? Math.abs(Math.sin(phase)) : (Math.sin(phase) + 1) / 2) : 0;
       // Pegada a los pies (Roberto: con la sombra más abajo parecía que volaba). En las hojas de SpriteCollab los
       // pies quedan un poco por encima del final del cuerpo físico; en los de PokeAPI, hacia el 86 % del dibujo.
       // Mejor aún: se mira dónde acaban de verdad los píxeles del dibujo (los jefes grandes, como Groudon, tienen
@@ -1497,7 +1500,8 @@ export class GameScene extends Phaser.Scene {
       sh.setVisible(s.visible).setAlpha(Math.max(0.4, s.alpha));
       // Subir el dibujo sin mover el cuerpo: el origen y el desfase del cuerpo cambian lo mismo (en px del frame)
       // Los de SpriteCollab ya mueven las patas: sin saltito; los de PokeAPI, uno muy pequeño
-      const lift = (hop * (pmd ? 0 : 2.5)) / Math.max(0.01, s.scaleY);
+      const glide = !moving && !pmd && loco.idleLift > 0 ? ((Math.sin(time / 380 + ((s.getData('stepSeed') as number | undefined) ?? 0)) + 1) / 2) * loco.idleLift : 0;
+      const lift = ((pmd ? 0 : hop * loco.lift + glide)) / Math.max(0.01, s.scaleY);
       const delta = lift - ((s.getData('lift') as number | undefined) ?? 0);
       if (Math.abs(delta) > 0.01 && s.height > 0) {
         s.setOrigin(s.originX, s.originY + delta / s.height);
@@ -1505,9 +1509,9 @@ export class GameScene extends Phaser.Scene {
         s.setData('lift', lift);
       }
       // Quieto respira (balanceo suave) y al disparar se echa un poco hacia atrás
-      const idle = !moving && !pmd ? Math.sin(time / 420 + ((s.getData('stepSeed') as number | undefined) ?? 0)) * 1.6 : 0;
+      const idle = !moving && !pmd ? Math.sin(time / 420 + ((s.getData('stepSeed') as number | undefined) ?? 0)) * loco.idleTilt : 0;
       const kick = s === this.player ? Math.max(0, 1 - (time - this.lastShotAt) / 130) * -Math.sign(this.aim.x || 1) * 7 : 0;
-      const tilt = (moving ? Math.sin(phase) * (pmd ? 3 : 8) : idle) + kick;
+      const tilt = (moving ? Math.sin(phase) * (pmd ? 3 : loco.tilt) : idle) + kick;
       // Suaviza la vuelta a 0 al pararse (al acabar, el jugador lo anima combatFx: no se toca)
       if (!(this.ended && s === this.player)) s.setAngle(Phaser.Math.Linear(s.angle, tilt, 0.35));
     }

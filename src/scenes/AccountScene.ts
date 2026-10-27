@@ -131,7 +131,7 @@ export class AccountScene extends Phaser.Scene {
       };
       [email, pass, name].forEach((i) => i?.addEventListener('keydown', (e) => e.key === 'Enter' && submit()));
       button(up ? 'Crear cuenta' : 'Entrar', submit, true);
-      // Google aún no está activado en Firebase: el botón sale solo con VITE_FIREBASE_GOOGLE=1 en .env.local
+      // Google ya está activado en Firebase; el botón sale solo con VITE_FIREBASE_GOOGLE=1 en .env.local
       if (import.meta.env.VITE_FIREBASE_GOOGLE === '1') button('Entrar con Google', () => void this.run('Abriendo Google…', () => signInWithGoogle()));
       button(up ? 'Ya tengo cuenta: entrar' : 'No tengo cuenta: crear una', () => this.build(up ? 'signin' : 'signup'));
       if (!up) {
