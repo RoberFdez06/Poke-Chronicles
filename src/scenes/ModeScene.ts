@@ -136,7 +136,8 @@ export class ModeScene extends Phaser.Scene {
     const { w, h } = CARD;
     const bg = drawBox(this.add.graphics(), 0, 0, w, h, { radius: 16, fill: COLORS.panel });
     const frame = this.add.graphics();
-    const icon = addModeIcon(this, def.id, w / 2, 32);
+    const icon = addModeIcon(this, def.id, w / 2, 40).setScale(0.8); // más pequeño y bajado: no toca el borde de la tarjeta
+    icon.setPosition(w / 2 - 28 * 0.8, 40 - 28 * 0.8);
     const name = this.add.text(w / 2, 74, def.name, { fontFamily: UI.FONT, fontSize: '20px', fontStyle: 'bold', color: '#2b3a67', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5);
     const desc = this.add.text(w / 2, 92, def.desc, { fontFamily: UI.FONT, fontSize: '12px', color: '#4a5578', align: 'center', wordWrap: { width: w - 20 } }).setOrigin(0.5, 0);
     const record = this.add.text(w / 2, h - 36, '', { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: '#b8860b', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5);
