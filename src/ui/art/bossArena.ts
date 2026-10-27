@@ -4,6 +4,8 @@
 // que se encienden al empezar y relámpagos. Con pocos efectos, solo el tinte y la viñeta quietos.
 import Phaser from 'phaser';
 import { darkOf, lightOf, mixColor, pixBolt, pixFlash } from './pixelFx';
+import { bossDecor } from './bossDecor';
+import type { FallTheme } from '../../level/arenaPhase';
 
 export interface BossAmbienceOpts {
   x0: number;
@@ -15,6 +17,9 @@ export interface BossAmbienceOpts {
   tint: number;
   final?: boolean;
   low?: boolean;
+  /** Tema del jefe (decoración propia) y semilla de su reparto. */
+  theme?: FallTheme;
+  seed?: number;
 }
 
 const snap = (v: number, s = 6) => Math.round(v / s) * s;
@@ -33,6 +38,9 @@ export function bossAmbience(sc: Phaser.Scene, o: BossAmbienceOpts) {
   const t0 = sc.time.now;
 
   // Sin tinte ni viñeta a franjas sobre el suelo: en arenas grandes se veían como un filtro con bandas y costuras
+  const decor = o.theme ? bossDecor(sc, { x0, y0, w, h, theme: o.theme, seed: o.seed ?? 1, low }) : undefined;
+  if (decor) objs.push(decor.g);
+  let glowC = glow;
   const floor = sc.add.graphics().setDepth(0.44);
   objs.push(floor);
   const motes = sc.add.graphics().setDepth(4.2);
@@ -120,8 +128,8 @@ export function bossAmbience(sc: Phaser.Scene, o: BossAmbienceOpts) {
     motes.clear();
     // Luz del suelo: halo del color del tema que respira
     const breath = low ? 0.5 : 0.5 + 0.5 * Math.sin(t / (level > 1 ? 380 : 700));
-    floor.fillStyle(glow, (0.06 + 0.05 * breath) * (level > 1 ? 1.5 : 1)).fillEllipse(cx, cy, w * 0.9, h * 0.8);
-    if (!final) floor.fillStyle(glow, 0.04 * breath).fillEllipse(cx, cy, w * 0.5, h * 0.45);
+    floor.fillStyle(glowC, (0.06 + 0.05 * breath) * (level > 1 ? 1.5 : 1)).fillEllipse(cx, cy, w * 0.9, h * 0.8);
+    if (!final) floor.fillStyle(glowC, 0.04 * breath).fillEllipse(cx, cy, w * 0.5, h * 0.45);
     if (final) drawSeal(floor, t);
     if (low) return;
     // Motas que suben y parpadean
@@ -167,6 +175,12 @@ export function bossAmbience(sc: Phaser.Scene, o: BossAmbienceOpts) {
     intensify() {
       if (level > 1) return;
       level = 2;
+      paint();
+    },
+    /** La arena cambia de tema (fase/evolución): decoración y luz nuevas en toda la arena. */
+    setTheme(th: FallTheme, newGlow: number) {
+      decor?.setTheme(th);
+      glowC = final ? mixColor(newGlow, gold, 0.5) : newGlow;
       paint();
     },
     destroy() {

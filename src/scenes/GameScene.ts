@@ -6100,7 +6100,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const i = this.arena();
     this.bossFx?.destroy();
     this.bossHot = false;
-    this.bossFx = bossAmbience(this, { x0: i.x0, y0: i.y0, w: i.x1 - i.x0, h: i.y1 - i.y0, glow: FALL_GLOW[theme], tint: FALL_TINT[theme], final, low: lowFx() });
+    this.bossFx = bossAmbience(this, { x0: i.x0, y0: i.y0, w: i.x1 - i.x0, h: i.y1 - i.y0, glow: FALL_GLOW[theme], tint: FALL_TINT[theme], final, low: lowFx(), theme, seed: (this.floorSeed ^ Math.imul(this.current.id + 3, 0x85ebca6b)) >>> 0 });
     const key = `${this.floorSeed}:${this.current.id}`;
     let seen = false;
     try {
@@ -6722,6 +6722,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       });
       this.swapCell(cell, f);
     }
+    this.bossFx?.setTheme(fall.theme, FALL_GLOW[fall.theme]);
     this.flow = undefined;
     this.unstickAll();
     this.cameras.main.shake(200, 0.01);
