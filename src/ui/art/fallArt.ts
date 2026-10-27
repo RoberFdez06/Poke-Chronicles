@@ -51,7 +51,8 @@ type Dot = ReturnType<typeof painter>;
 function ring(dot: Dot, cx: number, cy: number, r: number, c: number, a: number, flat = 0.8, size = P, phase = 0, dash = 0) {
   const n = Math.max(12, Math.floor((r * 6.283) / P));
   for (let i = 0; i < n; i++) {
-    if (dash > 0 && Math.floor(i / dash + phase) % 2 === 1) continue;
+    // Módulo positivo: con fase negativa (anillos que giran al revés) los huecos no deben desaparecer
+    if (dash > 0 && ((Math.floor(i / dash + phase) % 2) + 2) % 2 === 1) continue;
     const ang = (i / n) * 6.283;
     dot(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r * flat, c, a, size);
   }
@@ -549,9 +550,10 @@ export function fallConceptFx(scene: Phaser.Scene, theme: FallTheme, x0: number,
           cloud(dot, x0 + ((i * 151) % w), y0 + h + 40 - ph * (h + 80), 26 + (i % 3) * 8, 0xffffff, 0.55 * k + 0.2);
         }
         // Anillo de Rayquaza: doble, grueso y con borde oscuro para que se lea sobre el cielo claro
-        ring(dot, cx, cy, 60 + k * 30, 0x0e4a2a, 0.55, 0.6, P * 2, t / 60, 2);
-        ring(dot, cx, cy, 60 + k * 30, 0x6aff8a, 0.95, 0.6, P, t / 60, 2);
-        ring(dot, cx, cy, 84 + k * 40, 0xb8ffc8, 0.7, 0.6, P, -t / 90, 3);
+        // (la fase avanza menos de medio trazo por fotograma: a más velocidad el ojo lo ve parpadear, no girar)
+        ring(dot, cx, cy, 60 + k * 30, 0x0e4a2a, 0.55, 0.6, P * 2, t / 160, 2);
+        ring(dot, cx, cy, 60 + k * 30, 0x6aff8a, 0.95, 0.6, P, t / 160, 2);
+        ring(dot, cx, cy, 84 + k * 40, 0xb8ffc8, 0.7, 0.6, P, -t / 220, 3);
         if (Math.floor(t / 130) % 3 !== 2) bolt(dot, cx + Math.sin(t / 300) * 40, y0, cx, cy, 0x3aff6a, 0.9, Math.floor(t / 130));
         break;
       }

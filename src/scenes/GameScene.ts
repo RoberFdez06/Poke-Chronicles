@@ -3700,7 +3700,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Baldosas de 32 px escaladas a las casillas de 40 de la sala, así cuadran con los obstáculos
     const ts = TILE / ART_TILE;
     this.add.tileSprite(i.x0 - WALL, i.y0 - WALL, ROOM.w + WALL * 2, ROOM.h + WALL * 2, this.tiles.wall).setOrigin(0).setTileScale(ts).setDepth(0);
-    this.add.tileSprite(i.x0, i.y0, ROOM.w, ROOM.h, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0);
+    this.add.tileSprite(i.x0, i.y0, ROOM.w, ROOM.h, this.tiles.floor).setOrigin(0).setTileScale(ts).setTilePosition(i.x0 / ts, i.y0 / ts).setDepth(0);
     // Paisaje alrededor, manchas, detalles y sombras del bioma (supervisor)
     decorateRoom(this, this.biome, { x: room.gx * VIEW.w, y: room.gy * VIEW.h, w: VIEW.w, h: VIEW.h }, i, WALL, this.floorSeed * 31 + room.id, ts * 2.4, this.decorOpen(room));
     if (!plain) {
@@ -3785,13 +3785,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     };
     if (this.mergedSide(room, 'right')) {
       const b = this.interior(this.floor.rooms[room.doors.right!]);
-      this.add.tileSprite(a.x1, a.y0, b.x0 - a.x1, a.y1 - a.y0, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0.02);
+      this.add.tileSprite(a.x1, a.y0, b.x0 - a.x1, a.y1 - a.y0, this.tiles.floor).setOrigin(0).setTileScale(ts).setTilePosition(a.x1 / ts, a.y0 / ts).setDepth(0.02);
       wallTile(a.x1 + WALL, a.y0 - WALL, b.x0 - a.x1 - WALL * 2, WALL);
       wallTile(a.x1 + WALL, a.y1, b.x0 - a.x1 - WALL * 2, WALL);
     }
     if (this.mergedSide(room, 'down')) {
       const b = this.interior(this.floor.rooms[room.doors.down!]);
-      this.add.tileSprite(a.x0, a.y1, a.x1 - a.x0, b.y0 - a.y1, this.tiles.floor).setOrigin(0).setTileScale(ts).setDepth(0.02);
+      this.add.tileSprite(a.x0, a.y1, a.x1 - a.x0, b.y0 - a.y1, this.tiles.floor).setOrigin(0).setTileScale(ts).setTilePosition(a.x0 / ts, a.y1 / ts).setDepth(0.02);
       wallTile(a.x0 - WALL, a.y1, WALL, b.y0 - a.y1);
       wallTile(a.x1, a.y1, WALL, b.y0 - a.y1);
     }
@@ -3809,7 +3809,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const plain = room.kind === 'start' || room.kind === 'combat' || room.kind === 'boss';
     void plain;
     void floorColor;
-    this.add.tileSprite(r.x, r.y, r.w, r.h, this.tiles.floor).setOrigin(0).setTileScale(TILE / ART_TILE).setDepth(0.4);
+    this.add.tileSprite(r.x, r.y, r.w, r.h, this.tiles.floor).setOrigin(0).setTileScale(TILE / ART_TILE).setTilePosition((r.x * ART_TILE) / TILE, (r.y * ART_TILE) / TILE).setDepth(0.4);
     const kind = this.floor.rooms[room.doors[d]!].kind;
     const frame =
       kind === 'boss' ? 0xe53935
