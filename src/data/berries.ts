@@ -16,7 +16,7 @@ export interface GardenBerry {
   yield: number;
   /** Cuándo se usa sola en la partida y qué hace (para el huerto). */
   description: string;
-  /** Color liso de la baya y su parcela (TODO(supervisor): arte). */
+  /** Color base de la baya (el dibujo propio de cada baya está en ui/art/berryArt.ts). */
   color: number;
 }
 

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { drawPlant, drawSoil } from '../ui/art/worldArt';
+import { addBerryIcon, addGardenPlot } from '../ui/art/berryArt';
 import { fitDesign } from '../ui/layout';
 import { loadGarden, saveGarden } from '../data/save';
 import {
@@ -72,12 +72,10 @@ export class GardenScene extends Phaser.Scene {
       const x = plotX(k) - PLOT.w / 2;
       const p = this.garden.plots[k];
       drawBox(g, x, PLOT.y - PLOT.h / 2, PLOT.w, PLOT.h, { radius: 14, selected: k === this.plotSel });
-      drawSoil(g, x + 20, PLOT.y - 20, PLOT.w - 40, 60);
+      L.add(addGardenPlot(this, plotX(k), PLOT.y - 20, PLOT.w - 40, p, !!p && isRipe(p)));
       if (p) {
         const b = GARDEN_BERRIES[p.berry];
         const ripe = isRipe(p);
-        const grow = p.runs / b.growRuns;
-        drawPlant(g, plotX(k), PLOT.y + 8, Math.min(1, Math.max(0.15, grow)), ripe, b.color);
         text(plotX(k), PLOT.y - PLOT.h / 2 + 20, b.name, 16, HEX.text, true);
         text(plotX(k), PLOT.y + 64, ripe ? '¡Lista para recoger!' : `Faltan ${runsLeft(p)} ${runsLeft(p) === 1 ? 'partida' : 'partidas'}`, 14,
           ripe ? '#2e9a4a' : HEX.textSoft, ripe);
@@ -100,7 +98,7 @@ export class GardenScene extends Phaser.Scene {
       const x = seedX(k);
       const sel = k === this.seedSel;
       drawBox(g, x - 135, SEED_Y - 40, 270, 96, { radius: 12, selected: sel, fill: sel ? COLORS.goldSoft : COLORS.panel });
-      g.fillStyle(b.color, 1).fillCircle(x - 108, SEED_Y - 12, 11);
+      L.add(addBerryIcon(this, id, x - 108, SEED_Y - 10));
       const t = this.add.text(x - 90, SEED_Y - 12, `${b.name}  ×${this.garden.seeds[id]}`, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: HEX.text })
         .setOrigin(0, 0.5);
       L.add(t);

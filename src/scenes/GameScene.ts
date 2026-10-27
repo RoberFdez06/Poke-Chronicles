@@ -169,6 +169,7 @@ import {
   upcomingRule, type TowerFloorSpec,
 } from '../level/tower';
 import { towerArrive, towerAscend } from '../ui/art/towerFx';
+import { buildLegendLair, legendReveal } from '../ui/art/lairArt';
 import { buildMegaShrine, buildStoryArt, coinsStolenFx, fishLeap, legendAura, thiefGear } from '../ui/art/storyArt';
 import { buildHazards, buildLightColumn, buildSupplyStall, buildTowerAltar, buildTowerStall } from '../ui/art/towerArt';
 import {
@@ -2367,6 +2368,9 @@ export class GameScene extends Phaser.Scene {
       const bd = e.body as Body | null;
       return bd ? bd.bottom : e.y + e.displayHeight / 2;
     });
+    const ri = this.interior(room);
+    this.huntObjs.push(buildLegendLair(this, ri.cx, ri.cy, typeColor(k.types[0])));
+    legendReveal(this, e.x, e.y, typeColor(k.types[0]));
     void cry(id);
     this.notify(`¡Sala oculta!\n${this.legendName()} te esperaba`, { kind: 'danger', icon: 'star' });
     this.showBossIntro(ai, { boss: { texture: `${k.key}-front`, name: this.legendName(), types: k.types }, tier: 'mini', subtitle: 'Cacería legendaria · Fase 1/3' });
