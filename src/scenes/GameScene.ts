@@ -144,7 +144,6 @@ import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuf
 import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_GLOW, FALL_HAZARD, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve, legendMegaAtPhase } from '../data/megaBoss';
 import { rollTemperament, tempoCooldown, tempoShot, type Temperament } from '../data/temperament';
-import { debugEnabled } from '../data/debugFlags';
 import { adminAllowed, godStats, isCheatRun, isGodMode, markCheatRun, setAdminFloorPick, setGodMode, stepValue, takeAdminFloorPick, type AdminFloorPick } from '../data/admin';
 import { openAdmin, type AdminRow } from './AdminScene';
 import { generalAdminRows, setRunAdminRows } from '../ui/adminPanel';
@@ -6592,9 +6591,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * expone window.__POKEISAAC_DEBUG__ para probar megas y adrenalina desde la consola. En producción normal no existe.
    */
   private installDebug() {
-    let stored: string | null = null;
-    try { stored = localStorage.getItem('pokeisaac.debug'); } catch { /* sin almacenamiento */ }
-    if (!debugEnabled(location.search, stored, !!import.meta.env.DEV)) return;
+    // Solo en el dev server o con la cuenta admin (nadie más: ni con ?debug ni con localStorage)
+    if (!adminAllowed()) return;
     const boss = () => this.enemies.getChildren().find((c) => {
       const s = c as Sprite;
       return s.active && ((s.getData('ai') as EnemyAI | undefined)?.boss || s.getData('legendHunt'));
