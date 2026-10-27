@@ -319,6 +319,20 @@ export const TERA_TYPES = [
   'normal', 'fire', 'water', 'electric', 'grass', 'ice', 'fighting', 'poison', 'ground',
   'flying', 'psychic', 'bug', 'rock', 'ghost', 'dragon', 'dark', 'steel', 'fairy',
 ] as const;
+/**
+ * Tipo Tera elegido a mano (null = automático) o el automático si la elección no es un tipo válido.
+ */
+export function resolveTeraType(
+  chosen: string | null,
+  biomeTypes: readonly string[],
+  ownType: string,
+  effect: (atk: string, defs: readonly string[]) => number,
+): string {
+  return chosen && isTeraType(chosen) ? chosen : pickTeraType(biomeTypes, ownType, effect);
+}
+
+export const isTeraType = (t: unknown): t is string => typeof t === 'string' && (TERA_TYPES as readonly string[]).includes(t);
+
 export function pickTeraType(biomeTypes: readonly string[], ownType: string, effect: (atk: string, defs: readonly string[]) => number): string {
   if (biomeTypes.length === 0) return ownType;
   let best = ownType;

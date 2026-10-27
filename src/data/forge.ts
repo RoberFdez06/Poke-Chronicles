@@ -9,6 +9,8 @@ import {
   RANDOM_PASSIVES,
   passivePrice,
   passiveRarity,
+  UPGRADE_MAX,
+  upgradeable,
   type MoveRarity,
   type PassiveItem,
 } from './items.ts';
@@ -109,6 +111,52 @@ export function fuseResult(a: string, b: string, passives: readonly string[], rn
 export function fuse(passives: readonly string[], a: string, b: string, result: string): string[] {
   return [...removeOne(removeOne(passives, a), b), result];
 }
+
+// --- Mejorar (+25 % por nivel, hasta 3) ---
+
+/** Niveles de mejora por objeto (los que no están van a nivel 0). */
+export type ItemLevels = Record<string, number>;
+
+export const levelOf = (levels: Readonly<ItemLevels>, id: string): number => Math.max(0, Math.min(UPGRADE_MAX, Math.floor(levels[id] ?? 0)));
+
+/**
+ * Coste de subir `id` del nivel `level` al siguiente: la mitad del precio de tienda por cada nivel
+ * (común 6/11/17, raro 8/15/23, épico 11/21/32, legendario 14/28/42). Cada nivel cuesta más que el anterior.
+ */
+export const upgradeCost = (id: string, level: number): number => Math.round(passivePrice(id) * 0.5 * (Math.max(0, Math.floor(level)) + 1));
+
+/** Por qué no se puede mejorar `id` (null = sí se puede; las monedas se miran aparte). */
+export function upgradeProblem(id: string, passives: readonly string[], levels: Readonly<ItemLevels>): string | null {
+  if (!passives.includes(id)) return 'No llevas ese objeto';
+  if (!upgradeable(id)) return 'Este objeto no tiene nada que mejorar';
+  if (levelOf(levels, id) >= UPGRADE_MAX) return `Ya está al máximo (+${UPGRADE_MAX})`;
+  return null;
+}
+
+/** Objetos que llevas y se pueden mejorar. */
+export const upgradeCandidates = (passives: readonly string[], levels: Readonly<ItemLevels>): string[] =>
+  distinctPassives(passives).filter((id) => upgradeProblem(id, passives, levels) === null);
+
+/** Sube un nivel (copia nueva). */
+export const upgrade = (levels: Readonly<ItemLevels>, id: string): ItemLevels => ({ ...levels, [id]: Math.min(UPGRADE_MAX, levelOf(levels, id) + 1) });
+
+/** Nombre con su nivel: «Lupa +2» (sin nada a nivel 0). */
+export const levelLabel = (name: string, level: number): string => (level > 0 ? `${name} +${level}` : name);
+
+/** Quita los niveles de objetos que ya no llevas (reciclados, fusionados o soltados) y los inválidos. */
+export function pruneLevels(levels: Readonly<ItemLevels>, passives: readonly string[]): ItemLevels {
+  const out: ItemLevels = {};
+  for (const [id, v] of Object.entries(levels)) {
+    const lv = typeof v === 'number' && Number.isFinite(v) ? Math.min(UPGRADE_MAX, Math.floor(v)) : 0;
+    if (lv > 0 && passives.includes(id)) out[id] = lv;
+  }
+  return out;
+}
+
+/** Guardado válido de niveles: objeto plano de enteros 0..3. */
+export const isItemLevels = (v: unknown): v is ItemLevels =>
+  !!v && typeof v === 'object' && !Array.isArray(v) &&
+  Object.values(v as object).every((n) => typeof n === 'number' && Number.isInteger(n) && n >= 0 && n <= UPGRADE_MAX);
 
 // --- Evento de sala ---
 

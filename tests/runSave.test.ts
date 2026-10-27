@@ -70,6 +70,8 @@ function sample(): RunSave {
     seeded: { seed: 123456, fromCode: true },
     gardenBerries: ['aranja', 'gonlan'],
     legendHunt: { active: true, floors: [2, 4, 5], kinds: ['huella', 'ruido', 'pluma'], found: 1, lost: false, legendId: 150, done: false },
+    itemLevels: { lupa: 2 },
+    teraPick: 'fire',
   };
 }
 
@@ -435,4 +437,18 @@ test('v26 se migra a v27 sin cacería legendaria; una cacería rara invalida el 
   for (const bad of [null, 5, { ...h, found: 9 }, { ...h, kinds: ['garra', 'ruido', 'pluma'] }, { ...h, floors: [2, 4] }, { ...h, legendId: -1 }]) {
     assert.equal(parseRun(JSON.stringify({ ...sample(), legendHunt: bad })), null);
   }
+});
+
+test('v27 se migra a v28 sin mejoras y con Tera automático; niveles o tipos raros invalidan el guardado', () => {
+  const { itemLevels: _l, teraPick: _t, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 27 }))!;
+  assert.equal(run.version, RUN_VERSION);
+  assert.deepEqual(run.itemLevels, {});
+  assert.equal(run.teraPick, null);
+  assert.deepEqual(parseRun(JSON.stringify(sample()))!.itemLevels, { lupa: 2 });
+  assert.equal(parseRun(JSON.stringify({ ...sample(), teraPick: null }))!.teraPick, null);
+  for (const bad of [{ lupa: 4 }, { lupa: 1.5 }, { lupa: -1 }, [], null, 'x']) {
+    assert.equal(parseRun(JSON.stringify({ ...sample(), itemLevels: bad })), null);
+  }
+  assert.equal(parseRun(JSON.stringify({ ...sample(), teraPick: 'luz' })), null);
 });

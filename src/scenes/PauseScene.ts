@@ -41,6 +41,8 @@ export interface PauseData {
   bombs: number;
   onResume: () => void;
   onRestart: () => void;
+  /** Elegir el tipo Tera (solo con la Teragema; si falta, no sale la opción). */
+  onTera?: () => void;
   onQuit: () => void;
   /** Tras borrar el progreso desde Ajustes: salir sin guardar. */
   onReset: () => void;
@@ -135,9 +137,10 @@ export class PauseScene extends Phaser.Scene {
       if (m) addTypeChip(this, x + 196, y + 11, typeNameEs(m.type), typeColor(m.type), 64, 20);
     });
 
-    this.menu = new MenuList(this, 760, 175, ['Reanudar', 'Reiniciar', 'Código de semilla', 'Controles', 'Ajustes', 'Salir y guardar'], (i) => this.pick(i), {
-      // Seis opciones centradas a la altura del panel de la izquierda (100-570)
-      w: 290, h: 50, gap: 14,
+    const opts = ['Reanudar', 'Reiniciar', 'Código de semilla', 'Controles', 'Ajustes', ...(d.onTera ? ['Tipo Tera'] : []), 'Salir y guardar'];
+    this.menu = new MenuList(this, 760, 175, opts, (i) => this.pick(i), {
+      // Seis opciones (siete con la Teragema) centradas a la altura del panel de la izquierda (100-570)
+      w: 290, h: d.onTera ? 46 : 50, gap: d.onTera ? 8 : 14,
     });
     this.add
       .text(480, 612, 'Esc, P, Start o B para reanudar · flechas, ratón o mando para elegir', {
@@ -153,6 +156,7 @@ export class PauseScene extends Phaser.Scene {
     if (i === 2) return this.showSeedCode();
     if (i === 3) return this.showControls();
     if (i === 4) return this.openSettings();
+    if (i === 5 && this.info.onTera) return this.finish(this.info.onTera);
     return this.finish(this.info.onQuit);
   }
 

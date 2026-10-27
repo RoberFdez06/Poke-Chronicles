@@ -9,7 +9,8 @@ import { isDifficulty, type Difficulty } from './difficulty.ts';
 import { emptyCounters, isCounters, type RunCounters } from './runHistory.ts';
 import { BERRIES, POTIONS, type ShopSlot } from './loot.ts';
 import { REACTIONS, discover, type ReactionId } from './reactions.ts';
-import { isPowerFormSave, type PowerFormSave } from './powerForm.ts';
+import { isPowerFormSave, isTeraType, type PowerFormSave } from './powerForm.ts';
+import { isItemLevels, type ItemLevels } from './forge.ts';
 import { isRouteOption, type RouteOption } from '../level/routes.ts';
 import type { SeedRun } from './seedCode.ts';
 import { isGardenBerry, type GardenBerryId } from './berries.ts';
@@ -41,8 +42,9 @@ export const RUN_SLOTS = 3;
  * v24: ruta del piso actual y rutas elegidas en la partida (T80). Los v23 van por la ruta de siempre (ninguna).
  * v25: semilla de la partida y si se empezó con un código (T81). Los v24 no tienen semilla (ni código que compartir).
  * v26: bayas del huerto que llevas en la partida (T85). Los v25 no llevan ninguna.
+ * v28: niveles de mejora de la forja por objeto (`itemLevels`) y tipo Tera elegido a mano (`teraPick`, null = automático).
  */
-export const RUN_VERSION = 27;
+export const RUN_VERSION = 28;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -162,6 +164,10 @@ export interface RunSave {
   gardenBerries: GardenBerryId[];
   /** T88: cacería legendaria de la partida (pistas encontradas, legendario, sala ya peleada). */
   legendHunt: LegendHunt;
+  /** T73: niveles de «mejorar» de la forja (id → 1..3). */
+  itemLevels: ItemLevels;
+  /** Tipo Tera elegido a mano; null = el automático (el de más ventaja en el bioma). */
+  teraPick: string | null;
 }
 
 export interface DailyRun {
@@ -336,6 +342,11 @@ function migrateV26(d: RunSave): RunSave {
   return { ...d, version: 27, legendHunt: noHunt() };
 }
 
+/** v27 no llevaba mejoras de objeto ni tipo Tera elegido: nada mejorado y Tera automático. */
+function migrateV27(d: RunSave): RunSave {
+  return { ...d, version: 28, itemLevels: {}, teraPick: null };
+}
+
 const isSeedRun = (s: unknown): s is SeedRun => {
   const o = s as SeedRun;
   return !!o && typeof o === 'object' && isInt(o.seed) && o.seed >= 0 && o.seed <= 0x7fffffff && typeof o.fromCode === 'boolean';
@@ -387,6 +398,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 24) d = migrateV24(d);
   if (d.version === 25) d = migrateV25(d);
   if (d.version === 26) d = migrateV26(d);
+  if (d.version === 27) d = migrateV27(d);
   if (d.version !== RUN_VERSION) return null;
   const reactions = cleanReactions(d.reactionsFound);
   if (!reactions) return null;
@@ -418,7 +430,7 @@ export function parseRun(raw: string | null): RunSave | null {
     (d.route === null || isRouteOption(d.route)) && Array.isArray(d.routesTaken) && d.routesTaken.every(isRouteOption) &&
     (d.seeded === null || isSeedRun(d.seeded)) &&
     Array.isArray(d.gardenBerries) && d.gardenBerries.length <= 10 && d.gardenBerries.every(isGardenBerry) &&
-    isLegendHunt(d.legendHunt);
+    isLegendHunt(d.legendHunt) && isItemLevels(d.itemLevels) && (d.teraPick === null || isTeraType(d.teraPick));
   return ok ? d : null;
 }
 

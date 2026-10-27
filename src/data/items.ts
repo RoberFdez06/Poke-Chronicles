@@ -342,14 +342,66 @@ export const NON_RANDOM_PASSIVES: ReadonlySet<string> = new Set(['mega-piedra'])
 /** Pasivos que pueden salir al azar: todos menos los de `NON_RANDOM_PASSIVES`. */
 export const RANDOM_PASSIVES: readonly PassiveItem[] = PASSIVE_ITEMS.filter((i) => !NON_RANDOM_PASSIVES.has(i.id));
 
+/** T73 (mejorar en la forja): cada nivel da +25 % al efecto del objeto, hasta el nivel 3. */
+export const UPGRADE_STEP = 0.25;
+export const UPGRADE_MAX = 3;
+/** Estadísticas que son cuentas enteras (disparos, rebotes…): el extra se redondea hacia abajo. */
+const INTEGER_STATS: ReadonlySet<string> = new Set(['extraShots', 'pierce', 'bounces', 'backShots', 'shieldPerRoom', 'focusBand']);
+
+/**
+ * Aplica `item` sobre `s` con su nivel de mejora: el cambio que hace en cada estadística numérica (y en los mapas por
+ * tipo) se multiplica por 1 + 0,25 × nivel. Las cuentas enteras se redondean hacia abajo, así un +1 disparo no cambia.
+ */
+export function applyUpgraded(item: PassiveItem, s: PlayerStats, level: number): void {
+  const lv = Math.max(0, Math.min(UPGRADE_MAX, Math.floor(level)));
+  if (lv === 0) return item.apply(s);
+  const mult = 1 + UPGRADE_STEP * lv;
+  const before: PlayerStats = { ...s, typeBoost: { ...s.typeBoost }, statusBoost: { ...s.statusBoost } };
+  item.apply(s);
+  const rec = s as unknown as Record<string, unknown>;
+  const old = before as unknown as Record<string, unknown>;
+  for (const k of Object.keys(rec)) {
+    const a = old[k];
+    const b = rec[k];
+    if (typeof a === 'number' && typeof b === 'number' && a !== b) {
+      const d = (b - a) * mult;
+      rec[k] = a + (INTEGER_STATS.has(k) ? Math.trunc(d) : d);
+    }
+  }
+  for (const m of ['typeBoost', 'statusBoost'] as const) {
+    const now = s[m];
+    for (const t of Object.keys(now)) {
+      const a = before[m][t] ?? 0;
+      const b = now[t] ?? 0;
+      if (a !== b) now[t] = a + (b - a) * mult;
+    }
+  }
+}
+
+/** ¿Mejorar `id` cambia algo? Solo los objetos con valor numérico (no Magikarp ni los que solo dan +1 disparo…). */
+export function upgradeable(id: string): boolean {
+  const item = passiveById(id);
+  if (!item) return false;
+  const a = computeStats([id]);
+  const b = computeStats([id], BASE_STATS, { [id]: UPGRADE_MAX });
+  return JSON.stringify(a) !== JSON.stringify(b);
+}
+
 /**
  * Estadísticas resultantes de tener estos objetos (se repiten si hay duplicados), encima de las del
  * Pokémon (`base`, ver pokeStats.ts) o de las de por defecto.
  */
-export function computeStats(passiveIds: readonly string[], base: Readonly<PlayerStats> = BASE_STATS): PlayerStats {
+export function computeStats(
+  passiveIds: readonly string[],
+  base: Readonly<PlayerStats> = BASE_STATS,
+  levels: Readonly<Record<string, number>> = {},
+): PlayerStats {
   // Copia también los mapas por tipo, para no tocar los de la base
   const s: PlayerStats = { ...base, typeBoost: { ...base.typeBoost }, statusBoost: { ...base.statusBoost } };
-  for (const id of passiveIds) passiveById(id)?.apply(s);
+  for (const id of passiveIds) {
+    const item = passiveById(id);
+    if (item) applyUpgraded(item, s, levels[id] ?? 0);
+  }
   s.fireDelay = Math.max(MIN_FIRE_DELAY, s.fireDelay);
   return s;
 }

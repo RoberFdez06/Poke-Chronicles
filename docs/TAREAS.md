@@ -583,7 +583,7 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
 - Tests de la lógica pura: huecos disponibles, qué ocupa hueco, reciclado, fusión (rarezas y que nunca sale uno que ya tengas si hay
   otros), y la migración. El dibujo del yunque y de la sala queda como `// TODO(supervisor)`.
 - **Estado (rama t73):** hechos huecos, reciclar, fusionar, forja como evento y en el descanso de la Torre, `RunSave` v19.
-  Queda sin hacer lo opcional («mejorar» +25 % hasta nivel 3); ver `docs/BITACORA.md` (T73).
+  Lo opcional («mejorar» +25 % hasta nivel 3) ya está hecho (rama logica2), junto con el **tipo Tera elegible**; ver `docs/BITACORA.md` (T73 — Mejorar).
 
 ## [x] T74 — Megaevolución del jugador (en cualquier modo)
 - **Sprites (confirmado por el usuario):** las formas alternativas existen en PokeAPI **con sprite** (`charizard-mega-x`, `charizard-gmax`, `pikachu-gmax`, etc.; ids desde 10000). Usa la forma real al megaevolucionar o gigamaxear; si una concreta no trajera sprite, deja el sprite normal más grande con aura (`// TODO(supervisor)`), nunca dibujes tú un personaje conocido.

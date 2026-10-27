@@ -1250,7 +1250,25 @@ Hecho:
   descanso de la Torre** (sigue al continuar si no se había usado; se marca en `eventsDone`).
 - Al soltar un objeto apilado (x2), caen todas sus copias al suelo una a una.
 Pendiente:
-- «Mejorar» (monedas por +25 % al efecto, hasta nivel 3): opcional, no hecho (necesitaría niveles por objeto en
-  `RunSave` y en `computeStats`).
+- ~~«Mejorar»~~: hecho, ver «T73 — Mejorar y tipo Tera elegible».
 - `// TODO(supervisor)`: dibujo del yunque, fragua y chispas; marco de `ItemChoiceScene`.
 - Probar en el navegador (solo verificado con `tsc` y `npm test`).
+
+## T73 — Mejorar y tipo Tera elegible (rama logica2)
+Hecho:
+- `items.ts`: `UPGRADE_STEP` 0,25 y `UPGRADE_MAX` 3; `computeStats(passives, base, levels)` aplica cada objeto con
+  `applyUpgraded`: el cambio que hace en cada estadística numérica (y en `typeBoost`/`statusBoost`) se multiplica por
+  1 + 0,25 × nivel (Vidasfera +30 % → +52,5 % a +3). Las cuentas enteras (disparos extra, atraviesa, rebotes, disparos
+  atrás, escudo, Banda Focus) se redondean hacia abajo, así que esos objetos no se pueden mejorar (`upgradeable`).
+- `forge.ts`: `upgradeCost` (mitad del precio de tienda por nivel: común 6/11/17 … legendario 14/28/42),
+  `upgradeProblem`, `upgradeCandidates`, `upgrade`, `levelLabel` («Lupa +2»), `pruneLevels`, `isItemLevels`.
+- Forja con tres puntos: Reciclar, **Mejorar** y Fusionar (sigue siendo un solo uso por forja). Lista y confirmación con
+  coste en `ItemChoiceScene` (teclado, ratón y mando). Nivel «+N» en el icono del HUD y en el nombre (pausa, listas).
+  Al reciclar, soltar o fusionar se pierden los niveles de ese objeto (`pruneLevels`).
+- `powerForm.ts`: `resolveTeraType` (el elegido a mano manda; null o inválido = el automático de siempre).
+  Al coger la primera Teragema se abre la lista «TIPO TERA» (Automático + 18 tipos en dos páginas de 9 y «Más tipos…»);
+  con la Teragema sale «Tipo Tera» en la pausa para cambiarlo y la línea «Tipo Tera: …» en los objetos.
+- `RunSave` v28: `itemLevels` y `teraPick` (v27 migra a `{}` y null); pasan de piso con `FloorCarry`. Los invitados
+  siguen sin guardar (el guardado es el de siempre). Tests: `tests/forgeUpgrade.test.ts` y migración en `runSave.test.ts`.
+Pendiente:
+- Probar en el navegador (solo `tsc` y `npm test`, 562 tests).

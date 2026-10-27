@@ -250,6 +250,8 @@ import {
   moveRarity,
   MOVE_RARITY_COLOR,
   MOVE_RARITY_LABEL,
+  UPGRADE_MAX,
+  UPGRADE_STEP,
   DroppedItem,
   MovePower,
   PlayerStats,
@@ -267,6 +269,7 @@ import {
   recycleCoins,
   removePassive,
   slotsLabel,
+  levelLabel, levelOf, pruneLevels, upgrade, upgradeCandidates, upgradeCost, type ItemLevels,
 } from '../data/forge';
 import { canAfford, describeEffects, optionLabel, pickStory, resolveChoice, type ChoiceEffects, type ChoiceState, type ChoiceStory } from '../level/choiceEvents';
 import { GARDEN_BERRIES, GARDEN_HEAL, GARDEN_SHIELD, growGarden, rollSeed, SEED_CHANCE, shouldAutoHeal, useCarried, type GardenBerryId } from '../data/berries';
@@ -295,7 +298,7 @@ import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, st
 import { openConfirm } from './ConfirmScene';
 import { confirmText } from '../data/confirm';
 import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineFull, adrenalineSpeedMul, fillAdrenaline, gainAdrenaline, spendAdrenaline, newAdrenaline, tickAdrenaline, touchAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
-import { MEGA_STONE_ID, MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState, absorbWithShield, gmaxFormName, pickPower, pickTeraType, POWER_BLOCK_TEXT, powerCost, powerFormSizeMul, powerFormTeraType, useZMove, Z_MOVE_DAMAGE_MUL, type PowerChoice, type PowerContext } from '../data/powerForm';
+import { MEGA_STONE_ID, MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState, absorbWithShield, gmaxFormName, pickPower, pickTeraType, resolveTeraType, TERA_TYPES, TERA_GEM_ID, POWER_BLOCK_TEXT, powerCost, powerFormSizeMul, powerFormTeraType, useZMove, Z_MOVE_DAMAGE_MUL, type PowerChoice, type PowerContext } from '../data/powerForm';
 import { meterOnDamage, meterOnParry, newPowerMeter, powerMeterFill, spendPowerMeter, tickPowerMeter, type PowerMeterState } from '../data/powerMeter';
 import {
   canCaptureLegend, CLUE_NAMES, clueOnFloor, finishLair, HUNT, huntText, lairOnFloor, leaveFloor, legendCaptureChance, legendPhase,
@@ -375,7 +378,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 export type FloorCarry = Pick<
   RunSave,
   'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed' | 'reactionsFound' | 'storiesSeen' | 'route' | 'routesTaken' | 'gardenBerries' | 'legendHunt'
->;
+> & Partial<Pick<RunSave, 'itemLevels' | 'teraPick'>>;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
 const RNG = { rooms: 0, boss: 1, items: 2, chest: 3, shop: 4, clear: 5 } as const;
@@ -718,6 +721,9 @@ export class GameScene extends Phaser.Scene {
   private swapOpen = false;
   /** T73: jefes vencidos (dan huecos de objeto) y la lista de elegir objeto (huecos llenos o forja) abierta. */
   private bossesBeaten = 0;
+  /** T73: niveles de «mejorar» de la forja por objeto y tipo Tera elegido a mano (null = automático). */
+  private itemLevels: ItemLevels = {};
+  private teraPick: string | null = null;
   private itemChoiceOpen = false;
   private itemChoiceCooldownUntil = 0;
   /** Confirmación de compra abierta, y hora real hasta la que no se reabre (que un Enter o clic de más no la repita). */
@@ -1190,6 +1196,8 @@ export class GameScene extends Phaser.Scene {
     }
     this.bossId = bossId;
     // T88: la cacería se sortea al empezar (solo Normal; nunca con código ni en el desafío diario) y pasa de piso en piso
+    this.itemLevels = r ? { ...r.itemLevels } : { ...(this.carry?.itemLevels ?? {}) };
+    this.teraPick = r ? r.teraPick : (this.carry?.teraPick ?? null);
     this.hunt = r ? r.legendHunt : this.carry ? this.carry.legendHunt
       : this.mode === 'normal' && !this.daily && !this.codeRun
         ? rollHunt(Math.random, this.biome, onlyBundled(biomeBossPool(index, this.biome)), index, FLOOR_COUNT - 1, this.bossHistory)
@@ -1457,7 +1465,7 @@ export class GameScene extends Phaser.Scene {
   /** Tus estadísticas: las de tu Pokémon con los objetos pasivos encima. */
   private calcStats(): PlayerStats {
     const types = this.slots.flatMap((m) => (m ? [m.type] : []));
-    const { stats, active } = applySynergies(computeStats(this.passives, this.base), this.passives, types);
+    const { stats, active } = applySynergies(computeStats(this.passives, this.base, this.itemLevels), this.passives, types);
     this.synergies = active.map((syn) => syn.id);
     this.ability?.apply?.(stats);
     // Altares (T39): los PS máximos dados se pierden para el resto de la partida
@@ -3248,7 +3256,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!spendPowerMeter(this.powerMeter, powerCost(choice))) return;
     if (this.powerMeterHud) this.powerMeterHud.shown = '';
     if (choice === 'z') return this.zMove();
-    const tera = choice === 'tera' ? pickTeraType(this.biome.types, this.tearType, rawEffectiveness) : null;
+    const tera = choice === 'tera' ? resolveTeraType(this.teraPick, this.biome.types, this.tearType, rawEffectiveness) : null;
     this.powerForm = startPowerForm(this.powerForm, choice, tera);
     this.powerFormLoopAt = this.game.loop.time;
     this.megaPulseAt = this.game.loop.time + POWER_FORMS[choice].pulseMs;
@@ -3471,6 +3479,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       potions: this.potions,
       gardenBerries: [...this.gardenBerries],
       legendHunt: { ...this.hunt, floors: [...this.hunt.floors], kinds: [...this.hunt.kinds] },
+      itemLevels: pruneLevels(this.itemLevels, this.passives),
+      teraPick: this.teraPick,
       secondChance: this.secondChanceUsed,
       bossesBeaten: this.bossesBeaten,
       captureDone: this.capture.done,
@@ -3510,7 +3520,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       reactions: discoveredLine(this.reactionsFound),
       items: [
         `Huecos ${slotsLabel(this.passives, this.bossesBeaten)}`,
-        ...[...counts].map(([id, n]) => (passiveById(id)?.name ?? id) + (n > 1 ? ` x${n}` : '')),
+        ...[...counts].map(([id, n]) => this.passiveName(id) + (n > 1 ? ` x${n}` : '')),
+        ...(this.passives.includes(TERA_GEM_ID) ? [`Tipo Tera: ${this.teraPick ? typeNameEs(this.teraPick) : 'automático'}`] : []),
         ...(this.active ? [`Activo: ${activeById(this.active.id)?.name} (${this.active.charge}/${activeById(this.active.id)?.charge})`] : []),
         ...this.synergies.map((id) => `¡Sinergia! ${SYNERGIES.find((syn) => syn.id === id)?.name}`),
       ],
@@ -3529,6 +3540,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.menuPadPrev = true; // Start/Select aún pulsado no vuelve a pausar
         this.padPrev = [true, true, true, true]; // ni A/B lanza un poder al volver
       },
+      // Tipo Tera a mano: solo con la Teragema. Cierra la pausa y abre la lista (teclado, ratón y mando)
+      onTera: this.passives.includes(TERA_GEM_ID)
+        ? () => {
+            this.scene.stop('Pause');
+            this.scene.resume();
+            this.input.keyboard?.resetKeys();
+            this.menuPadPrev = true;
+            this.padPrev = [true, true, true, true];
+            this.time.delayedCall(60, () => !this.ended && this.chooseTeraType());
+          }
+        : undefined,
       onRestart: () => {
         clearRun(this.slot);
         this.scene.stop('Pause');
@@ -4538,6 +4560,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.hp = Math.min(this.stats.maxHp, this.hp + Math.max(0, this.stats.maxHp - prevMax));
       this.hpMark = this.hp;
       this.notify(`${item.item.name}\n${item.item.description}`, { kind: 'item', icon: 'bag' });
+      // La primera Teragema deja elegir el tipo Tera (o seguir con el automático); luego se cambia en la pausa
+      if (item.item.id === TERA_GEM_ID && this.passives.filter((p) => p === TERA_GEM_ID).length === 1) this.time.delayedCall(400, () => !this.ended && this.chooseTeraType());
     } else {
       const free = this.slots.indexOf(null);
       const slot = this.chosenSlot ?? (free !== -1 ? free : this.nextSlotReplace++ % SLOT_COUNT);
@@ -4572,7 +4596,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   private passiveName(id: string, withCount = false) {
     const n = this.passives.filter((p) => p === id).length;
-    return (passiveById(id)?.name ?? id) + (withCount && n > 1 ? ` x${n}` : '');
+    return levelLabel(passiveById(id)?.name ?? id, levelOf(this.itemLevels, id)) + (withCount && n > 1 ? ` x${n}` : '');
   }
 
   /**
@@ -4647,6 +4671,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Tras quitar o cambiar pasivos: estadísticas, PS (los máximos de más también curan), HUD y guardado. */
   private passivesChanged() {
+    this.itemLevels = pruneLevels(this.itemLevels, this.passives);
     const prevMax = this.stats.maxHp;
     this.stats = this.calcStats();
     this.hp = Math.max(1, Math.min(this.stats.maxHp, this.hp + Math.max(0, this.stats.maxHp - prevMax)));
@@ -4745,8 +4770,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     };
     label(x, y - 44, 'Forja', '#ffcc80');
     const actions: [number, string, () => void][] = [
-      [x - 90, 'Reciclar', () => this.forgeRecycle(room)],
-      [x + 90, 'Fusionar', () => this.forgeFuse(room)],
+      [x - 150, 'Reciclar', () => this.forgeRecycle(room)],
+      [x, 'Mejorar', () => this.forgeUpgrade(room)],
+      [x + 150, 'Fusionar', () => this.forgeFuse(room)],
     ];
     for (const [ax, text, use] of actions) {
       const z = this.add.zone(ax, y + 70, 130, 44).setInteractive({ useHandCursor: true });
@@ -4757,8 +4783,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       label(ax, y + 70, text, '#ffe0b2');
     }
     this.eventSpots.push(
-      { x: x - 90, y: y + 70, prompt: () => 'Enter / A / clic: reciclar un objeto por monedas (libera su hueco)', use: actions[0][2] },
-      { x: x + 90, y: y + 70, prompt: () => 'Enter / A / clic: fusionar dos objetos de la misma rareza en uno mejor', use: actions[1][2] },
+      { x: x - 150, y: y + 70, prompt: () => 'Enter / A / clic: reciclar un objeto por monedas (libera su hueco)', use: actions[0][2] },
+      { x, y: y + 70, prompt: () => 'Enter / A / clic: mejorar un objeto (+25 % a su efecto, hasta +3)', use: actions[1][2] },
+      { x: x + 150, y: y + 70, prompt: () => 'Enter / A / clic: fusionar dos objetos de la misma rareza en uno mejor', use: actions[2][2] },
     );
   }
 
@@ -4835,6 +4862,59 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         });
       },
     );
+  }
+
+  /** T73: mejorar un objeto con valor numérico (+25 % a su efecto por nivel, hasta +3). */
+  private forgeUpgrade(room: Room) {
+    if (!this.forgeUsable(room)) return;
+    const list = upgradeCandidates(this.passives, this.itemLevels);
+    if (list.length === 0) return this.notify('Forja: no llevas objetos que se puedan mejorar', { kind: 'warning', icon: 'bag' });
+    const cost = (id: string) => upgradeCost(id, levelOf(this.itemLevels, id));
+    this.openItemChoice(
+      'FORJA: MEJORAR',
+      `Cada nivel da +25 % al efecto del objeto (hasta +${UPGRADE_MAX}). Tienes ${this.coins} monedas.`,
+      list.map((id) => `${this.passiveName(id, true)} → +${levelOf(this.itemLevels, id) + 1} · ${cost(id)} monedas`),
+      (i) => {
+        if (i < 0) return;
+        const id = list[i];
+        const c = cost(id);
+        const lv = levelOf(this.itemLevels, id) + 1;
+        const name = passiveById(id)?.name ?? id;
+        this.nextItemChoice(
+          'FORJA: MEJORAR',
+          `¿Mejorar ${this.passiveName(id)} a ${levelLabel(name, lv)}?\nSu efecto pasa a ×${(1 + UPGRADE_STEP * lv).toFixed(2)}. Cuesta ${c} monedas (tienes ${this.coins}). La forja solo se puede usar una vez.`,
+          [this.coins >= c ? `Mejorar por ${c} monedas` : `Te faltan ${c - this.coins} monedas`],
+          (ok) => {
+            if (ok !== 0 || !this.forgeUsable(room)) return;
+            if (this.coins < c) return this.notify(`Forja: te faltan ${c - this.coins} monedas`, { kind: 'warning', icon: 'bag' });
+            this.coins -= c;
+            this.itemLevels = upgrade(this.itemLevels, id);
+            sfx('pickup');
+            this.notify(`¡Mejorado!\n${levelLabel(name, lv)}`, { kind: 'reward', icon: 'bag' });
+            this.passivesChanged();
+            this.finishEvent(room);
+          },
+          undefined,
+          [this.coins < c],
+        );
+      },
+    );
+  }
+
+  /** Elegir a mano el tipo Tera (o dejarlo automático). Dos páginas de 9 tipos para que quepan con teclado 1-9. */
+  private chooseTeraType(page = 0) {
+    const auto = typeNameEs(pickTeraType(this.biome.types, this.tearType, rawEffectiveness));
+    const types = TERA_TYPES.slice(page * 9, page * 9 + 9);
+    const now = this.teraPick ? typeNameEs(this.teraPick) : `automático (${auto})`;
+    const options = [`Automático (en este bioma: ${auto})`, ...types.map((t) => typeNameEs(t)), page === 0 ? 'Más tipos…' : 'Tipos anteriores…'];
+    const open = page === 0 && !this.itemChoiceOpen ? this.openItemChoice.bind(this) : this.nextItemChoice.bind(this);
+    open('TIPO TERA', `Ahora: ${now}. El automático elige el de más ventaja contra el bioma.`, options, (i) => {
+      if (i < 0) return;
+      if (i === options.length - 1) return this.chooseTeraType(1 - page);
+      this.teraPick = i === 0 ? null : types[i - 1];
+      this.notify(`Tipo Tera: ${this.teraPick ? typeNameEs(this.teraPick) : 'automático'}`, { kind: 'info', icon: 'pokeball' });
+      this.saveNow();
+    });
   }
 
   private forgeFuse(room: Room) {
@@ -5267,6 +5347,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // El icono cabe en su círculo sea cual sea el tamaño de su textura
       img.setScale(Math.min(2.2, (HUD_ITEM_R * 2 - 6) / Math.max(1, img.width, img.height)));
       const objs: Phaser.GameObjects.GameObject[] = [this.add.circle(x, y, HUD_ITEM_R, 0x000000, 0.35), img];
+      // T73: nivel de mejora de la forja («+2») arriba a la izquierda del icono
+      const lv = levelOf(this.itemLevels, id);
+      if (lv > 0) objs.push(this.add.text(x - 18, y - 16, `+${lv}`, { fontFamily: FONT, fontSize: '13px', fontStyle: 'bold', color: '#ffcc80' }).setOrigin(0, 0).setStroke('#101828', 4));
       if (n > 1) objs.push(this.add.text(x + 18, y + 16, `x${n}`, { fontFamily: FONT, fontSize: '14px', fontStyle: 'bold', color: '#ffffff' }).setOrigin(1, 1).setStroke('#101828', 4));
       for (const o of objs) {
         this.hudLayer.add(o);
@@ -7345,6 +7428,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       potions: this.potions,
       gardenBerries: [...this.gardenBerries],
       legendHunt: { ...this.hunt, floors: [...this.hunt.floors], kinds: [...this.hunt.kinds] },
+      itemLevels: pruneLevels(this.itemLevels, this.passives),
+      teraPick: this.teraPick,
       secondChance: this.secondChanceUsed,
       bossesBeaten: this.bossesBeaten,
       powerMeter: this.powerMeter.value,
