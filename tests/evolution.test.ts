@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EVOLVE_AT, evolutionsLeft, evolveFloors, nextEvolutionIds, pickEvolution, shouldEvolve, type ChainLink } from '../src/data/evolution.ts';
-import { MODES } from '../src/data/modes.ts';
+import { RUN_MODES } from '../src/data/modes.ts';
 
 const sp = (id: number, evolves_to: ChainLink[] = []): ChainLink => ({
   species: { name: `sp${id}`, url: `https://pokeapi.co/api/v2/pokemon-species/${id}/` },
@@ -29,7 +29,7 @@ test('si la cadena se ramifica elige una (y descarta formas especiales)', () => 
 });
 
 test('cada modo evoluciona dos veces, en orden', () => {
-  for (const m of MODES) {
+  for (const m of RUN_MODES) {
     assert.equal(EVOLVE_AT[m].length, 2);
     assert.ok(EVOLVE_AT[m][0] < EVOLVE_AT[m][1]);
     assert.ok(!shouldEvolve(m, 1));

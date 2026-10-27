@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { fitDesign, COVER_H, COVER_W, DCX, DCY } from '../ui/layout';
 import { fetchPokemonCard } from '../data/pokeapi';
 import { loadRecords, loadUnlocked } from '../data/save';
-import { MODES, MODE_LABEL } from '../data/modes';
+import { RUN_MODES, MODE_LABEL } from '../data/modes';
 import { openControls } from './ControlsScene';
 import { accountInfo } from '../net/cloud';
 import { FONT, drawBox, fadeIn, goTo } from '../ui/theme';
@@ -12,7 +12,7 @@ import { addPixelText, drawPixelArrow } from '../ui/art/pixel';
 /** Récord de cada modo en una línea: "Normal 2 · Oleadas 7 · …". */
 const recordsLine = () => {
   const r = loadRecords();
-  return MODES.map((m) => `${MODE_LABEL[m]} ${r[m]}`).join(' · ');
+  return RUN_MODES.map((m) => `${MODE_LABEL[m]} ${r[m]}`).join(' · ');
 };
 
 /** Menú en un único cuadro, como en la GBA: filas de texto y la flecha ▶ en la elegida. */

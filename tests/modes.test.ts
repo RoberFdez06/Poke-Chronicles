@@ -3,6 +3,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MODES,
+  RUN_MODES,
+  isRunMode,
   arenaFloor,
   emptyRecords,
   isLastStage,
@@ -23,8 +25,10 @@ function fakeStorage(): StorageLike & { data: Map<string, string> } {
   return { data, getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v) };
 }
 
-test('hay cinco modos con nombre y descripción', () => {
-  assert.deepEqual([...MODES], ['normal', 'waves', 'endless', 'bossrush', 'tower']);
+test('hay seis modos con nombre y descripción (la Defensa de torres va en su escena)', () => {
+  assert.deepEqual([...MODES], ['normal', 'waves', 'endless', 'bossrush', 'tower', 'towerdef']);
+  assert.deepEqual([...RUN_MODES], ['normal', 'waves', 'endless', 'bossrush', 'tower']);
+  assert.ok(isRunMode('tower') && !isRunMode('towerdef') && isMode('towerdef'));
   for (const m of MODES) assert.ok(modeDesc(m).length > 10);
   assert.ok(isMode('waves'));
   assert.ok(!isMode('otro'));

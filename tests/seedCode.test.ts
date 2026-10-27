@@ -5,7 +5,7 @@ import {
   SEED_ALPHABET, SEED_BESTS_MAX, cycleChar, decodeSeed, encodeSeed, newSeed, normalizeCode, parseSeedBests, seedBest, seedBestText,
   withSeedBest, type SeedInfo,
 } from '../src/data/seedCode.ts';
-import { MODES } from '../src/data/modes.ts';
+import { RUN_MODES } from '../src/data/modes.ts';
 import { DIFFICULTIES } from '../src/data/difficulty.ts';
 import { dailyFloorSeed, dailyRng, dailySeed, seedFloorSeed, seedRng } from '../src/data/daily.ts';
 import { loadSeedBest, submitSeedBest, type StorageLike } from '../src/data/save.ts';
@@ -13,7 +13,7 @@ import { loadSeedBest, submitSeedBest, type StorageLike } from '../src/data/save
 const info: SeedInfo = { seed: 0x5eed1234, mode: 'normal', difficulty: 'hard', starterId: 258 };
 
 test('ida y vuelta con todos los modos, dificultades y semillas de los extremos', () => {
-  for (const mode of MODES) for (const difficulty of DIFFICULTIES) for (const seed of [0, 1, 777, 0x7fffffff]) for (const starterId of [1, 25, 1025, 2047]) {
+  for (const mode of RUN_MODES) for (const difficulty of DIFFICULTIES) for (const seed of [0, 1, 777, 0x7fffffff]) for (const starterId of [1, 25, 1025, 2047]) {
     const i = { seed, mode, difficulty, starterId };
     const code = encodeSeed(i);
     assert.match(code, /^PKI-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$/);
@@ -119,4 +119,8 @@ test('mejor resultado por código: solo sube, da igual cómo se escriba y se olv
   assert.equal(loadSeedBest(code, st), 4);
   assert.equal(seedBestText('normal', 0), 'Aún no has jugado este código');
   assert.match(seedBestText('waves', 4), /Tu mejor resultado: 4 rondas/);
+});
+
+test('la Defensa de torres no tiene partidas con código', () => {
+  assert.throws(() => encodeSeed({ ...info, mode: 'towerdef' }));
 });

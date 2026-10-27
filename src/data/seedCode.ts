@@ -80,7 +80,7 @@ export function formatCode(chars: string): string {
 export function encodeSeed(info: SeedInfo): string {
   const mode = MODES.indexOf(info.mode);
   const diff = DIFFICULTIES.indexOf(info.difficulty);
-  if (mode < 0 || diff < 0) throw new Error('Modo o dificultad desconocidos');
+  if (mode < 0 || diff < 0 || info.mode === 'towerdef') throw new Error('Modo o dificultad desconocidos');
   if (!Number.isInteger(info.starterId) || info.starterId < 1 || info.starterId > MAX_STARTER) throw new Error('Inicial fuera de rango');
   if (!Number.isInteger(info.seed) || info.seed < 0 || info.seed > MAX_SEED) throw new Error('Semilla fuera de rango');
   const bits = toBits([SEED_CODE_VERSION, mode, diff, info.starterId, info.seed]);
@@ -112,7 +112,8 @@ export function decodeSeed(raw: string): DecodeResult {
   for (const d of data) for (let b = 4; b >= 0; b--) bits.push((d >> b) & 1);
   const [version, mode, diff, starterId, seed] = fromBits(bits);
   if (version !== SEED_CODE_VERSION) return { ok: false, error: 'version' };
-  if (mode >= MODES.length || diff >= DIFFICULTIES.length || starterId < 1) return { ok: false, error: 'datos' };
+  // La Defensa de torres no tiene partidas con código
+  if (mode >= MODES.length || MODES[mode] === 'towerdef' || diff >= DIFFICULTIES.length || starterId < 1) return { ok: false, error: 'datos' };
   return { ok: true, info: { seed, mode: MODES[mode], difficulty: DIFFICULTIES[diff], starterId } };
 }
 

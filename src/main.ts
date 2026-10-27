@@ -30,6 +30,8 @@ import { ItemChoiceScene } from './scenes/ItemChoiceScene';
 import { ConfirmScene } from './scenes/ConfirmScene';
 import { PadLegendScene } from './scenes/PadLegendScene';
 import { SeedCodeScene } from './scenes/SeedCodeScene';
+import { TowerDefenseMenuScene } from './scenes/TowerDefenseMenuScene';
+import { TowerDefenseScene } from './scenes/TowerDefenseScene';
 import { trackInput } from './ui/inputMode';
 import { COLORS, hex, loadThemeFont, setLowFxProbe } from './ui/theme';
 import { loadFx } from './data/save';
@@ -100,7 +102,7 @@ function startGame() {
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     // La primera escena es la que arranca; añade las nuevas (p. ej. GachaScene) al final
     // PauseScene va la última para dibujarse encima de la partida
-    scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, GardenScene, RunDexScene, SummaryScene, HistoryScene, KeysScene, BossIntroScene, GymPuzzleScene, FloorIntroScene, FinalPromptScene, RouteScene, SlotSwapScene, ItemChoiceScene, ConfirmScene, ControlsScene, SecondChanceScene, SeedCodeScene, PauseScene, AccountScene, PadLegendScene],
+    scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, GardenScene, RunDexScene, SummaryScene, HistoryScene, KeysScene, BossIntroScene, GymPuzzleScene, FloorIntroScene, FinalPromptScene, RouteScene, SlotSwapScene, ItemChoiceScene, ConfirmScene, ControlsScene, SecondChanceScene, SeedCodeScene, PauseScene, AccountScene, PadLegendScene, TowerDefenseMenuScene, TowerDefenseScene],
   });
   lockEscapeInFullscreen(game);
   // T43: un error no deja el juego colgado: pantalla "Algo ha fallado" con vuelta al menú

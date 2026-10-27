@@ -12,6 +12,7 @@ import { MenuList, NavInput, UI } from '../ui/nav';
 import { addBackButton } from '../ui/cards';
 import { drawBox, fadeIn, goTo } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
+import { loadTdProgress, totalStars } from '../data/towerDefense/progress';
 
 /** Margen tras abrir la pantalla en el que se ignora confirmar (el Enter que eligió el Pokémon no elige modo). */
 const INPUT_DELAY_MS = 350;
@@ -73,9 +74,9 @@ export class ModeScene extends Phaser.Scene {
         this.shown = -1;
       })
       .catch(() => undefined);
-    this.list = new MenuList(this, 280, 184, [...MODES.map((m) => MODE_LABEL[m]), 'Desafío diario', 'Partida con código'], (i) => this.start(i), {
-      // Siete opciones a la altura del panel de la derecha (160-540), sin tocar la fila de la dificultad
-      w: 320, h: 46, gap: 8,
+    this.list = new MenuList(this, 280, 180, [...MODES.map((m) => MODE_LABEL[m]), 'Desafío diario', 'Partida con código'], (i) => this.start(i), {
+      // Ocho opciones a la altura del panel de la derecha (160-540), sin tocar la fila de la dificultad
+      w: 320, h: 40, gap: 6, fontSize: 22,
     });
 
     const panel = this.add.graphics();
@@ -129,6 +130,11 @@ export class ModeScene extends Phaser.Scene {
       // Mismo inicial para todos; solo la primera partida del día cuenta
       const counts = beginDaily(this.day);
       goTo(this, 'Game', { starterId: dailyStarter(this.day), slot: this.args.slot, mode: 'normal', daily: { day: this.day, counts }, difficulty: 'normal' });
+      return;
+    }
+    if (MODES[i] === 'towerdef') {
+      // Defensa de torres: su propio menú de mapas, niveles y equipo (no usa el inicial ni la dificultad)
+      goTo(this, 'TowerDefenseMenu', { slot: this.args.slot, starterId: this.args.starterId });
       return;
     }
     if (MODES[i] === 'tower' && this.askTowerStart()) return;
@@ -210,7 +216,7 @@ export class ModeScene extends Phaser.Scene {
       }
       const m = MODES[this.shown];
       this.desc.setText(`${MODE_LABEL[m]}\n\n${modeDesc(m)}`);
-      this.record.setText(recordText(m, this.records[m]));
+      this.record.setText(m === 'towerdef' ? recordText(m, totalStars(loadTdProgress())) : recordText(m, this.records[m]));
     }
   }
 }
