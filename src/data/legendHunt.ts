@@ -1,6 +1,6 @@
 // T88 — Cacería legendaria: un rastro de pistas (huellas, ruido, plumas) repartido por varios pisos de la run.
 // Si se encuentran todas, se abre una sala con un legendario capturable de forma especial (más difícil y con fases).
-// Lógica pura, sin Phaser: el efecto visual de las pistas y la sala van en la escena (TODO(supervisor)).
+// Lógica pura, sin Phaser: el dibujo de las pistas (worldArt.ts) y de la guarida (lairArt.ts) va aparte.
 // El legendario sale con el mismo sorteo que los jefes (T64): de todos, con ×3 si comparte tipo con el bioma.
 import { pickBossWeighted, type Biome } from '../level/biomes.ts';
 import type { SpeciesFact } from './gacha.ts';
@@ -154,4 +154,4 @@ export function isLegendHunt(h: unknown): h is LegendHunt {
     isInt(o.found) && o.found >= 0 && o.found <= o.floors.length && isInt(o.legendId) && o.legendId >= 0;
 }
 
-// El dibujo de las pistas y de la guarida (color liso) está en GameScene con TODO(supervisor).
+// El dibujo de las pistas está en worldArt.ts (buildClue) y el de la guarida en lairArt.ts.
