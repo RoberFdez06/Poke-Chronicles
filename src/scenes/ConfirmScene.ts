@@ -138,6 +138,9 @@ export function openConfirm(host: Phaser.Scene, text: string, onResult: (yes: bo
       onResult(yes);
     },
   } satisfies ConfirmData);
+  // Encima de quien pregunta: si la escena anfitriona está registrada después (la defensa de torres), el cuadro
+  // quedaba dibujado debajo de ella, invisible, y se tragaba el teclado y los clics («Reiniciar nivel» no hacía nada)
+  host.scene.bringToTop('Confirm');
   host.scene.pause();
   return true;
 }

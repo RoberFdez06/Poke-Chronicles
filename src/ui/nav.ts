@@ -93,7 +93,7 @@ export class NavInput {
   }
 }
 
-export type PadButton = 'up' | 'down' | 'left' | 'right' | 'A' | 'B' | 'X' | 'Y' | 'LB' | 'RB' | 'LT' | 'RT';
+export type PadButton = 'up' | 'down' | 'left' | 'right' | 'A' | 'B' | 'X' | 'Y' | 'LB' | 'RB' | 'LT' | 'RT' | 'L3' | 'R3';
 
 /**
  * Botones del mando con flanco (una vez por pulsación), para lo que NavInput no cubre (X, Y, LB, RB)
@@ -122,6 +122,8 @@ export class PadButtons {
       RB: !!pad.buttons[5]?.pressed,
       LT: (pad.buttons[6]?.value ?? 0) > 0.5,
       RT: (pad.buttons[7]?.value ?? 0) > 0.5,
+      L3: !!pad.buttons[10]?.pressed,
+      R3: !!pad.buttons[11]?.pressed,
     };
   }
 

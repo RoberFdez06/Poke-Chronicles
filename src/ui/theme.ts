@@ -193,6 +193,9 @@ export function goTo(scene: Phaser.Scene, key: string, data?: object, ms = FADE_
   const cam = scene.cameras.main;
   if (scene.data?.get('leaving')) return false;
   scene.data?.set('leaving', true);
+  // Los datos de la escena sobreviven a scene.restart (y a stop + start): al cerrarse se borra la marca, así una
+  // escena que se reinicia a sí misma («Reiniciar nivel») o que vuelve más tarde no se queda sin poder salir
+  scene.events?.once?.('shutdown', () => scene.data?.set('leaving', false));
   if (scene.scene.isPaused() || !cam || lowFx()) {
     scene.scene.start(key, data);
     return true;
