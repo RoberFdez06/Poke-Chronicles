@@ -288,6 +288,7 @@ import {
 } from '../data/forge';
 import { canAfford, describeEffects, optionLabel, pickStory, resolveChoice, type ChoiceEffects, type ChoiceState, type ChoiceStory } from '../level/choiceEvents';
 import { GARDEN_BERRIES, GARDEN_HEAL, GARDEN_SHIELD, growGarden, rollSeed, SEED_CHANCE, shouldAutoHeal, useCarried, type GardenBerryId } from '../data/berries';
+import { clampToBounds as clampInArena, clampVelocity, outOfBounds } from '../level/bounds';
 import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
 import { biomeBossPool, biomeById, biomeEnemyPool, biomeFor, Biome, BIOMES, pickBossWeighted, pickMixedFoes } from '../level/biomes';
 import { forcedEventRng, hasRoutes, ROUTE_EVENT, routeLabel, routeMul, routeOptions, type RouteOption } from '../level/routes';
@@ -3007,6 +3008,9 @@ export class GameScene extends Phaser.Scene {
     // Música del bioma (la del jefe la pone spawnBoss); al salir de la partida, la del menú
     playTrack(trackForBiome(this.biome.id));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => playMenuMusic());
+    // Nada sale del mapa: también justo después de mover la física (embestidas, empujones, teletransportes)
+    this.physics.world.on(Phaser.Physics.Arcade.Events.WORLD_STEP, this.keepInside, this);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.physics.world?.off(Phaser.Physics.Arcade.Events.WORLD_STEP, this.keepInside, this));
     // Al perder el foco la ventana o la pestaña, se abre la pausa (si no hay ya una pausa, confirmación o transición)
     onFocusLost(this, () => {
       if (this.scene.isActive() && !this.ended && !this.transitioning && !this.falling && !this.confirmOpen && !this.scene.isPaused()) this.openPause();
@@ -7941,23 +7945,60 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   // --- Bucle ---
 
+  /** ¿Las puertas de la sala (grande) actual están cerradas (combate)? */
+  private roomLocked(): boolean {
+    for (const id of this.groupIds(this.current))
+      for (const d of DIRS) {
+        const blk = this.doorMap.get(`${id}:${d}`);
+        if (blk && (blk.body as Phaser.Physics.Arcade.StaticBody | null)?.enable) return true;
+      }
+    return false;
+  }
+
+  /**
+   * Nada sale del mapa: enemigos e invocados se recolocan dentro de la arena (con medio cuerpo de margen) y sin
+   * velocidad hacia fuera; el jugador también mientras las puertas están cerradas (si no, puede salir por ellas);
+   * los proyectiles de todos que se salen se destruyen. Va en update y después de cada paso de la física.
+   */
+  private keepInside() {
+    if (this.transitioning || this.ended || !this.current || !this.enemies?.children || !this.player?.active || !this.floor) return;
+    const rm = this.arena();
+    const fix = (o: Sprite, margin: number) => {
+      const body = o.body as Body | null;
+      if (!o.active || !body) return;
+      if (outOfBounds(o.x, o.y, rm, -margin)) {
+        const p = clampInArena(o.x, o.y, rm, margin);
+        const v = clampVelocity(p.x, p.y, body.velocity.x, body.velocity.y, rm, margin + 0.5);
+        body.reset(p.x, p.y);
+        body.setVelocity(v.vx, v.vy);
+      }
+    };
+    for (const c of this.enemies.getChildren()) {
+      const e = c as Sprite;
+      const body = e.body as Body | null;
+      if (!body) continue;
+      fix(e, Math.min(60, Math.max(14, Math.min(body.width, body.height) / 2)));
+    }
+    if (this.roomLocked() || this.mode === 'waves' || this.mode === 'bossrush') {
+      const pb = this.player.body as Body | null;
+      if (pb) fix(this.player, Math.max(12, Math.min(pb.width, pb.height) / 2));
+    }
+    for (const g of [this.shots, this.foeShots]) {
+      if (!g?.children) continue;
+      for (const c of [...g.getChildren()]) {
+        const s = c as Sprite;
+        if (s.active && outOfBounds(s.x, s.y, rm, 40)) s.destroy();
+      }
+    }
+  }
+
   update(time: number, delta = 16) {
     // Esc (teclado) o Select/Back (mando) vuelven al menú en cualquier momento
     const menuPad = this.input.gamepad?.getPad(0);
     const menuPadNow = !!menuPad && menuPad.connected && (!!menuPad.buttons[8]?.pressed || (!this.ended && !!menuPad.buttons[9]?.pressed));
     if (!this.escKey) return; // create() aún no ha terminado de cargar
-    // Red de seguridad: ningún enemigo puede quedar fuera de la sala (empujones, remolinos, embestidas…)
-    // (al reiniciar la escena, el grupo viejo ya está destruido hasta que create() termina: sin `children`)
-    if (!this.transitioning && !this.ended && this.current && this.host && this.enemies?.children && this.player?.active) {
-      const rm = this.host.room();
-      for (const c of this.enemies.getChildren()) {
-        const e = c as Sprite;
-        if (!e.active || !e.body) continue;
-        if (e.x < rm.x0 - 30 || e.x > rm.x1 + 30 || e.y < rm.y0 - 30 || e.y > rm.y1 + 30) {
-          (e.body as Body).reset(Phaser.Math.Clamp(e.x, rm.x0 + 30, rm.x1 - 30), Phaser.Math.Clamp(e.y, rm.y0 + 30, rm.y1 - 30));
-        }
-      }
-    }
+    // Red de seguridad: nada sale de la arena (también después de la física, ver keepInside)
+    this.keepInside();
     const menuPressed = Phaser.Input.Keyboard.JustDown(this.escKey) || Phaser.Input.Keyboard.JustDown(this.pauseKey) ||
       (menuPadNow && !this.menuPadPrev);
     this.menuPadPrev = menuPadNow;
