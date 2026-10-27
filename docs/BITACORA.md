@@ -1291,3 +1291,14 @@ Hecho (ver `docs/TAREAS.md`, T90):
   Escudado como barra extra (`shieldPoolFor`, `absorbShieldHit`). `ROOM_TICKETS` 2 → 3 (+50 % por sala). Arenas y derrumbes por legendario.
 Pendiente:
 - Probar en el navegador (solo verificado con `tsc` y `npm test`): pausa de arena, barra de escudo, tickets por sala, arenas por legendario.
+
+## Combate: temperamento, megas de punta a punta y adrenalina
+
+- **Temperamento** (`src/data/temperament.ts`): cada enemigo normal sortea ágil (25 %), normal (50 %) o pesado (25 %). Ágil: −20 % de recuperación entre ataques, proyectiles +20 % más rápidos y −15 % de alcance, un poco más pequeño. Pesado: al revés y un poco más grande. Ritmo medio ≈ +1 % (equilibrado).
+- **Por qué Mewtwo no megaevolucionaba**: el legendario de la cacería (T88) no es «jefe» para la IA y nunca pasaba por `shouldMegaEvolve`. Ahora megaevoluciona al entrar en su fase 2 (`legendMegaAtPhase`). Además cualquier jefe cuya especie tenga mega en los juegos megaevoluciona (antes solo los de `MEGA_BOSS_IDS`; el resto iba a forma furia), y al megaevolucionar crece un 15 % para que se note. Mewtwo/Charizard sortean X o Y (`bossMegaForm`).
+- **Adrenalina**: ahora suma cada golpe dado (1,5, máx. uno cada 150 ms), bajas 12, esquivas 12, parrys 25; empieza a bajar a los 7 s y más despacio (6/s).
+- **Modo depuración**: se activa con `?debug` en la URL, con `localStorage.setItem('pokeisaac.debug','1')` o siempre en `npm run dev`. En la consola, dentro de una partida:
+  - `__POKEISAAC_DEBUG__.fillAdrenaline()` — llena la adrenalina.
+  - `__POKEISAAC_DEBUG__.giveMegaStone()` — da la Mega Piedra.
+  - `__POKEISAAC_DEBUG__.forceMega()` — si hay jefe/legendario en la sala, lo deja al 45 % y megaevoluciona; si no, megaevoluciona al jugador (si su especie tiene mega).
+  - `__POKEISAAC_DEBUG__.spawnBoss()` — saca el jefe del piso en la sala actual.

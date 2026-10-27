@@ -129,3 +129,66 @@ test('las arenas de jefe de la Torre tienen de 4 a 9 casillas', () => {
       assert.ok(fl.rooms.every((r) => r.gx < fl.cols && r.gy < fl.rows));
     }
 });
+
+import { TOWER_SEGMENT, towerClearCoins, towerHasChest, towerRestCell } from '../src/level/tower.ts';
+import { towerShopOffer } from '../src/level/towerExtras.ts';
+import { RANDOM_PASSIVES } from '../src/data/items.ts';
+import { mulberry32 } from '../src/level/floorGen.ts';
+
+test('desde el piso 11 el descanso es 2x2 (solo la casilla 0 es Centro) y no hay salas pequeñas de combate', () => {
+  for (const s of SEEDS)
+    for (let f = TOWER_SEGMENT + 1; f <= TOWER_FLOORS; f++) {
+      const sp = towerFloorSpec(f, s);
+      if (sp.kind === 'rest') {
+        assert.equal(sp.shape, 'square');
+        const fl = towerFloor(sp, s);
+        assert.deepEqual(fl.rooms.map((r) => r.kind), ['center', 'start', 'start', 'start']);
+        const cells = new Set(['altar', 'shop', 'mega'].map((w) => towerRestCell(sp, w as 'altar')));
+        assert.equal(cells.size, 3);
+        assert.ok(!cells.has(0));
+      }
+      if (sp.kind === 'combat') assert.notEqual(sp.shape, 'small');
+    }
+  assert.equal(towerFloorSpec(1, 1).shape === 'square' && towerFloorSpec(1, 1).kind === 'rest', false);
+});
+
+test('cofres de la Torre: en minijefes siempre, nunca en jefes/descansos y nunca dos pisos de combate seguidos', () => {
+  for (const s of SEEDS) {
+    let n = 0;
+    for (let f = 1; f <= TOWER_FLOORS; f++) {
+      const k = towerFloorKind(f, s);
+      const c = towerHasChest(f, s);
+      if (k === 'miniboss') assert.ok(c);
+      if (k === 'boss' || k === 'rest' || k === 'supply' || k === 'final') assert.ok(!c);
+      if (c && k === 'combat' && f > 1 && towerFloorKind(f - 1, s) === 'combat') assert.ok(!towerHasChest(f - 1, s));
+      if (c) n++;
+    }
+    // Unos 2-4 por tramo de 10 (minijefe + algún combate)
+    assert.ok(n >= 15 && n <= 40, `cofres en la torre (semilla ${s}): ${n}`);
+  }
+});
+
+test('balance de monedas de la Torre: en cada tramo da para comprar algo en el descanso, pero no toda la tienda', () => {
+  const rng = mulberry32(7);
+  for (let f = 1; f <= TOWER_FLOORS; f++) {
+    const c = towerClearCoins(f, rng);
+    assert.ok(c >= 1 && c <= 4, `monedas del piso ${f}: ${c}`);
+  }
+  const pool = RANDOM_PASSIVES;
+  for (const s of SEEDS)
+    for (let seg = 0; seg < 9; seg++) {
+      // Monedas medias del tramo: pisos limpios + ~35 % de cofres con ~4,5 monedas
+      let coins = 0;
+      for (let f = seg * 10 + 1; f <= seg * 10 + 10; f++) {
+        const k = towerFloorKind(f, s);
+        if (k !== 'rest' && k !== 'supply') coins += TOWER_CLEAR_AVG(f);
+        if (towerHasChest(f, s)) coins += 0.35 * 4.5;
+      }
+      const offer = towerShopOffer(mulberry32(s + seg), pool, new Set(), new Set());
+      const prices = offer.map((o) => o.price);
+      assert.ok(coins >= Math.min(...prices), `tramo ${seg}: ${coins} < más barato ${Math.min(...prices)}`);
+      assert.ok(coins < prices.reduce((a, b) => a + b, 0), `tramo ${seg}: ${coins} compra toda la tienda`);
+    }
+});
+
+const TOWER_CLEAR_AVG = (f: number) => (towerClearCoins(f, () => 0) * 0.35 + towerClearCoins(f, () => 0.99) * 0.65);
