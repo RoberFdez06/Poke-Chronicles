@@ -1272,3 +1272,22 @@ Hecho:
   siguen sin guardar (el guardado es el de siempre). Tests: `tests/forgeUpgrade.test.ts` y migración en `runSave.test.ts`.
 Pendiente:
 - Probar en el navegador (solo `tsc` y `npm test`, 562 tests).
+
+## T89 — Defensa de torres (modo nuevo)
+Hecho (ver `docs/TAREAS.md`, T89):
+- 16 mapas con 10-15 niveles, 50 % de los niveles para abrir el mapa siguiente, modo infinito, torres de la colección (5 niveles, dos ramas, mega
+  nivel 6), voladores por el camino, habilidades activas, premios y guardado en `pokeisaac.towerdef` (+ `pokeisaac.towerdef.team`).
+- Ronda de repaso: «Borrar progreso» borra también el equipo de torres (`pokeisaac.towerdef.team`) y el historial del gacha (`pokeisaac.gachaHistory`),
+  con test; pausa automática al perder el foco (`src/ui/focusPause.ts`, en `GameScene` y `TowerDefenseScene`); consejos `td_place`, `td_upgrade`,
+  `td_air` y `td_skills` (`src/ui/tdTips.ts`); pantalla «Cómo se juega» (`src/data/towerDefense/guide.ts`) en el menú; teclas y mando del modo en
+  `ControlsScene`/`controls.ts` (vista «Defensa de torres», con Tab, Y o clic) y «Controles» en la pausa del modo.
+- Código huérfano borrado: `ballHudIcon`, `arenaCollapse`, `onInputChange` y `stopMusic`. `.gitignore` con `_wt/`, `_sim/` y `.bench/`.
+Pendiente:
+- Probar en el navegador: consejos (que no tapen el HUD), pantalla de ayuda, pausa al cambiar de pestaña con mando conectado, Controles desde la pausa del modo.
+
+## Ronda nocturna 27/10 — forja, arenas, escudo y tickets
+Hecho (ver `docs/TAREAS.md`, T90):
+- Forja «Mejorar» y Tera elegible (T73, arriba). Pausas de 0,5 s en el cambio de arena (fases 1 y 2) sin zoom atrás en el derrumbe. Escudo del
+  Escudado como barra extra (`shieldPoolFor`, `absorbShieldHit`). `ROOM_TICKETS` 2 → 3 (+50 % por sala). Arenas y derrumbes por legendario.
+Pendiente:
+- Probar en el navegador (solo verificado con `tsc` y `npm test`): pausa de arena, barra de escudo, tickets por sala, arenas por legendario.

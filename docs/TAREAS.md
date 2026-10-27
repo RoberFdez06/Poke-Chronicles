@@ -560,9 +560,8 @@ Respeta el modo de efectos bajos en todo lo que sea visual. Va en `main`, un com
 - Guardado y continuar partida con su versión de `RunSave` y migración; puntos de control cada 10 pisos al morir (al volver a empezar
   puedes arrancar desde el último jefe vencido, con un coste en caramelos que decides en la lógica pura y pones en una constante).
 - Tests: qué piso es minijefe, jefe, descanso o final, escalado y récord. Es la tarea más grande: déjala la última.
-- **Estado (rama t72):** hecha la lógica pura (`src/level/tower.ts`) y el modo con la ruta básica; falta lo anotado en
-  `docs/BITACORA.md` (T72 — Pendiente): 2x2, altar/tienda del descanso (la forja ya está, T73), elegir suministro, minijefe con ataque extra y
-  objeto épico, piso 100 con `finale.ts`, hielo, pantalla de puntos de control.
+- **Estado (rama t72):** primer paso, ya superado: lógica pura (`src/level/tower.ts`) y modo con la ruta básica. Lo que faltaba (2x2, altar/tienda
+  del descanso, suministros, minijefe con ataque extra y objeto épico, piso 100 con `finale.ts`, hielo, puntos de control) se hizo en torre2.
 - **Estado (rama torre2):** completa. Suministros a elegir (ItemChoiceScene), tienda del descanso sin repetidos, lote de objetos y huecos
   al empezar desde un punto de control, sitios del descanso sin solapes y piso 100 con victoria (tests). Sin probar en el navegador ni
   la música por bioma a oído; ver `docs/BITACORA.md` (T72 — cierre).
@@ -734,6 +733,32 @@ ratón y mando funcionan cada uno por separado. Lo visual nuevo, `// TODO(superv
 - Rastro de pistas (huellas, ruido, plumas) repartidas por varios pisos de una run que, si las sigues todas, abren una sala con un
   legendario **capturable** de forma especial (más difícil, con fases). Probabilidad y legendario según bioma (coherente con T64).
   Lógica de pistas pura con tests; el efecto de las pistas y la sala, `// TODO(supervisor)`.
+
+## [x] T89 — Defensa de torres (modo nuevo, clave `pokeisaac.towerdef`)
+- **16 mapas** (uno por bioma), cada uno con **10-15 niveles** (`levelsForTier` en `towerDefense/maps.ts`; los últimos mapas, más niveles). El último
+  nivel de cada mapa acaba con un jefe legendario. Se abre el **mapa siguiente al superar el 50 %** de los niveles del anterior (`levelsNeeded`);
+  al superarlos todos se abre el **modo infinito** del mapa. Progreso, estrellas y récords en la clave propia `pokeisaac.towerdef` (se borra con
+  «Borrar progreso», igual que el equipo guardado `pokeisaac.towerdef.team`).
+- **Torres de la colección**: cada Pokémon que tienes es una torre con 5 niveles, **dos ramas al nivel 3**, evolución (o aura final) al 5 y **mega nivel 6**
+  (solo si tiene megaevolución: pago extra, forma mega, ataque mega y un aura que refuerza a las torres cercanas). Estadísticas a partir de las reales y de las
+  mejoras de la colección. Equipo de hasta 6 y equipo de prueba sin colección.
+- **Voladores** por el mismo camino: solo los alcanzan las torres aéreas (Volador, Eléctrico, Psíquico, Dragón, Fantasma, Hada, Hielo) o la rama Táctica.
+- **Habilidades activas** con recarga: Rayo (golpea a los 6 más fuertes), Ventisca (congela a todos) y Curar base (25 %).
+- **Premios** fuera de la partida: tickets y caramelos (nunca monedas), con extra por cada estrella nueva (1-3 según la vida que conserve la base,
+  3 con el 90 % o más) y por el primer jefe. Lógica pura con tests (`tests/towerDefense.test.ts`); escenas `TowerDefenseMenuScene` y `TowerDefenseScene`.
+- Ayuda al jugador (ronda de repaso): consejos `td_*` en `tutorial.ts`, pantalla «Cómo se juega» en el menú (H, Y o clic), teclas y mando del modo en
+  Controles (pestaña «Defensa de torres» con Tab/Y) y opción «Controles» en su pausa. La partida se pausa sola al perder el foco la ventana.
+- Estado: hecho. **Pendiente: probar en el navegador** (consejos, pantalla de ayuda, pausa al desenfocar y Controles del modo).
+
+## [x] T90 — Ronda nocturna del 27/10: forja, arenas, escudo y tickets
+- **Forja «Mejorar»** (+25 % por nivel hasta +3) y **tipo Tera elegible** (RunSave v28): ver `docs/BITACORA.md` (T73 — Mejorar y tipo Tera elegible).
+- **Pausas de arena**: pausa de 0,5 s al cambiar de arena (fases 1 y 2) en la que nadie se mueve ni recibe daño, y sin zoom atrás en el derrumbe.
+- **Escudo en barra**: el Escudado lleva una reserva extra de PS (60 % de su vida) que absorbe golpes de cualquier dirección; barra azul bajo la de vida.
+- **Tickets +50 % por sala**: `ROOM_TICKETS` pasa de 2 a 3.
+- **Arenas por legendario**: tema de caída propio por especie (tiempo, espacio, distorsión, cielo, mar, magma, creación, arcoíris, tormenta, psique)
+  con respaldo por tipo (`arenaPhase.ts`) y su derrumbe dibujado (`fallArt.ts`).
+- Estado: hecho. **Pendiente: probar en el navegador** (a oído y a ojo: pausa de arena, barra de escudo, tickets por sala, arenas de legendarios,
+  forja «Mejorar» y lista Tera).
 
 ## Orden recomendado de la Tanda 11
 - T84 y T83 (sobre lo que ya existe), luego T87 y T85, y al final T86 y T88.
