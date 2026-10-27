@@ -6186,7 +6186,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const phase = arenaPhase({ grid, seed, player, boss });
     if (phase.cells.length === 0) return false;
     const i = this.interior(room);
-    // TODO(supervisor): aviso de grietas, escombros que van a caer y agua que asoma; ahora casillas de color liso que parpadean
     const marks = phase.cells.map((c) => {
       return arenaWarnTile(this, i.x0 + c.x * TILE, i.y0 + c.y * TILE, TILE, c.kind === 'grieta' ? 'grieta' : c.kind === 'charco' ? 'charco' : 'escombro');
     });
@@ -6209,7 +6208,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const x = i.x0 + c.x * TILE;
       const y = i.y0 + c.y * TILE;
       const k = `${roomId}:${c.x},${c.y}`;
-      // TODO(supervisor): dibujo de las grietas, los escombros que caen y los charcos; ahora color liso
       if (c.kind === 'grieta') {
         this.arenaCracks.set(k, 'grieta');
         this.arenaObjs.push(arenaCrack(this, x, y, TILE));
@@ -6332,7 +6330,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const i = this.interior(room);
     // Fondo animado de la arena: el de su tipo o el del concepto del legendario (cámara del tiempo, vacío estelar…)
     this.arenaObjs.push(arenaBackdrop(this, i.x0, i.y0, ROOM.w, ROOM.h, fall.theme, FALL_TINT[fall.theme]));
-    // TODO(supervisor): las raíces usan de momento la hierba alta ('B'); el agua, los charcos de siempre
     this.renderObstacles(room, fall.grid);
     for (const [tx, ty] of fall.hazards) {
       const k = `${room.id}:${tx},${ty}`;
