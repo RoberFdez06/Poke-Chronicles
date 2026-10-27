@@ -1,5 +1,6 @@
 // Sprites animados de PMDCollab SpriteCollab (estilo Mystery Dungeon, CC BY-NC 4.0): elegir la dirección (de 8)
 // y leer AnimData.xml. Lógica pura, sin Phaser ni red, para poder testearla.
+import { pmdFolder } from './pmdForms.ts';
 
 /** Filas de las hojas de SpriteCollab, de arriba a abajo. */
 export const DIR8 = ['down', 'down-right', 'right', 'up-right', 'up', 'up-left', 'left', 'down-left'] as const;
@@ -61,8 +62,10 @@ export function parseAnimData(xml: string): Record<string, AnimInfo> {
 export const spriteCollabId = (id: number): string => String(Math.max(0, Math.floor(id))).padStart(4, '0');
 
 export const SPRITE_COLLAB = 'https://raw.githubusercontent.com/PMDCollab/SpriteCollab/master/sprite';
-export const animDataUrl = (id: number) => `${SPRITE_COLLAB}/${spriteCollabId(id)}/AnimData.xml`;
-export const animSheetUrl = (id: number, anim: string) => `${SPRITE_COLLAB}/${spriteCollabId(id)}/${anim}-Anim.png`;
+/** Carpeta de la hoja: la de la forma o shiny (pmdForms) si el id va codificado; si no, la especie. */
+const folderOf = (id: number): string => (id < 10000 ? spriteCollabId(id) : (pmdFolder(id) ?? spriteCollabId(id)));
+export const animDataUrl = (id: number) => `${SPRITE_COLLAB}/${folderOf(id)}/AnimData.xml`;
+export const animSheetUrl = (id: number, anim: string) => `${SPRITE_COLLAB}/${folderOf(id)}/${anim}-Anim.png`;
 
 /** Milisegundos de un frame a partir de sus ticks de 1/60 s. */
 export const ticksToMs = (ticks: number): number => (Math.max(1, ticks) * 1000) / 60;

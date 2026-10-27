@@ -16,3 +16,47 @@ test('los que vuelan no saltan: ondulan y siguen planeando quietos', () => {
   assert.ok(fly.idleLift > 0);
   assert.equal(locomotionProfile(['grass']).bounce, true);
 });
+
+import { locoPose, sheetHover, LOCOMOTION_PROFILES, type Locomotion } from '../src/data/locomotion.ts';
+
+test('la especie manda sobre el tipo', () => {
+  assert.equal(locomotionOf(['poison'], 23), 'slither'); // Ekans
+  assert.equal(locomotionOf(['rock', 'ground'], 95), 'slither'); // Onix
+  assert.equal(locomotionOf(['water'], 129), 'swim'); // Magikarp
+  assert.equal(locomotionOf(['water'], 7), 'walk'); // Squirtle anda
+  assert.equal(locomotionOf(['normal', 'flying'], 84), 'walk'); // Doduo corre
+  assert.equal(locomotionOf(['bug', 'flying'], 12), 'fly');
+  assert.equal(locomotionOf(['psychic'], 150), 'float'); // Mewtwo
+  assert.equal(locomotionOf(['psychic'], 63), 'walk'); // Abra
+  assert.equal(locomotionOf(['electric'], 100), 'roll'); // Voltorb
+  assert.equal(locomotionOf(['normal', 'fairy'], 39), 'hop'); // Jigglypuff
+  assert.equal(locomotionOf(['poison'], 109), 'float'); // Koffing
+});
+
+test('al moverse ninguna forma de moverse se queda quieta (no se desliza)', () => {
+  const kinds = Object.keys(LOCOMOTION_PROFILES) as Locomotion[];
+  for (const k of kinds) {
+    const poses = Array.from({ length: 40 }, (_, i) => locoPose(k, i * 23, true, 0.3));
+    const spread = (f: (p: (typeof poses)[number]) => number) => Math.max(...poses.map(f)) - Math.min(...poses.map(f));
+    const motion = spread((p) => p.lift) + spread((p) => p.angle) / 10 + spread((p) => p.sx) * 10 + spread((p) => p.dx);
+    assert.ok(motion > 0.5, `${k} se mueve`);
+  }
+});
+
+test('andar: aplastado al pisar, estirado arriba; volar: la sombra se encoge', () => {
+  const ground = locoPose('walk', 0, true, 0);
+  assert.equal(ground.lift, 0);
+  assert.ok(ground.sy < 1 && ground.sx > 1);
+  const top = locoPose('walk', (Math.PI / 2) * LOCOMOTION_PROFILES.walk.slow, true, 0);
+  assert.ok(top.sy > 1 && top.lift > 2);
+  const fly = locoPose('fly', 500, true, 0);
+  assert.ok(fly.shadow < 1 && fly.lift > 0);
+  const still = locoPose('walk', 1000, false, 0);
+  assert.equal(still.lift, 0);
+});
+
+test('con hoja animada solo los que vuelan o flotan van por el aire', () => {
+  assert.equal(sheetHover('walk', 100, true).lift, 0);
+  assert.ok(sheetHover('fly', 100, true).lift >= 6);
+  assert.ok(sheetHover('float', 100, false).shadow < 1);
+});

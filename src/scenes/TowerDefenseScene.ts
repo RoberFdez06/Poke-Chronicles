@@ -17,6 +17,7 @@ import { GlyphText } from '../ui/art/keyGlyphs';
 import { HoldRepeat, cycle, stepCursor, tdHelp, tdKeyLabel, type TdDevice, type TdHelpContext, type TdKeyAction } from '../data/towerDefense/controls';
 import { loadPmd, pmdAnimKey, pmdKey, type PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
+import { dressLoose } from '../ui/locoAnim';
 import { fetchFormSprites, fetchNextEvolutions, fetchPokemonCard, fetchSpeciesName } from '../data/pokeapi';
 import { withTimeout } from '../data/offline';
 import { addCandies, addTickets, loadUpgrades } from '../data/save';
@@ -1017,6 +1018,9 @@ export class TowerDefenseScene extends Phaser.Scene {
         v.spr.anims.play(pmdAnimKey(e.def.species, 'walk', row), true);
       }
       if (!v.pmd) v.spr.setFlipX(e.dx > 0);
+      // Sin hoja animada (y por tierra: los voladores ya planean arriba): pasos, reptar, botar… según la especie
+      // (data/locomotion.ts), para que no se deslicen por el camino
+      if (!v.pmd && !e.def.air && !lowFx()) dressLoose(v.spr, e.def.types, e.def.species, time, !this.paused && !this.ended && e.frozen <= 0);
       if (v.pmd) v.spr.anims.timeScale = this.paused || this.ended || e.frozen > 0 ? 0 : SPEEDS[this.speedIdx] * (e.slowLeft > 0 ? e.slowMul : 1);
       if (e.frozen > 0) v.spr.setTint(0x9fe0ff);
       else if (e.slowLeft > 0) v.spr.setTint(0xb8c8ff);

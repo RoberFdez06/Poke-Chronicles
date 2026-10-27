@@ -1,8 +1,11 @@
 // Carga los sprites animados de SpriteCollab (AnimData.xml + hojas Walk/Idle) y crea sus animaciones de 8
-// direcciones. Si un Pokémon no tiene sprite allí o falla la descarga, no pasa nada: se queda el de PokeAPI.
+// direcciones. Si un Pokémon no tiene sprite allí o falla la descarga, no pasa nada: se queda el de PokeAPI (y
+// dressSprites le pone la animación procedural de data/locomotion.ts).
+// Formas regionales, megas y shiny van con ids codificados (data/pmdForms.ts). Si la hoja shiny no existe, se pinta la
+// normal con el tono girado por código (hueRotatePixels), así el shiny también anda con sus patas.
 import Phaser from 'phaser';
 import { animDataUrl, animSheetUrl, parseAnimData, ticksToMs, type AnimInfo } from '../data/pmdAnim';
-import { isRegionalForm } from '../data/regionalForms';
+import { decodePmd, hueRotatePixels, pmdAvailable, pmdPlain, shinyHue } from '../data/pmdForms';
 
 export interface PmdSheet {
   id: number;
@@ -16,6 +19,7 @@ const dataCache = new Map<number, Promise<Record<string, AnimInfo> | null>>();
 
 /** AnimData.xml de un Pokémon (con caché); null si no tiene sprite en SpriteCollab. */
 export function fetchAnimData(id: number): Promise<Record<string, AnimInfo> | null> {
+  if (!pmdAvailable(id)) return Promise.resolve(null);
   if (!dataCache.has(id)) {
     dataCache.set(
       id,
@@ -31,28 +35,60 @@ export function fetchAnimData(id: number): Promise<Record<string, AnimInfo> | nu
 export const pmdKey = (id: number, anim: 'walk' | 'idle') => `pmd-${id}-${anim}`;
 export const pmdAnimKey = (id: number, anim: 'walk' | 'idle', row: number) => `pmd-${id}-${anim}-${row}`;
 
-/** Carga lo que falte de estos Pokémon y devuelve los que se pueden animar (por id). */
+interface Pending extends PmdSheet {
+  /** Hoja de la que sale (la propia, o la normal si es un shiny que hay que recolorear). */
+  src: number;
+}
+
+/** Copia una hoja ya cargada con el tono girado (shiny por código). */
+function recolor(scene: Phaser.Scene, from: string, to: string, deg: number, info: AnimInfo): boolean {
+  if (scene.textures.exists(to)) return true;
+  if (!scene.textures.exists(from)) return false;
+  try {
+    const img = scene.textures.get(from).getSourceImage() as HTMLImageElement;
+    const c = document.createElement('canvas');
+    c.width = img.width;
+    c.height = img.height;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return false;
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, c.width, c.height);
+    hueRotatePixels(d.data, deg);
+    ctx.putImageData(d, 0, 0);
+    scene.textures.addSpriteSheet(to, c as unknown as HTMLImageElement, { frameWidth: info.frameWidth, frameHeight: info.frameHeight });
+    return scene.textures.exists(to);
+  } catch {
+    return false; // imagen sin permiso de lectura (CORS): se queda el dibujo de PokeAPI
+  }
+}
+
+/** Carga lo que falte de estos Pokémon y devuelve los que se pueden animar (por id, codificado o no). */
 export async function loadPmd(scene: Phaser.Scene, ids: readonly number[]): Promise<Map<number, PmdSheet>> {
-  // T83: las formas regionales usan el sprite de PokeAPI (sus hojas de SpriteCollab van en otra carpeta que no se lee)
-  const unique = [...new Set(ids)].filter((id) => !isRegionalForm(id));
+  const unique = [...new Set(ids)].filter((id) => pmdAvailable(id));
   const datas = await Promise.all(unique.map((id) => fetchAnimData(id)));
-  const sheets: PmdSheet[] = [];
+  // Shiny sin hoja propia: se usa la normal (y luego se recolorea)
+  const plains = await Promise.all(unique.map((id, i) => (datas[i] || !decodePmd(id).shiny ? null : fetchAnimData(pmdPlain(id)))));
+  const sheets: Pending[] = [];
   unique.forEach((id, i) => {
-    const d = datas[i];
+    const own = datas[i];
+    const d = own ?? plains[i];
     if (!d?.Walk) return;
-    sheets.push({ id, walk: d.Walk, idle: d.Idle ?? d.Walk, hasIdle: !!d.Idle });
+    sheets.push({ id, src: own ? id : pmdPlain(id), walk: d.Walk, idle: d.Idle ?? d.Walk, hasIdle: !!d.Idle });
   });
   if (!scene.scene.isActive() && !scene.scene.isPaused()) return new Map();
 
   await new Promise<void>((resolve) => {
     scene.load.crossOrigin = 'anonymous';
     let queued = 0;
+    const asked = new Set<string>();
     for (const s of sheets) {
       const parts: ['walk' | 'idle', AnimInfo, string][] = [['walk', s.walk, 'Walk']];
       if (s.hasIdle) parts.push(['idle', s.idle, 'Idle']);
       for (const [anim, info, file] of parts) {
-        if (scene.textures.exists(pmdKey(s.id, anim))) continue;
-        scene.load.spritesheet(pmdKey(s.id, anim), animSheetUrl(s.id, file), { frameWidth: info.frameWidth, frameHeight: info.frameHeight });
+        const key = pmdKey(s.src, anim);
+        if (scene.textures.exists(key) || scene.textures.exists(pmdKey(s.id, anim)) || asked.has(key)) continue;
+        asked.add(key);
+        scene.load.spritesheet(key, animSheetUrl(s.src, file), { frameWidth: info.frameWidth, frameHeight: info.frameHeight });
         queued++;
       }
     }
@@ -63,6 +99,10 @@ export async function loadPmd(scene: Phaser.Scene, ids: readonly number[]): Prom
 
   const out = new Map<number, PmdSheet>();
   for (const s of sheets) {
+    if (s.src !== s.id) {
+      if (!recolor(scene, pmdKey(s.src, 'walk'), pmdKey(s.id, 'walk'), shinyHue(s.id), s.walk)) continue;
+      if (s.hasIdle && !recolor(scene, pmdKey(s.src, 'idle'), pmdKey(s.id, 'idle'), shinyHue(s.id), s.idle)) s.hasIdle = false;
+    }
     if (!scene.textures.exists(pmdKey(s.id, 'walk'))) continue;
     if (s.hasIdle && !scene.textures.exists(pmdKey(s.id, 'idle'))) s.hasIdle = false;
     for (const anim of ['walk', 'idle'] as const) {
@@ -86,7 +126,7 @@ export async function loadPmd(scene: Phaser.Scene, ids: readonly number[]): Prom
         });
       }
     }
-    out.set(s.id, s);
+    out.set(s.id, { id: s.id, walk: s.walk, idle: s.idle, hasIdle: s.hasIdle });
   }
   return out;
 }

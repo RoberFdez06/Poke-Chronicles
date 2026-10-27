@@ -201,7 +201,8 @@ import { castPattern, setMotion, updateShots, type AttackHost, type ShootOpts, t
 import { basicShotFor, bossStyles, foeStyleFor, styleForMove, TYPE_STYLES, type Anim, type Motion, type MoveStyle } from '../data/movePatterns';
 import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
-import { locomotionProfile } from '../data/locomotion';
+import { pmdAvailable, pmdMega, pmdShiny } from '../data/pmdForms';
+import { applyPose, dressLoose, liftSprite, poseFor, resetLift } from '../ui/locoAnim';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, W } from '../ui/layout';
 import { hudLayout, itemGrid, nameFontSize, HUD_BADGE_MAX_W, HUD_ITEM_R, HUD_PROGRESS_FONT } from '../data/hudLayout';
 import {
@@ -1359,8 +1360,8 @@ export class GameScene extends Phaser.Scene {
           if (this.textures.exists(tex)) this.textures.get(tex).setFilter(Phaser.Textures.FilterMode.NEAREST);
         }
       }
-      // Sprites animados de 8 direcciones (T31). El shiny se queda con el de PokeAPI (SpriteCollab no lo tiene igual)
-      const pmdIds = [bossId!, ...this.finaleMembers.map((m) => m.id), ...foes.map((c) => c.id), ...summonCards.map((c) => c.id), ...(legendCard ? [legendCard.id] : []), ...(this.shiny ? [] : [this.formId])];
+      // Sprites animados de 8 direcciones (T31). El shiny usa la hoja shiny de SpriteCollab (o la normal recoloreada)
+      const pmdIds = [bossId!, ...this.finaleMembers.map((m) => m.id), ...foes.map((c) => c.id), ...summonCards.map((c) => c.id), ...(legendCard ? [legendCard.id] : []), this.playerPmdId()];
       loadPmd(this, pmdIds)
         .catch(() => new Map<number, PmdSheet>())
         .then((m) => {
@@ -1379,16 +1380,14 @@ export class GameScene extends Phaser.Scene {
    * Devuelve si lo ha usado (si no, el sprite sigue con el de PokeAPI).
    */
   private applyPmd(sprite: Sprite, id: number | undefined, size: number, circle = false): boolean {
-    // Quita el saltito de dressSprites antes de cambiar de hoja (el cuerpo se recalcula abajo)
-    const lift = (sprite.getData('lift') as number | undefined) ?? 0;
-    if (lift) {
-      sprite.setOrigin(0.5, 0.5);
-      (sprite.body as Body | null)?.offset.add({ x: 0, y: -lift });
-      sprite.setData('lift', 0);
-    }
+    // Quita la pose de dressSprites antes de cambiar de hoja (el cuerpo se recalcula abajo)
+    resetLift(sprite);
     const sheet = id === undefined ? undefined : this.pmd.get(id);
+    sprite.setData('pmdWant', id);
     if (!sheet) {
       sprite.setData('pmd', undefined);
+      // La hoja aún no está (shiny, forma, especie que no se precargó…): se pide y se pone en cuanto llegue
+      if (id !== undefined) this.pmdLater(sprite, id, size, circle);
       return false;
     }
     sprite.anims.stop();
@@ -1483,40 +1482,60 @@ export class GameScene extends Phaser.Scene {
       const w = Math.max(16, body.width * 0.85);
       const moving = body.velocity.lengthSq() > 400;
       const pmd = !!s.getData('pmd');
-      // Saltito al andar: el sprite sube y la sombra se encoge un poco; el balanceo va con cada paso
-      // Sin hoja de animación: anda, vuela, nada o flota según su tipo (data/locomotion.ts), no el mismo saltito para todos
-      const loco = locomotionProfile((s.getData('types') as string[] | undefined) ?? (s === this.player ? this.playerTypes : [(s.getData('ai') as EnemyAI | undefined)?.type ?? 'normal']));
-      const phase = time / (pmd ? 85 : loco.slow) + ((s.getData('stepSeed') as number | undefined) ?? (s.setData('stepSeed', Math.random() * 6), 0));
-      const hop = moving ? (loco.bounce ? Math.abs(Math.sin(phase)) : (Math.sin(phase) + 1) / 2) : 0;
+      // Animación al moverse según cómo se mueve cada especie (data/locomotion.ts + ui/locoAnim.ts): sin hoja de
+      // SpriteCollab, ciclo de pasos, aleteo, ondulación…; con hoja, solo balanceo y, si vuela, que vaya por el aire
+      const types = (s.getData('types') as string[] | undefined) ?? (s.getData('btypes') as string[] | undefined) ?? (s === this.player ? this.playerTypes : [(s.getData('ai') as EnemyAI | undefined)?.type ?? 'normal']);
+      const species = s === this.player ? this.formId : (s.getData('speciesId') as number | undefined);
+      const pose = poseFor(s, types, species, time, moving, pmd);
+      // Quitar la pose antes de medir los pies (si no, la sombra subiría con el dibujo)
+      liftSprite(s, 0, 0);
       // Pegada a los pies (Roberto: con la sombra más abajo parecía que volaba). En las hojas de SpriteCollab los
       // pies quedan un poco por encima del final del cuerpo físico; en los de PokeAPI, hacia el 86 % del dibujo.
       // Mejor aún: se mira dónde acaban de verdad los píxeles del dibujo (los jefes grandes, como Groudon, tienen
       // márgenes distintos y con una cifra fija la sombra les quedaba lejos y parecían volar).
       const feet = this.feetOf(s);
       const feetY = feet ? s.y + (feet.bottom - s.originY * s.frame.height) * s.scaleY - 1 : pmd ? body.bottom - body.height * 0.26 : s.y + s.displayHeight * 0.34;
-      const sw = feet ? Math.max(14, feet.span * Math.abs(s.scaleX) * 0.95) : w;
+      const sw = (feet ? Math.max(14, feet.span * Math.abs(s.scaleX) * 0.95) : w) * pose.shadow;
       sh.setPosition(feet ? s.x + ((s.flipX ? s.frame.width - feet.cx : feet.cx) - s.originX * s.frame.width) * s.scaleX : body.center.x, feetY);
       sh.setSize(sw, sw * 0.3);
       // Parpadeo mientras el jugador es invulnerable tras un golpe
       if (s === this.player && !this.ended && !this.evolving) s.setAlpha(time < this.invulnUntil && Math.floor(time / 70) % 2 ? 0.35 : 1);
       sh.setVisible(s.visible).setAlpha(Math.max(0.4, s.alpha));
-      // Subir el dibujo sin mover el cuerpo: el origen y el desfase del cuerpo cambian lo mismo (en px del frame)
-      // Los de SpriteCollab ya mueven las patas: sin saltito; los de PokeAPI, uno muy pequeño
-      const glide = !moving && !pmd && loco.idleLift > 0 ? ((Math.sin(time / 380 + ((s.getData('stepSeed') as number | undefined) ?? 0)) + 1) / 2) * loco.idleLift : 0;
-      const lift = ((pmd ? 0 : hop * loco.lift + glide)) / Math.max(0.01, s.scaleY);
-      const delta = lift - ((s.getData('lift') as number | undefined) ?? 0);
-      if (Math.abs(delta) > 0.01 && s.height > 0) {
-        s.setOrigin(s.originX, s.originY + delta / s.height);
-        body.offset.y += delta;
-        s.setData('lift', lift);
-      }
-      // Quieto respira (balanceo suave) y al disparar se echa un poco hacia atrás
-      const idle = !moving && !pmd ? Math.sin(time / 420 + ((s.getData('stepSeed') as number | undefined) ?? 0)) * loco.idleTilt : 0;
+      // Al disparar se echa un poco hacia atrás; al acabar, el jugador lo anima combatFx (no se toca el ángulo)
       const kick = s === this.player ? Math.max(0, 1 - (time - this.lastShotAt) / 130) * -Math.sign(this.aim.x || 1) * 7 : 0;
-      const tilt = (moving ? Math.sin(phase) * (pmd ? 3 : loco.tilt) : idle) + kick;
-      // Suaviza la vuelta a 0 al pararse (al acabar, el jugador lo anima combatFx: no se toca)
-      if (!(this.ended && s === this.player)) s.setAngle(Phaser.Math.Linear(s.angle, tilt, 0.35));
+      applyPose(s, { ...pose, angle: pose.angle + kick }, { angle: !(this.ended && s === this.player), squash: false });
     }
+  }
+
+  /** Ids de hojas ya pedidas en esta escena (para no pedirlas otra vez si no hay). */
+  private pmdAsked = new Map<number, Promise<boolean>>();
+
+  /** Carga la hoja de `id` y, si el sprite sigue queriéndola, se la pone (sin hoja se queda la animación procedural). */
+  private pmdLater(sprite: Sprite, id: number, size: number, circle: boolean) {
+    if (!pmdAvailable(id)) return;
+    let job = this.pmdAsked.get(id);
+    if (!job) {
+      job = loadPmd(this, [id])
+        .catch(() => new Map<number, PmdSheet>())
+        .then((m) => {
+          for (const [k, v] of m) this.pmd.set(k, v);
+          return m.has(id);
+        });
+      this.pmdAsked.set(id, job);
+    }
+    void job.then((ok) => {
+      if (ok && sprite.active && sprite.getData('pmdWant') === id && !sprite.getData('pmd')) this.applyPmd(sprite, id, size, circle);
+    });
+  }
+
+  /** Hoja del jugador: la shiny si juegas con shiny. */
+  private playerPmdId(id = this.formId): number {
+    return this.shiny ? pmdShiny(id) : id;
+  }
+
+  /** Hoja de un enemigo: la shiny si ha salido shiny. */
+  private foePmdId(e: Sprite, id: number): number {
+    return e.getData('shiny') ? pmdShiny(id) : id;
   }
 
   /** Animación de caminar (o reposo si está quieto) en la fila de la dirección a la que mira. */
@@ -2546,6 +2565,8 @@ export class GameScene extends Phaser.Scene {
     const mx = tx - s.x;
     const my = ty - s.y;
     s.setPosition(s.x + mx * f, s.y + my * f + Math.sin(time / 180) * 0.6);
+    // Anda (o vuela, nada…) mientras te sigue: nunca se desliza
+    dressLoose(s, [a.type], this.allyId, time, Math.hypot(mx, my) > 6);
     // Mira hacia donde camina; parado, hacia el jugador
     if (s.getData('pmd')) this.face(s, Math.hypot(mx, my) > 6 ? { x: mx, y: my } : { x: this.player.x - s.x, y: this.player.y - s.y });
     else s.setFlipX(this.player.x > s.x);
@@ -2804,7 +2825,7 @@ export class GameScene extends Phaser.Scene {
     const fw = this.player.width;
     const pr = Math.min(fw * 0.3, PLAYER_BODY_R / this.player.scaleX);
     this.player.setCircle(pr, fw / 2 - pr, fw / 2 - pr);
-    if (!this.shiny) this.applyPmd(this.player, this.formId, 84, true);
+    this.applyPmd(this.player, this.playerPmdId(), 84, true);
     // T74: al continuar con la megaevolución a medias, vuelve a ponerse la forma
     // T75: al continuar con Dinamax/Gigamax, el tamaño o la forma Gigamax; la mega, su sprite; el Tera no cambia de sprite
     const pf = this.powerForm.active;
@@ -3125,7 +3146,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.load.once(Phaser.Loader.Events.COMPLETE, () => resolve());
         this.load.start();
       });
-      if (!this.shiny) for (const [id, sheet] of await loadPmd(this, [next])) this.pmd.set(id, sheet);
+      for (const [id, sheet] of await loadPmd(this, [this.playerPmdId(next)])) this.pmd.set(id, sheet);
       if (this.ended || !this.player?.active || !this.textures.exists(`${key}-front`)) return;
       for (const side of ['front', 'back']) {
         if (this.textures.exists(`${key}-${side}`)) this.textures.get(`${key}-${side}`).setFilter(Phaser.Textures.FilterMode.NEAREST);
@@ -3153,7 +3174,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           this.playerKey = key;
           this.player.setData('sheet', key).setData('facing', undefined);
           // Con SpriteCollab si la nueva forma lo tiene; si no, vuelve al de PokeAPI
-          if (this.shiny || !this.applyPmd(this.player, next, 84, true)) {
+          if (!this.applyPmd(this.player, this.playerPmdId(next), 84, true)) {
             this.player.anims.stop();
             this.player.setScale(1);
           }
@@ -3234,6 +3255,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private async applyMegaLook() {
     const form = megaFormName(this.formId);
     if (!form) return;
+    // Primero la hoja animada de la mega en SpriteCollab (si la tiene); si no, el dibujo de PokeAPI con la
+    // animación procedural de dressSprites
+    const mid = pmdMega(this.formId, this.shiny);
+    if (mid !== null) {
+      for (const [k, v] of await loadPmd(this, [mid]).catch(() => new Map<number, PmdSheet>())) this.pmd.set(k, v);
+      if (this.pmd.has(mid) && powerFormActive(this.powerForm) && this.player?.active && !this.ended && this.applyPmd(this.player, mid, 96, true)) {
+        this.megaKey = `pmd-${mid}`;
+        return;
+      }
+    }
     const sprites = await fetchFormSprites(form);
     if (!sprites || !powerFormActive(this.powerForm) || !this.player?.active) return;
     const key = `mega-${form}${this.shiny ? '-s' : ''}`;
@@ -3262,7 +3293,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private setStaticLook(sheet: string, size: number) {
     const p = this.player;
     p.anims.stop();
-    p.setData('pmd', undefined).setData('sheet', sheet).setData('size', size).setData('facing', undefined);
+    resetLift(p);
+    p.setData('pmd', undefined).setData('pmdWant', undefined).setData('sheet', sheet).setData('size', size).setData('facing', undefined);
     p.setTexture(`${sheet}-front`).setFlipX(false).setScale(1).setDisplaySize(size, size);
     const fw = p.width;
     const pr = Math.min(fw * 0.3, PLAYER_BODY_R / p.scaleX);
@@ -3277,7 +3309,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.hpMark = this.hp;
     if (this.player?.active && this.megaKey) {
       this.setStaticLook(this.playerKey, 84);
-      if (!this.shiny) this.applyPmd(this.player, this.formId, 84, true);
+      this.applyPmd(this.player, this.playerPmdId(), 84, true);
       this.face(this.player, this.aim);
     }
     this.megaKey = null;
@@ -5283,7 +5315,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const e = this.spawnEnemy(kind, ai?.behavior ?? kind.behavior, p);
     const size = Math.round(60 * MULTIPLY_SIZE);
     e.setDisplaySize(size, size).setData('size', size);
-    if (!e.getData('shiny')) this.applyPmd(e, Number(kind.key.replace('foe-', '')), size);
+    this.applyPmd(e, this.foePmdId(e, Number(kind.key.replace('foe-', ''))), size);
     const hp = Math.max(1, Math.round(((parent.getData('maxHp') as number | undefined) ?? 20) * MULTIPLY_HP));
     e.setData('hp', hp).setData('maxHp', hp);
     if (this.fxBudget.take(this.time.now)) this.popup(p.x, p.y - 30, '¡Se multiplica!', 0x9ccc65);
@@ -5854,7 +5886,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const sheet = shiny ? `${kind.key}-s` : kind.key;
     const e = this.enemies.create(x, y, `${sheet}-front`) as Sprite;
     e.setDisplaySize(60, 60).setData('sheet', sheet).setData('size', 60).setData('shiny', shiny);
-    if (!shiny) this.applyPmd(e, Number(kind.key.replace('foe-', '')), 60);
+    this.applyPmd(e, this.foePmdId(e, Number(kind.key.replace('foe-', ''))), 60);
     const st = shapeEnemyStats(enemyStats(kind.bst, behavior, this.difficulty), kind.stats);
     const hp = Math.round(st.hp * (shiny ? SHINY_ENEMY.hpMul : 1) * (helper ? HELPER_HP_MUL : 1));
     e.setData('helper', !!helper);
@@ -5902,7 +5934,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const id = Number(kind.key.replace('foe-', ''));
     const size = 112;
     e.setDisplaySize(size, size).setData('size', size).setData('sheet', kind.key);
-    if (!e.getData('shiny')) this.applyPmd(e, id, size);
+    this.applyPmd(e, this.foePmdId(e, id), size);
     const hp = Math.round((e.getData('maxHp') as number) * (6 + this.level() * 0.6));
     e.setData('hp', hp).setData('maxHp', hp).setData('dmg', Math.round((e.getData('dmg') as number) * 1.3)).setData('miniboss', true);
     if (this.mode === 'tower') {
@@ -6651,7 +6683,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.load.start();
     });
     // Con su hoja de animación de andar/volar, como el jefe de verdad (antes salía un dibujo fijo que se deslizaba)
-    if (!this.shiny) for (const [pid, sheet] of await loadPmd(this, [boss.id]).catch(() => new Map<number, PmdSheet>())) this.pmd.set(pid, sheet);
+    for (const [pid, sheet] of await loadPmd(this, [boss.id]).catch(() => new Map<number, PmdSheet>())) this.pmd.set(pid, sheet);
     this.finale = undefined;
     this.bossId = boss.id;
     this.bossKey = key;
