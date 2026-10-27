@@ -145,6 +145,7 @@ import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_GLOW, FALL_HAZ
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve } from '../data/megaBoss';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
 import { fallConceptFx, sacredFlame } from '../ui/art/fallArt';
+import { pixRing } from '../ui/art/pixelFx';
 import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
 import { dynamaxBurst, teraBurst, zMoveFx } from '../ui/art/formsFx';
 import { drawMegaStoneHud, drawPowerMeterFill, playerFormAura, playerMegaFx } from '../ui/art/megaFx';
@@ -311,6 +312,8 @@ import { DARK_RADIUS, darkEdge, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, rule
 import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data/secondChance';
 import type { SecondChanceChoice } from './SecondChanceScene';
 import { accountInfo } from '../net/cloud';
+
+const FALL_LOOK_MS = 500; // pausa tras aterrizar en la arena nueva (nadie se mueve ni recibe daño)
 
 // Cada sala ocupa una pantalla del mundo; ROOM es su interior relativo a la celda
 const VIEW = { w: 960, h: 640 };
@@ -6224,6 +6227,42 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     this.flow = undefined;
     if (rocks) this.unstickAll();
+    this.arenaBeat(i, phase);
+  }
+
+  /**
+   * Fase 1 aplicada: pausa de ARENA_BEAT_MS (0,5 s) en la que nadie se mueve ni recibe daño (jugador y jefe) para que se
+   * aprecie la sala nueva; con una onda de polvo que recorre la sala. Con pocos efectos solo la pausa y un anillo.
+   */
+  private arenaBeat(i: { x0: number; y0: number }, phase: ArenaPhase) {
+    const ARENA_BEAT_MS = 500;
+    const now = this.time.now;
+    this.invulnUntil = Math.max(this.invulnUntil, now + ARENA_BEAT_MS + 150);
+    this.playerKnockUntil = Math.max(this.playerKnockUntil, now + ARENA_BEAT_MS);
+    this.player.setVelocity(0, 0);
+    this.clearArenaShots();
+    this.arenaFallAt = this.time.now;
+    for (const c of this.enemies.getChildren()) {
+      const e = c as Sprite;
+      const eai = e.getData('ai') as EnemyAI | undefined;
+      if (!e.active || !eai?.boss) continue;
+      e.setData('fallHp', e.getData('hp'));
+      eai.knockUntil = Math.max(eai.knockUntil ?? 0, this.time.now + ARENA_BEAT_MS);
+      eai.nextAttack = Math.max(eai.nextAttack ?? 0, this.time.now + ARENA_BEAT_MS + 300);
+      e.setVelocity(0, 0);
+    }
+    this.cameras.main.flash(160, 255, 235, 200);
+    for (const c of phase.cells) {
+      const cx = i.x0 + c.x * TILE + TILE / 2;
+      const cy = i.y0 + c.y * TILE + TILE / 2;
+      this.time.delayedCall(Math.min(300, Math.hypot(cx - this.player.x, cy - this.player.y) * 0.6), () => pixRing(this, cx, cy, TILE * 0.9, c.kind === 'charco' ? 0x7ec8ff : c.kind === 'grieta' ? 0xff8a4a : 0xcdb88c, 340));
+    }
+    pixRing(this, this.player.x, this.player.y + 8, 240, 0xffffff, ARENA_BEAT_MS);
+    this.time.delayedCall(ARENA_BEAT_MS, () => {
+      if (this.arenaDone !== 1) return;
+      this.arenaFallAt = undefined;
+      for (const c of this.enemies.getChildren()) (c as Sprite).setData('fallHp', undefined);
+    });
   }
 
   /** Nada se queda dentro de un obstáculo nuevo (el jugador ya está fuera por arenaPhase; por si se movió). */
@@ -6252,19 +6291,19 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private startFall(room: Room, b: Sprite, seed: number, player: [number, number], boss: [number, number], time: number) {
     this.arenaDone = 2;
     this.arenaFallAt = time;
-    this.bossBusyUntil = time + FALL_TOTAL_MS;
+    this.bossBusyUntil = time + FALL_TOTAL_MS + FALL_LOOK_MS;
     const now = this.time.now;
     for (const c of this.enemies.getChildren()) {
       const e = c as Sprite;
       const eai = e.getData('ai') as EnemyAI | undefined;
       if (!e.active || !eai?.boss) continue;
       e.setData('fallHp', e.getData('hp'));
-      eai.knockUntil = Math.max(eai.knockUntil ?? 0, time + FALL_TOTAL_MS);
-      eai.nextAttack = Math.max(eai.nextAttack ?? 0, time + FALL_TOTAL_MS + 900);
+      eai.knockUntil = Math.max(eai.knockUntil ?? 0, time + FALL_TOTAL_MS + FALL_LOOK_MS);
+      eai.nextAttack = Math.max(eai.nextAttack ?? 0, time + FALL_TOTAL_MS + FALL_LOOK_MS + 900);
       e.setVelocity(0, 0);
     }
-    this.invulnUntil = Math.max(this.invulnUntil, now + FALL_TOTAL_MS + 400);
-    this.playerKnockUntil = Math.max(this.playerKnockUntil, now + FALL_SHAKE_MS + FALL_FADE_MS + FALL_HOLD_MS);
+    this.invulnUntil = Math.max(this.invulnUntil, now + FALL_TOTAL_MS + FALL_LOOK_MS + 400);
+    this.playerKnockUntil = Math.max(this.playerKnockUntil, now + FALL_TOTAL_MS + FALL_LOOK_MS);
     this.player.setVelocity(0, 0);
     this.clearArenaShots();
     const fall = arenaFall({ bossTypes: (b.getData('btypes') as string[] | undefined) ?? this.bossTypes, speciesId: b.getData('speciesId') as number | undefined, seed, player, boss });
@@ -6274,7 +6313,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Derrumbe épico: el temblor crece, la cámara se acerca, salen grietas desde el jefe y las losas caen (arenaQuake)
     cam.shake(FALL_SHAKE_MS + FALL_FADE_MS, 0.014);
     if (!lowFx()) {
-      this.tweens.add({ targets: cam, zoom: 1.06, duration: FALL_SHAKE_MS, ease: 'Cubic.easeIn' });
       this.time.delayedCall(FALL_SHAKE_MS * 0.55, () => cam.flash(140, 255, 220, 160));
       this.time.delayedCall(FALL_SHAKE_MS * 0.85, () => cam.flash(140, 255, 220, 160));
     }
@@ -6299,13 +6337,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.time.delayedCall(FALL_SHAKE_MS, () => cam.fadeOut(FALL_FADE_MS, 0, 0, 0));
     this.time.delayedCall(FALL_SHAKE_MS + FALL_FADE_MS, () => this.swapArena(room, fall));
     this.time.delayedCall(FALL_SHAKE_MS + FALL_FADE_MS + FALL_HOLD_MS, () => {
-      cam.setZoom(1);
       cam.fadeIn(FALL_FADE_MS, 0, 0, 0);
       cam.shake(320, 0.018);
       sfx('boom');
       arenaLanding(this, this.player.x, this.player.y + 10, FALL_GLOW[fall.theme]);
     });
-    this.time.delayedCall(FALL_TOTAL_MS, () => {
+    this.time.delayedCall(FALL_TOTAL_MS + FALL_LOOK_MS, () => {
       this.arenaFallAt = undefined;
       for (const c of this.enemies.getChildren()) (c as Sprite).setData('fallHp', undefined);
     });

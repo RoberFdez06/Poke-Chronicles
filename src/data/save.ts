@@ -107,7 +107,7 @@ export const COINS_KEY = 'pokeisaac.coins';
  * T32: antes 15 y 60 (una partida completa daba ~2100 tickets). Con el gacha a 10 por tirada (19/10): llegar al
  * piso 3 da ~33 (3 tiradas), la partida completa ~70 (7) y con el reto final ~136 (ver tests/balance.test.ts).
  */
-export const ROOM_TICKETS = 2;
+export const ROOM_TICKETS = 3;
 export const BOSS_TICKETS = 2;
 
 // --- Caramelos: la moneda de las mejoras de estadísticas (los tickets quedan solo para el gacha) ---
