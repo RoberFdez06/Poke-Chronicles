@@ -17,6 +17,7 @@ import { NavInput, PadButtons, UI } from '../ui/nav';
 import { addBackButton } from '../ui/cards';
 import { drawBox } from '../ui/theme';
 import { controlModesFor, currentInput } from '../ui/inputMode';
+import { GlyphText } from '../ui/art/keyGlyphs';
 
 export interface ControlsData {
   /** Escena que la abrió (se pausa debajo y se reanuda al cerrar). */
@@ -37,13 +38,13 @@ export class ControlsScene extends Phaser.Scene {
   private nav!: NavInput;
   private padButtons!: PadButtons;
   private tabs: { box: Phaser.GameObjects.Graphics; text: Phaser.GameObjects.Text }[] = [];
-  private rows: Phaser.GameObjects.Text[] = [];
+  private rows: GlyphText[] = [];
   private labels: Phaser.GameObjects.Text[] = [];
   /** Qué controles se enseñan: los de la partida o los de la defensa de torres (que se abre en ella si vienes de ahí). */
   private view: 'game' | 'td' = 'game';
   private viewBtn!: Phaser.GameObjects.Text;
   private viewBox!: Phaser.GameObjects.Graphics;
-  private help!: Phaser.GameObjects.Text;
+  private help!: GlyphText;
   private helpFor = '';
   private viewKey!: Phaser.Input.Keyboard.Key;
   private closing = false;
@@ -119,10 +120,11 @@ export class ControlsScene extends Phaser.Scene {
       // T53/T65/T74/T77: 27 px por fila para que quepan parry, Poké Ball, megaevolución y ataque cargado sin pisar la ayuda de abajo
       const y = 182 + k * 27;
       this.labels.push(this.add.text(100, y, CONTROL_ACTION_LABEL[a], { fontFamily: UI.FONT, fontSize: '19px', fontStyle: 'bold', color: '#2b3a67' }));
-      this.rows.push(this.add.text(400, y, '', { fontFamily: UI.FONT, fontSize: '18px', color: '#4a5578', wordWrap: { width: 470 } }).setData('a', a));
+      // Teclas, botones y clics dibujados en pixel art (T: glifos), con el dispositivo de la pestaña
+      this.rows.push(new GlyphText(this, 400, y + 11, '', { size: 17, color: '#4a5578', bold: false, maxWidth: 470 }));
     });
     this.data.set('sections', sections);
-    this.help = this.add.text(480, 576, '', { fontFamily: UI.FONT, fontSize: '15px', color: '#4a5578' }).setOrigin(0.5);
+    this.help = new GlyphText(this, 480, 576, '', { size: 15, color: '#4a5578', bold: false, originX: 0.5, maxWidth: 820 });
     this.helpFor = '';
     this.paintHelp();
 
@@ -155,11 +157,11 @@ export class ControlsScene extends Phaser.Scene {
       if (this.view === 'td') {
         const a = TD_CONTROL_ACTIONS[i];
         this.labels[i].setText(a ? TD_CONTROL_ACTION_LABEL[a] : '').setVisible(!!a);
-        r.setText(a ? TD_CONTROLS[mode][a] : '').setVisible(!!a);
+        r.setText(a ? TD_CONTROLS[mode][a] : '', mode).setVisible(!!a);
       } else {
         const a = CONTROL_ACTIONS[i];
         this.labels[i].setText(CONTROL_ACTION_LABEL[a]).setVisible(true);
-        r.setText(sections[mode][a]).setVisible(true);
+        r.setText(sections[mode][a], mode).setVisible(true);
       }
     });
   }
@@ -173,11 +175,11 @@ export class ControlsScene extends Phaser.Scene {
     this.helpFor = key;
     const parts =
       dev === 'gamepad'
-        ? [many ? 'LB/RB o cruceta: sección' : '', 'Y: Partida ⇄ Defensa de torres', 'A o B: cerrar']
+        ? [many ? 'LB/RB o Cruceta: sección' : '', 'Y: Partida ⇄ Defensa de torres', 'A o B: cerrar']
         : dev === 'touch'
-          ? [many ? 'Toca una pestaña: sección' : '', 'Toca el botón de arriba: Partida ⇄ Defensa de torres', '"Volver": cerrar']
+          ? [many ? 'Toca una pestaña: sección' : '', 'Toca el botón de arriba: Partida ⇄ Defensa de torres', 'Toca "Volver": cerrar']
           : [many ? '←/→, Tab o clic en la pestaña: sección' : '', 'V o clic arriba: Partida ⇄ Defensa de torres', 'Esc, Enter o "Volver": cerrar'];
-    this.help.setText(parts.filter(Boolean).join(' · '));
+    this.help.setText(parts.filter(Boolean).join(' · '), dev);
     this.paintView();
   }
 

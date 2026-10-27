@@ -8,6 +8,12 @@ const listeners = new Set<(d: InputDevice) => void>();
 
 export const currentInput = (): InputDevice => current;
 
+/** Avisa cuando cambia el dispositivo. Devuelve la función para dejar de escuchar. */
+export function onInputChange(fn: (d: InputDevice) => void): () => void {
+  listeners.add(fn);
+  return () => void listeners.delete(fn);
+}
+
 export function setInput(d: InputDevice) {
   if (d === current) return;
   current = d;

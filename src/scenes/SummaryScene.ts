@@ -1,5 +1,6 @@
 import { CANDY_PER_TICKET } from '../data/save';
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { fetchPokemonCard } from '../data/pokeapi';
 import { addIcon, bakeIcons, iconKey, type IconName } from '../ui/art/icons';
@@ -139,8 +140,7 @@ export class SummaryScene extends Phaser.Scene {
     // Cinco opciones (121-343) y la nota debajo, con aire hasta las rutas (que crecen hacia arriba desde 444)
     this.menu = new MenuList(this, 780, 140, ['Otra partida', 'Guardar imagen', 'Copiar código', 'Historial', 'Menú'], (i) => this.pick(i), { w: 280, h: 38, gap: 8, fontSize: 20 });
     this.saveNote = this.add.text(780, 362, '', { fontFamily: FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0.5).setAlpha(0.85);
-    this.add
-      .text(480, 612, 'Flechas, ratón o mando para elegir · Enter, clic o A · Esc o B: menú', { fontFamily: FONT, fontSize: '15px', color: '#ffffff' })
+    addHelpBar(this, 480, 612, 'Flechas o ratón para elegir · Enter o clic · Esc: menú', { fontFamily: FONT, fontSize: '15px', color: '#ffffff' })
       .setOrigin(0.5).setAlpha(0.6);
   }
 

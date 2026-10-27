@@ -1,5 +1,6 @@
 import { clearCheatRun } from '../data/admin';
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { fitDesign, COVER_H, COVER_W, DCX, DCY } from '../ui/layout';
 import { fetchPokemonCard } from '../data/pokeapi';
 import { loadRecords, loadUnlocked } from '../data/save';
@@ -102,11 +103,8 @@ export class MenuScene extends Phaser.Scene {
         fontFamily: FONT, fontSize: '14px', color: '#f8f8f8',
       })
       .setOrigin(0.5).setDepth(21);
-    this.add
-      .text(480, 628, 'Flechas o W S, o ratón para moverte · Enter, espacio o clic para elegir', {
-        fontFamily: FONT, fontSize: '12px', color: '#a8b0c8',
-      })
-      .setOrigin(0.5).setDepth(21);
+    addHelpBar(this, 480, 628, 'Flechas o W S, o ratón para moverte · Enter, Espacio o clic para elegir', { fontSize: 12, color: '#a8b0c8' }, 'Toca una opción para elegirla')
+      .setDepth(21);
 
     // Aviso corto (por ejemplo, si el gacha no está)
     const tg = this.add.graphics();

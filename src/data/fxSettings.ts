@@ -6,9 +6,17 @@ export interface FxSettings {
   low: boolean;
   /** Contador de FPS en una esquina durante la partida. */
   showFps: boolean;
+  /** Textos en pantalla (avisos flotantes sobre el juego): completos, reducidos (iconos + cifras) o mínimos. */
+  texts: TextsLevel;
 }
 
-export const DEFAULT_FX: Readonly<FxSettings> = { low: false, showFps: false };
+export type TextsLevel = 'full' | 'reduced' | 'minimal';
+export const TEXTS_LEVELS: readonly TextsLevel[] = ['full', 'reduced', 'minimal'];
+export const TEXTS_LABEL: Record<TextsLevel, string> = { full: 'Completos', reduced: 'Reducidos', minimal: 'Mínimos' };
+/** Siguiente nivel (para el botón de Ajustes). */
+export const nextTexts = (t: TextsLevel, d = 1): TextsLevel => TEXTS_LEVELS[(TEXTS_LEVELS.indexOf(t) + d + 3) % 3];
+
+export const DEFAULT_FX: Readonly<FxSettings> = { low: false, showFps: false, texts: 'reduced' };
 
 export function parseFx(raw: string | null): FxSettings {
   const out: FxSettings = { ...DEFAULT_FX };
@@ -18,6 +26,7 @@ export function parseFx(raw: string | null): FxSettings {
     if (d && typeof d === 'object') {
       if (typeof d.low === 'boolean') out.low = d.low;
       if (typeof d.showFps === 'boolean') out.showFps = d.showFps;
+      if (typeof d.texts === 'string' && (TEXTS_LEVELS as readonly string[]).includes(d.texts)) out.texts = d.texts;
     }
   } catch {
     // corrupto: lo de por defecto

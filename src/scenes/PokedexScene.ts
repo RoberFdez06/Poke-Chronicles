@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { fitDesign } from '../ui/layout';
 import { classifyRarity, RARITY_LABEL } from '../data/gacha';
 import { countByRegion, filterCollection, type CollectionEntry } from '../data/regions';
@@ -133,8 +134,7 @@ export class PokedexScene extends Phaser.Scene {
       t.on('pointerout', () => t.setColor('#ffffff'));
       t.on('pointerdown', () => !this.filters?.searching && this.turnPage(d));
     }
-    this.add
-      .text(480, 620, (this.pickFor ? 'Flechas: mover · Enter/A/clic: elegir · ' : 'Flechas: mover · Enter/A/clic: ficha · ') + 'Q E / LB RB: región · R / X: rareza · T / LT RT: tipo · F / Y: buscar · Esc/B: volver', {
+    addHelpBar(this, 480, 620, (this.pickFor ? 'Flechas: mover · Enter o clic: elegir · ' : 'Flechas: mover · Enter o clic: ficha · ') + 'Q E: región · R: rareza · T: tipo · F: buscar · Esc: volver', {
         fontFamily: FONT,
         fontSize: '13px',
         color: '#ffffff',

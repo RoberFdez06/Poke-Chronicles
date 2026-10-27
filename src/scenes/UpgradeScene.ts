@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { fitDesign } from '../ui/layout';
 import { fetchPokemonCard } from '../data/pokeapi';
 import { buyUpgrade, loadCandies, loadUnlocked, loadUpgrades } from '../data/save';
@@ -81,8 +82,7 @@ export class UpgradeScene extends Phaser.Scene {
     addIcon(this, 746, 44, 'candy', 2);
     this.ticketsText = this.add.text(924, 44, '', { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(1, 0.5);
     this.message = this.add.text(ROW.x, 582, '', { fontFamily: FONT, fontSize: '18px', color: '#ffffff', align: 'center' }).setOrigin(0.5);
-    this.add
-      .text(480, 612, 'Q/E, LB/RB o ◀ ▶: Pokémon · F, Y o "Buscar": filtros · Flechas o cruceta: nodo · Enter, A o clic: comprar · Esc o B: volver', {
+    addHelpBar(this, 480, 612, 'Q/E o ◀ ▶: Pokémon · F o "Buscar": filtros · Flechas: nodo · Enter o clic: comprar · Esc: volver', {
         fontFamily: FONT,
         fontSize: '14px',
         color: '#ffffff',

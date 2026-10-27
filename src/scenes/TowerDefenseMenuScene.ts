@@ -2,6 +2,7 @@
 // colección. Teclado, ratón y mando por separado: flechas/cruceta para moverse, Enter/A para elegir, Esc/B para
 // volver; en el equipo, Q/E o LB/RB cambian de página.
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { fitDesign } from '../ui/layout';
 import { addBackButton } from '../ui/cards';
 import { NavInput, PadButtons, UI } from '../ui/nav';
@@ -175,7 +176,10 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
   }
 
   private hint(text: string) {
-    this.layer.add(this.add.text(480, 622, text, { fontFamily: UI.FONT, fontSize: '14px', color: '#ffffff' }).setOrigin(0.5).setAlpha(0.85).setStroke('#18202c', 3));
+    // Teclas dibujadas en pixel art; con mando se esconde (la barra del mando ya lo dice)
+    const pc = text.replace(/ o cruceta/g, '').replace(/Flechas\/cruceta/g, 'Flechas').replace(/, clic o A/g, ' o clic').replace(/Enter\/A/g, 'Enter')
+      .replace(/Esc, B o /g, 'Esc o ').replace(/Q\/E, LB\/RB/g, 'Q/E');
+    this.layer.add(addHelpBar(this, 480, 622, pc, { fontSize: 14, color: '#ffffff' }).setAlpha(0.85));
   }
 
   // --- Mapas ---

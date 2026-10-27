@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { openControls } from './ControlsScene';
 import type { MovePower, PlayerStats } from '../data/items';
@@ -142,8 +143,7 @@ export class PauseScene extends Phaser.Scene {
       // Seis opciones (siete con la Teragema) centradas a la altura del panel de la izquierda (100-570)
       w: 290, h: d.onTera ? 46 : 50, gap: d.onTera ? 8 : 14,
     });
-    this.add
-      .text(480, 612, 'Esc, P, Start o B para reanudar · flechas, ratón o mando para elegir', {
+    addHelpBar(this, 480, 612, 'Esc o P para reanudar · Flechas o ratón para elegir', {
         fontFamily: UI.FONT, fontSize: '15px', color: '#ffffff',
       })
       .setOrigin(0.5).setAlpha(0.6);

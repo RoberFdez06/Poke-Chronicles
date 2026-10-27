@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { fitDesign } from '../ui/layout';
 import { ACTION_LABEL, ACTIONS, bindKey, DEFAULT_KEYS, keyLabel, type Action, type KeyMap } from '../data/keybinds';
 import { loadKeys, saveKeys } from '../data/save';
@@ -59,8 +60,7 @@ export class KeysScene extends Phaser.Scene {
     this.addRow(BACK, 710, ROW.top + COL_ROWS * (ROW.h + ROW.gap), 200, 'Volver');
 
     this.message = this.add.text(480, 580, '', { fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: '#ffffff', align: 'center' }).setOrigin(0.5);
-    this.add
-      .text(480, 612, 'Elige con flechas, ratón o mando · Enter, clic o A y pulsa la tecla nueva · Esc o B para volver', {
+    addHelpBar(this, 480, 612, 'Elige con Flechas o ratón · Enter o clic y pulsa la tecla nueva · Esc para volver', {
         fontFamily: FONT, fontSize: '14px', color: '#ffffff',
       })
       .setOrigin(0.5).setAlpha(0.7);

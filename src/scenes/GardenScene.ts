@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { addBerryIcon, addGardenPlot } from '../ui/art/berryArt';
 import { fitDesign } from '../ui/layout';
 import { loadGarden, saveGarden } from '../data/save';
@@ -49,7 +50,7 @@ export class GardenScene extends Phaser.Scene {
     this.seedSel = Math.max(0, GARDEN_BERRY_IDS.findIndex((b) => this.garden.seeds[b] > 0));
     this.message = this.add.text(480, 590, '', { fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: '#ffffff' })
       .setOrigin(0.5).setStroke('#2b3a67', 6).setDepth(5);
-    this.add.text(480, 622, '←/→ parcela · ↑/↓ semilla · Enter o A planta/recoge · clic también · Esc, B o "Volver" para salir', {
+    addHelpBar(this, 480, 622, '←/→ parcela · ↑/↓ semilla · Enter planta/recoge · clic también · Esc o "Volver" para salir', {
       fontFamily: FONT, fontSize: '13px', color: '#ffffff',
     }).setOrigin(0.5).setAlpha(0.7);
     this.draw();

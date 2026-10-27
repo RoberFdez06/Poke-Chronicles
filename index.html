@@ -8,11 +8,32 @@
       html, body { margin: 0; height: 100%; background: #172036; overflow: hidden; overscroll-behavior: none; }
       /* Táctil (T35): sin zoom, scroll ni selección al tocar */
       html, body, #game { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-      #game { width: 100vw; height: 100vh; }
+      /* Móvil: el juego respeta el notch y las barras del sistema (zonas seguras) */
+      #game { width: 100vw; height: 100vh; height: 100dvh; box-sizing: border-box;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+      /* Móvil en vertical: el juego es apaisado; se pide girar el móvil (dibujo pixel art, sin emojis) */
+      #rotate { display: none; position: fixed; inset: 0; z-index: 10; background: #172036; color: #f8f8f0;
+        font: bold 20px "Pixelify Sans", system-ui, sans-serif; text-align: center; flex-direction: column;
+        align-items: center; justify-content: center; gap: 24px; padding: 24px; box-sizing: border-box; }
+      #rotate svg { width: 120px; height: 120px; image-rendering: pixelated; shape-rendering: crispEdges; }
+      @media (orientation: portrait) and (pointer: coarse) and (max-width: 900px) {
+        #rotate { display: flex; }
+      }
     </style>
   </head>
   <body>
     <div id="game"></div>
+    <div id="rotate" aria-live="polite">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="7" y="3" width="10" height="18" fill="#101828"/><rect x="8" y="4" width="8" height="15" fill="#5aa0e8"/>
+        <rect x="8" y="4" width="8" height="2" fill="#9ad0ff"/><rect x="11" y="19" width="2" height="1" fill="#c8d2ea"/>
+        <rect x="19" y="6" width="1" height="8" fill="#ffd34d"/><rect x="18" y="13" width="3" height="1" fill="#ffd34d"/>
+        <rect x="18" y="5" width="1" height="1" fill="#ffd34d"/><rect x="17" y="4" width="1" height="1" fill="#ffd34d"/>
+        <rect x="4" y="10" width="1" height="8" fill="#ffd34d"/><rect x="3" y="10" width="3" height="1" fill="#ffd34d"/>
+        <rect x="5" y="18" width="1" height="1" fill="#ffd34d"/><rect x="6" y="19" width="1" height="1" fill="#ffd34d"/>
+      </svg>
+      <div>Gira el móvil para jugar en horizontal</div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

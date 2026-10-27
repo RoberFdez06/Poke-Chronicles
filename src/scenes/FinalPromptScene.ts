@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { MenuList, NavInput } from '../ui/nav';
 import { drawBox, FONT, HEX } from '../ui/theme';
@@ -46,7 +47,7 @@ export class FinalPromptScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 0);
     this.menu = new MenuList(this, 480, 345, ['Aceptar el reto', 'Rendirse y ganar', 'Todavía no'], (i) => this.pick(i), { w: 320, h: 48, gap: 10, fontSize: 21 });
-    this.add.text(480, 538, 'Flechas, ratón o mando · Enter, clic o A · Esc o B: todavía no', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0.5);
+    addHelpBar(this, 480, 538, 'Flechas o ratón · Enter o clic · Esc: todavía no', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0.5);
     sfx('select');
   }
 

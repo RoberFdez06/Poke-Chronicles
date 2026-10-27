@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { MenuList, NavInput } from '../ui/nav';
 import { drawBox, FONT, HEX } from '../ui/theme';
@@ -70,7 +71,7 @@ export class SecondChanceScene extends Phaser.Scene {
     this.message = this.add.text(480, 500, this.args.guest ? 'Como invitado puedes usarla, pero no se guarda nada.' : '', {
       fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: HEX.textSoft,
     }).setOrigin(0.5);
-    this.add.text(480, 536, 'Flechas, ratón o mando · Enter, clic o A · Esc o B: terminar', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0.5);
+    addHelpBar(this, 480, 536, 'Flechas o ratón · Enter o clic · Esc: terminar', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0.5);
     sfx('select');
     this.readyAt = this.time.now + SECOND_CHANCE_INPUT_DELAY_MS;
   }

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { fitDesign } from '../ui/layout';
 import { emptyRecords, MODES, MODE_LABEL, modeDesc, recordText, Records, type GameMode } from '../data/modes';
 import { loadCandies, loadDaily, loadRecords } from '../data/save';
@@ -122,8 +123,7 @@ export class ModeScene extends Phaser.Scene {
     this.diffDesc = this.add.text(470, 0, '', { fontFamily: UI.FONT, fontSize: '14px', color: '#ffffff', wordWrap: { width: 460 } }).setOrigin(0, 0.5);
     this.diffRow = this.add.container(0, 562, [lbl, arrow(285, '◀', -1), this.diffText, arrow(440, '▶', 1), this.diffDesc]);
 
-    this.add
-      .text(480, 604, 'Flechas o ratón: elegir · Enter o clic: jugar · Q/E o ◀ ▶: dificultad' + (this.hasRuns ? ' · C: continuar' : '') + ' · Esc: menú', {
+    addHelpBar(this, 480, 604, 'Flechas o ratón: elegir · Enter o clic: jugar · Q/E o ◀ ▶: dificultad' + (this.hasRuns ? ' · C: continuar' : '') + ' · Esc: menú', {
         fontFamily: UI.FONT, fontSize: '14px', color: '#ffffff',
       })
       .setOrigin(0.5).setAlpha(0.85);

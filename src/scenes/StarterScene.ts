@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { startWithStarter } from './runLaunch';
 import { fitDesign } from '../ui/layout';
 import { fetchPokemonCard, PokemonCard } from '../data/pokeapi';
@@ -134,11 +135,7 @@ export class StarterScene extends Phaser.Scene {
     this.pageLabel = this.add.text(480, 590, '', { ...style, fontSize: '16px' }).setOrigin(0.5);
     this.buildArrow('◀', 50, () => this.turnPage(-1));
     this.buildArrow('▶', 910, () => this.turnPage(1));
-    this.add
-      .text(
-        480,
-        618,
-        'Flechas: elegir · Enter/A: jugar · Q E / LB RB: región · R / X: rareza · F / Y: buscar · Esc/B: volver',
+    addHelpBar(this, 480, 618, 'Flechas: elegir · Enter: jugar · Q E: región · R: rareza · F: buscar · Esc: volver',
         { ...style, fontSize: '14px' },
       )
       .setOrigin(0.5)

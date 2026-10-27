@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { touchOnlyDevice } from '../data/controls';
 import { addMenuBackdrop } from '../ui/art/landscape';
 import { addLogo, addSparkles } from '../ui/art/logo';
 import { addIcon } from '../ui/art/icons';
@@ -66,7 +67,7 @@ export class TitleScene extends Phaser.Scene {
     const icon = addIcon(this, DW / 2, DH * 0.42, 'pokeball', Math.round(5 * (DH / 640))).setDepth(21);
     this.tweens.add({ targets: icon, angle: { from: -8, to: 8 }, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     const t = this.add
-      .text(DW / 2, DH * 0.62, 'Pulsa una tecla, haz clic o pulsa un botón del mando', { fontFamily: FONT, fontSize: `${Math.round(22 * (DH / 640))}px`, color: '#f8f8f0' })
+      .text(DW / 2, DH * 0.62, touchOnlyDevice() ? 'Toca la pantalla para empezar' : 'Pulsa una tecla, haz clic o pulsa un botón del mando', { fontFamily: FONT, fontSize: `${Math.round(22 * (DH / 640))}px`, color: '#f8f8f0' })
       .setOrigin(0.5).setDepth(21);
     this.tweens.add({ targets: t, alpha: { from: 1, to: 0.25 }, duration: 700, yoyo: true, repeat: -1 });
     let done = false;

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { addHelpBar } from '../ui/helpBar';
 import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { MenuList, NavInput } from '../ui/nav';
 import { FONT, HEX } from '../ui/theme';
@@ -58,8 +59,7 @@ export class ItemChoiceScene extends Phaser.Scene {
     const many = labels.length > 8;
     this.menu = new MenuList(this, 480, 160, labels, (i) => this.pick(i), { w: 560, h: many ? 22 : 40, gap: many ? 3 : 8, fontSize: many ? 14 : 18 });
     this.args.disabled?.forEach((off, i) => off && this.menu.setDimmed(i, true));
-    this.add
-      .text(480, 596, 'Flechas, ratón o mando · Enter, clic o A · 1-9 elige · Esc o B: cancelar', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft })
+    addHelpBar(this, 480, 596, 'Flechas o ratón · Enter o clic · 1-9 elige · Esc: cancelar', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft })
       .setOrigin(0.5);
     (['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'] as const).forEach((k, i) =>
       this.input.keyboard?.on(`keydown-${k}`, () => i < this.args.options.length && this.pick(i)),
