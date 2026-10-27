@@ -254,7 +254,7 @@ test('desafío diario: slots, thief y fishing nunca salen; en partidas normales 
 
 test('Mega Piedra: el santuario es un evento con nombre, descripción y color distinto, y nunca sale al sortear', () => {
   assert.ok(ROOM_EVENTS.includes('megaStone'));
-  assert.equal(ROOM_EVENT_LABEL.megaStone, 'Santuario de la Mega Piedra');
+  assert.equal(ROOM_EVENT_LABEL.megaStone, 'Guarida del guardián de la Mega Piedra');
   assert.ok(ROOM_EVENT_DESC.megaStone);
   for (const k of ROOM_EVENTS) if (k !== 'megaStone') assert.notEqual(ROOM_EVENT_COLOR[k], ROOM_EVENT_COLOR.megaStone, k);
   for (const fl of [1, 2, 3, 5, 9]) {

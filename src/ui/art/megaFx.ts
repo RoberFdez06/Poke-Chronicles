@@ -154,7 +154,7 @@ const auras = new WeakMap<Phaser.GameObjects.Sprite, AuraState>();
  * quitarla. `big`: la forma no tiene sprite propio y el aura dibuja además una silueta de luz más grande detrás.
  * Con pocos efectos no hay aura. Se redibuja ~12 veces por segundo y con pocos píxeles (la mega dura 30 s).
  */
-export function playerFormAura(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, kind: 'mega' | 'max' | null, color: number, feetY: number, big: boolean) {
+export function playerFormAura(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, kind: 'mega' | 'max' | 'tera' | null, color: number, feetY: number, big: boolean) {
   let st = auras.get(s);
   if (!kind || lowFx() || !s.active) {
     if (st) {
@@ -183,6 +183,12 @@ export function playerFormAura(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite
     disc(g, s.x, cy, half * 1.3 * pulse, darkOf(main), 0.35, PX, (hgt / (half * 2)) * 0.95);
     disc(g, s.x, cy, half * 1.12 * pulse, lightOf(main), 0.3, PX, (hgt / (half * 2)) * 0.95);
   }
+  if (kind === 'max') {
+    // Dinamax: resplandor rojo suave detrás (capas que se apagan hacia fuera, sin silueta dura)
+    const pulse = 1 + 0.06 * Math.sin(t / 200);
+    for (let k = 0; k < 3; k++) disc(g, s.x, cy, half * (1.35 - k * 0.18) * pulse, k === 2 ? lightOf(main) : main, 0.1 + k * 0.05, PX, (hgt / (half * 2)) * 0.9);
+  }
+  if (kind === 'tera') return drawTeraAura(g, s.x, feetY, half, hgt, color, t);
   // aro a los pies (perspectiva): en la mega de tres colores que giran, en el Dinamax rojo y blanco
   const n = 18;
   for (let i = 0; i < n; i++) {
@@ -217,6 +223,71 @@ export function playerFormAura(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite
       px(g, s.x + ox - 2, feetY - hgt - PX * 2.5 + oy, main, 0.9, PX * 2);
       if (i % 2) px(g, s.x + ox - 4, feetY - hgt - PX * 3 + oy, lightOf(main), 0.9, PX);
     }
+  }
+}
+
+/** Gema de cristal (rombo con facetas: arriba a la izquierda clara, abajo a la derecha oscura) de radio r. */
+function gemPx(g: Phaser.GameObjects.Graphics, x: number, y: number, r: number, color: number, a = 1, s = 4) {
+  for (let dy = -r; dy <= r; dy += s) {
+    const halfW = r - Math.abs(dy);
+    for (let dx = -halfW; dx <= halfW; dx += s) {
+      const edge = Math.abs(dx) >= halfW - s / 2 || Math.abs(dy) >= r - s / 2;
+      const c = edge ? OUT : dx <= 0 && dy <= 0 ? lightOf(color) : dx > 0 && dy > 0 ? darkOf(color) : color;
+      px(g, x + dx, y + dy, c, a, s);
+    }
+  }
+}
+
+/**
+ * Teracristal: corona de cristal sobre la cabeza (cinco gemas del color del tipo, la del centro más alta), facetas que
+ * giran alrededor del cuerpo, aro de cristal a los pies y destellos blancos de gema que aparecen y se apagan.
+ */
+function drawTeraAura(g: Phaser.GameObjects.Graphics, x: number, feetY: number, half: number, hgt: number, color: number, t: number) {
+  // aro facetado a los pies
+  const n = 14;
+  for (let i = 0; i < n; i++) {
+    const ang = (i / n) * 6.283 + t * 0.001;
+    gemPx(g, x + Math.cos(ang) * half * 1.1, feetY + Math.sin(ang) * half * 0.36, 6, i % 2 ? color : lightOf(color), 0.8, 3);
+  }
+  // facetas que orbitan el cuerpo (las de detrás, más tenues)
+  for (let i = 0; i < 4; i++) {
+    const ang = t * 0.0025 + (i / 4) * 6.283;
+    const front = Math.sin(ang) > 0;
+    gemPx(g, x + Math.cos(ang) * half * 1.05, feetY - hgt * 0.45 + Math.sin(ang) * hgt * 0.12, 8, color, front ? 0.9 : 0.45, 4);
+  }
+  // corona de cristal
+  const top = feetY - hgt - 6 + Math.sin(t / 400) * 2;
+  const crown = [[-2, 10, 0.75], [-1, 14, 0.9], [0, 20, 1], [1, 14, 0.9], [2, 10, 0.75]] as const;
+  for (const [k, r, a] of crown) gemPx(g, x + k * 15, top - (r - 10) * 0.8, r, color, a, 4);
+  // destellos de gema
+  for (let i = 0; i < 3; i++) {
+    const cyc = ((t + i * 700) % 2100) / 2100;
+    if (cyc > 0.25) continue;
+    const gx = x + Math.sin(i * 2.4 + Math.floor((t + i * 700) / 2100)) * half * 0.9;
+    const gy = feetY - hgt * (0.3 + 0.25 * i);
+    const sz = 4 + Math.round(Math.sin((cyc / 0.25) * Math.PI) * 8);
+    g.fillStyle(0xffffff, 0.95).fillRect(snapTo(gx, 2) - sz / 2, snapTo(gy, 2) - 1, sz, 3);
+    g.fillStyle(0xffffff, 0.95).fillRect(snapTo(gx, 2) - 1, snapTo(gy, 2) - sz / 2, 3, sz);
+  }
+}
+
+/**
+ * Icono del botón de forma de poder cuando la elegida no es la mega: el dibujo del objeto (Banda Dinamax, Teragema o
+ * Cristal Z) lo pone la escena con su textura; aquí el fondo y el aro de estado, como drawMegaStoneHud.
+ */
+export function drawPowerSelHud(g: Phaser.GameObjects.Graphics, x: number, y: number, state: 'used' | 'idle' | 'ready' | 'on', fill: number, t: number, color: number) {
+  const anim = !lowFx();
+  g.fillStyle(0x101828, 1).fillCircle(x, y, 18);
+  const n = 24;
+  for (let i = 0; i < n; i++) {
+    const ang = -Math.PI / 2 + (i / n) * 6.283;
+    const lit = state === 'on' ? i / n < fill : state === 'ready';
+    const c = state === 'used' ? 0x3a4458 : lit ? (i % 2 ? color : 0xffffff) : 0x2a3450;
+    px(g, x + Math.cos(ang) * 16, y + Math.sin(ang) * 16, c, 1, 3);
+  }
+  if (state === 'ready' && anim) {
+    const ang = t * 0.004;
+    px(g, x + Math.cos(ang) * 16, y + Math.sin(ang) * 16, 0xffffff, 1, 5);
   }
 }
 

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { DARK_GACHA_ODDS, rollDark } from '../data/darkMon';
 import { addHelpBar } from '../ui/helpBar';
 import { DCX, DCY, COVER_W, COVER_H, fitDesign } from '../ui/layout';
 import { fetchPokemonCard, type PokemonCard } from '../data/pokeapi';
@@ -10,7 +11,7 @@ import { loadHistory, pushHistory, type HistoryEntry } from '../data/gachaHistor
 import { loadCollectionIndex, loadSpeciesIndex } from '../data/speciesIndex';
 import { openConfirm } from './ConfirmScene';
 import { confirmText } from '../data/confirm';
-import { addShiny, addTickets, loadShinies, loadTickets, loadUnlocked, spendTickets, unlockPokemon } from '../data/save';
+import { addDark, addShiny, addTickets, loadShinies, loadTickets, loadUnlocked, spendTickets, unlockPokemon } from '../data/save';
 import { rollShiny, SHINY_ODDS } from '../data/shiny';
 import { takeKonamiShiny } from '../data/easterEggs';
 import { sparkle } from '../ui/sparkle';
@@ -282,6 +283,8 @@ export class GachaScene extends Phaser.Scene {
         unlockPokemon(res.speciesId);
         note = '¡Nuevo!';
       }
+      // Pokémon oscuro (darkMon.ts): muy raro; si es nuevo oscuro se guarda aparte (Pokédex y elegirlo oscuro)
+      if (rollDark(Math.random, DARK_GACHA_ODDS) && addDark(res.speciesId)) note += ' · ¡Oscuro!';
       return { res, shiny, duplicate, note };
     });
     pushHistory(out.map((r) => ({ id: r.res.speciesId, rarity: r.res.rarity, shiny: r.shiny, at: Date.now() })));

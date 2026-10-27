@@ -17,7 +17,7 @@
 // T73:
 // - Forja: reciclar un objeto por monedas o fusionar dos de la misma rareza (ver data/forge.ts).
 // Mega Piedra:
-// - Santuario de la Mega Piedra: sala dedicada, una por piso, con la Mega Piedra (ver pickMegaStoneRoom).
+// - Guarida del guardián de la Mega Piedra: sala dedicada, una por piso; un pseudolegendario o ultraente la custodia y la suelta al caer (ver pickMegaStoneRoom).
 // T79:
 // - Historia con decisiones: un texto corto con 2 o 3 elecciones y sus consecuencias (ver choiceEvents.ts).
 // Sale de la semilla del piso, así al continuar o en el desafío diario es el mismo. Lógica pura, sin Phaser.
@@ -55,7 +55,7 @@ export const ROOM_EVENT_LABEL: Record<RoomEventKind, string> = {
   thief: 'Ladrón',
   fishing: 'Laguna de pesca',
   forge: 'Forja',
-  megaStone: 'Santuario de la Mega Piedra',
+  megaStone: 'Guarida del guardián de la Mega Piedra',
   story: 'Encuentro',
 };
 
@@ -91,7 +91,7 @@ export const ROOM_EVENT_DESC: Record<RoomEventKind, string> = {
   thief: 'Te roba monedas y huye: abátelo antes de que salga y te las devuelve con extra',
   fishing: 'Lanza la caña y pulsa cuando pique: monedas, bayas, objetos… o algo raro',
   forge: 'Recicla un objeto por monedas o fusiona dos de la misma rareza en uno mejor',
-  megaStone: 'Una Mega Piedra por piso: sin ella no hay megaevolución',
+  megaStone: 'Un pseudolegendario o ultraente custodia la Mega Piedra: véncelo y la suelta',
   story: 'Una pequeña historia: elige qué hacer y atente a las consecuencias',
 };
 

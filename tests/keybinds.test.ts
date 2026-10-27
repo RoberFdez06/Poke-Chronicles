@@ -59,9 +59,8 @@ test('T49: usar poción tiene su tecla (C) y sale en los controles', async () =>
   assert.equal(DEFAULT_KEYS.potion, 'C');
   assert.equal(ACTION_LABEL.potion, 'Usar poción');
   assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([, how]) => how.includes('Poción: C')));
-  // Caben en la pantalla de teclas (2 columnas de 10 desde T53)
-  // La pantalla de teclas (KeysScene) tiene dos columnas de 11 filas
-  assert.ok(ACTIONS.length <= 22);
+  // La pantalla de teclas (KeysScene) tiene dos columnas de 12 filas
+  assert.ok(ACTIONS.length <= 24);
 });
 
 test('T53: el parry tiene su tecla (F), sale en los controles y va detrás de las de antes', () => {
@@ -83,8 +82,8 @@ test('T53: un guardado de antes con la F en otra acción no pierde sus teclas', 
 test('T65: la Poké Ball tiene su tecla (G), va detrás del parry y sale en los controles', () => {
   assert.equal(DEFAULT_KEYS.ball, 'G');
   assert.ok(ACTIONS.indexOf('ball') > ACTIONS.indexOf('parry'));
-  // La pantalla de teclas (KeysScene) tiene dos columnas de 11 filas
-  assert.ok(ACTIONS.length <= 22);
+  // La pantalla de teclas (KeysScene) tiene dos columnas de 12 filas
+  assert.ok(ACTIONS.length <= 24);
   assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([what, how]) => what === 'Poké Ball' && how.includes('G') && how.includes('R3')));
   // Un guardado de antes con la G en otra acción no pierde sus teclas
   const k = parseKeys(JSON.stringify({ ...DEFAULT_KEYS, ball: undefined, bomb: 'G' }));
@@ -95,7 +94,7 @@ test('T65: la Poké Ball tiene su tecla (G), va detrás del parry y sale en los 
 
 test('T74: megaevolucionar tiene su tecla (M), va justo antes de la de carga y sale en los controles', () => {
   assert.equal(DEFAULT_KEYS.mega, 'M');
-  assert.equal(ACTIONS[ACTIONS.length - 2], 'mega');
+  assert.equal(ACTIONS.indexOf('mega'), ACTIONS.indexOf('charge') - 1);
   assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([what, how]) => what === 'Megaevolución' && how.includes('M') && how.includes('cruceta')));
   // Un guardado de antes con la M en otra acción no pierde sus teclas
   const k = parseKeys(JSON.stringify({ ...DEFAULT_KEYS, mega: undefined, bomb: 'M' }));
@@ -106,6 +105,17 @@ test('T74: megaevolucionar tiene su tecla (M), va justo antes de la de carga y s
 
 test('T77: el ataque cargado tiene su tecla (V), es la última acción y sale en los controles', () => {
   assert.equal(DEFAULT_KEYS.charge, 'V');
-  assert.equal(ACTIONS[ACTIONS.length - 1], 'charge');
+  assert.equal(ACTIONS.indexOf('charge'), ACTIONS.length - 2);
   assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([n]) => n === 'Ataque cargado'));
+});
+
+test('Formas de poder: cambiar de forma tiene su tecla (X), es la última acción y sale en los controles', () => {
+  assert.equal(DEFAULT_KEYS.powerNext, 'X');
+  assert.equal(ACTIONS[ACTIONS.length - 1], 'powerNext');
+  assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([what, how]) => what.includes('Tera') && how.includes('X') && how.includes('cruceta izquierda')));
+  // Un guardado de antes con la X en otra acción no pierde sus teclas
+  const k = parseKeys(JSON.stringify({ ...DEFAULT_KEYS, powerNext: undefined, bomb: 'X' }));
+  assert.equal(k.bomb, 'X');
+  assert.notEqual(k.powerNext, 'X');
+  assert.equal(new Set(Object.values(k)).size, ACTIONS.length);
 });

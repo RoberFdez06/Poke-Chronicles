@@ -12,8 +12,9 @@ import { drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
 
 // T53: filas algo más bajas para que quepan Restablecer y Volver. T74: 11 por columna (21 acciones con la megaevolución)
-const COL_ROWS = 11;
-const ROW = { w: 420, h: 34, gap: 4, top: 88, x: [50, 490] };
+// Con «Cambiar forma de poder» son 23: 12 por columna y filas algo más bajas
+const COL_ROWS = 12;
+const ROW = { w: 420, h: 32, gap: 3, top: 84, x: [50, 490] };
 /** Opciones: todas las acciones, "Restablecer" y "Volver". */
 const RESET = ACTIONS.length;
 const BACK = ACTIONS.length + 1;

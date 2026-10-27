@@ -3,6 +3,8 @@ import { W, H } from '../ui/layout';
 import { FONT } from '../ui/theme';
 import { typeColor, typeNameEs } from '../data/types';
 import { sfx } from '../ui/audio';
+import { DARK_COLORS } from '../data/darkMon';
+import { darkIntroSmoke } from '../ui/art/darkFx';
 
 /** Un luchador de la intro: textura (y frame si es una hoja de sprites), nombre y tipos. */
 export interface Fighter {
@@ -23,6 +25,10 @@ export interface BossIntroData {
   extra?: Fighter[];
   /** Estilo: 'mini' (minijefe, más corto y plateado) o 'final' (reto final, dorado y más largo). */
   tier?: 'mini' | 'final';
+  /** Cartel propio en lugar de MINIJEFE (p. ej. «GUARDIÁN» del jefe defensor de la Mega Piedra). */
+  tag?: string;
+  /** Pokémon oscuro: franja morada y negra, sprite teñido, humo oscuro y aviso «¡POKÉMON OSCURO!». */
+  dark?: boolean;
 }
 
 const DURATION = 2600;
@@ -75,12 +81,13 @@ export class BossIntroScene extends Phaser.Scene {
       this.tweens.add({ targets: g, x: 0, duration: 380, ease: 'Cubic.easeOut' });
       return g;
     };
-    band(150, tier === 'final' ? 0xd4a017 : tier === 'mini' ? 0x8a94b8 : bossColor, true);
+    const dark = !!this.info.dark;
+    band(150, dark ? 0x3a1660 : tier === 'final' ? 0xd4a017 : tier === 'mini' ? 0x8a94b8 : bossColor, true);
     band(H - 450, playerColor, false);
-    if (tier) {
-      // Cartel arriba: MINIJEFE o RETO FINAL
+    if (tier || this.info.tag) {
+      // Cartel arriba: MINIJEFE, RETO FINAL o el propio (GUARDIÁN)
       const tag = this.add
-        .text(W / 2, 70, tier === 'final' ? 'RETO FINAL' : 'MINIJEFE', { fontFamily: FONT, fontSize: '64px', fontStyle: 'bold', color: tier === 'final' ? '#ffd34d' : '#e8ecf8' })
+        .text(W / 2, 70, this.info.tag ?? (tier === 'final' ? 'RETO FINAL' : 'MINIJEFE'), { fontFamily: FONT, fontSize: '64px', fontStyle: 'bold', color: tier === 'final' ? '#ffd34d' : '#e8ecf8' })
         .setOrigin(0.5).setStroke('#101828', 12).setDepth(5).setAlpha(0).setScale(2);
       this.tweens.add({ targets: tag, alpha: 1, scale: 1, duration: 300, delay: 100, ease: 'Back.easeOut' });
       if (tier === 'final') this.tweens.add({ targets: tag, scale: 1.08, duration: 500, delay: 500, yoyo: true, repeat: -1 });
@@ -106,7 +113,20 @@ export class BossIntroScene extends Phaser.Scene {
         this.tweens.add({ targets: img, x: W - 700 + k * 270, duration: 420, delay: 150 + k * 380, ease: 'Back.easeOut', onComplete: () => cam.shake(140, 0.006) });
         this.tweens.add({ targets: img, y: img.y - 10, duration: 700, delay: 700 + k * 380, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       });
-    } else sprite(boss, W - 420, 300, false, true);
+    } else {
+      const img = sprite(boss, W - 420, 300, false, true);
+      if (dark) img.setTint(DARK_COLORS.tint);
+    }
+    if (dark) {
+      // Humo morado y negro alrededor del jefe y aviso grande
+      darkIntroSmoke(this, W - 420, 300, 190, dur);
+      const warn = this.add
+        .text(W / 2, tier || this.info.tag ? 132 : 70, '¡POKÉMON OSCURO!', { fontFamily: FONT, fontSize: '44px', fontStyle: 'bold', color: '#d9b3ff' })
+        .setOrigin(0.5).setStroke('#1a0b2e', 10).setDepth(5).setAlpha(0);
+      this.tweens.add({ targets: warn, alpha: 1, duration: 260, delay: 260 });
+      this.tweens.add({ targets: warn, alpha: 0.55, duration: 380, delay: 600, yoyo: true, repeat: -1 });
+      cam.flash(260, 90, 30, 140);
+    }
     sprite(player, 420, H - 300, true, false);
 
     const name = (text: string, x: number, y: number, align: 'left' | 'right', fromRight: boolean) => {

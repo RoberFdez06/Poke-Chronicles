@@ -3,6 +3,7 @@
 
 import { parseAudio, type AudioSettings } from './sounds.ts';
 import { parseShinies } from './shiny.ts';
+import { parseDarks } from './darkMon.ts';
 import { levelsFor, parseUpgrades, upgradeCost, type UpgradeBook, type UpgradeKind } from './upgrades.ts';
 import { nodeState } from './upgradeTree.ts';
 import { activeStorage, type StorageLike } from './storage.ts';
@@ -427,6 +428,33 @@ export function addShiny(id: number, storage: StorageLike | null = browserStorag
   return true;
 }
 
+// --- Pokémon oscuros conseguidos (ver darkMon.ts) ---
+
+export const DARKS_KEY = 'pokeisaac.darks';
+
+export function loadDarks(storage: StorageLike | null = browserStorage()): number[] {
+  try {
+    return parseDarks(storage?.getItem(DARKS_KEY) ?? null);
+  } catch {
+    return [];
+  }
+}
+
+/** Guarda un oscuro (y desbloquea el Pokémon si no lo tenías). Devuelve si era nuevo. Las partidas admin no cuentan. */
+export function addDark(id: number, storage: StorageLike | null = browserStorage()): boolean {
+  if (isCheatRun()) return false;
+  const list = loadDarks(storage);
+  unlockPokemon(id, storage);
+  if (list.includes(id)) return false;
+  list.push(id);
+  try {
+    storage?.setItem(DARKS_KEY, JSON.stringify(list));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+  return true;
+}
+
 // --- Misiones diarias y logros (ver missions.ts) ---
 
 export const MISSIONS_KEY = 'pokeisaac.missions';
@@ -602,6 +630,7 @@ export const PROGRESS_KEYS: readonly string[] = [
   SEED_BESTS_KEY,
   UPGRADES_KEY,
   SHINIES_KEY,
+  DARKS_KEY,
   MISSIONS_KEY,
   GARDEN_KEY,
   MEDALS_KEY,

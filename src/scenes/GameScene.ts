@@ -80,7 +80,7 @@ import {
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
-import { acceptNpcMission, gainSeed, takeGardenBerries, updateGarden, addRunHistory, loadKeys, loadMissions, loadShinies, loadTutorial, loadUpgrades, recordMissionEvent, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
+import { acceptNpcMission, gainSeed, takeGardenBerries, updateGarden, addRunHistory, loadKeys, loadMissions, loadShinies, loadDarks, addDark, loadTutorial, loadUpgrades, recordMissionEvent, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
 import { disableTips, markTipSeen, shouldShowTip, TIPS, type TipId } from '../data/tutorial';
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
 import { closeFloor, emptyCounters, floorTimes, noteParry, notePickup, noteRoomTime, openFloor, type RunCounters, type RunRecord } from '../data/runHistory';
@@ -164,8 +164,11 @@ import { fallConceptFx, sacredFlame } from '../ui/art/fallArt';
 import { pixRing } from '../ui/art/pixelFx';
 import { armMuzzle, drawBossLaser, drawShockRing, hazardBlast, hazardWarn, laserWarn, patternMuzzle, patternWarn, ringWarn, shockLaunch, shockWarn, shotTrails, spiralEndBurst, spiralWarn, vortexCharge } from '../ui/art/bossPatternFx';
 import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
-import { dynamaxBurst, teraBurst, zMoveFx } from '../ui/art/formsFx';
-import { drawMegaStoneHud, drawPowerMeterFill, playerFormAura, playerMegaFx } from '../ui/art/megaFx';
+import { dynamaxBurst, teraBurst, zImpactFx, zMoveFx, zStarFx } from '../ui/art/formsFx';
+import { darkAura, darkBurst } from '../ui/art/darkFx';
+import { darkCooldown, darkEnemyStats, darkName, darkOdds, darkPlayerStats, darkTickets, DARK_COLORS, DARK_REWARD, rollDark, type DarkWho } from '../data/darkMon';
+import { guardianKindLabel, MEGA_GUARDIAN, pickGuardian } from '../data/guardians';
+import { drawMegaStoneHud, drawPowerMeterFill, drawPowerSelHud, playerFormAura, playerMegaFx } from '../ui/art/megaFx';
 import { exhaustedFx, finaleShiftFx, judgmentRects, judgmentStrike, judgmentWarn, drawNovaWave, novaWarn } from '../ui/art/finaleFx';
 import { clampFinaleHp, FINALE_AFTER_BEAT_MS, FINALE_ATTACK_LABEL, FINALE_BEAT_MS, finaleAttacks, finaleHpFloor, finaleIntervalMul, finalePhaseText, judgmentHits, judgmentPlan, judgmentSpec, NOVA, nextFinalePhase, novaDurationMs, novaGapAt, pickFinaleAttack, type FinaleAttack, type FinalePhase } from '../data/finalePhases';
 import { chargedShotFx, chargeGlow } from '../ui/art/shotFx';
@@ -317,7 +320,7 @@ import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBeh
   turnToward,
 } from '../data/enemies';
 import { drawMinimap } from './minimap';
-import { drawKeyGlyph } from '../ui/art/keyGlyphs';
+import { byDevice, drawKeyGlyph, GlyphText } from '../ui/art/keyGlyphs';
 import { bossCallout, floatPopup, PromptPanel } from '../ui/floatText';
 import { cancelCharge, chargedShapeFor, chargeProgress, CHARGE_DAMAGE_MUL, CHARGE_MOVE_MUL, CHARGE_SOURCES, isCharging, newCharge, stepCharge, type ChargeSource, type ChargeState } from '../data/charge.ts';
 import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
@@ -326,7 +329,7 @@ import { openConfirm } from './ConfirmScene';
 import { onFocusLost } from '../ui/focusPause';
 import { confirmText } from '../data/confirm';
 import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineFull, adrenalineSpeedMul, fillAdrenaline, gainAdrenaline, spendAdrenaline, newAdrenaline, tickAdrenaline, touchAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
-import { MEGA_STONE_ID, MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState, absorbWithShield, gmaxFormName, pickPower, pickTeraType, resolveTeraType, TERA_TYPES, TERA_GEM_ID, POWER_BLOCK_TEXT, powerCost, powerFormSizeMul, powerFormTeraType, useZMove, Z_MOVE_DAMAGE_MUL, type PowerChoice, type PowerContext } from '../data/powerForm';
+import { MEGA_STONE_ID, MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState, absorbWithShield, gmaxFormName, pickPower, pickTeraType, resolveTeraType, TERA_TYPES, TERA_GEM_ID, POWER_BLOCK_TEXT, powerCost, powerFormSizeMul, powerFormTeraType, useZMove, Z_MOVE_DAMAGE_MUL, type PowerChoice, type PowerContext, powerBlock, powerOptions, validPowerSel, cyclePowerSel, POWER_SEL_LABEL, type PowerSel, DYNAMAX_BAND_ID, Z_CRYSTAL_ID } from '../data/powerForm';
 import { meterOnDamage, meterOnParry, newPowerMeter, powerMeterFill, spendPowerMeter, tickPowerMeter, type PowerMeterState } from '../data/powerMeter';
 import {
   canCaptureLegend, CLUE_NAMES, clueOnFloor, finishLair, HUNT, huntText, lairOnFloor, leaveFloor, legendCaptureChance, legendPhase,
@@ -408,7 +411,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 export type FloorCarry = Pick<
   RunSave,
   'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed' | 'reactionsFound' | 'storiesSeen' | 'route' | 'routesTaken' | 'gardenBerries' | 'legendHunt'
-> & Partial<Pick<RunSave, 'itemLevels' | 'teraPick'>>;
+> & Partial<Pick<RunSave, 'itemLevels' | 'teraPick' | 'dark'>>;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
 const RNG = { rooms: 0, boss: 1, items: 2, chest: 3, shop: 4, clear: 5 } as const;
@@ -691,6 +694,20 @@ export class GameScene extends Phaser.Scene {
   private dpadUpPrev = false;
   private megaHud?: { g: Phaser.GameObjects.Graphics; x: number; y: number; shown: string };
   private megaZone?: Phaser.GameObjects.Zone;
+  /** Forma de poder elegida con la tecla/botón de cambiar (null = la automática). */
+  private powerSel: PowerSel | null = null;
+  private powerNextKey!: Key;
+  private dpadSidePrev = 0;
+  /** Icono del objeto de la forma elegida encima del botón del HUD (Banda Dinamax, Teragema o Cristal Z). */
+  private powerSelIcon?: Phaser.GameObjects.Image;
+  /** Inicial oscuro (darkMon.ts): más fuerte en todo y con aura oscura. */
+  private dark = false;
+  private darkAuraStop?: () => void;
+  /** El jefe que acaba de caer era oscuro (premio extra al limpiar su sala). */
+  private darkBossBeaten = false;
+  /** Minijefe del piso (pseudolegendario o ultraente) y guardián de la Mega Piedra, ya cargados. */
+  private minibossKind?: FoeKind;
+  private guardianKind?: FoeKind;
   private tiredRooms = 0;
   /** Lo dibujado del evento de la sala actual y los sitios donde se usa con Enter / A / clic. */
   private eventObjs: Phaser.GameObjects.GameObject[] = [];
@@ -935,6 +952,8 @@ export class GameScene extends Phaser.Scene {
     this.evolving = false;
     this.falling = false;
     this.shiny = loadShinies().includes(this.starterId);
+    // Inicial oscuro: si lo tienes oscuro juegas con él así (como el shiny); se guarda en la partida (RunSave v29)
+    this.dark = this.resume ? this.resume.dark : (data?.carry?.dark ?? loadDarks().includes(this.starterId));
     this.mode = this.resume?.mode ?? data?.mode ?? 'normal';
     this.daily = this.resume ? this.resume.daily : (data?.daily ?? null);
     // T81: el diario usa la semilla del día; una partida nueva sin código, una semilla nueva (las v24 cargadas no tienen)
@@ -1153,6 +1172,11 @@ export class GameScene extends Phaser.Scene {
     this.dpadUpPrev = false;
     this.megaHud = undefined;
     this.megaZone = undefined;
+    this.powerSelIcon = undefined;
+    this.dpadSidePrev = 0;
+    this.darkAuraStop = undefined;
+    this.minibossKind = undefined;
+    this.guardianKind = undefined;
     this.tiredRooms = r?.tiredRooms ?? this.carry?.tiredRooms ?? 0;
     this.potions = r?.potions ?? this.carry?.potions ?? 0;
     // T85: al empezar partida (no al bajar de piso ni al continuar) te llevas bayas de la cesta del huerto
@@ -1296,6 +1320,15 @@ export class GameScene extends Phaser.Scene {
       fetchPokemon(bossId),
       Promise.all(foeIds.map((id) => fetchPokemonCard(id).catch(() => null))),
     ]);
+    // Minijefe y guardián de la Mega Piedra: pseudolegendarios y ultraentes (guardians.ts), fijos por piso con su
+    // propia semilla (no tocan el resto del azar del piso)
+    const gRng = mulberry32((this.floorSeed ^ 0x51ed27a3) >>> 0);
+    const okGuard = (id: number) => !bundled || bundled.has(id);
+    const miniId = pickGuardian(gRng, [], okGuard);
+    const guardId = pickGuardian(gRng, [miniId], okGuard);
+    const [miniCard, guardCard] = await Promise.all([fetchPokemonCard(miniId).catch(() => null), fetchPokemonCard(guardId).catch(() => null)]);
+    this.minibossKind = miniCard ? this.toFoeKinds([miniCard], index)[0] : undefined;
+    this.guardianKind = guardCard ? this.toFoeKinds([guardCard], index)[0] : undefined;
     // Miembros del reto final y ayudantes de los jefes (de su tipo)
     if (this.finale) {
       const fs = await Promise.all(this.finale.ids.map((id) => fetchPokemon(id).catch(() => null)));
@@ -1342,7 +1375,7 @@ export class GameScene extends Phaser.Scene {
       [this.playerKey, pickSprites(starter.sprites, this.shiny)],
       [this.bossKey, pickSprites(boss.sprites, false)],
       ...(await Promise.all(this.finaleMembers.slice(1).map(async (m) => [m.key, pickSprites((await fetchPokemon(m.id)).sprites, false)] as [string, { front: string; back: string }]))),
-      ...[...foes, ...summonCards.filter((c) => !foes.some((f) => f.id === c.id)), ...(legendCard ? [legendCard] : [])].flatMap((c) => [
+      ...[...foes, ...summonCards.filter((c) => !foes.some((f) => f.id === c.id)), ...(legendCard ? [legendCard] : []), ...[miniCard, guardCard].filter((c, k, all): c is PokemonCard => c !== null && all.findIndex((o) => o?.id === c.id) === k && !foes.some((f) => f.id === c.id) && !summonCards.some((f) => f.id === c.id) && c.id !== legendCard?.id)].flatMap((c) => [
         [`foe-${c.id}`, pickSprites(c.sprites, false)] as [string, { front: string; back: string }],
         [`foe-${c.id}-s`, pickSprites(c.sprites, true)] as [string, { front: string; back: string }],
       ]),
@@ -1360,7 +1393,7 @@ export class GameScene extends Phaser.Scene {
         }
       }
       // Sprites animados de 8 direcciones (T31). El shiny se queda con el de PokeAPI (SpriteCollab no lo tiene igual)
-      const pmdIds = [bossId!, ...this.finaleMembers.map((m) => m.id), ...foes.map((c) => c.id), ...summonCards.map((c) => c.id), ...(legendCard ? [legendCard.id] : []), ...(this.shiny ? [] : [this.formId])];
+      const pmdIds = [bossId!, ...this.finaleMembers.map((m) => m.id), ...foes.map((c) => c.id), ...summonCards.map((c) => c.id), ...(legendCard ? [legendCard.id] : []), ...[miniCard, guardCard].flatMap((c) => (c ? [c.id] : [])), ...(this.shiny ? [] : [this.formId])];
       loadPmd(this, pmdIds)
         .catch(() => new Map<number, PmdSheet>())
         .then((m) => {
@@ -1563,8 +1596,10 @@ export class GameScene extends Phaser.Scene {
     stats.maxHp += powerFormMaxHpBonus(this.powerForm);
     // T75: con Dinamax los ataques también son más grandes
     stats.shotScale *= powerFormSizeMul(this.powerForm);
+    // Inicial oscuro: más vida, daño, velocidad y cadencia (darkMon.ts)
+    const out = this.dark ? darkPlayerStats(stats) : stats;
     // Modo admin: modo dios
-    return isGodMode() ? godStats(stats) : stats;
+    return isGodMode() ? godStats(out) : out;
   }
 
   /** Multiplicador de daño de Ataque X mientras dura. */
@@ -1664,7 +1699,7 @@ export class GameScene extends Phaser.Scene {
       if (this.foeKinds.length === 0) return this.finishEvent(room);
       // El más raro del piso (el de más estadísticas), brillante y deprisa
       const k = [...this.foeKinds].sort((a, b) => b.bst - a.bst)[0];
-      const e = this.spawnEnemy(k, 'chase');
+      const e = this.spawnEnemy(k, 'chase', undefined, false);
       const ai = e.getData('ai') as EnemyAI;
       ai.eliteMove = undefined;
       const hp = Math.round((e.getData('maxHp') as number) * RUNAWAY_HP_MUL);
@@ -1684,7 +1719,7 @@ export class GameScene extends Phaser.Scene {
       // T70: ladrón rápido y sin ataque. Toca para robar y corre hacia la puerta más lejana de ti.
       if (this.foeKinds.length === 0) return this.finishEvent(room);
       const k = this.foeKinds[Math.floor(rng() * this.foeKinds.length) % this.foeKinds.length];
-      const e = this.spawnEnemy(k, 'chase');
+      const e = this.spawnEnemy(k, 'chase', undefined, false);
       thiefGear(this, e);
       const ai = e.getData('ai') as EnemyAI;
       ai.eliteMove = undefined;
@@ -1931,7 +1966,7 @@ export class GameScene extends Phaser.Scene {
     // ¡Trampa! Sale un Pokémon fuerte del piso; al vencerlo suelta el objeto
     if (this.foeKinds.length === 0) return this.finishEvent(room);
     const k = [...this.foeKinds].sort((a, b) => b.bst - a.bst)[0];
-    const e = this.spawnEnemy(k, k.behavior);
+    const e = this.spawnEnemy(k, k.behavior, undefined, false);
     (e.body as Body).reset(x, y);
     const hp = Math.round((e.getData('maxHp') as number) * 2);
     e.setData('hp', hp).setData('maxHp', hp).setData('mimic', true);
@@ -2212,7 +2247,7 @@ export class GameScene extends Phaser.Scene {
     const pool = water.length > 0 ? water : this.foeKinds;
     if (pool.length === 0) return this.finishEvent(room);
     const k = [...pool].sort((a, b) => b.bst - a.bst)[0];
-    const e = this.spawnEnemy(k, k.behavior);
+    const e = this.spawnEnemy(k, k.behavior, undefined, false);
     const i = this.interior(room);
     (e.body as Body).reset(i.cx, i.cy - 20);
     const hp = Math.round((e.getData('maxHp') as number) * FISH_RARE_HP_MUL);
@@ -2371,6 +2406,8 @@ export class GameScene extends Phaser.Scene {
         target.destroy();
         const id = this.hunt.legendId;
         if (!this.codeRun) unlockPokemon(id);
+        // Legendario oscuro: se registra también su variante oscura
+        if (!this.codeRun && target.getData('dark')) addDark(id);
         this.hunt = finishLair(this.hunt);
         this.notify(`¡${this.legendName()} capturado!\nYa puedes elegirlo como inicial`, { kind: 'reward', icon: 'star' });
         sfx('evolve');
@@ -2442,7 +2479,7 @@ export class GameScene extends Phaser.Scene {
     const id = this.hunt.legendId;
     this.setGroupDoorsLocked(room, true, true);
     sfx('door');
-    const e = this.spawnEnemy(k, k.behavior);
+    const e = this.spawnEnemy(k, k.behavior, undefined, false);
     const size = 130;
     e.setDisplaySize(size, size).setData('size', size).setData('sheet', k.key).setData('shiny', false).setData('elite', false);
     this.applyPmd(e, id, size);
@@ -2450,6 +2487,9 @@ export class GameScene extends Phaser.Scene {
     const hp = Math.round(st.hp * HUNT.hpMul);
     e.setData('hp', hp).setData('maxHp', hp).setData('dmg', st.damage).setData('speed', st.speed).setData('legendHunt', true);
     const ai = e.getData('ai') as EnemyAI;
+    // Legendario oscuro: se decide al entrar en su guarida (capturarlo te lo da en su variante oscura)
+    const dark = rollDark(Math.random, darkOdds('legend', this.floorNum));
+    if (dark) this.makeDark(e, ai, true);
     ai.moves = bossStyles(k.types, id);
     ai.eliteMove = ai.moves[0];
     ai.eliteAt = Number.POSITIVE_INFINITY;
@@ -2461,8 +2501,9 @@ export class GameScene extends Phaser.Scene {
     this.huntObjs.push(buildLegendLair(this, ri.cx, ri.cy, typeColor(k.types[0])));
     legendReveal(this, e.x, e.y, typeColor(k.types[0]));
     void cry(id);
-    this.notify(`¡Sala oculta!\n${this.legendName()} te esperaba`, { kind: 'danger', icon: 'star' });
-    this.showBossIntro(ai, { boss: { texture: `${k.key}-front`, name: this.legendName(), types: k.types }, tier: 'mini', subtitle: 'Cacería legendaria · Fase 1/3' });
+    const lname = dark ? darkName(this.legendName()) : this.legendName();
+    this.notify(`¡Sala oculta!\n${lname} te esperaba`, { kind: 'danger', icon: 'star' });
+    this.showBossIntro(ai, { boss: { texture: `${k.key}-front`, name: lname, types: k.types }, tier: 'mini', dark, subtitle: dark ? 'Cacería legendaria · Oscuro · Fase 1/3' : 'Cacería legendaria · Fase 1/3' });
     let phase = 0;
     const timer = this.time.addEvent({
       delay: 250, loop: true,
@@ -2499,6 +2540,10 @@ export class GameScene extends Phaser.Scene {
     }
     // Capturado: cuenta en el registro de combate (T63) y pasa a ser el ayudante hasta acabar el piso
     this.counters.kills++;
+    // Uno oscuro se queda en tu colección en su variante oscura (Pokédex con su marca; puedes jugar con él)
+    if (target.getData('dark') && caughtId > 0 && !this.codeRun && addDark(caughtId)) {
+      this.time.delayedCall(1200, () => !this.ended && this.notify(`¡${darkName(nice)} añadido a tu colección!\nYa puedes elegirlo oscuro como inicial`, { kind: 'reward', icon: 'star' }));
+    }
     this.chainShiny(target);
     this.registerDex(target);
     (target.getData('bar') as Phaser.GameObjects.Graphics | undefined)?.destroy();
@@ -2812,6 +2857,11 @@ export class GameScene extends Phaser.Scene {
       if (pf === 'mega') void this.applyMegaLook();
       else if (pf === 'dynamax' || pf === 'gigamax') void this.applyMaxLook(pf);
     }
+    // Inicial oscuro: aura morada y negra a los pies que le sigue toda la partida
+    if (this.dark) {
+      this.darkAuraStop = darkAura(this, this.player, () => (this.player.body as Body | null)?.bottom ?? this.player.y + 30);
+      if (!r && !this.carry) this.notify(`¡Juegas con ${darkName(this.niceName())}!\nMás vida, daño, velocidad y cadencia`, { kind: 'item', icon: 'star' });
+    }
 
     this.enemies = this.physics.add.group();
     this.shots = this.physics.add.group();
@@ -2856,6 +2906,7 @@ export class GameScene extends Phaser.Scene {
     this.ballKey = key('ball');
     this.chargeKey = key('charge');
     this.megaInputKey = key('mega');
+    this.powerNextKey = key('powerNext');
     this.activeKey = key('active');
     this.escKey = key('back');
     this.pauseKey = key('pause');
@@ -2986,8 +3037,23 @@ export class GameScene extends Phaser.Scene {
     this.megaHud = { g: hud(this.add.graphics()), x: LX + HL.mega.x, y: HL.mega.y, shown: '' };
     const megaZone = this.add.zone(LX + HL.mega.x, HL.mega.y + 10, 42, 56).setInteractive({ useHandCursor: true });
     over(hud(megaZone));
-    megaZone.on('pointerdown', () => this.powerButton());
+    // Clic: usar la forma elegida. Clic derecho o rueda: cambiar de forma. Táctil: mantener medio segundo para cambiar
+    let megaDownAt = -1;
+    megaZone.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (p.rightButtonDown()) return this.cyclePower(1);
+      megaDownAt = p.wasTouch ? this.time.now : -1;
+      if (!p.wasTouch) this.powerButton();
+    });
+    megaZone.on('pointerup', (p: Phaser.Input.Pointer) => {
+      if (!p.wasTouch || megaDownAt < 0) return;
+      const held = this.time.now - megaDownAt;
+      megaDownAt = -1;
+      if (held >= 500) this.cyclePower(1);
+      else this.powerButton();
+    });
+    megaZone.on('wheel', (_p: Phaser.Input.Pointer, _dx: number, dy: number) => dy !== 0 && this.cyclePower(dy > 0 ? 1 : -1));
     this.megaZone = megaZone;
+    this.powerSelIcon = hud(this.add.image(LX + HL.mega.x, HL.mega.y, itemIconKey(TERA_GEM_ID)).setScale(1.4).setVisible(false));
     badge(LX + HL.mega.x, HL.mega.badgeY, '↑', 'mega', HUD_BADGE_MAX_W.mega);
     activeBtn.on('pointerdown', () => this.useActive());
     // Poderes: cuatro cuadros abajo a la derecha (clic para lanzar)
@@ -3192,11 +3258,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Especie de la forma actual (la mega depende de ella: Charmander no, Charizard sí). */
   private megaContext() {
-    return { speciesId: this.formId, passives: this.passives, adrenalineFull: adrenalineFull(this.adrenaline) };
+    return { speciesId: this.formId, passives: this.passives };
   }
 
   /**
-   * Megaevoluciona si se cumple todo: Mega Piedra, especie con mega, adrenalina llena (se gasta) y no usada en el piso.
+   * Megaevoluciona si se cumple todo: Mega Piedra, especie con mega y no usada en el piso (ya no gasta la adrenalina).
    * Dura POWER_FORMS.mega.durationMs: más daño, velocidad y PS máximos, y una descarga de su tipo cada pocos segundos.
    */
   private megaEvolve() {
@@ -3206,8 +3272,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!megaOffered(ctx)) return;
     const why = megaBlock(this.powerForm, ctx);
     if (why) return this.notify(MEGA_BLOCK_TEXT[why], { kind: 'warning', icon: 'pokeball' });
-    spendAdrenaline(this.adrenaline);
-    if (this.adrenalineHud) this.adrenalineHud.shown = '';
     this.powerForm = startPowerForm(this.powerForm, 'mega');
     this.powerFormLoopAt = this.game.loop.time;
     this.megaPulseAt = this.game.loop.time + POWER_FORMS.mega.pulseMs;
@@ -3294,8 +3358,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!this.ended) tickPowerMeter(this.powerMeter, dt);
     // Aura de la forma: la mega (ligera) y la roja del Dinamax si no hay sprite Gigamax; sin sprite propio, más grande
     const formNow = powerFormActive(this.powerForm) ? this.powerForm.active : null;
-    const auraKind = formNow === 'mega' ? 'mega' : (formNow === 'dynamax' || formNow === 'gigamax') && this.megaKey === this.playerKey ? 'max' : null;
-    if (this.player) playerFormAura(this, this.player, auraKind, typeColor(this.tearType), (this.player.body as Body | null)?.bottom ?? this.player.y + 30, auraKind === 'max' || !this.megaKey);
+    // Dinamax (y Gigamax sin sprite propio): aura roja suave con nubes; Teracristal: corona y facetas del tipo Tera
+    const auraKind = formNow === 'mega' ? 'mega' : formNow === 'tera' ? 'tera' : (formNow === 'dynamax' || formNow === 'gigamax') && this.megaKey === this.playerKey ? 'max' : null;
+    if (this.player) playerFormAura(this, this.player, auraKind, typeColor(auraKind === 'tera' ? this.shotType() : this.tearType), (this.player.body as Body | null)?.bottom ?? this.player.y + 30, auraKind === 'mega' && !this.megaKey);
     if (!powerFormActive(this.powerForm)) return;
     if (tickPowerForm(this.powerForm, dt)) return this.endPowerForm();
     // Sin sprite mega: el normal con el brillo de evolución de vez en cuando (con efectos bajos, nada)
@@ -3348,6 +3413,32 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return megaOffered(this.megaContext()) || pickPower(this.powerForm, this.powerContext()) !== null;
   }
 
+  /** Formas que se pueden elegir ahora y la elegida (si ya no vale, ninguna: la automática). */
+  private powerChoices(): { opts: PowerSel[]; sel: PowerSel | null } {
+    const opts = powerOptions(megaOffered(this.megaContext()), this.powerContext());
+    return { opts, sel: validPowerSel(opts, this.powerSel) };
+  }
+
+  /** Cambia la forma elegida (tecla, cruceta izquierda/derecha, clic derecho o rueda sobre el icono, o mantener en táctil). */
+  private cyclePower(dir: 1 | -1 = 1) {
+    if (this.ended || !this.player?.active || this.scene.isPaused()) return;
+    const { opts, sel } = this.powerChoices();
+    if (opts.length === 0) return;
+    this.powerSel = cyclePowerSel(opts, sel ?? this.autoPowerSel(), dir);
+    if (this.megaHud) this.megaHud.shown = '';
+    sfx('select');
+    const c = this.powerSel!;
+    const cost = c === 'mega' ? 'con la Mega Piedra' : `${powerCost(c, this.passives)} % del medidor`;
+    this.notify(`Forma elegida: ${POWER_SEL_LABEL[c]}\n${cost}`, { kind: 'info', icon: 'pokeball' });
+  }
+
+  /** La que soltaría el botón sin elegir nada (para empezar a ciclar desde ella). */
+  private autoPowerSel(): PowerSel | null {
+    const mctx = this.megaContext();
+    if (megaOffered(mctx) && megaBlock(this.powerForm, mctx) === null) return 'mega';
+    return pickPower(this.powerForm, this.powerContext())?.choice ?? (megaOffered(mctx) ? 'mega' : null);
+  }
+
   /** Tipo de los disparos: el Tera mientras dura, si no el de siempre. */
   private shotType(): string {
     return powerFormTeraType(this.powerForm) ?? this.tearType;
@@ -3359,6 +3450,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    */
   private powerButton() {
     if (this.ended || this.transitioning || this.falling || !this.player?.active || this.scene.isPaused()) return;
+    // Forma elegida con el selector: esa y no otra (con su aviso si aún no se puede)
+    const { sel } = this.powerChoices();
+    if (sel === 'mega') return this.megaEvolve();
+    if (sel) {
+      const why = powerBlock(this.powerForm, sel, this.powerContext());
+      if (why) return this.notify(POWER_BLOCK_TEXT[why], { kind: 'warning', icon: 'pokeball' });
+      return this.startPower(sel);
+    }
     const mctx = this.megaContext();
     const megaOk = megaOffered(mctx) && megaBlock(this.powerForm, mctx) === null;
     const pick = pickPower(this.powerForm, this.powerContext());
@@ -3368,7 +3467,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   private startPower(choice: PowerChoice) {
-    if (!spendPowerMeter(this.powerMeter, powerCost(choice))) return;
+    if (!spendPowerMeter(this.powerMeter, powerCost(choice, this.passives))) return;
     if (this.powerMeterHud) this.powerMeterHud.shown = '';
     if (choice === 'z') return this.zMove();
     const tera = choice === 'tera' ? resolveTeraType(this.teraPick, this.biome.types, this.tearType, rawEffectiveness) : null;
@@ -3381,7 +3480,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const name = this.niceName();
     if (choice === 'tera') {
       teraBurst(this, this.player.x, this.player.y, typeColor(tera!));
-      if (!lowFx()) evolveGlow(this, this.player, 900);
+      if (!lowFx()) {
+        evolveGlow(this, this.player, 900);
+        this.cameras.main.flash(220, 200, 240, 255);
+      }
+      // El cambio de tipo se ve: cartel con el tipo nuevo sobre la cabeza (y los disparos salen de ese color y tipo)
+      this.popup(this.player.x, this.player.y - 70, `Tipo ${typeNameEs(tera!)}`, typeColor(tera!));
       this.notify(`¡${name} se teracristaliza!\nTus ataques son de tipo ${typeNameEs(tera!)} durante ${secs} s`, { kind: 'item', icon: 'pokeball' });
     } else {
       dynamaxBurst(this, this.player.x, this.player.y, this.player.y + this.player.displayHeight / 2);
@@ -3428,8 +3532,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       }
     }
     if (!powerFormActive(this.powerForm) || !this.player?.active || this.ended) return;
+    // Aspecto aprobado del Dinamax: el sprite de siempre (animado si hay hoja de SpriteCollab), más grande, con el aura
+    // roja y las nubes de playerFormAura. megaKey = playerKey marca «forma sin sprite propio» para endPowerForm.
     this.megaKey = this.playerKey;
-    this.setStaticLook(this.playerKey, size);
+    if (this.shiny || !this.applyPmd(this.player, this.formId, size, true)) this.setStaticLook(this.playerKey, size);
+    this.player.setData('size', size);
+    this.face(this.player, this.aim);
   }
 
   /**
@@ -3441,6 +3549,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.powerForm = useZMove(this.powerForm);
     const s = this.stats;
     const type = this.shotType();
+    // Pose Z: el jugador se queda quieto un instante (invulnerable), estrella Z de su tipo a los pies y, al acabar,
+    // una columna de luz y una onda que golpea a todos los enemigos cerca
+    const p = this.player;
+    const feet = (p.body as Body | null)?.bottom ?? p.y + 30;
+    const poseMs = lowFx() ? 300 : 800;
+    this.invulnUntil = Math.max(this.invulnUntil, this.time.now + poseMs + 300);
+    p.setVelocity(0, 0);
+    zStarFx(this, p.x, feet, typeColor(type), poseMs);
+    if (!lowFx()) this.tweens.add({ targets: p, scaleY: p.scaleY * 1.12, duration: poseMs / 4, yoyo: true, repeat: 1, ease: 'Sine.easeInOut' });
+    this.time.delayedCall(poseMs, () => this.zImpact(type));
     const basic = basicShotFor(type);
     const opts = {
       damage: s.damage * Z_MOVE_DAMAGE_MUL * this.dmgMul(),
@@ -3461,8 +3579,26 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const a = (k / 16) * Math.PI * 2;
       this.spawnShot(new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), 0, opts);
     }
-    this.notify(`¡Movimiento Z de ${this.niceName()}!\nEl Cristal Z ya no se puede volver a usar`, { kind: 'item', icon: 'star' });
+    const again = this.passives.includes(Z_CRYSTAL_ID) ? 'Con el Cristal Z, otra vez en el próximo piso' : 'Solo una vez por partida (con un Cristal Z, una por piso)';
+    this.notify(`¡Movimiento Z de ${this.niceName()}!\n${again}`, { kind: 'item', icon: 'star' });
     this.saveNow();
+  }
+
+  /** Golpe final del Movimiento Z: daño enorme de su tipo a cada enemigo a menos de Z_IMPACT_R. */
+  private zImpact(type: string) {
+    if (this.ended || !this.player?.active) return;
+    const R = 420;
+    const color = typeColor(type);
+    zImpactFx(this, this.player.x, this.player.y, color, R);
+    if (!lowFx()) this.cameras.main.shake(260, 0.012);
+    sfx('enrage');
+    const dmg = this.stats.damage * Z_MOVE_DAMAGE_MUL * 0.8 * this.dmgMul();
+    for (const c of [...this.enemies.getChildren()]) {
+      const e = c as Sprite;
+      if (!e.active || (e.getData('hp') as number) <= 0) continue;
+      if (Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y) > R) continue;
+      this.hitEnemy(e, dmg, type, this.player.x, this.player.y, color);
+    }
   }
 
   /** T75: tira del medidor de poder con las formas de theme.ts (cuadro GBA); solo si llevas un objeto que lo use. */
@@ -3492,17 +3628,35 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const pick = pickPower(this.powerForm, this.powerContext());
     const ready = (megaOffered(ctx) && megaBlock(this.powerForm, ctx) === null) || (!!pick && pick.block === null);
     const fill = on ? powerFormFill(this.powerForm) : 0;
-    const key = `${offered}:${ready}:${on}:${Math.round(fill * 20)}:${this.powerForm.usedThisFloor}:${(ready || on) && !lowFx() ? Math.floor(this.game.loop.time / 80) : 0}`;
+    const key = `${offered}:${ready}:${on}:${Math.round(fill * 20)}:${this.powerForm.usedThisFloor}:${this.powerSel}:${(ready || on) && !lowFx() ? Math.floor(this.game.loop.time / 80) : 0}`;
     if (h.shown === key) return;
     // Si cambia si se ofrece (coges o sueltas la piedra, evolucionas), se redibuja su etiqueta de tecla/botón
     if (h.shown.split(':')[0] !== String(offered)) this.badgeShown = '';
     h.shown = key;
     h.g.clear();
     this.megaZone?.setVisible(offered);
-    if (!offered) return;
-    // Mega Piedra: esfera con la hélice del símbolo mega; aro dorado que se vacía mientras dura la forma
+    if (offered) this.tip('forms');
+    if (!offered) {
+      this.powerSelIcon?.setVisible(false);
+      return;
+    }
+    // Mega Piedra: esfera con la hélice del símbolo mega; aro dorado que se vacía mientras dura la forma.
+    // Si la forma elegida (o la automática) no es la mega, el dibujo de su objeto con el aro de estado
     const used = this.powerForm.usedThisFloor && !on;
-    drawMegaStoneHud(h.g, h.x, h.y, used ? 'used' : on ? 'on' : ready ? 'ready' : 'idle', fill, this.game.loop.time);
+    const st = used ? 'used' : on ? 'on' : ready ? 'ready' : 'idle';
+    const shownSel: PowerSel | null = on ? (this.powerForm.active === 'mega' ? 'mega' : this.powerForm.active) : (this.powerChoices().sel ?? this.autoPowerSel());
+    if (!shownSel || shownSel === 'mega') {
+      this.powerSelIcon?.setVisible(false);
+      drawMegaStoneHud(h.g, h.x, h.y, st, fill, this.game.loop.time);
+    } else {
+      const item = shownSel === 'tera' ? TERA_GEM_ID : shownSel === 'z' ? Z_CRYSTAL_ID : DYNAMAX_BAND_ID;
+      const color = shownSel === 'tera' ? typeColor(powerFormTeraType(this.powerForm) ?? this.tearType) : shownSel === 'z' ? 0xffd34d : 0xe8384f;
+      drawPowerSelHud(h.g, h.x, h.y, st, fill, this.game.loop.time, color);
+      if (this.powerSelIcon) {
+        if (this.textures.exists(itemIconKey(item))) this.powerSelIcon.setTexture(itemIconKey(item));
+        this.powerSelIcon.setVisible(true).setAlpha(used ? 0.45 : 1);
+      }
+    }
   }
 
   // --- Guardado (como en Isaac: solo, en el hueco elegido) ---
@@ -3598,6 +3752,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       legendHunt: { ...this.hunt, floors: [...this.hunt.floors], kinds: [...this.hunt.kinds] },
       itemLevels: pruneLevels(this.itemLevels, this.passives),
       teraPick: this.teraPick,
+      dark: this.dark,
       secondChance: this.secondChanceUsed,
       bossesBeaten: this.bossesBeaten,
       captureDone: this.capture.done,
@@ -4608,9 +4763,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const y = H - h - 2;
     const box = drawBox(this.add.graphics(), x, y, w, h, { radius: 12 }).setAlpha(0.96);
     const title = this.add.text(x + 20, y + h / 2, `Consejo · ${TIPS[id].title}`, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(0, 0.5);
-    const text = this.add.text(title.x + title.width + 14, y + h / 2, TIPS[id].text.replace(/\n/g, ' '), {
-      fontFamily: FONT, fontSize: '14px', color: HEX.text, wordWrap: { width: w - title.width - 440 },
-    }).setOrigin(0, 0.5);
+    // El de las formas de poder, con las teclas y botones dibujados (glifos pixel) del dispositivo que usas
+    const text: Phaser.GameObjects.GameObject = id === 'forms'
+      ? new GlyphText(this, title.x + title.width + 14, y + h / 2, this.formsTipText(), { size: 14, color: HEX.text, bold: false, auto: false, maxWidth: w - title.width - 440 })
+      : this.add.text(title.x + title.width + 14, y + h / 2, TIPS[id].text.replace(/\n/g, ' '), {
+        fontFamily: FONT, fontSize: '14px', color: HEX.text, wordWrap: { width: w - title.width - 440 },
+      }).setOrigin(0, 0.5);
     const button = (bx: number, label: string, onClick: () => void) => {
       const b = this.add.text(bx, y + h / 2, label, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' })
         .setOrigin(1, 0.5).setPadding(8, 6).setInteractive({ useHandCursor: true });
@@ -4630,6 +4788,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (this.hudCam) o.cameraFilter &= ~this.hudCam.id;
     }
     this.tipTimer = this.time.delayedCall(9000, () => this.closeTip());
+  }
+
+  /** Texto del consejo de formas de poder con las teclas configuradas (o los botones del mando). */
+  private formsTipText(): string {
+    const k = loadKeys();
+    return byDevice({
+      keyboard: `{key:${keyLabel(k.mega)}} usa la forma elegida · {key:${keyLabel(k.powerNext)}} cambia: Mega, Dinamax, Teracristal o Z`,
+      mouse: 'Clic en el icono junto a la Poké Ball: usar · {mouse:right} o rueda sobre él: cambiar de forma',
+      gamepad: '{pad:dpad-up} usa la forma elegida · {pad:dpad-left} {pad:dpad-right} cambian: Mega, Dinamax, Teracristal o Z',
+      touch: 'Toca el icono junto a la Poké Ball para usarla; mantenlo para cambiar de forma',
+    });
   }
 
   private closeTip(all = false) {
@@ -4961,6 +5130,26 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       z.on('pointerdown', () => this.current?.id === room.id && take());
     }
     this.eventSpots.push(spot);
+  }
+
+  /**
+   * Cae el guardián de la Mega Piedra: suelta la piedra (o, si ya la llevas, un objeto) donde ha caído y la sala queda
+   * resuelta (megaStoneDoneKey). La piedra se coge como cualquier objeto del suelo: pisándola, Enter/A o clic.
+   */
+  private guardianDefeated(roomId: number, x: number, y: number, tickets: number) {
+    this.eventsDone.add(megaStoneDoneKey(roomId));
+    const have = this.passives.includes(MEGA_STONE_ID);
+    const stone = passiveById(MEGA_STONE_ID);
+    this.time.delayedCall(900, () => {
+      if (this.ended) return;
+      if (!have && stone) {
+        const p = this.freeSpot(x, y);
+        this.spawnPickup(roomId, p.x, p.y, { kind: 'passive', item: stone }, this.current?.id === roomId);
+      } else this.dropItem(roomId, x, y);
+      this.drawMap();
+      this.saveNow();
+    });
+    this.notify(have ? `¡Guardián derrotado! +${tickets} tickets\nYa llevabas la Mega Piedra: ha caído un objeto` : `¡Guardián derrotado! +${tickets} tickets\n¡Ha soltado la Mega Piedra!`, { kind: 'reward', icon: 'star' });
   }
 
   private forgeUsable(room: Room) {
@@ -5512,8 +5701,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.notify(`¡Sala de desafío!\nOleada 1/${CHALLENGE_WAVES}`, { kind: 'danger', icon: 'heart' });
       this.time.delayedCall(900, () => this.spawnChallengeWave(room.id));
     } else if (this.megaRoomId === room.id && !this.eventsDone.has(megaStoneDoneKey(room.id))) {
-      // Santuario de la Mega Piedra: se redibuja al volver mientras no la hayas cogido
-      this.startEvent(room, 'megaStone');
+      // Guarida del guardián: un pseudolegendario o ultraente custodia la Mega Piedra y la suelta al caer. Si no se
+      // pudiera sacar (sin enemigos cargados) o la sala ya estuviera limpia, queda el altar de antes como reserva.
+      if (!this.cleared.has(room.id) && this.spawnMiniboss(true)) {
+        this.setGroupDoorsLocked(room, true, true);
+        sfx('door');
+      } else this.startEvent(room, 'megaStone');
     } else if (this.roomEvent?.roomId === room.id && !this.eventsDone.has(room.id) && !this.cleared.has(room.id) && (this.roomEvent.kind !== 'thief' || thiefCanAppear(this.coins))) {
       // T70: sin monedas el ladrón no aparece y la sala se juega como una de combate normal (rama de abajo)
       this.startEvent(room, this.roomEvent.kind);
@@ -5845,6 +6038,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     behavior: EnemyBehavior = kind.behavior,
     /** Ayudante invocado por el jefe: sale donde se le dice, con menos vida y sin botín. */
     helper?: { x: number; y: number },
+    /** Oscuro: sin decir, se sortea como enemigo normal (nunca los ayudantes); true/false lo fuerza (minijefes). */
+    darkAs?: boolean,
   ): Sprite {
     const { x, y } = helper ?? this.randomSpotInRoom(60);
     // Shiny (1/200): otro color, más vida y más premio
@@ -5859,6 +6054,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const hp = Math.round(st.hp * (shiny ? SHINY_ENEMY.hpMul : 1) * (helper ? HELPER_HP_MUL : 1));
     e.setData('helper', !!helper);
     e.setData('hp', hp).setData('maxHp', hp).setData('speed', st.speed).setData('dmg', st.damage);
+    // Pokémon oscuro (darkMon.ts): rareza baja que sube con el piso; más vida, daño, velocidad y cadencia
+    const dark = darkAs ?? (!helper && !this.daily && rollDark(Math.random, darkOdds('enemy', this.level())));
     if (shiny) {
       sparkle(this, x, y);
       this.popup(x, y - 40, '¡Shiny!', 0xffd34d);
@@ -5869,6 +6066,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     ai.tempo = rollTemperament(Math.random);
     if (ai.tempo.sizeMul !== 1) e.setDisplaySize(60 * ai.tempo.sizeMul, 60 * ai.tempo.sizeMul);
     e.setData('ai', ai).setData('types', kind.types).setData('speciesId', Number(kind.key.replace('foe-', '')));
+    if (dark) this.makeDark(e, ai, !!darkAs);
     // Élites: cada piso salen más. Más vida, algo más rápidos, brillo de su tipo y un ataque extra de su tipo
     if (!helper && Math.random() < eliteChance(this.level())) {
       const light = (TYPE_STYLES[kind.type] ?? TYPE_STYLES.normal).filter((st) => !['dash', 'chain', 'orbit', 'mine'].includes(st.pattern.k));
@@ -5888,6 +6086,23 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * Brillo de los enemigos especiales (minijefe, élite, Pokémon raro): aura que late a sus pies y chispas que suben.
    * Antes era un `preFX.addGlow`, que en muchos navegadores dejaba el sprite invisible (solo se veía la sombra).
    */
+  /**
+   * Convierte a un enemigo (o jefe) en Pokémon oscuro: estadísticas mejores, ataques más seguidos, aura morada y negra,
+   * nombre «Oscuro» y marca para el premio, la captura y la Pokédex. `quiet`: sin el aviso pequeño (lo da su intro).
+   */
+  private makeDark(e: Sprite, ai: EnemyAI, quiet = false) {
+    if (e.getData('dark')) return;
+    const d = darkEnemyStats({ hp: e.getData('maxHp') as number, damage: e.getData('dmg') as number, speed: e.getData('speed') as number });
+    e.setData('dark', true).setData('hp', d.hp).setData('maxHp', d.hp).setData('dmg', d.damage).setData('speed', d.speed);
+    ai.tempo = { ...(ai.tempo ?? rollTemperament(() => 0.5)), cooldownMul: darkCooldown(ai.tempo?.cooldownMul ?? 1) };
+    const bname = e.getData('bname') as string | undefined;
+    if (bname) e.setData('bname', darkName(bname));
+    const stop = darkAura(this, e, () => { const b = e.body as Body | null; return b ? b.bottom : e.y + e.displayHeight / 2; });
+    e.once(Phaser.GameObjects.Events.DESTROY, stop);
+    darkBurst(this, e.x, e.y);
+    if (!quiet) this.popup(e.x, e.y - 44, '¡Oscuro!', DARK_COLORS.glow);
+  }
+
   private glowAura(e: Sprite, color: number) {
     bossAura(this, e, color, () => {
       const bd = e.body as Body | null;
@@ -5895,12 +6110,20 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }, 1.8);
   }
 
-  private spawnMiniboss() {
-    if (this.foeKinds.length === 0) return;
-    const kind = [...this.foeKinds].sort((a, b) => b.bst - a.bst)[0];
-    const e = this.spawnEnemy(kind, kind.behavior);
+  /**
+   * Minijefe del piso: un pseudolegendario o ultraente (guardians.ts) en grande, con mucha vida y dos movimientos de
+   * su tipo. `guardian`: el jefe defensor de la Mega Piedra (más duro, con su intro y su aura; al caer suelta la
+   * piedra). Si su sprite no se ha podido cargar, el Pokémon más fuerte del bioma.
+   */
+  private spawnMiniboss(guardian = false): Sprite | undefined {
+    const pref = guardian ? (this.guardianKind ?? this.minibossKind) : this.minibossKind;
+    const loaded = pref && this.textures.exists(`${pref.key}-front`) ? pref : undefined;
+    if (!loaded && this.foeKinds.length === 0) return undefined;
+    const kind = loaded ?? [...this.foeKinds].sort((a, b) => b.bst - a.bst)[0];
+    const dark = !this.daily && rollDark(Math.random, darkOdds('miniboss', this.level()));
+    const e = this.spawnEnemy(kind, kind.behavior, undefined, false);
     const id = Number(kind.key.replace('foe-', ''));
-    const size = 112;
+    const size = guardian ? MEGA_GUARDIAN.size : 112;
     e.setDisplaySize(size, size).setData('size', size).setData('sheet', kind.key);
     if (!e.getData('shiny')) this.applyPmd(e, id, size);
     const hp = Math.round((e.getData('maxHp') as number) * (6 + this.level() * 0.6));
@@ -5910,16 +6133,31 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const thp = Math.round(hp * TOWER_MINIBOSS_HP_MUL);
       e.setData('hp', thp).setData('maxHp', thp).setData('dmg', Math.round((e.getData('dmg') as number) * TOWER_MINIBOSS_DMG_MUL));
     }
+    if (guardian) {
+      const ghp = Math.round((e.getData('maxHp') as number) * MEGA_GUARDIAN.hpMul);
+      e.setData('hp', ghp).setData('maxHp', ghp).setData('dmg', Math.round((e.getData('dmg') as number) * MEGA_GUARDIAN.damageMul)).setData('megaGuardian', true);
+    }
     const ai = e.getData('ai') as EnemyAI;
     ai.moves = bossStyles(kind.types, id);
     ai.eliteMove = ai.moves[0];
     ai.eliteAt = Number.POSITIVE_INFINITY; // empieza al acabar su intro
-    this.glowAura(e, 0xffd34d);
-    const name = kind.name ? kind.name.charAt(0).toUpperCase() + kind.name.slice(1) : 'Pokémon';
-    this.notify(`¡Minijefe: ${name}!`, { kind: 'danger', icon: 'star' });
+    // Aura: dorada el minijefe; la del guardián, del color de la Mega Piedra
+    this.glowAura(e, guardian ? 0x8fd3ff : 0xffd34d);
+    const base = kind.name ? kind.name.charAt(0).toUpperCase() + kind.name.slice(1) : 'Pokémon';
+    if (dark) this.makeDark(e, ai, true);
+    const name = dark ? darkName(base) : base;
+    const what = loaded ? guardianKindLabel(id) : 'Minijefe';
+    this.notify(guardian ? `¡${name} custodia la Mega Piedra!\nVéncelo para conseguirla` : `¡Minijefe: ${name}!`, { kind: 'danger', icon: 'star' });
     sparkle(this, e.x, e.y);
     void cry(id);
-    this.showBossIntro(ai, { boss: { texture: `${kind.key}-front`, name, types: kind.types }, tier: 'mini', subtitle: `Minijefe · ${progressText(this.mode, this.floorNum)}` });
+    this.showBossIntro(ai, {
+      boss: { texture: `${kind.key}-front`, name, types: kind.types },
+      tier: 'mini',
+      tag: guardian ? 'GUARDIÁN' : undefined,
+      dark,
+      subtitle: guardian ? `Guardián de la Mega Piedra · ${what}` : `Minijefe · ${what} · ${progressText(this.mode, this.floorNum)}`,
+    });
+    return e;
   }
 
   /**
@@ -6026,7 +6264,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     b.setData('maxHp', b.getData('hp'));
     // T63: el legendario también cuenta en el registro de combate al vencerlo
     b.setData('speciesId', this.bossId);
-    this.buildBossBar(b);
+    // Jefe oscuro (darkMon.ts): más raro al principio, más probable cuanto más hondo; nunca en el desafío diario
+    const dark = !this.daily && rollDark(Math.random, darkOdds('boss', this.floorNum));
+    const cap = (n: string) => n.charAt(0).toUpperCase() + n.slice(1);
+    this.buildBossBar(b, dark ? darkName(cap(this.bossName)) : this.bossName);
     // El jefe también se comporta según su tipo
     const ai = this.newAI(behaviorFor([this.bossType]), this.bossType, true);
     // Todos los legendarios invocan ayudantes de su tipo
@@ -6037,11 +6278,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     ai.nextAttack = this.time.now + 2200;
     ai.phase = 1;
     b.setData('ai', ai);
-    this.notify(`¡${this.bossName}, jefe legendario!`, { kind: 'danger', icon: 'pokeball' });
+    if (dark) this.makeDark(b, ai, true);
+    this.notify(dark ? `¡${darkName(cap(this.bossName))}, jefe legendario oscuro!\nMás fuerte en todo y con más premio` : `¡${this.bossName}, jefe legendario!`, { kind: 'danger', icon: 'pokeball' });
     void cry(this.bossId);
     playTrack(TRACKS.jefe);
     this.musicMood = 'boss';
-    this.showBossIntro(ai);
+    this.showBossIntro(ai, dark ? { boss: { texture: `${this.bossKey}-front`, name: darkName(cap(this.bossName)), types: this.bossTypes }, dark, subtitle: `Legendario oscuro · ${progressText(this.mode, this.floorNum)}` } : {});
   }
 
   /** Cartel del piso nuevo (FloorIntroScene) y, al irse, el jugador cae botando en la sala. */
@@ -6097,7 +6339,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Intro "VS" (supervisor) antes de que el jefe ataque: la partida se pausa debajo y se salta con Enter/Esc/clic/A. */
-  private showBossIntro(ai: EnemyAI, o: { boss?: { texture: string; name: string; types: string[] }; extra?: { texture: string; name: string; types: string[] }[]; tier?: 'mini' | 'final'; subtitle?: string; cine?: boolean } = {}) {
+  private showBossIntro(ai: EnemyAI, o: { boss?: { texture: string; name: string; types: string[] }; extra?: { texture: string; name: string; types: string[] }[]; tier?: 'mini' | 'final'; subtitle?: string; cine?: boolean; tag?: string; dark?: boolean } = {}) {
     if (this.floorIntroOn) {
       ai.nextAttack = Number.POSITIVE_INFINITY;
       this.events.once('floorintro-done', () => this.showBossIntro(ai, o));
@@ -6113,6 +6355,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       boss: o.boss ? { ...o.boss, name: cap(o.boss.name) } : { texture: `${this.bossKey}-front`, name: cap(this.bossName), types: this.bossTypes },
       extra: o.extra,
       tier: o.tier,
+      tag: o.tag,
+      dark: o.dark,
       subtitle: o.subtitle ?? `Legendario · ${progressText(this.mode, this.floorNum)}`,
       onDone: () => {
         this.scene.stop('BossIntro');
@@ -6680,19 +6924,47 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private adminPower(choice: PowerChoice | 'mega'): string {
     this.adminCheat();
     if (choice === 'mega') {
-      const api = (window as unknown as { __POKEISAAC_DEBUG__?: { forceMega: () => string } }).__POKEISAAC_DEBUG__;
-      if (api) return api.forceMega();
-      if (!this.passives.includes(MEGA_STONE_ID)) this.passives.push(MEGA_STONE_ID);
-      fillAdrenaline(this.adrenaline);
+      // Siempre el jugador (antes, con un jefe en la sala, megaevolucionaba al jefe y parecía que no hacía nada)
+      this.adminGiveStone();
+      if (!megaFormName(this.formId)) return `${this.niceName()} no tiene megaevolución (la piedra queda en la bolsa).`;
+      if (this.megaKey) this.endPowerForm();
       this.powerForm = { ...newPowerFormState() };
+      this.powerSel = 'mega';
       this.megaEvolve();
-      return 'Megaevolución';
+      return `¡${megaDisplayName(this.formId, this.niceName())}!`;
     }
     this.powerForm = { ...newPowerFormState() };
     this.powerMeter.value = POWER_METER_MAX;
     this.zUsed = false;
+    this.powerSel = choice;
     this.startPower(choice);
     return `${ADMIN_FORMS.find((f) => f[0] === choice)?.[1] ?? choice} activado`;
+  }
+
+  /** Da la Mega Piedra (si no la llevas) y redibuja el HUD. */
+  private adminGiveStone() {
+    this.adminCheat();
+    if (!this.passives.includes(MEGA_STONE_ID)) {
+      const item = passiveById(MEGA_STONE_ID);
+      if (item) this.gainItem({ kind: 'passive', item });
+      else this.passives.push(MEGA_STONE_ID);
+    }
+    this.refreshInventory();
+    if (this.megaHud) this.megaHud.shown = '';
+    this.badgeShown = '';
+  }
+
+  /** Activa o quita la variante oscura del jugador (solo para probar). */
+  private adminDark(): string {
+    this.adminCheat();
+    this.dark = !this.dark;
+    this.darkAuraStop?.();
+    this.darkAuraStop = undefined;
+    if (this.dark && this.player?.active) this.darkAuraStop = darkAura(this, this.player, () => (this.player.body as Body | null)?.bottom ?? this.player.y + 30);
+    const prevMax = this.stats.maxHp;
+    this.stats = this.calcStats();
+    this.hp = Math.max(1, Math.min(this.stats.maxHp, this.hp + Math.max(0, this.stats.maxHp - prevMax)));
+    return this.dark ? 'Inicial oscuro activado.' : 'Inicial oscuro desactivado.';
   }
 
   private adminRows(): AdminRow[] {
@@ -6702,7 +6974,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       { header: true, label: () => `Partida: ${this.runLabel()} · piso ${this.floorNum}${isCheatRun() ? ' · ADMIN (no cuenta)' : ''}` },
       { label: () => `Modo dios (vida, daño, cadencia y velocidad enormes, invulnerable): ${isGodMode() ? 'Sí' : 'No'}`, run: () => (this.adminGod(!isGodMode()), `Modo dios ${isGodMode() ? 'activado' : 'desactivado'}.`) },
       { label: () => 'Llenar la adrenalina', run: () => (this.adminCheat(), fillAdrenaline(this.adrenaline), 'Adrenalina llena.') },
-      { label: () => 'Megaevolución ya (jefe vivo: el jefe)', run: () => this.adminPower('mega') },
+      { label: () => `Megaevolucionar${megaFormName(this.formId) ? '' : ' (tu Pokémon no tiene mega)'}`, run: () => this.adminPower('mega') },
+      { label: () => `Dar la Mega Piedra${this.passives.includes(MEGA_STONE_ID) ? ' (ya la llevas)' : ''}`, run: () => (this.adminGiveStone(), 'Mega Piedra en la bolsa.') },
+      { label: () => 'Megaevolucionar al jefe de la sala', run: () => (window as unknown as { __POKEISAAC_DEBUG__?: { forceMega: () => string } }).__POKEISAAC_DEBUG__?.forceMega() ?? 'Sin consola de depuración.' },
+      { label: () => 'Llenar el medidor de poder', run: () => (this.adminCheat(), (this.powerMeter.value = POWER_METER_MAX), this.powerMeterHud && (this.powerMeterHud.shown = ''), 'Medidor lleno.') },
+      { label: () => `Jugar con el inicial oscuro: ${this.dark ? 'Sí' : 'No'}`, run: () => this.adminDark() },
       { label: () => `Forma de poder ◀ ${ADMIN_FORMS[u.form][1]} ▶  (Enter: activar)`, adjust: (d) => (u.form = stepValue(u.form, d, 0, ADMIN_FORMS.length - 1)), run: () => this.adminPower(ADMIN_FORMS[u.form][0]) },
       { header: true, label: () => 'Pisos y jefes' },
       { label: () => `Ir al piso ◀ ${u.floor} ▶ de ${maxF}`, adjust: (d) => (u.floor = stepValue(u.floor, d, 1, maxF)), setNumber: (n) => (u.floor = Math.max(1, Math.min(maxF, n))), run: () => this.adminGoFloor(u.floor) },
@@ -6751,7 +7027,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           return 'jefe al 45 %: megaevoluciona (o forma furia) en el siguiente fotograma';
         }
         api.giveMegaStone();
-        fillAdrenaline(this.adrenaline);
         if (!powerFormActive(this.powerForm)) this.powerForm = { ...this.powerForm, usedThisFloor: false };
         this.megaEvolve();
         return megaFormName(this.formId) ? 'megaevolución del jugador' : `especie ${this.formId} sin mega`;
@@ -8296,6 +8571,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       legendHunt: { ...this.hunt, floors: [...this.hunt.floors], kinds: [...this.hunt.kinds] },
       itemLevels: pruneLevels(this.itemLevels, this.passives),
       teraPick: this.teraPick,
+      dark: this.dark,
       secondChance: this.secondChanceUsed,
       bossesBeaten: this.bossesBeaten,
       powerMeter: this.powerMeter.value,
@@ -8556,6 +8832,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const dpadUpNow = hasPad && !!pad!.buttons[12]?.pressed;
     if (Phaser.Input.Keyboard.JustDown(this.megaInputKey) || (dpadUpNow && !this.dpadUpPrev)) this.powerButton();
     this.dpadUpPrev = dpadUpNow;
+    // Elegir forma de poder: su tecla (X) o la cruceta izquierda/derecha (botones 14 y 15, libres en partida)
+    const dpadSide = hasPad ? (pad!.buttons[15]?.pressed ? 1 : pad!.buttons[14]?.pressed ? -1 : 0) : 0;
+    if (Phaser.Input.Keyboard.JustDown(this.powerNextKey)) this.cyclePower(1);
+    else if (dpadSide !== 0 && dpadSide !== this.dpadSidePrev) this.cyclePower(dpadSide as 1 | -1);
+    this.dpadSidePrev = dpadSide;
     this.rbPrev = rbNow;
     // Objeto activo: Espacio o LB (el clic va en su cuadro)
     const lbNow = hasPad && !!pad!.buttons[4]?.pressed;
@@ -9161,6 +9442,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       loot.push({ kind: 'key' });
       sparkle(this, enemy.x, enemy.y);
     }
+    // Un oscuro también: monedas de 5 de más
+    if (enemy.getData('dark') && !enemy.getData('helper')) for (let k = 0; k < DARK_REWARD.extraCoins; k++) loot.push({ kind: 'coin', value: 5 });
     loot
       .filter((d) => hasShop || d.kind !== 'coin')
       .forEach((d, k) => this.dropLoot(enemy.x + (k - 1) * 26, enemy.y + 10, d));
@@ -9202,19 +9485,23 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (enemy.getData('runaway') || enemy.getData('mimic')) this.eventFoeDefeated(enemy);
     if (enemy.getData('thief')) this.thiefDefeated();
     if (mini) {
-      // Premio del minijefe: un objeto y tickets
-      const bonus = this.giveTickets(minibossTicketsFor(this.floorNum));
+      // Premio del minijefe: un objeto y tickets (el guardián de la Mega Piedra da más; uno oscuro, ×1,5)
+      const guard = !!enemy.getData('megaGuardian');
+      const baseTickets = minibossTicketsFor(this.floorNum) + (guard ? MEGA_GUARDIAN.tickets : 0);
+      const bonus = this.giveTickets(enemy.getData('dark') ? darkTickets(baseTickets) : baseTickets);
       const ex = enemy.x;
       const ey = enemy.y;
       const roomId = this.current.id;
-      this.time.delayedCall(900, () => !this.ended && this.dropItem(roomId, ex, ey));
+      if (guard) this.guardianDefeated(roomId, ex, ey, bonus);
+      else this.time.delayedCall(900, () => !this.ended && this.dropItem(roomId, ex, ey));
       // T72: en la Torre además suelta un objeto épico
       const epic = this.mode === 'tower' ? passiveById(towerMinibossItem(this.rng(RNG.items), new Set(this.passives), this.passivePool())) : undefined;
       if (epic) this.time.delayedCall(1100, () => { if (!this.ended) { const p = this.freeSpot(ex + 90, ey); this.spawnPickup(roomId, p.x, p.y, { kind: 'passive', item: epic }, this.current?.id === roomId); } });
-      this.notify(`¡Minijefe derrotado! +${bonus} tickets\n${epic ? 'Han caído un objeto y uno épico' : 'Ha caído un objeto'}`, { kind: 'reward', icon: 'star' });
+      if (!guard) this.notify(`¡Minijefe derrotado! +${bonus} tickets\n${epic ? 'Han caído un objeto y uno épico' : 'Ha caído un objeto'}`, { kind: 'reward', icon: 'star' });
     }
     // T56: sala de la plaga. Antes de destruirlo, para que el pequeño cuente al mirar si la sala está limpia
     if (shouldMultiply(this.activeRule(), boss || mini || !!enemy.getData('helper') || !!enemy.getData('runaway') || !!enemy.getData('mimic'), Math.random)) this.spawnSmallCopy(enemy);
+    if (boss && enemy.getData('dark')) this.darkBossBeaten = true;
     enemy.destroy();
     if (boss && others.length === 0) {
       this.bossFx?.destroy();
@@ -9735,6 +10022,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const tint = statusTint((e.getData('statuses') as ActiveStatus[] | undefined) ?? [], time);
     if (tint !== null) e.setTint(tint);
     else if (ai?.phase === 2) e.setTint(0xff9a8a); // jefe enfurecido
+    else if (e.getData('dark')) e.setTint(DARK_COLORS.tint); // Pokémon oscuro: tinte morado
     else if (e.isTinted) e.clearTint();
   }
 
@@ -9846,7 +10134,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
     // En Rush de jefes no hay salas que den tickets, así que cada jefe da algo menos que en un piso
     const bossReward = bossTicketsFor(this.mode === 'bossrush' ? Math.ceil(this.floorNum / 2) : this.floorNum);
-    const reward = this.giveTickets(room.kind === 'boss' ? bossReward : roomTicketsFor(this.floorNum));
+    // Jefe oscuro: más premio (darkTickets)
+    const reward = this.giveTickets(room.kind === 'boss' ? (this.darkBossBeaten ? darkTickets(bossReward) : bossReward) : roomTicketsFor(this.floorNum));
+    this.darkBossBeaten = false;
     // T48: premio del rival y de la sala del tiempo; huevo y cansancio
     if (this.rivalWave > 0 && this.roomEvent?.roomId === room.id) {
       this.rivalWave = 0;
