@@ -23,7 +23,7 @@ import { bakeProjectiles, bakeTypeFx, projKey, projRotation, typeImpact, typeTra
 import { bakeCombatFx, bossAura, damageNumber, evolveBurst, evolveGlow, hitSpark, phaseShock, starBurst } from '../ui/art/combatFx';
 import { pixBlast, pixBolt, pixDebris, pixFlash, pixRing } from '../ui/art/pixelFx';
 import {
-  P, bakeTdArt, confetti, drawAbilityFrame, drawAura, drawBar, drawBase, drawCursor, drawDecor, drawFlow, drawPads, drawPedestal, drawPortal,
+  P, bakeLayer, bakeTdArt, confetti, drawAbilityFrame, drawAura, drawBar, drawBase, drawCursor, drawDecor, drawFlow, drawPads, drawPedestal, drawPortal,
   drawRange, drawRoad, pickDecor, tdIcon, tdIconKey, type Decor, type MapGeom,
 } from '../ui/art/tdArt';
 import { biomeById } from '../level/biomes';
@@ -258,6 +258,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     const ground = this.add.graphics().setDepth(0.2);
     drawPads(ground, buildableCells(this.map), biome.colors.floor, GEO);
     drawRoad(ground, this.map, this.map.biome, GEO);
+    bakeLayer(this, ground, OX - 32, OY - 32, W + 64, H + 64, 0.2);
     for (const b of this.map.blocked) {
       this.add.image(sx(b.x) + CELL / 2, sy(b.y) + CELL / 2 + 2, tiles.rock).setDisplaySize(CELL, CELL).setDepth(10 + b.y);
     }
@@ -1091,7 +1092,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     drawDecor(g, this.map.biome, this.decor, t);
     for (const c of entryCells(this.map)) drawPortal(g, sx(c.x) + CELL / 2, sy(c.y) + CELL / 2, 0xb08aff, t);
     const b = this.basePos();
-    drawBase(g, b.x, b.y, t, this.td.hp / this.td.maxHp, this.baseFlash);
+    drawBase(g, b.x, b.y, t, this.td.hp / this.td.maxHp, this.baseFlash, this.map.biome);
   }
 
   private drawTowersLayer(t: number) {
@@ -1142,9 +1143,6 @@ export class TowerDefenseScene extends Phaser.Scene {
       }
       if (e.haste > 0 && !still && Math.random() < 0.06) typeTrail(this, v.spr.x, v.spr.y + 6, 'electric', 0.6, 9);
     }
-    // Barra de vida de la base
-    const b = this.basePos();
-    drawBar(g, b.x - 26, b.y - 42, 52, 6, this.td.hp / this.td.maxHp, 0x4cd964);
     // Alcance de la torre elegida y fantasma al colocar
     const sel = this.selectedTower();
     if (sel) drawRange(g, sx(sel.x) + CELL / 2, sy(sel.y) + CELL / 2, this.td.statsOf(sel).range * CELL, true, t);
