@@ -38,6 +38,8 @@ import { isLevelUnlocked, loadTdProgress, starsFor, submitTdOutcome, type TdRewa
 import { tdMonKey, type TowerDefenseData } from './TowerDefenseMenuScene';
 import { openConfirm } from './ConfirmScene';
 import { onFocusLost } from '../ui/focusPause';
+import { openControls } from './ControlsScene';
+import { showTdTip } from '../ui/tdTips';
 import { accountInfo } from '../net/cloud';
 import type { BaseStats } from '../data/pokeStats';
 
@@ -238,6 +240,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.loadingText.destroy();
     this.build();
     this.ready = true;
+    showTdTip(this, 'td_place');
   }
 
   // --- Montaje ---
@@ -513,7 +516,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     const c = this.add.container(0, 0).setDepth(100);
     const dim = this.add.rectangle(480, 320, 1600, 1000, 0x000000, 0.6).setInteractive();
     const g = this.add.graphics();
-    drawBox(g, 300, 170, 360, 300, { radius: 16 });
+    drawBox(g, 300, 170, 360, 360, { radius: 16 });
     const t = this.add.text(480, 205, 'Pausa', { fontFamily: UI.FONT, fontSize: '30px', fontStyle: 'bold', color: NAVY }).setOrigin(0.5);
     c.add([dim, g, t]);
     this.overlay = c;
@@ -521,12 +524,13 @@ export class TowerDefenseScene extends Phaser.Scene {
       this,
       480,
       262,
-      ['Continuar', 'Reiniciar nivel', 'Salir a los niveles'],
+      ['Continuar', 'Controles', 'Reiniciar nivel', 'Salir a los niveles'],
       (i) => {
         if (i === 0) return this.closePause();
-        const go = () => (i === 1 ? this.restart() : this.toMaps());
+        if (i === 1) return openControls(this);
+        const go = () => (i === 2 ? this.restart() : this.toMaps());
         // Se pierde la partida en curso: se pregunta antes
-        const asked = openConfirm(this, i === 1 ? '¿Reiniciar el nivel? Perderás esta partida.' : '¿Salir a los niveles? Perderás esta partida.', (yes) => {
+        const asked = openConfirm(this, i === 2 ? '¿Reiniciar el nivel? Perderás esta partida.' : '¿Salir a los niveles? Perderás esta partida.', (yes) => {
           if (yes) go();
         });
         if (!asked) go();
@@ -819,6 +823,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         sfx(e.boss ? 'roar' : 'door');
         this.toast(e.boss ? `Oleada ${e.wave}: ¡jefe legendario!` : `Oleada ${e.wave}`, e.boss ? 'danger' : 'info');
         for (const c of entryCells(this.map)) pixRing(this, sx(c.x) + CELL / 2, sy(c.y) + CELL / 2, 36, 0xb08aff, 500, 5);
+        if (e.wave >= 2) showTdTip(this, 'td_skills');
         break;
       case 'waveEnd':
         sfx('clear');
@@ -1260,6 +1265,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       const base = tw.evolved ? this.names.get(tw.evolved) ?? tw.mon.name : tw.mon.name;
       const name = tw.mega !== null ? `Mega ${base}` : base;
       txt(y0, `${shorten(name, 13)}\n${levelLabel(tw.level, tw.evolved !== null)}`, 15, NAVY, true);
+      showTdTip(this, 'td_upgrade');
       txt(y0 + 40, '', 12);
       let by = y0 + 130;
       const btn = (label: string, act: () => void, en: () => boolean, color?: number, h = 34) => {
@@ -1309,6 +1315,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     const lines = [...count.entries()].map(([k, n]) => `${ENEMY_KIND_LABEL[k]}: ${n}`);
     txt(y0 + 24, lines.join('\n'), 13);
     if (count.get('flying')) {
+      showTdTip(this, 'td_air');
       txt(y0 + 34 + lines.length * 17, '¡Voladores! Solo los alcanzan Volador, Eléctrico, Psíquico, Dragón, Fantasma, Hada y Hielo (o la rama Táctica).', 11, '#a04040');
     }
   }

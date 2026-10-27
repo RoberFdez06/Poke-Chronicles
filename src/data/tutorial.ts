@@ -1,7 +1,7 @@
 // Tutorial (T25): consejos cortos que salen la primera vez que pasa algo en la partida. Lógica pura; el guardado
 // (qué consejos ya se han visto y si se han desactivado) está en save.ts.
 
-export const TIP_IDS = ['move', 'shoot', 'pause', 'powers', 'items', 'active', 'center', 'shop', 'chest'] as const;
+export const TIP_IDS = ['move', 'shoot', 'pause', 'powers', 'items', 'active', 'center', 'shop', 'chest', 'td_place', 'td_upgrade', 'td_air', 'td_skills'] as const;
 export type TipId = (typeof TIP_IDS)[number];
 
 /** Texto de cada consejo, con los tres controles (teclado, ratón y mando). */
@@ -41,6 +41,23 @@ export const TIPS: Readonly<Record<TipId, { title: string; text: string }>> = {
   chest: {
     title: 'Cofres y bombas',
     text: 'Los cofres se abren con una llave. Las bombas (E, RB o clic en la bomba del HUD) rompen rocas y abren paredes.',
+  },
+  // Defensa de torres (salen en TowerDefenseScene la primera vez que toca)
+  td_place: {
+    title: 'Colocar torres',
+    text: 'Elige un Pokémon del equipo (clic, teclas Q/E o LB/RB) y ponlo en una casilla libre fuera del camino: clic o Enter/A. Pulsa N, X o "Siguiente oleada" cuando estés listo.',
+  },
+  td_upgrade: {
+    title: 'Mejorar torres',
+    text: 'Elige una torre (clic o Enter/A) y mejórala con U o el botón verde. Al nivel 3 eliges rama; al 5 evoluciona y, si puede, megaevoluciona al 6. V o el botón vende; T cambia el objetivo.',
+  },
+  td_air: {
+    title: 'Voladores',
+    text: 'Los voladores siguen el camino pero solo los alcanzan torres aéreas (Volador, Eléctrico, Psíquico, Dragón, Fantasma, Hada, Hielo) o la rama Táctica. Mira el panel de la derecha, o haz clic en una torre para ver si es "aéreo".',
+  },
+  td_skills: {
+    title: 'Habilidades',
+    text: 'Rayo, Ventisca y Curar base se usan con 1, 2 y 3, con LT y RT en el mando (Curar, solo con clic o tecla 3) o con clic en su botón de abajo. Tardan en recargarse.',
   },
 };
 

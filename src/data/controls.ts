@@ -136,3 +136,73 @@ export function touchOnlyDevice(): boolean {
 
 /** Secciones que se enseñan: Táctil solo en móvil o tableta. */
 export const visibleModes = (touch: boolean): ControlMode[] => CONTROL_MODES.filter((m) => m !== 'touch' || touch);
+
+// --- Defensa de torres: sus teclas son fijas (no entran en la configuración de teclas) ---
+
+export const TD_CONTROL_ACTIONS = ['pick', 'place', 'upgrade', 'sell', 'target', 'abilities', 'wave', 'speed', 'pause', 'back'] as const;
+export type TdControlAction = (typeof TD_CONTROL_ACTIONS)[number];
+
+export const TD_CONTROL_ACTION_LABEL: Record<TdControlAction, string> = {
+  pick: 'Elegir Pokémon del equipo',
+  place: 'Colocar o elegir torre',
+  upgrade: 'Mejorar (y elegir rama)',
+  sell: 'Vender',
+  target: 'Cambiar objetivo de la torre',
+  abilities: 'Habilidades: Rayo, Ventisca, Curar',
+  wave: 'Llamar a la siguiente oleada',
+  speed: 'Velocidad x1 / x2 / x3',
+  pause: 'Pausa',
+  back: 'Cancelar / volver',
+};
+
+/** Cómo se hace cada acción de la defensa de torres en cada modo. */
+export const TD_CONTROLS: Record<ControlMode, Record<TdControlAction, string>> = {
+  keyboard: {
+    pick: 'Q y E (anterior y siguiente)',
+    place: 'Flechas o W A S D para mover el cursor · Enter o Espacio',
+    upgrade: 'U (en la rama, elige con las flechas y Enter)',
+    sell: 'V',
+    target: 'T',
+    abilities: '1 Rayo · 2 Ventisca · 3 Curar base',
+    wave: 'N',
+    speed: 'F',
+    pause: 'Esc o P',
+    back: 'Esc (cancela lo elegido; sin nada, abre la pausa)',
+  },
+  mouse: {
+    pick: 'Clic en el Pokémon del panel de la derecha',
+    place: 'Clic en una casilla libre; clic en una torre para elegirla · clic derecho: cancelar',
+    upgrade: 'Botón verde "Mejorar" del panel (en la rama, clic en una de las dos)',
+    sell: 'Botón "Vender" del panel',
+    target: 'Botón "Objetivo" del panel',
+    abilities: 'Clic en los tres botones de abajo a la izquierda',
+    wave: 'Botón "Siguiente oleada"',
+    speed: 'Botón "x1" de abajo',
+    pause: 'Botón "Pausa" de abajo',
+    back: 'Clic derecho',
+  },
+  gamepad: {
+    pick: 'LB y RB (anterior y siguiente)',
+    place: 'Cruceta o stick para mover el cursor · A',
+    upgrade: 'Baja al panel con la cruceta y pulsa A en "Mejorar"',
+    sell: 'En el panel, A en "Vender"',
+    target: 'En el panel, A en "Objetivo"',
+    abilities: 'LT Rayo · RT Ventisca (Curar base, desde los botones de abajo con A)',
+    wave: 'X',
+    speed: 'Y',
+    pause: 'Start (o Select)',
+    back: 'B',
+  },
+  touch: {
+    pick: 'Toca el Pokémon del panel',
+    place: 'Toca una casilla libre; toca una torre para elegirla',
+    upgrade: 'Toca "Mejorar" en el panel',
+    sell: 'Toca "Vender" en el panel',
+    target: 'Toca "Objetivo" en el panel',
+    abilities: 'Toca los tres botones de abajo a la izquierda',
+    wave: 'Toca "Siguiente oleada"',
+    speed: 'Toca "x1"',
+    pause: 'Toca "Pausa"',
+    back: 'Toca "← Volver"',
+  },
+};

@@ -4,6 +4,9 @@ import {
   CONTROL_ACTIONS,
   CONTROL_ACTION_LABEL,
   CONTROL_MODE_LABEL,
+  TD_CONTROLS,
+  TD_CONTROL_ACTIONS,
+  TD_CONTROL_ACTION_LABEL,
   controlSections,
   touchOnlyDevice,
   visibleModes,
@@ -35,7 +38,12 @@ export class ControlsScene extends Phaser.Scene {
   private padButtons!: PadButtons;
   private tabs: { box: Phaser.GameObjects.Graphics; text: Phaser.GameObjects.Text }[] = [];
   private rows: Phaser.GameObjects.Text[] = [];
+  private labels: Phaser.GameObjects.Text[] = [];
+  /** Qué controles se enseñan: los de la partida o los de la defensa de torres (que se abre en ella si vienes de ahí). */
+  private view: 'game' | 'td' = 'game';
+  private viewBtn!: Phaser.GameObjects.Text;
   private closing = false;
+  private tabKey!: Phaser.Input.Keyboard.Key;
   private readyAt = 0;
 
   constructor() {
@@ -44,6 +52,7 @@ export class ControlsScene extends Phaser.Scene {
 
   init(data: ControlsData) {
     this.from = data?.from ?? '';
+    this.view = this.from.startsWith('TowerDefense') ? 'td' : 'game';
   }
 
   create() {
@@ -51,6 +60,7 @@ export class ControlsScene extends Phaser.Scene {
     this.closing = false;
     this.tabs = [];
     this.rows = [];
+    this.labels = [];
     // Solo lo del dispositivo con el que juegas: teclado y ratón juntos en PC, el mando solo, o el táctil solo
     const family = controlModesFor(currentInput());
     const all = visibleModes(touchOnlyDevice());
@@ -68,6 +78,13 @@ export class ControlsScene extends Phaser.Scene {
       this.setColor('#2b3a67');
     });
 
+    this.viewBtn = this.add
+      .text(890, 86, '', { fontFamily: UI.FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' })
+      .setOrigin(1, 0.5)
+      .setPadding(8, 6)
+      .setInteractive({ useHandCursor: true });
+    this.viewBtn.on('pointerdown', () => this.toggleView());
+
     const total = this.modes.length * TAB.w + (this.modes.length - 1) * TAB.gap;
     this.modes.forEach((m, k) => {
       const x = 480 - total / 2 + k * (TAB.w + TAB.gap);
@@ -84,18 +101,19 @@ export class ControlsScene extends Phaser.Scene {
     CONTROL_ACTIONS.forEach((a, k) => {
       // T53/T65/T74/T77: 27 px por fila para que quepan parry, Poké Ball, megaevolución y ataque cargado sin pisar la ayuda de abajo
       const y = 182 + k * 27;
-      this.add.text(100, y, CONTROL_ACTION_LABEL[a], { fontFamily: UI.FONT, fontSize: '19px', fontStyle: 'bold', color: '#2b3a67' });
+      this.labels.push(this.add.text(100, y, CONTROL_ACTION_LABEL[a], { fontFamily: UI.FONT, fontSize: '19px', fontStyle: 'bold', color: '#2b3a67' }));
       this.rows.push(this.add.text(400, y, '', { fontFamily: UI.FONT, fontSize: '18px', color: '#4a5578', wordWrap: { width: 470 } }).setData('a', a));
     });
     this.data.set('sections', sections);
     this.add
-      .text(480, 576, 'Izquierda/derecha, LB/RB o clic: cambiar de sección · Esc, B, Enter, A o "Volver": cerrar', {
+      .text(480, 576, 'Izquierda/derecha, LB/RB o clic: cambiar de sección · Tab, Y o clic arriba: Partida / Defensa de torres · Esc, B, Enter, A: cerrar', {
         fontFamily: UI.FONT,
         fontSize: '15px',
         color: '#4a5578',
       })
       .setOrigin(0.5);
 
+    this.tabKey = this.input.keyboard!.addKey('TAB', false);
     this.nav = new NavInput(this);
     this.padButtons = new PadButtons(this);
     this.select(this.tab);
@@ -115,7 +133,23 @@ export class ControlsScene extends Phaser.Scene {
       t.box.lineStyle(3, on ? 0xffd34d : 0x9aa6c4, 1).strokeRoundedRect(x, TAB.y, TAB.w, TAB.h, 10);
       t.text.setColor(on ? '#ffffff' : '#2b3a67');
     });
-    for (const r of this.rows) r.setText(sections[mode][r.getData('a') as (typeof CONTROL_ACTIONS)[number]]);
+    this.viewBtn.setText(this.view === 'td' ? 'Defensa de torres  ⇄  Partida' : 'Partida  ⇄  Defensa de torres');
+    this.rows.forEach((r, i) => {
+      if (this.view === 'td') {
+        const a = TD_CONTROL_ACTIONS[i];
+        this.labels[i].setText(a ? TD_CONTROL_ACTION_LABEL[a] : '').setVisible(!!a);
+        r.setText(a ? TD_CONTROLS[mode][a] : '').setVisible(!!a);
+      } else {
+        const a = CONTROL_ACTIONS[i];
+        this.labels[i].setText(CONTROL_ACTION_LABEL[a]).setVisible(true);
+        r.setText(sections[mode][a]).setVisible(true);
+      }
+    });
+  }
+
+  private toggleView() {
+    this.view = this.view === 'td' ? 'game' : 'td';
+    this.select(this.tab);
   }
 
   private close() {
@@ -136,6 +170,7 @@ export class ControlsScene extends Phaser.Scene {
     const pad = this.padButtons.read();
     if (pad.has('LB')) this.select(this.tab - 1);
     if (pad.has('RB')) this.select(this.tab + 1);
+    if (pad.has('Y') || Phaser.Input.Keyboard.JustDown(this.tabKey)) this.toggleView();
     if (s.dx !== 0) this.select(this.tab + s.dx);
     if (s.back || s.pause || (s.ok && this.time.now >= this.readyAt)) this.close();
   }

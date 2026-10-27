@@ -10,6 +10,7 @@ import { addMenuBackdrop } from '../ui/art/landscape';
 import { ToastStack } from '../ui/toast';
 import { bakeTdArt, drawMapThumb, tdIcon } from '../ui/art/tdArt';
 import { TD_MAPS } from '../data/towerDefense/maps';
+import { TD_GUIDE } from '../data/towerDefense/guide';
 import { wavesInLevel } from '../data/towerDefense/waves';
 import {
   LEVEL_COLS, LEVEL_GRID_BOTTOM, levelBox, levelsNeeded, isEndlessUnlocked, isLevelUnlocked, isMapUnlocked, levelsCleared, loadTdProgress, mapProgress, mapStars, type TdProgress,
@@ -73,7 +74,9 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
   private trial = false;
   private loading = false;
   private redraw: (grid?: boolean) => void = () => {};
-  private keys!: { Q: Phaser.Input.Keyboard.Key; E: Phaser.Input.Keyboard.Key };
+  private keys!: { Q: Phaser.Input.Keyboard.Key; E: Phaser.Input.Keyboard.Key; H: Phaser.Input.Keyboard.Key };
+  /** Pantalla «Cómo se juega» abierta (y su página). */
+  private help: { box: Phaser.GameObjects.Container; page: number; draw: () => void } | null = null;
 
   constructor() {
     super('TowerDefenseMenu');
@@ -93,10 +96,19 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     this.nav = new NavInput(this);
     this.pad = new PadButtons(this);
     const kb = this.input.keyboard!;
-    this.keys = { Q: kb.addKey('Q', false), E: kb.addKey('E', false) };
+    this.keys = { Q: kb.addKey('Q', false), E: kb.addKey('E', false), H: kb.addKey('H', false) };
     this.toasts = new ToastStack(this, 20, 92, 300, (c) => c.setDepth(50));
     this.progress = loadTdProgress();
     addBackButton(this, () => this.goBack());
+    const helpBtn = this.add
+      .text(924, 40, 'Cómo se juega (H · Y)', { fontFamily: UI.FONT, fontSize: '18px', color: '#ffffff' })
+      .setOrigin(1, 0.5)
+      .setPadding(8, 6)
+      .setDepth(5)
+      .setStroke('#18202c', 4)
+      .setInteractive({ useHandCursor: true });
+    helpBtn.on('pointerover', () => helpBtn.setColor('#ffd34d')).on('pointerout', () => helpBtn.setColor('#ffffff'));
+    helpBtn.on('pointerdown', () => this.openHelp());
     this.layer = this.add.container(0, 0);
     this.showStage(this.stage);
   }
@@ -107,6 +119,47 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     if (s === 'maps') this.buildMaps();
     else if (s === 'levels') this.buildLevels();
     else this.buildTeam();
+  }
+
+  // --- Cómo se juega ---
+
+  private openHelp() {
+    if (this.help || this.data?.get('leaving')) return;
+    const box = this.add.container(0, 0).setDepth(200);
+    const dim = this.add.rectangle(480, 320, 4000, 4000, 0x000000, 0.7).setInteractive();
+    const g = this.add.graphics();
+    drawBox(g, 90, 60, 780, 520, { radius: 16 });
+    const head = this.add.text(480, 92, '', { fontFamily: UI.FONT, fontSize: '28px', fontStyle: 'bold', color: NAVY }).setOrigin(0.5);
+    const body = this.add.text(130, 140, '', { fontFamily: UI.FONT, fontSize: '19px', color: NAVY, wordWrap: { width: 700 }, lineSpacing: 10 });
+    const foot = this.add.text(480, 556, '', { fontFamily: UI.FONT, fontSize: '15px', color: '#4a5578' }).setOrigin(0.5);
+    const mk = (x: number, label: string, d: number) => {
+      const b = this.add.text(x, 92, label, { fontFamily: UI.FONT, fontSize: '28px', fontStyle: 'bold', color: NAVY }).setOrigin(0.5).setPadding(10, 4).setInteractive({ useHandCursor: true });
+      b.on('pointerdown', () => this.helpPage(d));
+      return b;
+    };
+    const close = this.add.text(850, 76, '✕', { fontFamily: UI.FONT, fontSize: '26px', color: NAVY }).setOrigin(0.5).setPadding(8, 4).setInteractive({ useHandCursor: true });
+    close.on('pointerdown', () => this.closeHelp());
+    box.add([dim, g, head, body, foot, mk(130, '◀', -1), mk(830, '▶', 1), close]);
+    const h = { box, page: 0, draw: () => {} };
+    h.draw = () => {
+      const p = TD_GUIDE[h.page];
+      head.setText(p.title);
+      body.setText(p.lines.map((l) => `• ${l}`).join('\n'));
+      foot.setText(`Página ${h.page + 1} de ${TD_GUIDE.length} · Izquierda/derecha, Q/E, LB/RB o ◀ ▶: cambiar · Esc, B, Enter o A: cerrar`);
+    };
+    this.help = h;
+    h.draw();
+  }
+
+  private helpPage(d: number) {
+    if (!this.help) return;
+    this.help.page = (this.help.page + d + TD_GUIDE.length) % TD_GUIDE.length;
+    this.help.draw();
+  }
+
+  private closeHelp() {
+    this.help?.box.destroy();
+    this.help = null;
   }
 
   private goBack() {
@@ -517,8 +570,16 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     if (this.data?.get('leaving')) return;
     const s = this.nav.read();
     const pb = this.pad.read();
-    if (s.back) return this.goBack();
     const J = Phaser.Input.Keyboard.JustDown;
+    if (this.help) {
+      const prev = J(this.keys.Q) || pb.has('LB');
+      const next = J(this.keys.E) || pb.has('RB');
+      if (s.back || s.ok || J(this.keys.H) || pb.has('Y')) this.closeHelp();
+      else if (s.dx || prev || next) this.helpPage(s.dx || (prev ? -1 : 1));
+      return;
+    }
+    if (J(this.keys.H) || pb.has('Y')) return this.openHelp();
+    if (s.back) return this.goBack();
     if (this.stage === 'maps') {
       if (s.dx || s.dy) {
         const n = TD_MAPS.length;
