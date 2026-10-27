@@ -159,7 +159,7 @@ export class ModeScene extends Phaser.Scene {
   }
 
   private recordFor(id: ModeCardId): string {
-    if (id === 'daily') return dailyText(loadDaily(), dayNumber(), FLOOR_COUNT);
+    if (id === 'daily') return dailyText(loadDaily(), dayNumber(), FLOOR_COUNT).replace(/ \(.*?\)/, '').replace('Hoy: aún sin jugar', 'Hoy: sin jugar');
     if (id === 'code') return 'No cuenta para récords';
     if (id === 'towerdef') return recordText(id, totalStars(loadTdProgress()));
     return recordText(id, this.records[id]);
