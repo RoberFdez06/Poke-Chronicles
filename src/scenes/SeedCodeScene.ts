@@ -255,7 +255,7 @@ export class SeedCodeScene extends Phaser.Scene {
   private back() {
     if (this.leaving) return;
     this.leaving = true;
-    goTo(this, 'Mode', { starterId: this.args.starterId, slot: this.args.slot });
+    goTo(this, 'Slots');
   }
 
   update() {

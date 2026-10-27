@@ -15,44 +15,36 @@ test('con teclado: se juega, se guarda, se continúa y Esc vuelve atrás', async
   await waitScene(page, 'Title', 1500);
   await toMenu(page);
 
-  // Menú → Huecos, y Esc vuelve
+  // Menú → Modos, y Esc vuelve
   await press(page, 'Enter');
-  await waitScene(page, 'Slots');
+  await waitScene(page, 'Mode');
   await press(page, 'Escape');
   await waitScene(page, 'Menu');
 
   // Retroceso también vuelve
   await press(page, 'Enter');
-  await waitScene(page, 'Slots');
+  await waitScene(page, 'Mode');
   await press(page, 'Backspace');
   await waitScene(page, 'Menu');
 
-  // Primera partida: hueco vacío → región e inicial; Esc vuelve a los huecos
+  // Primera partida: modo Normal → hueco vacío → región e inicial; Esc vuelve a los huecos y otro Esc a los modos
   await press(page, 'Enter');
+  await waitScene(page, 'Mode');
+  await press(page, 'Enter'); // Normal
   await waitScene(page, 'Slots');
   await press(page, 'Enter');
   await waitScene(page, 'FirstStarter');
   await press(page, 'Escape');
+  await waitScene(page, 'Slots');
+  await press(page, 'Escape');
+  await waitScene(page, 'Mode');
+  await press(page, 'Enter');
   await waitScene(page, 'Slots');
   await press(page, 'Enter');
   await waitScene(page, 'FirstStarter');
   await press(page, 'Enter'); // Kanto
   await waitSceneProp(page, 'FirstStarter', 'step', 'starter');
-  await press(page, 'Enter'); // inicial del medio
-  await waitScene(page, 'Mode');
-
-  // Modo: Esc vuelve a la colección y de ahí a los huecos
-  await press(page, 'Escape');
-  await waitScene(page, 'Starter');
-  await press(page, 'Escape');
-  await waitScene(page, 'Slots');
-
-  // Ahora ya hay un Pokémon: hueco → colección → modo → partida
-  await press(page, 'Enter');
-  await waitScene(page, 'Starter', 1200);
-  await press(page, 'Enter');
-  await waitScene(page, 'Mode');
-  await press(page, 'Enter'); // Normal
+  await press(page, 'Enter'); // inicial del medio: entra directo en la partida
   await waitScene(page, 'Game', 2500);
 
   // Se guarda al entrar en la sala
@@ -68,7 +60,9 @@ test('con teclado: se juega, se guarda, se continúa y Esc vuelve atrás', async
   await waitScene(page, 'Menu');
   expect(await runSaved(page, 0)).not.toBeNull();
 
-  // Huecos: el 1 está ocupado → diálogo; Esc cierra el diálogo y otro Esc vuelve al menú
+  // Huecos: el 1 está ocupado → diálogo; Esc cierra el diálogo, otro Esc vuelve a los modos y otro al menú
+  await press(page, 'Enter');
+  await waitScene(page, 'Mode');
   await press(page, 'Enter');
   await waitScene(page, 'Slots');
   await press(page, 'Enter');
@@ -77,9 +71,13 @@ test('con teclado: se juega, se guarda, se continúa y Esc vuelve atrás', async
   await page.waitForTimeout(300);
   expect(await activeScenes(page)).toContain('Slots');
   await press(page, 'Escape');
+  await waitScene(page, 'Mode');
+  await press(page, 'Escape');
   await waitScene(page, 'Menu');
 
   // Continuar
+  await press(page, 'Enter');
+  await waitScene(page, 'Mode');
   await press(page, 'Enter');
   await waitScene(page, 'Slots');
   await press(page, 'Enter');

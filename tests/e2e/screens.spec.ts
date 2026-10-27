@@ -18,6 +18,9 @@ test('capturas de todas las pantallas', async ({ page }) => {
   await shot(page, '02-menu');
 
   await press(page, 'Enter');
+  await waitScene(page, 'Mode');
+  await shot(page, '02b-modos');
+  await press(page, 'Enter');
   await waitScene(page, 'Slots');
   await shot(page, '03-huecos');
   // Misiones y logros: debajo de los huecos (dos veces arriba desde el hueco 1; una es Historial), y Esc vuelve
@@ -39,8 +42,6 @@ test('capturas de todas las pantallas', async ({ page }) => {
   await press(page, 'Escape');
   await waitScene(page, 'Starter', 1500);
   await shot(page, '07-coleccion');
-  await press(page, 'Enter');
-  await waitScene(page, 'Mode');
   await press(page, 'Enter');
   await waitScene(page, 'Game', 3500);
   await page.waitForTimeout(1800); // que se vaya el cartel del piso

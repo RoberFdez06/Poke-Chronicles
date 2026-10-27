@@ -40,14 +40,16 @@ test('con ratón: se juega, se guarda, se continúa y "Volver" vuelve atrás', a
   const box = (await page.locator('canvas').boundingBox())!;
   await toMenu(page, () => page.mouse.click(box.x + box.width / 2, box.y + box.height / 2));
 
-  // Menú → Huecos y "Volver"
+  // Menú → Modos y "Volver"
   await clickText(page, 'Menu', 'Jugar');
-  await waitScene(page, 'Slots');
-  await clickText(page, 'Slots', '← Volver');
+  await waitScene(page, 'Mode');
+  await clickText(page, 'Mode', '← Volver');
   await waitScene(page, 'Menu');
 
-  // Primera partida: hueco vacío → región ("Volver" a los huecos) → inicial
+  // Primera partida: modo Normal → hueco vacío → región ("Volver" a los huecos) → inicial → partida
   await clickText(page, 'Menu', 'Jugar');
+  await waitScene(page, 'Mode');
+  await clickText(page, 'Mode', 'Normal');
   await waitScene(page, 'Slots');
   await clickText(page, 'Slots', 'Hueco 1');
   await waitScene(page, 'FirstStarter');
@@ -58,13 +60,6 @@ test('con ratón: se juega, se guarda, se continúa y "Volver" vuelve atrás', a
   await clickText(page, 'FirstStarter', 'Kanto');
   await waitSceneProp(page, 'FirstStarter', 'step', 'starter');
   await clickText(page, 'FirstStarter', 'Charmander');
-  await waitScene(page, 'Mode');
-  // Modo: "Volver" a la colección y de ahí otra vez al modo
-  await clickText(page, 'Mode', '← Volver');
-  await waitScene(page, 'Starter', 1200);
-  await clickText(page, 'Starter', 'Charmander');
-  await waitScene(page, 'Mode');
-  await clickText(page, 'Mode', 'Normal');
   await waitScene(page, 'Game', 3000);
 
   // Mantener el clic derecho lleva al Pokémon hacia el cursor
@@ -96,6 +91,8 @@ test('con ratón: se juega, se guarda, se continúa y "Volver" vuelve atrás', a
 
   // Continuar desde el hueco (diálogo: Cancelar primero, luego Continuar)
   await clickText(page, 'Menu', 'Jugar');
+  await waitScene(page, 'Mode');
+  await clickText(page, 'Mode', 'Normal');
   await waitScene(page, 'Slots');
   await clickText(page, 'Slots', 'Hueco 1');
   await page.waitForTimeout(300);
@@ -104,7 +101,7 @@ test('con ratón: se juega, se guarda, se continúa y "Volver" vuelve atrás', a
   expect(await activeScenes(page)).toContain('Slots');
   await clickText(page, 'Slots', 'Hueco 1');
   await page.waitForTimeout(300);
-  await clickText(page, 'Slots', 'Continuar');
+  await clickText(page, 'Slots', 'Continuar esta');
   await waitScene(page, 'Game', 2500);
   expect(await activeScenes(page)).not.toContain('Slots');
 

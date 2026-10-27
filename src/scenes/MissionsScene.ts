@@ -7,7 +7,7 @@ import { ACHIEVEMENTS, dailyMissions, isAchieved, NPC_MAX_ACTIVE, npcMissionById
 import { MEDALS } from '../data/medals';
 import { passiveById } from '../data/items';
 import { addBackButton } from '../ui/cards';
-import { NavInput } from '../ui/nav';
+import { NavInput, PadButtons } from '../ui/nav';
 import { COLORS, drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
 import { addIcon } from '../ui/art/icons';
@@ -28,6 +28,7 @@ function untilMidnight(now = new Date()): string {
  */
 export class MissionsScene extends Phaser.Scene {
   private nav!: NavInput;
+  private pad!: PadButtons;
   private leaving = false;
   /** 0 = misiones de hoy, medallas y logros; 1 = encargos de NPC (T87). */
   private page = 0;
@@ -40,6 +41,7 @@ export class MissionsScene extends Phaser.Scene {
     this.leaving = false;
     this.page = data?.page === 1 ? 1 : 0;
     this.nav = new NavInput(this);
+    this.pad = new PadButtons(this);
     fadeIn(this);
     fitDesign(this);
     addMenuBackdrop(this);
@@ -185,7 +187,8 @@ export class MissionsScene extends Phaser.Scene {
   update() {
     if (this.leaving) return;
     const n = this.nav.read();
+    const pb = this.pad.read();
     if (n.back) this.back();
-    else if (n.dx !== 0) this.flip();
+    else if (n.dx !== 0 || pb.has('LB') || pb.has('RB')) this.flip();
   }
 }

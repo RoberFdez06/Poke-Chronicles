@@ -22,6 +22,8 @@ test('un error saca "Algo ha fallado" y se vuelve al menú (teclado y ratón)', 
   await waitScene(page, 'Title', 2500);
   await toMenu(page);
   await press(page, 'Enter');
+  await waitScene(page, 'Mode');
+  await press(page, 'Enter');
   await waitScene(page, 'Slots');
 
   // Teclado: Enter sobre "Volver al menú"
@@ -35,6 +37,8 @@ test('un error saca "Algo ha fallado" y se vuelve al menú (teclado y ratón)', 
   await expect(dialog).toHaveCount(0);
   await waitScene(page, 'Menu');
   // El juego sigue vivo: el menú responde
+  await press(page, 'Enter');
+  await waitScene(page, 'Mode');
   await press(page, 'Enter');
   await waitScene(page, 'Slots');
   expect(await activeScenes(page)).toContain('Slots');

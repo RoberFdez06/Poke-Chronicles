@@ -66,7 +66,19 @@ export const PAD_LEGENDS: Record<string, string> = {
   Pokedex: 'Cruceta: moverse · A: ficha · LB/RB: región · X: rareza · LT/RT: tipo · Y: buscar · B: volver',
   Starter: 'Cruceta: moverse · A: elegir · LB/RB: región · X: rareza · LT/RT: tipo · Y: buscar · B: volver',
   Upgrades: 'Izq/Der: Pokémon · Arriba/Abajo: mejora · A: comprar · LB/RB: saltar · Y: buscar · B: volver',
-  Controls: 'LB/RB: cambiar de sección · A o B: cerrar',
+  Controls: 'Y: Partida ⇄ Defensa de torres · A o B: cerrar',
+  // Pantalla de modos (lo primero al pulsar «Jugar»)
+  Mode: 'Cruceta: elegir modo · A: jugar · LB/RB: dificultad · X: continuar partida · B: menú',
+  Slots: 'Cruceta: elegir hueco · A: abrir · B: cambiar de modo',
+  Garden: 'Izq/Der: parcela · Arriba/Abajo: semilla · A: plantar o recoger · B: volver',
+  Missions: 'LB/RB o Izq/Der: cambiar de pestaña · B: volver',
+  Gacha: 'Cruceta: elegir · A: tirar · B: volver',
+  TowerDefenseMenu: 'Cruceta: moverse · A: elegir · LB/RB: página · Y: cómo se juega · B: volver',
+  ItemChoice: 'Arriba/Abajo: elegir · A: aceptar · B: cancelar',
+  Confirm: 'Cruceta: elegir · A: aceptar · B: cancelar',
+  Route: 'Cruceta: elegir camino · A: aceptar',
+  Keys: 'Cruceta: elegir · A: cambiar (pulsa la tecla nueva en el teclado) · B: volver',
+  Settings: 'Arriba/Abajo: opción · Izq/Der: cambiar valor · A: aceptar · B: volver',
   SlotSwap: 'Arriba/Abajo: elegir · A: aceptar · B: dejarlo',
   FinalPrompt: 'Arriba/Abajo: elegir · A: aceptar · B: todavía no',
   // T57 y T63: «Una más» (B termina la partida) y el registro de combate (solo se mira: B vuelve)
@@ -80,7 +92,8 @@ export const PAD_LEGENDS: Record<string, string> = {
 /** Escenas de menú que llevan la barra (en la partida no: ahí hay HUD). */
 export const LEGEND_SCENES = new Set([
   'Title', 'Menu', 'Slots', 'Starter', 'FirstStarter', 'Mode', 'Settings', 'Pokedex', 'Upgrades', 'Missions', 'RunDex', 'Summary', 'History',
-  'Keys', 'Gacha', 'Pause', 'Controls', 'Account', 'SlotSwap', 'FinalPrompt', 'SecondChance', 'SeedCode',
+  'Keys', 'Gacha', 'Pause', 'Controls', 'Account', 'SlotSwap', 'FinalPrompt', 'SecondChance', 'SeedCode', 'Garden',
+  'TowerDefenseMenu', 'ItemChoice', 'Confirm', 'Route',
 ]);
 
 export const legendFor = (scene: string): string => PAD_LEGENDS[scene] ?? DEFAULT_LEGEND;

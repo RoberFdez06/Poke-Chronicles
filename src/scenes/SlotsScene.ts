@@ -6,8 +6,10 @@ import { withDifficulty } from '../data/difficulty';
 import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
 import { addHpBar, ARROW, drawBox, fadeIn, goTo, strokePixelFrame } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
+import { needsStarter, planLabel, type RunPlan } from '../data/runPlan';
+import { currentPlan, launchPlan, setPlan } from './runLaunch';
 
-const CARD = { w: 600, h: 120, gap: 22 };
+const CARD = { w: 600, h: 108, gap: 16 };
 /** Botones "Misiones y logros", "Registro" e "Historial" debajo de los huecos (opciones 3, 4 y 5 con flechas o mando). */
 const EXTRA = { y: 566, w: 290, h: 48 };
 const EXTRA_BUTTONS: { label: string; scene: string; x: number }[] = [
@@ -34,8 +36,16 @@ export class SlotsScene extends Phaser.Scene {
   private dialog?: { layer: Phaser.GameObjects.Container; list: MenuList; onBack: () => void };
   private leaving = false;
 
+  /** Lo elegido en la pantalla de modos (Jugar → modo → hueco → Pokémon). */
+  private plan: RunPlan = currentPlan();
+
   constructor() {
     super('Slots');
+  }
+
+  init(data?: { plan?: RunPlan }) {
+    if (data?.plan) setPlan(data.plan);
+    this.plan = currentPlan();
   }
 
   create() {
@@ -48,8 +58,12 @@ export class SlotsScene extends Phaser.Scene {
     fitDesign(this);
     addMenuBackdrop(this);
 
-    this.add.text(480, 56, 'Partidas', { fontFamily: UI.FONT, fontSize: '44px', fontStyle: 'bold', color: '#ffd34d' })
+    this.add.text(480, 48, 'Partidas', { fontFamily: UI.FONT, fontSize: '44px', fontStyle: 'bold', color: '#ffd34d' })
       .setOrigin(0.5).setStroke('#2b3a67', 10);
+    // Qué vas a jugar, para no perderse: «Torre · Difícil → elige hueco»
+    const step = this.plan.kind === 'resume' ? 'elige la partida que quieres seguir' : 'elige hueco';
+    this.add.text(480, 100, `${planLabel(this.plan)}  →  ${step}`, { fontFamily: UI.FONT, fontSize: '20px', fontStyle: 'bold', color: '#ffffff' })
+      .setOrigin(0.5).setStroke('#2b3a67', 6);
     const back = this.add
       .text(36, 50, '← Volver', { fontFamily: UI.FONT, fontSize: '22px', color: '#ffffff' })
       .setOrigin(0, 0.5).setPadding(8, 6).setInteractive({ useHandCursor: true });
@@ -62,7 +76,7 @@ export class SlotsScene extends Phaser.Scene {
     EXTRA_BUTTONS.forEach((b, k) => this.cards.push(this.buildExtraButton(b.label, b.x, 3 + k)));
 
     this.add
-      .text(480, 616, 'Flechas, ratón o mando para elegir · Enter, clic o A para abrir · Esc o B para volver', {
+      .text(480, 616, 'Flechas o ratón para elegir · Enter o clic para abrir · Esc o "Volver": cambiar de modo', {
         fontFamily: UI.FONT, fontSize: '15px', color: '#ffffff',
       })
       .setOrigin(0.5).setAlpha(0.6);
@@ -80,7 +94,8 @@ export class SlotsScene extends Phaser.Scene {
     const title = this.add.text(-w / 2 + 28, -22, `Hueco ${i + 1}`, {
       fontFamily: UI.FONT, fontSize: '28px', fontStyle: 'bold', color: '#2b3a67',
     }).setOrigin(0, 0.5);
-    const info = this.add.text(-w / 2 + 28, 22, run ? describe(run) : 'Vacío · Nueva partida', {
+    const empty = this.plan.kind === 'resume' ? 'Vacío' : 'Vacío · Nueva partida';
+    const info = this.add.text(-w / 2 + 28, 22, run ? describe(run) : empty, {
       fontFamily: UI.FONT, fontSize: '15px', color: run ? '#2b3a67' : '#7a849e', wordWrap: { width: CARD.w - 56 },
     }).setOrigin(0, 0.5);
 
@@ -134,12 +149,14 @@ export class SlotsScene extends Phaser.Scene {
   private goBack() {
     if (this.leaving) return;
     this.leaving = true;
-    goTo(this, 'Menu');
+    goTo(this, 'Mode');
   }
 
   private startNew(slot: number) {
+    if (this.plan.kind === 'resume') return;
     this.leaving = true;
-    goTo(this, 'Starter', { slot });
+    if (needsStarter(this.plan)) goTo(this, 'Starter', { slot });
+    else launchPlan(this, this.plan, slot);
   }
 
   private open(slot: number) {
@@ -150,7 +167,12 @@ export class SlotsScene extends Phaser.Scene {
     }
     const run = this.runs[slot];
     if (!run) return this.startNew(slot);
-    this.showDialog(`Hueco ${slot + 1}\n${capitalize(run.starterName)}`, ['Continuar', 'Nueva partida', 'Cancelar'], (k) => {
+    if (this.plan.kind === 'resume') {
+      this.leaving = true;
+      goTo(this, 'Game', { slot, resume: run });
+      return;
+    }
+    this.showDialog(`Hueco ${slot + 1}\n${capitalize(run.starterName)}`, ['Continuar esta', `Nueva: ${planLabel(this.plan)}`, 'Cancelar'], (k) => {
       if (k === 0) {
         this.leaving = true;
         goTo(this, 'Game', { slot, resume: run });
@@ -165,12 +187,12 @@ export class SlotsScene extends Phaser.Scene {
   }
 
   private showDialog(text: string, options: string[], onPick: (k: number) => void) {
-    const layer = addPanel(this, 480, 320, 520, 150 + options.length * 68, 50);
+    const layer = addPanel(this, 480, 320, 540, 150 + options.length * 68, 50);
     const top = 320 - (150 + options.length * 68) / 2;
     layer.add(this.add.text(480, top + 60, text, {
       fontFamily: UI.FONT, fontSize: '24px', fontStyle: 'bold', color: '#2b3a67', align: 'center',
     }).setOrigin(0.5));
-    const list = new MenuList(this, 480, top + 140, options, onPick, { w: 320, h: 52, gap: 16, depth: 51 });
+    const list = new MenuList(this, 480, top + 140, options, onPick, { w: 460, h: 52, gap: 16, depth: 51, fontSize: 20 });
     this.dialog = { layer, list, onBack: () => this.closeDialog() };
   }
 

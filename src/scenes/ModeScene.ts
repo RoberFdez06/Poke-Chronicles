@@ -1,57 +1,91 @@
 import Phaser from 'phaser';
 import { fitDesign } from '../ui/layout';
-import { emptyRecords, MODES, MODE_LABEL, modeDesc, recordText, Records } from '../data/modes';
-import { beginDaily, loadCandies, loadDaily, loadRecords, spendCandies } from '../data/save';
+import { emptyRecords, MODES, MODE_LABEL, modeDesc, recordText, Records, type GameMode } from '../data/modes';
+import { loadCandies, loadDaily, loadRecords } from '../data/save';
+import { loadAllRuns } from '../data/runSave';
 import { towerCheckpointOptions } from '../level/towerExtras';
-import { dailyStarter, dailyText } from '../data/daily';
+import { dailyText } from '../data/daily';
 import { dayNumber } from '../data/gacha';
-import { fetchSpeciesName } from '../data/pokeapi';
 import { FLOOR_COUNT } from '../level/progression';
 import { DIFFICULTIES, DIFFICULTY_DESC, DIFFICULTY_LABEL, type Difficulty } from '../data/difficulty';
-import { MenuList, NavInput, UI } from '../ui/nav';
+import { type RunPlan } from '../data/runPlan';
+import { NavInput, PadButtons, UI } from '../ui/nav';
 import { addBackButton } from '../ui/cards';
-import { drawBox, fadeIn, goTo } from '../ui/theme';
+import { COLORS, drawBox, fadeIn, goTo } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
+import { sfx } from '../ui/audio';
 import { loadTdProgress, totalStars } from '../data/towerDefense/progress';
+import { currentPlan } from './runLaunch';
 
-/** Margen tras abrir la pantalla en el que se ignora confirmar (el Enter que eligió el Pokémon no elige modo). */
+/** Margen tras abrir la pantalla en el que se ignora confirmar (el Enter que pulsó «Jugar» no elige modo). */
 const INPUT_DELAY_MS = 350;
 
 export interface ModeData {
-  starterId: number;
-  slot: number;
+  /** Tarjeta que sale elegida al llegar (p. ej. al volver de la Defensa de torres). */
+  select?: ModeCardId;
 }
 
-/** La opción que va detrás de los modos: el desafío diario (T34), que es una partida de Normal con semilla del día. */
-const DAILY_INDEX = MODES.length;
-/** T81: y la partida con código (lleva a la pantalla de escribirlo). */
-const CODE_INDEX = MODES.length + 1;
+type ModeCardId = GameMode | 'daily' | 'code';
 
-/** Tras elegir Pokémon: Normal, Oleadas, Infinito, Rush de jefes o Desafío diario, con el récord de cada uno. */
+interface CardDef {
+  id: ModeCardId;
+  icon: string;
+  name: string;
+  desc: string;
+  /** Qué viene después de elegirla. */
+  next: string;
+}
+
+const CARD = { w: 212, h: 212, gap: 14, cols: 4, top: 92 };
+const cardX = (i: number) => (960 - (CARD.cols * CARD.w + (CARD.cols - 1) * CARD.gap)) / 2 + (i % CARD.cols) * (CARD.w + CARD.gap);
+const cardY = (i: number) => CARD.top + Math.floor(i / CARD.cols) * (CARD.h + CARD.gap);
+
+const ICON: Record<ModeCardId, string> = {
+  normal: '🗺️', waves: '🌊', endless: '♾️', bossrush: '👑', tower: '🗼', towerdef: '🏰', daily: '📅', code: '🔑',
+};
+
+const CARDS: CardDef[] = [
+  ...MODES.map((m): CardDef => ({
+    id: m,
+    icon: ICON[m],
+    name: MODE_LABEL[m],
+    desc: modeDesc(m),
+    next: m === 'towerdef' ? 'Entra directo' : 'Luego: hueco y Pokémon',
+  })),
+  { id: 'daily', icon: ICON.daily, name: 'Desafío diario', desc: 'Los mismos pisos, jefes, objetos y Pokémon para todos hoy. Siempre en Normal.', next: 'Luego: hueco' },
+  { id: 'code', icon: ICON.code, name: 'Partida con código', desc: 'Escribe el código de otra partida y juega exactamente lo mismo.', next: 'Luego: hueco y código' },
+];
+
+/** La tarjeta elegida la última vez (para volver a ella). */
+let lastCard = 0;
+
+/**
+ * Pantalla de modos (lo primero al pulsar «Jugar»): tarjetas grandes con icono, descripción y récord. La Defensa de
+ * torres entra directa; el resto pide después hueco y, si hace falta, Pokémon. Teclado (flechas, Enter, Q/E
+ * dificultad, C continuar, Esc), ratón (pasar, clic, ◀ ▶) y mando (cruceta, A, LB/RB, X, B) por separado.
+ */
 export class ModeScene extends Phaser.Scene {
-  private args!: ModeData;
   private nav!: NavInput;
-  private list!: MenuList;
-  private desc!: Phaser.GameObjects.Text;
-  private record!: Phaser.GameObjects.Text;
+  private pad!: PadButtons;
+  private keys!: Record<'Q' | 'E' | 'C', Phaser.Input.Keyboard.Key>;
+  private cards: { frame: Phaser.GameObjects.Graphics; box: Phaser.GameObjects.Container; record: Phaser.GameObjects.Text }[] = [];
+  private selected = 0;
   private records: Records = emptyRecords();
-  private shown = -1;
   private readyAt = 0;
   private leaving = false;
-  private day = 0;
-  /** Nombre en español del inicial del día (llega de PokeAPI o del índice). */
-  private dailyName = '';
-  /** Dificultad elegida (T40): se cambia con izquierda/derecha o con las flechas de la fila de abajo. */
   private diff: Difficulty = 'normal';
+  private diffRow!: Phaser.GameObjects.Container;
   private diffText!: Phaser.GameObjects.Text;
   private diffDesc!: Phaser.GameObjects.Text;
+  private hasRuns = false;
 
   constructor() {
     super('Mode');
   }
 
-  init(data: ModeData) {
-    this.args = { starterId: data?.starterId ?? 4, slot: data?.slot ?? 0 };
+  init(data?: ModeData) {
+    const k = data?.select ? CARDS.findIndex((c) => c.id === data.select) : -1;
+    if (k >= 0) lastCard = k;
   }
 
   create() {
@@ -59,164 +93,194 @@ export class ModeScene extends Phaser.Scene {
     fitDesign(this);
     addMenuBackdrop(this);
     this.leaving = false;
-    this.shown = -1;
+    this.cards = [];
     this.nav = new NavInput(this);
+    this.pad = new PadButtons(this);
+    this.keys = this.input.keyboard!.addKeys('Q,E,C', false) as ModeScene['keys'];
     addBackButton(this, () => this.back());
-    this.add.text(480, 60, 'Elige modo de juego', { fontFamily: UI.FONT, fontSize: '36px', color: '#ffffff' }).setOrigin(0.5);
+    this.add.text(480, 48, '¿A qué quieres jugar?', { fontFamily: UI.FONT, fontSize: '34px', fontStyle: 'bold', color: '#ffd34d' })
+      .setOrigin(0.5).setStroke('#2b3a67', 8);
 
-    this.diff = 'normal';
+    // Continuar una partida guardada, sin tener que elegir modo (solo si hay alguna)
+    this.hasRuns = loadAllRuns().some((r) => !!r);
+    if (this.hasRuns) {
+      const c = this.add
+        .text(930, 48, '▶ Continuar partida', { fontFamily: UI.FONT, fontSize: '18px', fontStyle: 'bold', color: '#ffffff', backgroundColor: '#2b3a67' })
+        .setOrigin(1, 0.5).setPadding(10, 6).setInteractive({ useHandCursor: true });
+      c.on('pointerover', () => c.setColor('#ffd34d'));
+      c.on('pointerout', () => c.setColor('#ffffff'));
+      c.on('pointerdown', () => this.resume());
+    }
+
+    const prev = currentPlan();
+    this.diff = prev.kind === 'mode' ? prev.difficulty : 'normal';
     this.records = loadRecords(undefined, this.diff);
-    this.day = dayNumber();
-    this.dailyName = '';
-    void fetchSpeciesName(dailyStarter(this.day))
-      .then((n) => {
-        this.dailyName = n;
-        this.shown = -1;
-      })
-      .catch(() => undefined);
-    this.list = new MenuList(this, 280, 180, [...MODES.map((m) => MODE_LABEL[m]), 'Desafío diario', 'Partida con código'], (i) => this.start(i), {
-      // Ocho opciones a la altura del panel de la derecha (160-540), sin tocar la fila de la dificultad
-      w: 320, h: 40, gap: 6, fontSize: 22,
-    });
+    CARDS.forEach((def, i) => this.cards.push(this.buildCard(def, i)));
 
-    const panel = this.add.graphics();
-    drawBox(panel, 480, 160, 420, 380, { radius: 20 });
-    this.desc = this.add
-      .text(510, 190, '', { fontFamily: UI.FONT, fontSize: '22px', color: '#2b3a67', wordWrap: { width: 360 } })
-      .setLineSpacing(6);
-    this.record = this.add
-      .text(510, 430, '', { fontFamily: UI.FONT, fontSize: '19px', fontStyle: 'bold', color: '#b8860b', wordWrap: { width: 370 } })
-      .setLineSpacing(4);
-
-    // Fila de la dificultad: ◀ Normal ▶ (clic en las flechas o en el nombre; izquierda/derecha con teclado o mando)
+    // Fila de la dificultad (solo para los modos que se juegan con un Pokémon)
     const arrow = (x: number, label: string, d: number) =>
-      this.add
-        .text(x, 568, label, { fontFamily: UI.FONT, fontSize: '28px', color: '#ffd34d' })
-        .setOrigin(0.5)
-        .setInteractive({ useHandCursor: true })
-        .on('pointerdown', () => this.changeDiff(d));
-    this.add.text(330, 568, 'Dificultad:', { fontFamily: UI.FONT, fontSize: '22px', color: '#ffffff' }).setOrigin(1, 0.5);
-    arrow(360, '◀', -1);
-    arrow(560, '▶', 1);
-    this.diffText = this.add
-      .text(460, 568, '', { fontFamily: UI.FONT, fontSize: '24px', fontStyle: 'bold', color: '#ffffff' })
-      .setOrigin(0.5)
-      .on('pointerdown', () => this.changeDiff(1));
-    this.diffDesc = this.add
-      .text(590, 568, '', { fontFamily: UI.FONT, fontSize: '15px', color: '#ffffff', wordWrap: { width: 330 } })
-      .setOrigin(0, 0.5)
-      .setAlpha(0.85);
-    this.paintDiff();
+      this.add.text(x, 0, label, { fontFamily: UI.FONT, fontSize: '26px', color: '#ffd34d' })
+        .setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.changeDiff(d));
+    const lbl = this.add.text(260, 0, 'Dificultad:', { fontFamily: UI.FONT, fontSize: '20px', color: '#ffffff' }).setOrigin(1, 0.5);
+    this.diffText = this.add.text(360, 0, '', { fontFamily: UI.FONT, fontSize: '22px', fontStyle: 'bold', color: '#ffffff' })
+      .setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.changeDiff(1));
+    this.diffDesc = this.add.text(470, 0, '', { fontFamily: UI.FONT, fontSize: '14px', color: '#ffffff', wordWrap: { width: 460 } }).setOrigin(0, 0.5);
+    this.diffRow = this.add.container(0, 562, [lbl, arrow(285, '◀', -1), this.diffText, arrow(440, '▶', 1), this.diffDesc]);
 
     this.add
-      .text(480, 616, 'Arriba/abajo: modo · Izquierda/derecha: dificultad · Enter, clic o A: empezar · Esc, B o "Volver": cambiar de Pokémon', {
-        fontFamily: UI.FONT,
-        fontSize: '15px',
-        color: '#ffffff',
+      .text(480, 604, 'Flechas o ratón: elegir · Enter o clic: jugar · Q/E o ◀ ▶: dificultad' + (this.hasRuns ? ' · C: continuar' : '') + ' · Esc: menú', {
+        fontFamily: UI.FONT, fontSize: '14px', color: '#ffffff',
       })
-      .setOrigin(0.5)
-      .setAlpha(0.8);
+      .setOrigin(0.5).setAlpha(0.85);
+    this.select(Math.min(lastCard, CARDS.length - 1));
+    this.paintDiff();
     this.readyAt = this.time.now + INPUT_DELAY_MS;
   }
 
-  private start(i: number) {
-    if (this.leaving || this.time.now < this.readyAt) return;
-    this.leaving = true;
-    if (i === CODE_INDEX) {
-      goTo(this, 'SeedCode', { slot: this.args.slot, starterId: this.args.starterId });
-      return;
-    }
-    if (i === DAILY_INDEX) {
-      // Mismo inicial para todos; solo la primera partida del día cuenta
-      const counts = beginDaily(this.day);
-      goTo(this, 'Game', { starterId: dailyStarter(this.day), slot: this.args.slot, mode: 'normal', daily: { day: this.day, counts }, difficulty: 'normal' });
-      return;
-    }
-    if (MODES[i] === 'towerdef') {
-      // Defensa de torres: su propio menú de mapas, niveles y equipo (no usa el inicial ni la dificultad)
-      goTo(this, 'TowerDefenseMenu', { slot: this.args.slot, starterId: this.args.starterId });
-      return;
-    }
-    if (MODES[i] === 'tower' && this.askTowerStart()) return;
-    goTo(this, 'Game', { starterId: this.args.starterId, slot: this.args.slot, mode: MODES[i], difficulty: this.diff });
+  private buildCard(def: CardDef, i: number) {
+    const { w, h } = CARD;
+    const bg = drawBox(this.add.graphics(), 0, 0, w, h, { radius: 16, fill: COLORS.panel });
+    const frame = this.add.graphics();
+    const icon = this.add.text(w / 2, 32, def.icon, { fontFamily: UI.FONT, fontSize: '38px' }).setOrigin(0.5);
+    const name = this.add.text(w / 2, 74, def.name, { fontFamily: UI.FONT, fontSize: '20px', fontStyle: 'bold', color: '#2b3a67', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5);
+    const desc = this.add.text(w / 2, 92, def.desc, { fontFamily: UI.FONT, fontSize: '12px', color: '#4a5578', align: 'center', wordWrap: { width: w - 20 } }).setOrigin(0.5, 0);
+    const record = this.add.text(w / 2, h - 36, '', { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: '#b8860b', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5);
+    const next = this.add.text(w / 2, h - 14, def.next, { fontFamily: UI.FONT, fontSize: '12px', color: '#7a849e' }).setOrigin(0.5);
+    const box = this.add.container(cardX(i), cardY(i), [bg, frame, icon, name, desc, record, next]).setSize(w, h);
+    box.setInteractive(new Phaser.Geom.Rectangle(0, 0, w, h), Phaser.Geom.Rectangle.Contains);
+    box.input!.cursor = 'pointer';
+    box.on('pointerover', () => !this.leaving && this.select(i));
+    box.on('pointerdown', () => {
+      if (this.leaving) return;
+      this.select(i);
+      this.pick(i);
+    });
+    return { frame, box, record };
   }
 
-  /**
-   * T72: puntos de control de la Torre. Si ya has vencido algún jefe, eliges desde qué descanso empiezas (pagando
-   * caramelos; el piso 1 es gratis). Usa la lista genérica de ItemChoiceScene (teclado, ratón y mando).
-   * Devuelve false si no hay nada que elegir.
-   */
-  private askTowerStart(): boolean {
-    const opts = towerCheckpointOptions(this.records.tower);
-    if (opts.length <= 1 || !this.scene.manager.keys['ItemChoice']) return false;
-    const candies = loadCandies();
-    this.scene.launch('ItemChoice', {
-      title: 'PUNTO DE CONTROL',
-      text: `¿Desde qué piso empiezas la Torre?\nTienes ${candies} caramelos`,
-      options: opts.map((o) => (o.cost > 0 ? `Piso ${o.floor} · ${o.cost} caramelos` : `Piso ${o.floor} · gratis`)),
-      cancel: 'Volver',
-      disabled: opts.map((o) => o.cost > candies),
-      onChoice: (k: number) => {
-        this.scene.stop('ItemChoice');
-        const o = opts[k];
-        if (!o || (o.cost > 0 && !spendCandies(o.cost))) {
-          this.leaving = false;
-          this.readyAt = this.time.now + INPUT_DELAY_MS;
-          return;
-        }
-        goTo(this, 'Game', { starterId: this.args.starterId, slot: this.args.slot, mode: 'tower', difficulty: this.diff, towerStart: o.floor });
-      },
+  private recordFor(id: ModeCardId): string {
+    if (id === 'daily') return dailyText(loadDaily(), dayNumber(), FLOOR_COUNT);
+    if (id === 'code') return 'No cuenta para récords';
+    if (id === 'towerdef') return recordText(id, totalStars(loadTdProgress()));
+    return recordText(id, this.records[id]);
+  }
+
+  private select(i: number) {
+    this.selected = i;
+    lastCard = i;
+    this.cards.forEach((c, k) => {
+      const on = k === i;
+      c.frame.clear();
+      if (on) c.frame.lineStyle(5, UI.GOLD, 1).strokeRoundedRect(-3, -3, CARD.w + 6, CARD.h + 6, 18);
+      c.box.setScale(on ? 1.04 : 1).setDepth(on ? 2 : 1);
+      // Al crecer desde la esquina se descoloca: se corrige para que crezca desde el centro
+      c.box.setPosition(cardX(k) - (on ? CARD.w * 0.02 : 0), cardY(k) - (on ? CARD.h * 0.02 : 0));
     });
-    return true;
+    // La dificultad solo cuenta en los modos con Pokémon
+    this.diffRow?.setAlpha(this.usesDiff() ? 1 : 0.35);
+  }
+
+  private usesDiff(): boolean {
+    const id = CARDS[this.selected].id;
+    return id !== 'towerdef' && id !== 'daily' && id !== 'code';
   }
 
   private changeDiff(d: number) {
     if (this.leaving) return;
     const n = DIFFICULTIES.length;
     this.diff = DIFFICULTIES[(DIFFICULTIES.indexOf(this.diff) + d + n) % n];
+    sfx('select');
     this.records = loadRecords(undefined, this.diff);
     this.paintDiff();
-    this.shown = -1;
   }
 
   private paintDiff() {
     const colors: Record<Difficulty, string> = { easy: '#8fe39a', normal: '#ffffff', hard: '#ff8a7a' };
     this.diffText.setText(DIFFICULTY_LABEL[this.diff]).setColor(colors[this.diff]);
-    // Área de clic fija (el texto cambia de largo)
-    this.diffText.setInteractive(new Phaser.Geom.Rectangle(0, 0, Math.max(120, this.diffText.width), this.diffText.height), Phaser.Geom.Rectangle.Contains);
     this.diffDesc.setText(DIFFICULTY_DESC[this.diff]);
+    this.cards.forEach((c, k) => c.record.setText(this.recordFor(CARDS[k].id)));
+  }
+
+  private pick(i: number) {
+    if (this.leaving || this.time.now < this.readyAt) return;
+    const id = CARDS[i].id;
+    sfx('select');
+    if (id === 'towerdef') {
+      // Defensa de torres: su propio menú de mapas, niveles y equipo (no usa hueco, inicial ni dificultad)
+      this.leaving = true;
+      goTo(this, 'TowerDefenseMenu', {});
+      return;
+    }
+    if (id === 'daily') return this.toSlots({ kind: 'daily' });
+    if (id === 'code') return this.toSlots({ kind: 'code' });
+    if (id === 'tower' && this.askTowerStart()) return;
+    this.toSlots({ kind: 'mode', mode: id, difficulty: this.diff });
+  }
+
+  private toSlots(plan: RunPlan) {
+    this.leaving = true;
+    goTo(this, 'Slots', { plan });
+  }
+
+  private resume() {
+    if (this.leaving || !this.hasRuns || this.time.now < this.readyAt) return;
+    this.toSlots({ kind: 'resume' });
+  }
+
+  /**
+   * T72: puntos de control de la Torre. Si ya has vencido algún jefe, eliges desde qué descanso empiezas (los caramelos
+   * se pagan al empezar la partida; el piso 1 es gratis). Devuelve false si no hay nada que elegir.
+   */
+  private askTowerStart(): boolean {
+    const opts = towerCheckpointOptions(this.records.tower);
+    if (opts.length <= 1 || !this.scene.manager.keys['ItemChoice']) return false;
+    const candies = loadCandies();
+    this.leaving = true;
+    this.scene.launch('ItemChoice', {
+      title: 'PUNTO DE CONTROL',
+      text: `¿Desde qué piso empiezas la Torre?\nTienes ${candies} caramelos (se pagan al empezar)`,
+      options: opts.map((o) => (o.cost > 0 ? `Piso ${o.floor} · ${o.cost} caramelos` : `Piso ${o.floor} · gratis`)),
+      cancel: 'Volver',
+      disabled: opts.map((o) => o.cost > candies),
+      onChoice: (k: number) => {
+        this.scene.stop('ItemChoice');
+        const o = opts[k];
+        if (!o || o.cost > candies) {
+          this.leaving = false;
+          this.readyAt = this.time.now + INPUT_DELAY_MS;
+          this.nav = new NavInput(this);
+          return;
+        }
+        this.leaving = false;
+        this.toSlots({ kind: 'mode', mode: 'tower', difficulty: this.diff, towerStart: { floor: o.floor, cost: o.cost } });
+      },
+    });
+    return true;
   }
 
   private back() {
     if (this.leaving) return;
     this.leaving = true;
-    goTo(this, 'Starter', { slot: this.args.slot });
+    goTo(this, 'Menu');
   }
 
   update() {
     if (this.leaving) return;
     const s = this.nav.read();
+    const pb = this.pad.read();
+    const J = Phaser.Input.Keyboard.JustDown;
     if (s.back) return this.back();
-    if (s.dy !== 0) this.list.move(s.dy);
-    if (s.dx !== 0) this.changeDiff(s.dx);
-    if (s.ok) this.list.activate();
-    // La descripción sigue a la opción seleccionada (con teclado, mando o pasando el ratón)
-    if (this.list.selected !== this.shown) {
-      this.shown = this.list.selected;
-      if (this.shown === DAILY_INDEX) {
-        const who = this.dailyName || 'cargando…';
-        this.desc.setText(`Desafío diario\n\nNormal con los mismos pisos, jefes y objetos para todos hoy (siempre en Normal). Inicial del día: ${who}.`);
-        this.record.setText(dailyText(loadDaily(), this.day, FLOOR_COUNT));
-        return;
-      }
-      if (this.shown === CODE_INDEX) {
-        this.desc.setText('Partida con código\n\nEscribe el código de otra partida (sale en la pausa y al terminar) y juega los mismos pisos, salas, jefes y objetos, con su Pokémon, modo y dificultad.');
-        this.record.setText('No cuenta para récords, desafío diario, misiones ni registro de combate; sí guarda tu mejor resultado con cada código.');
-        return;
-      }
-      const m = MODES[this.shown];
-      this.desc.setText(`${MODE_LABEL[m]}\n\n${modeDesc(m)}`);
-      this.record.setText(m === 'towerdef' ? recordText(m, totalStars(loadTdProgress())) : recordText(m, this.records[m]));
+    if (s.dx !== 0 || s.dy !== 0) {
+      const n = CARDS.length;
+      const next = (this.selected + s.dx + s.dy * CARD.cols + n) % n;
+      sfx('select');
+      this.select(next);
     }
+    if (this.usesDiff()) {
+      if (J(this.keys.Q) || pb.has('LB')) this.changeDiff(-1);
+      if (J(this.keys.E) || pb.has('RB')) this.changeDiff(1);
+    }
+    if (J(this.keys.C) || pb.has('X')) return this.resume();
+    if (s.ok) this.pick(this.selected);
   }
 }

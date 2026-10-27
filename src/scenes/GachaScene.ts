@@ -17,6 +17,7 @@ import { typeColor, typeNameEs } from '../data/types';
 import { cry, sfx } from '../ui/audio';
 import { ARROW, addTypeChip, drawBox, fadeIn, FONT, goTo, hex, RARITY_COLORS } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
+import { NavInput } from '../ui/nav';
 import { addBurst, addMachineIdle, addRays, bakeGachaArt, ballKey, CRANK_KEY, MACHINE, MACHINE_KEY } from '../ui/art/gachaMachine';
 
 /** Tickets que devuelve una tirada repetida. */
@@ -27,8 +28,6 @@ const BTN = { w: 176, h: 50, y: 470, gap: 14 };
 const MAC = { x: 190, y: 330, s: 3 };
 const RANK = (r: Rarity) => RARITIES.indexOf(r);
 
-type Key = Phaser.Input.Keyboard.Key;
-type KeyName = 'LEFT' | 'RIGHT' | 'UP' | 'DOWN' | 'A' | 'D' | 'W' | 'S' | 'ENTER' | 'SPACE' | 'ESC' | 'BACKSPACE';
 type Phase = 'menu' | 'anim' | 'result';
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -55,8 +54,8 @@ export class GachaScene extends Phaser.Scene {
   private selected = 0;
   private phase: Phase = 'menu';
   private leaving = false;
-  private keys!: Record<KeyName, Key>;
-  private padPrev = { dir: 0, ok: false, back: false };
+  /** Teclado y mando con la misma lectura que el resto de menús (ui/nav.ts). */
+  private nav?: NavInput;
   private ticketsText!: Phaser.GameObjects.Text;
   private ownedText!: Phaser.GameObjects.Text;
   private message!: Phaser.GameObjects.Text;
@@ -81,7 +80,6 @@ export class GachaScene extends Phaser.Scene {
     this.overlay = undefined;
     this.showcase = undefined;
     this.historyLayer = undefined;
-    this.padPrev = { dir: 0, ok: false, back: false };
     this.alive = true;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (this.alive = false));
     fadeIn(this);
@@ -137,8 +135,7 @@ export class GachaScene extends Phaser.Scene {
       })
       .setOrigin(0.5).setAlpha(0.6);
 
-    this.keys = this.input.keyboard!.addKeys('LEFT,RIGHT,UP,DOWN,A,D,W,S,ENTER,SPACE,ESC,BACKSPACE') as Record<KeyName, Key>;
-    Object.values(this.keys).forEach((k) => k.reset()); // ver NavInput: olvida pulsaciones viejas
+    this.nav = new NavInput(this);
     // Clic en cualquier sitio cierra el resultado
     this.input.on('pointerdown', () => this.phase === 'result' && this.closeResult());
     this.select(0);
@@ -310,7 +307,7 @@ export class GachaScene extends Phaser.Scene {
       const ok = openConfirm(this, confirmText(n === 1 ? '1 tirada' : '10 tiradas', cost, 'tickets'), (yes) => {
         this.confirmOpen = false;
         // El mando que se usó en el cuadro no cuenta aquí como pulsación nueva
-        this.padPrev = { dir: 1, ok: true, back: true };
+        this.nav = new NavInput(this);
         if (yes) this.doPull(n, true);
       });
       if (!ok) this.confirmOpen = false;
@@ -489,22 +486,11 @@ export class GachaScene extends Phaser.Scene {
   }
 
   update() {
-    if (this.leaving) return;
-    const J = Phaser.Input.Keyboard.JustDown;
-    const k = this.keys;
-    let d = (J(k.DOWN) || J(k.S) || J(k.RIGHT) || J(k.D) ? 1 : 0) - (J(k.UP) || J(k.W) || J(k.LEFT) || J(k.A) ? 1 : 0);
-    let ok = J(k.ENTER) || J(k.SPACE);
-    let back = J(k.ESC) || J(k.BACKSPACE);
-
-    const pad = this.input.gamepad?.getPad(0);
-    if (pad && pad.connected) {
-      const dir = pad.down || pad.right || pad.leftStick.y > 0.5 || pad.leftStick.x > 0.5 ? 1 : pad.up || pad.left || pad.leftStick.y < -0.5 || pad.leftStick.x < -0.5 ? -1 : 0;
-      const now = { dir, ok: pad.A, back: pad.B };
-      if (dir !== 0 && dir !== this.padPrev.dir) d += dir;
-      if (now.ok && !this.padPrev.ok) ok = true;
-      if (now.back && !this.padPrev.back) back = true;
-      this.padPrev = now;
-    }
+    if (this.leaving || !this.nav) return;
+    const n0 = this.nav.read();
+    const d = n0.dy || n0.dx;
+    const ok = n0.ok;
+    const back = n0.back;
 
     if (this.phase === 'anim') {
       // Acelerar la animación si tienes prisa
