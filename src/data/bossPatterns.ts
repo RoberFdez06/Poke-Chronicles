@@ -1,12 +1,13 @@
 // Ataques de los jefes (con aviso previo) y su segunda fase, y la mezcla de enemigos de cada sala.
 // Lógica pura, sin Phaser ni red, para poder testearla.
 import { EXTRA_BEHAVIORS, type EnemyBehavior } from './enemies.ts';
+import { BLITZ_LABEL, type BlitzAttack } from './bossBlitz.ts';
 
 /**
  * Ráfaga en círculo, embestida en línea recta, lluvia de proyectiles sobre el suelo e invocar ayudantes; T50: espiral
  * de proyectiles, onda expansiva (anillo con un hueco por el que pasar), láser giratorio y zonas de peligro que estallan.
  */
-export type BossAttack = 'ring' | 'charge' | 'rain' | 'summon' | 'spiral' | 'shockwave' | 'laser' | 'hazard' | PatternAttack;
+export type BossAttack = 'ring' | 'charge' | 'rain' | 'summon' | 'spiral' | 'shockwave' | 'laser' | 'hazard' | PatternAttack | BlitzAttack;
 
 export const BOSS_ATTACK_LABEL: Record<BossAttack, string> = {
   ring: 'Ráfaga',
@@ -21,6 +22,8 @@ export const BOSS_ATTACK_LABEL: Record<BossAttack, string> = {
   cross: 'Cruz y aspa',
   fan: 'Abanico',
   sweep: 'Barrido',
+  // Asaltos nuevos (bossBlitz.ts)
+  ...BLITZ_LABEL,
 };
 
 // --- Patrones de balas (más variedad): cada uno con aviso, por tipo del jefe ---
