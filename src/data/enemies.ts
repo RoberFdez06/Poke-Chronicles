@@ -28,7 +28,7 @@ export const EXTRA_BEHAVIOR_LABEL: Record<(typeof EXTRA_BEHAVIORS)[number], stri
 export const SHIELD_FRONT_MUL = 0.15;
 export const SHIELD_TURN = 1.4;
 /** Escudo del Escudado: una reserva extra de PS (parte de sus PS máximos) que absorbe golpes de cualquier dirección. */
-export const SHIELD_POOL_MUL = 0.6;
+export const SHIELD_POOL_MUL = 1.2;
 export const shieldPoolFor = (maxHp: number): number => Math.max(1, Math.round(maxHp * SHIELD_POOL_MUL));
 /** Un golpe contra el escudo: lo que absorbe, lo que se pasa a los PS y lo que le queda. */
 export function absorbShieldHit(shield: number, dmg: number): { absorbed: number; through: number; left: number } {
