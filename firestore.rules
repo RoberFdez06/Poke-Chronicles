@@ -1,4 +1,6 @@
 rules_version = '2';
+// Modo admin (src/data/admin.ts): NO da permisos de servidor. Es solo comodidad de pruebas en el cliente: el panel
+// cambia el guardado propio (users/{uid}), que estas reglas ya dejan escribir a su dueño. No se abre nada más.
 service cloud.firestore {
   match /databases/{database}/documents {
     // Cada jugador solo puede leer y escribir su propio progreso: users/{uid} y lo que cuelgue de él

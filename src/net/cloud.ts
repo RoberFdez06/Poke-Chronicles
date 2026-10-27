@@ -4,6 +4,7 @@
 // lea el almacenamiento nuevo.
 import { accountErrorMessage, firebaseConfigFrom, retryDelay } from '../data/account';
 import { withTimeout } from '../data/offline';
+import { isAdminEmail, setAdminAccount } from '../data/admin';
 import { DEV_LOCAL_FLAG, gameData, MemoryStorage, pickInitialData, setActiveStorage, SyncedStorage } from '../data/storage';
 
 export type AccountMode = 'local' | 'guest' | 'cloud';
@@ -133,6 +134,8 @@ async function attach(f: Firebase, user: import('firebase/auth').User) {
     name,
     imported: imported === 'guest' || imported === 'legacy' ? imported : undefined,
   };
+  // Modo admin (data/admin.ts): solo si el hash del correo coincide con VITE_ADMIN_EMAIL_SHA256
+  setAdminAccount(await isAdminEmail(user.email).catch(() => false));
   if (imported === 'legacy') {
     try {
       localStorage.setItem(LEGACY_DONE, user.uid);

@@ -1,3 +1,4 @@
+import { clearCheatRun } from '../data/admin';
 import Phaser from 'phaser';
 import { fitDesign, COVER_H, COVER_W, DCX, DCY } from '../ui/layout';
 import { fetchPokemonCard } from '../data/pokeapi';
@@ -58,6 +59,8 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create() {
+    // Modo admin: al volver al menú la siguiente partida vuelve a contar
+    clearCheatRun();
     this.items = [
       { label: 'Jugar', action: () => goTo(this, 'Mode') },
       { label: 'Gacha', action: () => this.openGacha() },

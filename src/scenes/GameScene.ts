@@ -145,6 +145,13 @@ import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_GLOW, FALL_HAZ
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve, legendMegaAtPhase } from '../data/megaBoss';
 import { rollTemperament, tempoCooldown, tempoShot, type Temperament } from '../data/temperament';
 import { debugEnabled } from '../data/debugFlags';
+import { adminAllowed, godStats, isCheatRun, isGodMode, markCheatRun, setAdminFloorPick, setGodMode, stepValue, takeAdminFloorPick, type AdminFloorPick } from '../data/admin';
+import { openAdmin, type AdminRow } from './AdminScene';
+import { generalAdminRows, setRunAdminRows } from '../ui/adminPanel';
+import { drawAdminPlate } from '../ui/art/adminArt';
+import { POWER_METER_MAX } from '../data/powerMeter';
+import { loadSpeciesIndex as loadSpeciesFacts } from '../data/speciesIndex';
+import { MODE_LABEL as ADMIN_MODE_LABEL, RUN_MODES, TOWER_FLOORS } from '../data/modes';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
 import { fallConceptFx, sacredFlame } from '../ui/art/fallArt';
 import { pixRing } from '../ui/art/pixelFx';
@@ -484,6 +491,9 @@ interface ShotOpts {
   /** Sin estela (chorros: ya son muchas partículas). */
   noTrail?: boolean;
 }
+
+/** Modo admin: formas de poder que se pueden forzar desde el panel. */
+const ADMIN_FORMS: readonly [PowerChoice, string][] = [['dynamax', 'Dinamax'], ['gigamax', 'Gigamax'], ['tera', 'Teracristal'], ['z', 'Movimiento Z']];
 
 export class GameScene extends Phaser.Scene {
   private player!: Sprite;
@@ -852,6 +862,13 @@ export class GameScene extends Phaser.Scene {
   private menuPadPrev = false;
   /** El cursor está sobre una ranura de poder: ahí un clic no dispara. */
   private overHud = false;
+  /** Modo admin (data/admin.ts): lo elegido para este piso, valores del panel, F9 y el distintivo del HUD. */
+  private adminPick: AdminFloorPick | null = null;
+  private adminUi = { floor: 1, boss: 150, biome: 0, form: 0, mode: 0 };
+  private adminKey?: Phaser.Input.Keyboard.Key;
+  private adminPadPrev = false;
+  private adminBadge?: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; shown: string };
+  private adminNames = new Map<number, string>();
 
   private hud: Phaser.GameObjects.Text[] = [];
   /** HUD: nombre, progreso y PS en un cuadro arriba a la izquierda. */
@@ -1131,6 +1148,9 @@ export class GameScene extends Phaser.Scene {
       this.difficulty = { ...this.difficulty, hp: this.difficulty.hp * m, damage: this.difficulty.damage * m };
       this.biome = biomeById(this.route.biomeId);
     }
+    // Modo admin: piso elegido en el panel (jefe y bioma)
+    this.adminPick = takeAdminFloorPick();
+    if (this.adminPick?.biomeId) this.biome = biomeById(this.adminPick.biomeId);
     this.towerSpec = undefined;
     this.towerRestObjs = [];
     this.towerShopObjs = [];
@@ -1216,8 +1236,8 @@ export class GameScene extends Phaser.Scene {
       const kept = bundled ? ids.filter((id) => bundled.has(id)) : ids;
       return kept.length > 0 ? kept : ids;
     };
-    let bossId = r?.bossId;
-    if (isFinalFloor(this.mode, this.floorNum) || isTowerFinale(this.mode, this.floorNum)) {
+    let bossId = this.adminPick?.bossId ?? r?.bossId;
+    if (this.adminPick?.bossId === undefined && isFinalFloor(this.mode, this.floorNum) || isTowerFinale(this.mode, this.floorNum)) {
       // Reto final: trío legendario o legendario gigante, al azar (también en el piso 100 de la Torre, T72)
       const okIds = bundled;
       this.finale = pickFinale(this.rng(RNG.boss), (id) => !okIds || okIds.has(id));
@@ -1510,7 +1530,8 @@ export class GameScene extends Phaser.Scene {
     stats.maxHp += powerFormMaxHpBonus(this.powerForm);
     // T75: con Dinamax los ataques también son más grandes
     stats.shotScale *= powerFormSizeMul(this.powerForm);
-    return stats;
+    // Modo admin: modo dios
+    return isGodMode() ? godStats(stats) : stats;
   }
 
   /** Multiplicador de daño de Ataque X mientras dura. */
@@ -2840,6 +2861,13 @@ export class GameScene extends Phaser.Scene {
         .setPadding(14, 12)
         .setInteractive({ useHandCursor: true }),
     );
+    // Modo admin: distintivo arriba a la derecha (clic: panel). Solo existe en dev o con la cuenta admin.
+    if (adminAllowed()) {
+      const g = hud(this.add.graphics());
+      const t = txt(W - 62, 17, 13, '#ffffff', true).setOrigin(0.5);
+      this.adminBadge = { g, t, shown: '' };
+      over(hud(this.add.zone(W - 60, 17, 116, 28).setInteractive({ useHandCursor: true }))).on('pointerdown', () => this.openAdminPanel());
+    }
     // T53: cuadro del parry a la derecha de la pausa (la recarga se ve vaciándose); clic en él también hace parry,
     // aunque con ratón lo cómodo es el clic central, que no obliga a quitar el puntero de donde apuntas.
     {
@@ -2994,6 +3022,7 @@ export class GameScene extends Phaser.Scene {
     playTrack(trackForBiome(this.biome.id));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => playMenuMusic());
     this.installDebug();
+    this.installAdmin();
     // Al perder el foco la ventana o la pestaña, se abre la pausa (si no hay ya una pausa, confirmación o transición)
     onFocusLost(this, () => {
       if (this.scene.isActive() && !this.ended && !this.transitioning && !this.falling && !this.confirmOpen && !this.scene.isPaused()) this.openPause();
@@ -6388,6 +6417,176 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return false;
   }
 
+  // --- Modo admin (data/admin.ts, scenes/AdminScene.ts) ---
+
+  private installAdmin() {
+    this.adminKey = undefined;
+    this.adminPadPrev = true;
+    this.adminBadge = this.adminBadge?.g.active ? this.adminBadge : undefined;
+    if (!adminAllowed()) return;
+    this.adminKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.F9, true);
+    this.adminUi.floor = Math.min(this.adminMaxFloor(), this.floorNum + 1);
+    this.adminUi.mode = Math.max(0, (RUN_MODES as readonly GameMode[]).indexOf(this.mode));
+    setRunAdminRows(() => this.adminRows());
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => setRunAdminRows(null));
+    loadSpeciesFacts()
+      .then((ix) => ix.forEach((f) => this.adminNames.set(f.id, f.nameEs ?? f.name)))
+      .catch(() => undefined);
+    this.paintAdminBadge();
+  }
+
+  /** F9 (teclado) o L3+R3 a la vez (mando) abren el panel; en modo dios la vida no baja. */
+  private adminTick() {
+    if (!this.adminKey) return;
+    const pad = this.input.gamepad?.getPad(0);
+    const padNow = !!pad?.connected && !!pad.buttons[10]?.pressed && !!pad.buttons[11]?.pressed;
+    const padHit = padNow && !this.adminPadPrev;
+    this.adminPadPrev = padNow;
+    if (Phaser.Input.Keyboard.JustDown(this.adminKey) || padHit) this.openAdminPanel();
+    if (isGodMode() && this.player?.active && !this.ended) this.hp = Math.max(this.hp, this.stats.maxHp);
+  }
+
+  private openAdminPanel(): boolean {
+    if (!adminAllowed() || this.ended || this.transitioning || this.falling || this.scene.isPaused()) return false;
+    this.player?.setVelocity(0, 0);
+    return openAdmin(this, () => [...generalAdminRows(), ...this.adminRows()], () => this.paintAdminBadge());
+  }
+
+  /** Distintivo del HUD: «ADMIN» apagado; «PARTIDA ADMIN» en rojo cuando ya se usaron trucos (no cuenta). */
+  private paintAdminBadge() {
+    const b = this.adminBadge;
+    if (!b || !b.g.active) return;
+    const key = isCheatRun() ? 'cheat' : 'idle';
+    if (b.shown === key) return;
+    b.shown = key;
+    b.g.clear();
+    if (key === 'cheat') drawAdminPlate(b.g, W - 120, 3, 116, 28);
+    else b.g.fillStyle(0x1a0d12, 0.55).fillRect(W - 120, 5, 116, 24);
+    b.t.setText(key === 'cheat' ? '   PARTIDA ADMIN' : 'ADMIN (F9)').setAlpha(key === 'cheat' ? 1 : 0.7).setX(W - 62);
+  }
+
+  /** Cualquier truco marca la partida: deja de contar (save.ts lo comprueba) y se ve en el HUD. */
+  private adminCheat() {
+    markCheatRun();
+    this.paintAdminBadge();
+  }
+
+  private adminGod(on: boolean) {
+    this.adminCheat();
+    setGodMode(on);
+    this.stats = this.calcStats();
+    this.hp = this.stats.maxHp;
+    this.player?.setAlpha(1);
+  }
+
+  private adminMaxFloor(): number {
+    return this.mode === 'tower' ? TOWER_FLOORS : this.mode === 'normal' ? FLOOR_COUNT : 99;
+  }
+
+  private adminBossName(id: number): string {
+    return this.adminNames.get(id) ?? `n.º ${id}`;
+  }
+
+  /** Ir al piso N (con el jefe y el bioma elegidos en el panel). */
+  private adminGoFloor(n: number, pick: AdminFloorPick | null = null): string {
+    if (this.ended || this.transitioning || this.falling) return 'Ahora no se puede cambiar de piso.';
+    const to = Math.max(1, Math.min(this.adminMaxFloor(), Math.floor(n)));
+    this.adminCheat();
+    setAdminFloorPick(pick);
+    this.floorNum = to - 1;
+    this.descendBy(null);
+    return `Bajando al piso ${to}…`;
+  }
+
+  /** Saca en la sala actual el jefe de la especie `id` (carga su sprite si hace falta). */
+  private async adminBossHere(id: number): Promise<string> {
+    if (this.ended || this.transitioning) return 'Ahora no se puede.';
+    const boss = await fetchPokemon(id).catch(() => null);
+    if (!boss) return `No se pudo cargar la especie ${id}.`;
+    if (!this.scene.isActive() && !this.scene.isPaused()) return 'La partida ya no está.';
+    this.adminCheat();
+    const key = `boss-${boss.id}`;
+    const urls = pickSprites(boss.sprites, false);
+    await new Promise<void>((done) => {
+      let n = 0;
+      for (const side of ['front', 'back'] as const) {
+        if (!this.textures.exists(`${key}-${side}`)) (this.load.image(`${key}-${side}`, urls[side]), n++);
+      }
+      if (n === 0) return done();
+      this.load.once(Phaser.Loader.Events.COMPLETE, () => done());
+      this.load.start();
+    });
+    this.finale = undefined;
+    this.bossId = boss.id;
+    this.bossKey = key;
+    this.bossName = boss.name;
+    this.bossType = boss.types[0] ?? 'normal';
+    this.bossTypes = boss.types.length > 0 ? boss.types : ['normal'];
+    this.bossBase = boss.stats;
+    this.spawnBoss();
+    return `Jefe ${boss.name} (n.º ${boss.id}) en la sala.`;
+  }
+
+  /** Teletransporte a la sala del jefe del piso (su arena). */
+  private adminToBossRoom(): string {
+    const room = this.floor?.rooms.find((r) => r.kind === 'boss');
+    if (!room || this.ended || this.transitioning) return 'Este piso no tiene sala de jefe.';
+    this.adminCheat();
+    const i = this.interior(room);
+    (this.player.body as Body).reset((i.x0 + i.x1) / 2, i.y1 - 60);
+    this.showRooms([room.id]);
+    this.cameras.main.stopFollow();
+    this.enterRoom(room);
+    return 'En la sala del jefe.';
+  }
+
+  /** Mega, Dinamax, Gigamax, Tera o Movimiento Z al momento (medidor y adrenalina llenos). */
+  private adminPower(choice: PowerChoice | 'mega'): string {
+    this.adminCheat();
+    if (choice === 'mega') {
+      const api = (window as unknown as { __POKEISAAC_DEBUG__?: { forceMega: () => string } }).__POKEISAAC_DEBUG__;
+      if (api) return api.forceMega();
+      if (!this.passives.includes(MEGA_STONE_ID)) this.passives.push(MEGA_STONE_ID);
+      fillAdrenaline(this.adrenaline);
+      this.powerForm = { ...newPowerFormState() };
+      this.megaEvolve();
+      return 'Megaevolución';
+    }
+    this.powerForm = { ...newPowerFormState() };
+    this.powerMeter.value = POWER_METER_MAX;
+    this.zUsed = false;
+    this.startPower(choice);
+    return `${ADMIN_FORMS.find((f) => f[0] === choice)?.[1] ?? choice} activado`;
+  }
+
+  private adminRows(): AdminRow[] {
+    const u = this.adminUi;
+    const maxF = this.adminMaxFloor();
+    return [
+      { header: true, label: () => `Partida: ${this.runLabel()} · piso ${this.floorNum}${isCheatRun() ? ' · ADMIN (no cuenta)' : ''}` },
+      { label: () => `Modo dios (vida, daño, cadencia y velocidad enormes, invulnerable): ${isGodMode() ? 'Sí' : 'No'}`, run: () => (this.adminGod(!isGodMode()), `Modo dios ${isGodMode() ? 'activado' : 'desactivado'}.`) },
+      { label: () => 'Llenar la adrenalina', run: () => (this.adminCheat(), fillAdrenaline(this.adrenaline), 'Adrenalina llena.') },
+      { label: () => 'Megaevolución ya (jefe vivo: el jefe)', run: () => this.adminPower('mega') },
+      { label: () => `Forma de poder ◀ ${ADMIN_FORMS[u.form][1]} ▶  (Enter: activar)`, adjust: (d) => (u.form = stepValue(u.form, d, 0, ADMIN_FORMS.length - 1)), run: () => this.adminPower(ADMIN_FORMS[u.form][0]) },
+      { header: true, label: () => 'Pisos y jefes' },
+      { label: () => `Ir al piso ◀ ${u.floor} ▶ de ${maxF}`, adjust: (d) => (u.floor = stepValue(u.floor, d, 1, maxF)), setNumber: (n) => (u.floor = Math.max(1, Math.min(maxF, n))), run: () => this.adminGoFloor(u.floor) },
+      { label: () => `Jefe ◀ ${u.boss} · ${this.adminBossName(u.boss)} ▶  (Enter: generarlo aquí)`, adjust: (d) => (u.boss = stepValue(u.boss, d, 1, 1025)), setNumber: (n) => (u.boss = Math.max(1, Math.min(1025, n))), run: () => this.adminBossHere(u.boss) },
+      { label: () => `Bioma ◀ ${BIOMES[u.biome].name} ▶`, adjust: (d) => (u.biome = stepValue(u.biome, d, 0, BIOMES.length - 1)) },
+      { label: () => `Ir al piso ${u.floor} con ese jefe y bioma`, run: () => this.adminGoFloor(u.floor, { bossId: u.boss, biomeId: BIOMES[u.biome].id }) },
+      { label: () => 'Ir a la sala del jefe de este piso', run: () => this.adminToBossRoom() },
+      { label: () => 'Sacar aquí el jefe de este piso', run: () => (this.adminCheat(), this.spawnBoss(), `Jefe ${this.bossName}.`) },
+      { label: () => `Partida nueva en modo ◀ ${ADMIN_MODE_LABEL[RUN_MODES[u.mode]]} ▶`, adjust: (d) => (u.mode = stepValue(u.mode, d, 0, RUN_MODES.length - 1)), run: () => this.adminNewRun(RUN_MODES[u.mode]) },
+    ];
+  }
+
+  private adminNewRun(mode: GameMode): string {
+    if (this.ended || this.transitioning) return 'Ahora no se puede.';
+    this.adminCheat();
+    this.transitioning = true;
+    this.time.delayedCall(0, () => this.scene.restart({ slot: this.slot, starterId: this.starterId, mode, difficulty: this.diff } satisfies GameData));
+    return `Partida nueva: ${ADMIN_MODE_LABEL[mode]} (admin).`;
+  }
+
   /**
    * Modo de depuración (data/debugFlags.ts): con `?debug`, localStorage['pokeisaac.debug']='1' o en el dev server,
    * expone window.__POKEISAAC_DEBUG__ para probar megas y adrenalina desde la consola. En producción normal no existe.
@@ -6424,6 +6623,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       },
       /** Saca el jefe del piso en la sala actual (megaevoluciona al bajar del 50 % si su especie tiene mega). */
       spawnBoss: () => { this.spawnBoss(); return `jefe ${this.bossId} (${this.bossName})`; },
+      /** Modo admin (también en el panel, F9): modo dios, ir al piso N y sacar el jefe de la especie X aquí. */
+      godMode: (on = true) => { this.adminGod(on); return `modo dios ${on ? 'activado' : 'desactivado'}`; },
+      goFloor: (n: number) => this.adminGoFloor(n),
+      bossHere: (id: number) => this.adminBossHere(id),
+      panel: () => (this.openAdminPanel() ? 'panel abierto' : 'panel no disponible'),
     };
     (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__ = api;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { delete (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__; });
@@ -7944,6 +8148,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const menuPad = this.input.gamepad?.getPad(0);
     const menuPadNow = !!menuPad && menuPad.connected && (!!menuPad.buttons[8]?.pressed || (!this.ended && !!menuPad.buttons[9]?.pressed));
     if (!this.escKey) return; // create() aún no ha terminado de cargar
+    this.adminTick();
     if (this.towerArrow) this.towerArrowTick();
     // Red de seguridad: ningún enemigo puede quedar fuera de la sala (empujones, remolinos, embestidas…)
     // (al reiniciar la escena, el grupo viejo ya está destruido hasta que create() termina: sin `children`)
@@ -9565,7 +9770,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    */
   private hurtPlayer(enemy: Sprite, unblockable = false) {
     const now = this.time.now;
-    if (this.ended || this.transitioning || now < this.invulnUntil) return;
+    if (this.ended || this.transitioning || now < this.invulnUntil || isGodMode()) return;
     // Quien salta no hace daño mientras desaparece o recién aparecido
     const ai = enemy.getData('ai') as EnemyAI | undefined;
     if (ai && ai.behavior === 'hop' && ai.state !== 'walk') return;

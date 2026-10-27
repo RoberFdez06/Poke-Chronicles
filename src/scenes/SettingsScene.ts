@@ -9,6 +9,9 @@ import { addBackButton } from '../ui/cards';
 import { ARROW, drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
 import { accountInfo } from '../net/cloud';
+import { adminAllowed } from '../data/admin';
+import { openAdmin } from './AdminScene';
+import { currentRunAdminRows, generalAdminRows } from '../ui/adminPanel';
 
 export interface SettingsData {
   /**
@@ -20,9 +23,12 @@ export interface SettingsData {
   onReset?: () => void;
 }
 
-type Row = 'music' | 'sfx' | 'fullscreen' | 'effects' | 'fps' | 'controls' | 'account' | 'credits' | 'reset' | 'back';
+type Row = 'music' | 'sfx' | 'fullscreen' | 'effects' | 'fps' | 'controls' | 'account' | 'credits' | 'reset' | 'admin' | 'back';
 const ROWS: Row[] = ['music', 'sfx', 'fullscreen', 'effects', 'fps', 'controls', 'account', 'credits', 'reset', 'back'];
 const ROW = { w: 520, h: 42, gap: 6, top: 128 };
+/** Con «Panel admin» (solo dev o cuenta admin) hay una fila más: van más juntas. */
+const ROW_ADMIN = { ...ROW, h: 38 };
+const ROWS_GEO = ROW;
 
 /** Créditos (T31): de dónde salen los datos, los sprites y la fuente. */
 const CREDITS: [string, string][] = [
@@ -41,6 +47,8 @@ export class SettingsScene extends Phaser.Scene {
   /** Diálogo de confirmación o panel de controles abierto encima. */
   private dialog?: { layer: Phaser.GameObjects.Container; list?: MenuList };
   private closing = false;
+  private list: Row[] = ROWS;
+  private geo = ROW;
 
   constructor() {
     super('Settings');
@@ -58,6 +66,8 @@ export class SettingsScene extends Phaser.Scene {
     this.dialog = undefined;
     this.closing = false;
     this.selected = 0;
+    this.list = adminAllowed() ? [...ROWS.slice(0, -1), 'admin', 'back'] : ROWS;
+    this.geo = adminAllowed() ? ROW_ADMIN : ROWS_GEO;
     this.nav = new NavInput(this);
     fitDesign(this);
     if (this.args.overlay) {
@@ -74,7 +84,8 @@ export class SettingsScene extends Phaser.Scene {
       .setStroke('#2b3a67', 10);
     addBackButton(this, () => this.close());
 
-    ROWS.forEach((row, i) => {
+    const ROW = this.geo;
+    this.list.forEach((row, i) => {
       const y = ROW.top + i * (ROW.h + ROW.gap);
       const bg = this.add.graphics();
       const text = this.add.text(480, y, '', { fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5);
@@ -123,6 +134,8 @@ export class SettingsScene extends Phaser.Scene {
       }
       case 'credits':
         return 'Créditos';
+      case 'admin':
+        return 'Panel admin (F9 en partida)';
       case 'controls':
         return this.args.overlay ? 'Mostrar controles' : 'Controles y teclas';
       case 'reset':
@@ -136,17 +149,17 @@ export class SettingsScene extends Phaser.Scene {
     this.rows.forEach((r, i) => {
       const sel = i === this.selected;
       r.bg.clear();
-      drawBox(r.bg, 480 - ROW.w / 2, r.y - ROW.h / 2, ROW.w, ROW.h, {
+      drawBox(r.bg, 480 - this.geo.w / 2, r.y - this.geo.h / 2, this.geo.w, this.geo.h, {
         selected: sel,
-        border: ROWS[i] === 'reset' ? 0xc0392b : undefined,
+        border: this.list[i] === 'reset' ? 0xc0392b : undefined,
       });
-      r.text.setText(this.label(ROWS[i])).setColor(ROWS[i] === 'reset' ? '#c0392b' : HEX.text);
+      r.text.setText(this.label(this.list[i])).setColor(this.list[i] === 'reset' ? '#c0392b' : HEX.text);
       r.arrow.setVisible(sel);
     });
   }
 
   private select(i: number) {
-    this.selected = (i + ROWS.length) % ROWS.length;
+    this.selected = (i + this.list.length) % this.list.length;
     this.refresh();
   }
 
@@ -168,7 +181,7 @@ export class SettingsScene extends Phaser.Scene {
   }
 
   private activate() {
-    const row = ROWS[this.selected];
+    const row = this.list[this.selected];
     sfx('select');
     if (row === 'music' || row === 'sfx') this.adjust(row, 1);
     else if (row === 'effects' || row === 'fps') this.toggleFx(row);
@@ -197,6 +210,7 @@ export class SettingsScene extends Phaser.Scene {
     }
     else if (row === 'credits') this.showCredits();
     else if (row === 'reset') this.confirmReset();
+    else if (row === 'admin') openAdmin(this, () => [...generalAdminRows(), ...currentRunAdminRows()]);
     else this.close();
   }
 
@@ -287,7 +301,7 @@ export class SettingsScene extends Phaser.Scene {
     }
     if (s.back) return this.close();
     if (s.dy) this.select(this.selected + Math.sign(s.dy));
-    const row = ROWS[this.selected];
+    const row = this.list[this.selected];
     if (s.dx && (row === 'music' || row === 'sfx')) this.adjust(row, Math.sign(s.dx));
     if (s.dx && (row === 'effects' || row === 'fps')) this.toggleFx(row);
     if (s.ok) this.activate();
