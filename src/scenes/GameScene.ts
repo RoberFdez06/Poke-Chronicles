@@ -150,6 +150,8 @@ import { armMuzzle, drawBossLaser, drawShockRing, hazardBlast, hazardWarn, laser
 import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
 import { dynamaxBurst, teraBurst, zMoveFx } from '../ui/art/formsFx';
 import { drawMegaStoneHud, drawPowerMeterFill, playerFormAura, playerMegaFx } from '../ui/art/megaFx';
+import { exhaustedFx, finaleShiftFx, judgmentRects, judgmentStrike, judgmentWarn, drawNovaWave, novaWarn } from '../ui/art/finaleFx';
+import { clampFinaleHp, FINALE_AFTER_BEAT_MS, FINALE_ATTACK_LABEL, FINALE_BEAT_MS, finaleAttacks, finaleHpFloor, finaleIntervalMul, finalePhaseText, judgmentHits, judgmentPlan, judgmentSpec, NOVA, nextFinalePhase, novaDurationMs, novaGapAt, pickFinaleAttack, type FinaleAttack, type FinalePhase } from '../data/finalePhases';
 import { chargedShotFx, chargeGlow } from '../ui/art/shotFx';
 import { megaBlastFx, reactionChain, reactionFx } from '../ui/art/reactionFx';
 import { shinyChainBadge } from '../ui/art/shinyChainArt';
@@ -532,6 +534,13 @@ export class GameScene extends Phaser.Scene {
   /** Reto final (piso 6 de Normal): trío o gigante y los datos de cada miembro. */
   private finale?: Finale;
   private finaleMembers: { id: number; name: string; types: string[]; stats: BaseStats; key: string }[] = [];
+  /** Fases del reto final (finalePhases.ts): fase actual (compartida por el trío), fin de la pausa de cambio, vida
+   * máxima sumada, ataques desde la última nova y hasta cuándo dura un ataque grande (juicio o nova). */
+  private finalePh: FinalePhase = 1;
+  private finaleBeatUntil = 0;
+  private finaleMaxSum = 0;
+  private finaleSinceNova = 0;
+  private finaleBigUntil = 0;
   /** Ayudantes que invocan los jefes: de su tipo. */
   private summonKinds: FoeKind[] = [];
   /** Sala del minijefe de este piso (si hay). */
@@ -969,6 +978,11 @@ export class GameScene extends Phaser.Scene {
     this.activeIcon = undefined;
     this.finale = undefined;
     this.finaleMembers = [];
+    this.finalePh = 1;
+    this.finaleBeatUntil = 0;
+    this.finaleMaxSum = 0;
+    this.finaleSinceNova = 0;
+    this.finaleBigUntil = 0;
     this.summonKinds = [];
     this.minibossRoom = undefined;
     this.healBudget = 0;
@@ -5824,6 +5838,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const st = bossStats(this.bossBase, this.difficulty);
     const room = this.interior(this.current);
     const group: Sprite[] = [];
+    this.finalePh = 1;
+    this.finaleMaxSum = 0;
     this.finaleMembers.forEach((m, k) => {
       const size = trio ? 130 : GIANT_SIZE;
       const x = trio ? room.cx + (k - 1) * 220 : room.cx;
@@ -5840,6 +5856,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       ai.moves = bossStyles(m.types, m.id);
       ai.nextAttack = Number.POSITIVE_INFINITY; // los activa la intro al acabar
       ai.phase = 1;
+      b.setData('fbase', ai.attacks).setData('fattacks', finaleAttacks(1, ai.attacks));
+      this.finaleMaxSum += hp;
       b.setData('ai', ai);
       group.push(b);
     });
@@ -6026,11 +6044,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Fase 2: por debajo de la mitad de vida, más rápido y con más ataques
     const ratio = (b.getData('hp') as number) / (b.getData('maxHp') as number);
     // T66: megaevolución / forma furia (una vez por jefe, a la vez que la fase 2). Durante el aviso no ataca.
-    if (this.updateMegaEvolution(b, ai, ratio, time)) return;
+    // Reto final: sus 4 fases van aparte (sin megaevolución ni fases de arena de los jefes normales)
+    if (b.getData('finale') && this.updateFinale(b, ai, time)) return;
+    if (!b.getData('finale') && this.updateMegaEvolution(b, ai, ratio, time)) return;
     // T78: la arena cambia al 67 % (desperfectos) y al 34 % (caída a otra arena), nunca a la vez que la megaevolución.
     // Durante el derrumbe el jefe está quieto, no ataca y no recibe daño.
-    if (this.updateArena(b, ai, ratio, time)) return;
-    if (ai.phase === 1 && bossPhase(ratio) === 2) {
+    if (!b.getData('finale') && this.updateArena(b, ai, ratio, time)) return;
+    if (ai.phase === 1 && bossPhase(ratio) === 2 && !b.getData('finale')) {
       ai.phase = 2;
       sfx('enrage');
       {
@@ -6092,6 +6112,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       return;
     }
     b.setData('lastMega', false);
+    if (b.getData('finale')) return this.finaleAttack(b, ai, time);
     const attack = pickAttack(ai.attacks, Math.random, ai.lastAttack);
     ai.lastAttack = attack;
     ai.nextAttack = time + attackInterval(ai.phase ?? 1) * (rage ? 0.65 : 1) + TELEGRAPH_MS;
@@ -6104,6 +6125,198 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const ms = this.bossExtra(b, ai, attack, ai.phase ?? 1);
       ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + TELEGRAPH_MS + ms + 600);
     }
+  }
+
+  // --- Reto final en 4 fases (finalePhases.ts) ---
+
+  /** Miembros del reto final vivos. */
+  private finaleBosses(): Sprite[] {
+    return this.enemies.getChildren().filter((c) => c.active && (c as Sprite).getData('finale') && ((c as Sprite).getData('ai') as EnemyAI | undefined)?.boss) as Sprite[];
+  }
+
+  /**
+   * Fases del reto final: la vida (sumada, en el trío) decide la fase y se avanza de una en una con una pausa. Al
+   * gigante no se le puede bajar de golpe más allá de la fase siguiente. Devuelve true mientras dura la pausa.
+   */
+  private updateFinale(b: Sprite, ai: EnemyAI, time: number): boolean {
+    if (this.ended) return false;
+    const max = b.getData('maxHp') as number;
+    if (time < this.finaleBeatUntil) {
+      b.setData('hp', Math.max(b.getData('hp') as number, (b.getData('beatHp') as number | undefined) ?? 0));
+      b.setVelocity(0, 0);
+      return true;
+    }
+    if (this.finale?.kind === 'giant') b.setData('hp', clampFinaleHp(b.getData('hp') as number, this.finalePh, max));
+    const sum = this.finaleBosses().reduce((s, m) => s + Math.max(0, m.getData('hp') as number), 0);
+    const next = nextFinalePhase(this.finalePh, sum / Math.max(1, this.finaleMaxSum || max));
+    if (!next) return false;
+    this.finaleShift(next, time);
+    void ai;
+    return true;
+  }
+
+  /** Cambio de fase: pausa breve (nadie recibe daño), estallido, aviso y ataques nuevos; en la 3 la arena se rompe. */
+  private finaleShift(next: FinalePhase, time: number) {
+    this.finalePh = next;
+    this.finaleBeatUntil = time + FINALE_BEAT_MS;
+    this.finaleBigUntil = 0;
+    this.invulnUntil = Math.max(this.invulnUntil, time + FINALE_BEAT_MS + 300);
+    this.playerKnockUntil = Math.max(this.playerKnockUntil, time + FINALE_BEAT_MS);
+    this.player.setVelocity(0, 0);
+    this.clearArenaShots();
+    const group = this.finaleBosses();
+    for (const m of group) {
+      const mai = m.getData('ai') as EnemyAI;
+      m.setData('beatHp', m.getData('hp')).setVelocity(0, 0);
+      mai.knockUntil = time + FINALE_BEAT_MS;
+      mai.nextAttack = time + FINALE_BEAT_MS + FINALE_AFTER_BEAT_MS;
+      m.setData('volleyAt', time + FINALE_BEAT_MS + FINALE_AFTER_BEAT_MS + 600);
+      m.setData('fattacks', finaleAttacks(next, (m.getData('fbase') as typeof mai.attacks) ?? mai.attacks ?? []));
+      const col = typeColor(((m.getData('btypes') as string[] | undefined) ?? this.bossTypes)[0] ?? this.bossType);
+      const bb = m.body as Body | null;
+      const feet = () => { const q = m.body as Body | null; return q ? q.bottom : m.y + m.displayHeight / 2; };
+      finaleShiftFx(this, m.x, m.y, bb ? bb.bottom : m.y + m.displayHeight / 2, col, next);
+      if (next === 2) {
+        mai.phase = 2;
+        m.setData('speed', (m.getData('speed') as number) * PHASE2_SPEED);
+        bossAura(this, m, col, feet);
+      }
+      if (next === 4) {
+        m.setData('rage', true).setData('speed', (m.getData('speed') as number) * 1.15);
+      }
+      this.tweens.add({ targets: m, scaleX: m.scaleX * 1.15, scaleY: m.scaleY * 1.15, duration: 180, yoyo: true, ease: 'Quad.easeOut' });
+    }
+    sfx('enrage');
+    this.cameras.main.shake(next === 4 ? 450 : 280, next === 4 ? 0.01 : 0.006);
+    this.cameras.main.flash(200, 255, next === 4 ? 90 : 255, next === 4 ? 90 : 255);
+    const label = this.finale?.kind === 'trio' ? this.finale.name : ((group[0]?.getData('bname') as string | undefined) ?? this.bossName);
+    this.notify(finalePhaseText(next, label), { kind: 'danger', icon: 'star' });
+    if (next === 3 && group[0]) {
+      const lead = group[0];
+      this.time.delayedCall(FINALE_BEAT_MS, () => {
+        if (!lead.active || this.ended) return;
+        this.finaleArena(lead, this.time.now);
+        this.bossSummon(lead, lead.getData('ai') as EnemyAI);
+      });
+    }
+  }
+
+  /** Fase 3: la arena se agrieta como en la fase 1 de arena de los jefes normales (aviso, grietas, escombros y charcos). */
+  private finaleArena(b: Sprite, time: number) {
+    if (this.arenaDone !== 0 || this.arenaWarn || this.arenaFallAt !== undefined) return;
+    const room = this.cellRoom(b.x, b.y);
+    const grid = this.grids.get(room.id);
+    if (!grid || room !== this.current) return;
+    const seed = (this.floorSeed ^ Math.imul(room.id + 7, 0x9e3779b1)) >>> 0;
+    const phase = arenaPhase({ grid, seed, player: this.tileOf(this.player.x, this.player.y, room), boss: this.tileOf(b.x, b.y, room) });
+    if (phase.cells.length === 0) return;
+    this.arenaDone = 1;
+    const i = this.interior(room);
+    const marks = phase.cells.map((c) => arenaWarnTile(this, i.x0 + c.x * TILE, i.y0 + c.y * TILE, TILE, c.kind === 'grieta' ? 'grieta' : c.kind === 'charco' ? 'charco' : 'escombro'));
+    this.arenaWarn = { at: time, roomId: room.id, phase, marks };
+  }
+
+  /** Ataque del jefe final según su fase (sin repetir el último); los grandes (juicio y nova) nunca a la vez. */
+  private finaleAttack(b: Sprite, ai: EnemyAI, time: number) {
+    const list = (b.getData('fattacks') as FinaleAttack[] | undefined) ?? finaleAttacks(this.finalePh, ai.attacks ?? []);
+    let attack = pickFinaleAttack(list, Math.random, b.getData('flast') as FinaleAttack | undefined, this.finaleSinceNova);
+    const big = attack === 'judgment' || attack === 'nova';
+    if (big && time < this.finaleBigUntil) attack = 'ring';
+    b.setData('flast', attack);
+    if (attack === 'nova') this.finaleSinceNova = 0;
+    else if (list.includes('nova')) this.finaleSinceNova++;
+    const gap = attackInterval(ai.phase ?? 1) * finaleIntervalMul(this.finalePh);
+    ai.nextAttack = time + gap + TELEGRAPH_MS;
+    if (attack === 'judgment' || attack === 'nova') {
+      const ms = attack === 'judgment' ? this.bossJudgment(b, ai) : this.bossNova(b, ai);
+      this.finaleBigUntil = time + ms;
+      ai.nextAttack = time + ms + gap * 0.5;
+      // Mientras dura, el resto calla (ni ataques ni ráfagas): solo hay que leer una cosa
+      for (const m of this.finaleBosses()) {
+        const mai = m.getData('ai') as EnemyAI;
+        if (m !== b) mai.nextAttack = Math.max(mai.nextAttack ?? 0, time + ms + 400);
+        m.setData('volleyAt', time + ms + 400);
+      }
+      return;
+    }
+    if (attack === 'ring') this.bossRing(b, ai);
+    else if (attack === 'charge') this.bossCharge(b, ai, time);
+    else if (attack === 'summon') this.bossSummon(b, ai);
+    else if (attack === 'rain') this.bossRain(b, ai);
+    else {
+      const ms = this.bossExtra(b, ai, attack, ai.phase ?? 1);
+      ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + TELEGRAPH_MS + ms + 600);
+    }
+  }
+
+  /** Cruz del juicio: franjas de la sala marcadas con aviso largo que estallan a la vez (siempre con huecos). */
+  private bossJudgment(b: Sprite, ai: EnemyAI): number {
+    const i = this.arena();
+    const W = i.x1 - i.x0;
+    const H = i.y1 - i.y0;
+    const spec = judgmentSpec(this.finalePh);
+    const plan = judgmentPlan(W, H, spec, Math.random);
+    const rects = judgmentRects(i.x0, i.y0, W, H, plan);
+    const color = typeColor(ai.type);
+    this.popup(b.x, b.y - (b.displayHeight / 2 + 20), FINALE_ATTACK_LABEL.judgment, color);
+    b.setData('flashUntil', this.time.now + spec.warnMs).setTintFill(0xffffff);
+    ai.knockUntil = this.time.now + spec.warnMs;
+    b.setVelocity(0, 0);
+    judgmentWarn(this, rects, color, spec.warnMs);
+    this.cameras.main.shake(spec.warnMs, 0.0015);
+    this.time.delayedCall(spec.warnMs, () => {
+      if (this.ended) return;
+      judgmentStrike(this, rects, color);
+      this.cameras.main.shake(180, 0.008);
+      if (b.active && judgmentHits(plan, this.player.x - i.x0, this.player.y - i.y0)) this.hurtPlayer(b, true);
+    });
+    return spec.warnMs + 400;
+  }
+
+  /**
+   * Nova desesperada (fase 4): ondas seguidas cuyo hueco gira poco a poco (marcado en verde). Al acabar, el jefe queda
+   * agotado unos segundos: la ventana de castigo.
+   */
+  private bossNova(b: Sprite, ai: EnemyAI): number {
+    const spec = NOVA;
+    const color = typeColor(ai.type);
+    const dir: 1 | -1 = Math.random() < 0.5 ? 1 : -1;
+    const start = Math.atan2(this.player.y - b.y, this.player.x - b.x) + (Math.random() - 0.5) * 1.2;
+    const total = spec.warnMs + novaDurationMs(spec);
+    this.popup(b.x, b.y - (b.displayHeight / 2 + 20), FINALE_ATTACK_LABEL.nova, color);
+    b.setData('flashUntil', this.time.now + spec.warnMs).setTintFill(0xffffff);
+    ai.knockUntil = this.time.now + total;
+    b.setVelocity(0, 0);
+    const cx = b.x;
+    const cy = b.y;
+    novaWarn(this, cx, cy, start, dir, color, spec.warnMs);
+    for (let w = 0; w < spec.waves; w++) {
+      const gapAt = novaGapAt(spec, start, w, dir);
+      this.time.delayedCall(spec.warnMs + w * spec.everyMs, () => {
+        if (!b.active || this.ended) return;
+        b.setVelocity(0, 0);
+        const g = this.add.graphics().setDepth(5);
+        const st = { r: 30 };
+        this.tweens.add({
+          targets: st, r: spec.maxRadius, duration: ((spec.maxRadius - 30) / spec.speed) * 1000,
+          onUpdate: () => {
+            g.clear();
+            drawNovaWave(g, cx, cy, st.r, gapAt, spec.gap, color, this.time.now);
+            if (b.active && !this.ended && shockwaveHits(cx, cy, st.r, gapAt, spec.gap, this.player.x, this.player.y)) this.hurtPlayer(b, true);
+          },
+          onComplete: () => g.destroy(),
+        });
+      });
+    }
+    this.time.delayedCall(total, () => {
+      if (!b.active || this.ended) return;
+      ai.knockUntil = this.time.now + spec.punishMs;
+      ai.nextAttack = Math.max(ai.nextAttack ?? 0, this.time.now + spec.punishMs + 300);
+      b.setVelocity(0, 0).setData('volleyAt', this.time.now + spec.punishMs + 300);
+      exhaustedFx(this, b, spec.punishMs);
+      this.notify('¡Está agotado! ¡Ataca ahora!', { kind: 'warning', icon: 'star' });
+    });
+    return total + spec.punishMs;
   }
 
   /**
@@ -8289,6 +8502,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   private killEnemy(enemy: Sprite) {
+    // Reto final: no cae hasta su última fase (ni durante la pausa de un cambio de fase)
+    if (enemy.getData('finale') && this.finale?.kind === 'giant' && (this.finalePh < 4 || this.time.now < this.finaleBeatUntil)) {
+      enemy.setData('hp', Math.max(1, finaleHpFloor(this.finalePh, enemy.getData('maxHp') as number), (enemy.getData('beatHp') as number | undefined) ?? 0));
+      return;
+    }
+    if (enemy.getData('finale') && this.time.now < this.finaleBeatUntil) {
+      enemy.setData('hp', Math.max(1, (enemy.getData('beatHp') as number | undefined) ?? 1));
+      return;
+    }
     if (enemy.getData('legendHunt')) {
       // T88: debilitado sin capturar: la cacería termina
       this.hunt = finishLair(this.hunt);
