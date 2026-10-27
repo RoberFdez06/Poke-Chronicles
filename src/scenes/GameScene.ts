@@ -143,7 +143,7 @@ import { bossHud } from '../ui/art/bossHud';
 import { bossAmbience } from '../ui/art/bossArena';
 import { bossDeathFlourish, finalBossDeath, finalDeathMs, finaleVictoryBanner } from '../ui/art/bossDeath';
 import { ARENA_AT, fallTheme } from '../level/arenaPhase';
-import { BOSS_PHASE2_AT } from '../data/bossPatterns';
+import { BOSS_PHASE2_AT, BOSS_ATTACK_LABEL as PATTERN_LABEL, isPatternAttack, patternMs, patternWarnAngles, patternWaves, type PatternAttack } from '../data/bossPatterns';
 import { GAME_ZOOM as BOSS_CAM_ZOOM } from '../ui/layout';
 import { shotSfx } from '../data/sounds';
 import { trackForBiome, trackForMood, TRACKS, type MusicMood } from '../data/music';
@@ -154,7 +154,7 @@ import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, meg
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
 import { fallConceptFx, sacredFlame } from '../ui/art/fallArt';
 import { pixRing } from '../ui/art/pixelFx';
-import { armMuzzle, drawBossLaser, drawShockRing, hazardBlast, hazardWarn, laserWarn, ringWarn, shockLaunch, shockWarn, shotTrails, spiralEndBurst, spiralWarn, vortexCharge } from '../ui/art/bossPatternFx';
+import { armMuzzle, drawBossLaser, drawShockRing, hazardBlast, hazardWarn, laserWarn, patternMuzzle, patternWarn, ringWarn, shockLaunch, shockWarn, shotTrails, spiralEndBurst, spiralWarn, vortexCharge } from '../ui/art/bossPatternFx';
 import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
 import { dynamaxBurst, teraBurst, zMoveFx } from '../ui/art/formsFx';
 import { drawMegaStoneHud, drawPowerMeterFill, playerFormAura, playerMegaFx } from '../ui/art/megaFx';
@@ -6232,7 +6232,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else if (attack === 'charge') this.bossCharge(b, ai, time);
     else if (attack === 'summon') this.bossSummon(b, ai);
     else if (attack === 'rain') this.bossRain(b, ai);
-    else {
+    else if (isPatternAttack(attack)) {
+      const ms = this.bossPattern(b, ai, attack, ai.phase ?? 1);
+      ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + TELEGRAPH_MS + ms + 500);
+    } else {
       // T50: los ataques extra duran más; el siguiente espera a que acaben
       const ms = this.bossExtra(b, ai, attack, ai.phase ?? 1);
       ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + TELEGRAPH_MS + ms + 600);
@@ -6371,7 +6374,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else if (attack === 'charge') this.bossCharge(b, ai, time);
     else if (attack === 'summon') this.bossSummon(b, ai);
     else if (attack === 'rain') this.bossRain(b, ai);
-    else {
+    else if (isPatternAttack(attack)) {
+      const ms = this.bossPattern(b, ai, attack, ai.phase ?? 1);
+      ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + TELEGRAPH_MS + ms + 500);
+    } else {
       const ms = this.bossExtra(b, ai, attack, ai.phase ?? 1);
       ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + TELEGRAPH_MS + ms + 600);
     }
@@ -6884,6 +6890,38 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       trails?.done();
       if (!low) pixRing(this, b.x, b.y, 60, color, 260, 7, 0.8);
     });
+  }
+
+  /**
+   * Patrones de balas (estrella de 8, cruz y aspa, abanico, barrido): aviso con flechas pixel por donde saldrán, el
+   * jefe quieto mientras avisa y luego las olas de balas. Con pocos efectos, aviso de líneas simples. Devuelve la duración.
+   */
+  private bossPattern(b: Sprite, ai: EnemyAI, p: PatternAttack, phase: 1 | 2): number {
+    const color = typeColor(ai.type);
+    const low = lowFx();
+    const aim = Math.atan2(this.player.y - b.y, this.player.x - b.x);
+    const off = Math.random() * Math.PI * 2;
+    const warn = patternWarnAngles(p, phase, aim, off);
+    this.popup(b.x, b.y - (b.displayHeight / 2 + 20), PATTERN_LABEL[p], color);
+    ai.knockUntil = this.time.now + TELEGRAPH_MS;
+    b.setVelocity(0, 0);
+    b.setData('flashUntil', this.time.now + TELEGRAPH_MS).setTintFill(0xffffff);
+    if (low) {
+      const g = this.add.graphics().setDepth(4);
+      for (const a of warn) g.lineStyle(3, color, 0.8).lineBetween(b.x, b.y, b.x + Math.cos(a) * 160, b.y + Math.sin(a) * 160);
+      this.time.delayedCall(TELEGRAPH_MS, () => g.destroy());
+    } else patternWarn(this, () => b, warn, color, TELEGRAPH_MS, p === 'sweep');
+    const waves = patternWaves(p, phase, aim, off);
+    for (const w of waves) {
+      this.time.delayedCall(TELEGRAPH_MS + w.at, () => {
+        if (!b.active || this.ended || this.arenaFallAt !== undefined) return;
+        const trails = low ? null : shotTrails(this, ai.type, color, 360);
+        for (const a of w.angles) trails?.add(this.fireFoeShot(b, new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), ai.type));
+        trails?.done();
+        if (!low) patternMuzzle(this, b.x, b.y, w.angles, color);
+      });
+    }
+    return patternMs(p, phase);
   }
 
   /** Embestida: marca una línea hacia ti, se para y se lanza por ella. */

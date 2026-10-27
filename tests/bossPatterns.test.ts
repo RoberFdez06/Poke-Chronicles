@@ -132,3 +132,37 @@ test('escudado: el escudo es una reserva de PS que absorbe de cualquier lado', (
   assert.deepEqual(absorbShieldHit(10, 25), { absorbed: 10, through: 15, left: 0 });
   assert.deepEqual(absorbShieldHit(0, 25), { absorbed: 0, through: 25, left: 0 });
 });
+
+import { BOSS_ATTACK_LABEL as LBL, PATTERN_ATTACKS, isPatternAttack, patternAttacks, patternMs, patternWarnAngles, patternWaves } from '../src/data/bossPatterns.ts';
+
+test('patrones de balas: etiqueta en español, olas con balas y aviso, y asignados por tipo', () => {
+  for (const p of PATTERN_ATTACKS) {
+    assert.ok(LBL[p].length > 0);
+    assert.ok(isPatternAttack(p));
+    for (const ph of [1, 2] as const) {
+      const w = patternWaves(p, ph, 0.3, 1.2);
+      assert.ok(w.length >= 3, p);
+      assert.ok(w.every((x) => x.angles.length > 0 && x.at >= 0 && x.angles.every(Number.isFinite)));
+      assert.ok(patternWarnAngles(p, ph, 0.3, 1.2).length > 0);
+      assert.ok(patternMs(p, ph) > 0 && patternMs(p, ph) < 3000, `${p} no se alarga`);
+    }
+    assert.ok(patternWaves(p, 2, 0, 0).length >= patternWaves(p, 1, 0, 0).length, 'fase 2 igual o más dura');
+  }
+  assert.equal(isPatternAttack('ring'), false);
+  // Estrella: 8 direcciones (rectas y diagonales con off = 0)
+  const star = patternWaves('star8', 1, 0, 0)[0].angles.map((a) => Math.round((a * 180) / Math.PI));
+  assert.deepEqual(star, [0, 45, 90, 135, 180, 225, 270, 315]);
+  // Cruz y luego aspa
+  const cross = patternWaves('cross', 1, 0, 0);
+  assert.deepEqual(cross[0].angles.map((a) => Math.round((a * 180) / Math.PI)), [0, 90, 180, 270]);
+  assert.deepEqual(cross[4].angles.map((a) => Math.round((a * 180) / Math.PI)), [45, 135, 225, 315]);
+  // Abanico centrado en el jugador
+  const fan = patternWaves('fan', 1, 1, 0)[0].angles;
+  assert.ok(Math.abs((fan[0] + fan[fan.length - 1]) / 2 - 1) < 1e-9);
+  // Cada tipo tiene patrón y todos los patrones salen en algún tipo
+  const seen = new Set<string>();
+  for (const t of ['fire', 'water', 'grass', 'electric', 'ice', 'rock', 'ground', 'steel', 'psychic', 'ghost', 'dark', 'fairy', 'dragon', 'poison', 'flying', 'normal', 'bug', 'fighting'])
+    for (const p of patternAttacks([t])) seen.add(p);
+  assert.deepEqual([...seen].sort(), [...PATTERN_ATTACKS].sort());
+  assert.ok(bossAttacksFor(['electric'], ['electric']).includes('cross'));
+});

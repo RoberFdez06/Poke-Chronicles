@@ -366,3 +366,52 @@ export function hazardBlast(sc: Phaser.Scene, x: number, y: number, R: number, c
   pixRing(sc, x, y, R * 1.1, color, 360, depth - 0.5, 1);
   pixDebris(sc, x, y, color, 6, 0.6, depth + 1);
 }
+
+// ---------------- Patrones de balas (estrella de 8, cruz, abanico, barrido) ----------------
+
+/**
+ * Aviso de un patrón: flechas pixel gordas que salen del jefe por cada dirección y avanzan, con el núcleo cargándose
+ * (como el Torbellino). `sweep` dibuja además el arco que va a barrer.
+ */
+export function patternWarn(sc: Phaser.Scene, at: Pos, angles: number[], color: number, ms: number, sweep = false, depth = 4) {
+  const light = lightOf(color);
+  animate(sc, depth, ms, (g, k, t) => {
+    const { x, y } = at();
+    const blink = k > 0.6 && Math.floor(t / 70) % 2 === 0;
+    for (const a of angles) {
+      const ca = Math.cos(a);
+      const sa = Math.sin(a);
+      const len = 60 + 140 * Phaser.Math.Easing.Cubic.Out(k);
+      // Raya de puntos que corre hacia fuera
+      for (let d = 36; d < len; d += PX * 2) {
+        if (Math.floor((d - t * 0.35) / (PX * 2)) % 3 === 0) continue;
+        dot(g, x + ca * d, y + sa * d, blink ? 0xffffff : color, 0.8);
+      }
+      // Punta de flecha gorda (pixel) al final
+      const hx = x + ca * len;
+      const hy = y + sa * len;
+      const nx = -sa;
+      const ny = ca;
+      for (let r = 0; r < 3; r++)
+        for (let s = -r; s <= r; s++) dot(g, hx - ca * r * PX + nx * s * PX, hy - sa * r * PX + ny * s * PX, r === 0 || blink ? 0xffffff : light, 1, PX, true);
+    }
+    if (sweep && angles.length > 1) {
+      for (let i = 0; i < angles.length - 1; i++) {
+        const a = angles[i] + ((angles[i + 1] - angles[i]) * ((t / 40) % 1));
+        dot(g, x + Math.cos(a) * 90, y + Math.sin(a) * 90, light, 0.7, PX + 2);
+      }
+    }
+    drawPixOrb(g, x, y, 12 + 16 * k, color, t, 0.85);
+  }, 50);
+}
+
+/** Destello de salida de cada ola: estrella de chispas en las direcciones disparadas. */
+export function patternMuzzle(sc: Phaser.Scene, x: number, y: number, angles: number[], color: number) {
+  animate(sc, 6, 220, (g, k) => {
+    for (const a of angles) {
+      const d = 26 + 30 * k;
+      dot(g, x + Math.cos(a) * d, y + Math.sin(a) * d, k < 0.5 ? 0xffffff : color, 1 - k, PX + 2, true);
+      dot(g, x + Math.cos(a) * (d - PX * 2), y + Math.sin(a) * (d - PX * 2), lightOf(color), (1 - k) * 0.7);
+    }
+  }, 40);
+}
