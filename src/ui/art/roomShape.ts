@@ -4,6 +4,7 @@
 //  - los agujeros 'H' se unen en fosos: fondo oscuro continuo, pared interior de tierra arriba y borde alrededor.
 import Phaser from 'phaser';
 import { shade, type BiomeLook } from './tiles';
+import { lowFx } from '../theme';
 
 type Cell = string;
 type Grid = readonly (readonly Cell[])[];
@@ -192,5 +193,91 @@ export function drawPuddleLinks(scene: Phaser.Scene, grid: Grid, room: { x0: num
     const cy = room.y0 + ty * tile + tile / 2;
     g.fillStyle(shade(c, 0.4), 0.9).fillRect(horiz ? cx + tile / 2 - 4 * k : cx - 6 * k, horiz ? cy - 3 * k : cy + tile / 2, 6 * k, 2 * k);
   }
+  addPuddleRipples(scene, g, grid, room, tile, b, links, blocks);
   return g;
+}
+
+/**
+ * Las uniones tapan el centro de los charcos que juntan: aquí se vuelven a pintar encima su reflejo, sus ondas que
+ * crecen y se apagan (las mismas 4 fases que la textura del charco) y lo propio del bioma (burbujas de lava, grietas
+ * de hielo, nenúfar), más una onda en medio de cada charca de 2x2. Con pocos efectos, quieto en la primera fase.
+ */
+function addPuddleRipples(
+  scene: Phaser.Scene,
+  links: Phaser.GameObjects.Graphics,
+  grid: Grid,
+  room: { x0: number; y0: number },
+  tile: number,
+  b: BiomeLook,
+  pairs: [number, number, boolean][],
+  blocks: [number, number][],
+) {
+  const c = b.colors.puddle;
+  const u = tile / 32;
+  // Casillas tapadas por alguna unión (y su centro en pantalla)
+  const seen = new Set<string>();
+  const cells: [number, number][] = [];
+  const addCell = (tx: number, ty: number) => {
+    const key = `${tx},${ty}`;
+    if (seen.has(key) || at(grid, tx, ty) !== 'W') return;
+    seen.add(key);
+    cells.push([room.x0 + tx * tile, room.y0 + ty * tile]);
+  };
+  for (const [tx, ty, horiz] of pairs) {
+    addCell(tx, ty);
+    addCell(horiz ? tx + 1 : tx, horiz ? ty : ty + 1);
+  }
+  const mids = blocks.map(([tx, ty]) => [room.x0 + (tx + 1) * tile, room.y0 + (ty + 1) * tile] as [number, number]);
+  const rg = scene.add.graphics().setDepth(links.depth + 0.005);
+  const P = (x: number, y: number, w: number, h: number, col: number, a = 1) =>
+    rg.fillStyle(col, a).fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+  const paint = (f: number) => {
+    rg.clear();
+    const k = f % 4;
+    for (const [x, y] of cells) {
+      // Mismas medidas que drawPuddle (textura de 32 px)
+      rg.fillStyle(shade(c, 0.22), 1).fillEllipse(x + 15 * u, y + 13 * u, 14 * u, 7 * u);
+      rg.lineStyle(u, shade(c, 0.45), 1 - k * 0.22).strokeEllipse(x + 21 * u, y + 18 * u, (5 + k * 3) * u, (2 + k) * u);
+      const k2 = (k + 2) % 4;
+      rg.lineStyle(u, shade(c, 0.35), 0.4 + k2 * 0.18).strokeEllipse(x + 11 * u, y + 14 * u, (3 + k2 * 2) * u, (1 + k2) * u);
+      P(x + (7 + k) * u, y + 9 * u, 3 * u, u, 0xffffff);
+      if (k !== 2) P(x + (22 - (k % 2)) * u, y + 12 * u, 2 * u, u, 0xffffff);
+      switch (b.id) {
+        case 'volcan':
+          for (const [bx, by, ph] of [[10, 14, 0], [20, 17, 1], [15, 11, 2]]) {
+            const st = (k + ph) % 4;
+            if (st === 3) continue;
+            P(x + bx * u, y + (by - st) * u, (1 + st) * u, (1 + st) * u, 0xffe08a);
+            P(x + bx * u, y + (by - st) * u, u, u, 0xffffff);
+          }
+          break;
+        case 'nieve':
+        case 'cumbre':
+          for (const [bx, by, w, h] of [[8, 12, 8, 1], [15, 12, 1, 6], [15, 17, 6, 1], [11, 15, 1, 4]]) P(x + bx * u, y + by * u, w * u, h * u, 0xffffff);
+          break;
+        case 'pantano':
+          rg.fillStyle(0x3d8a48, 1).fillEllipse(x + 20 * u, y + 16 * u, 9 * u, 5 * u);
+          P(x + 20 * u, y + 14 * u, 2 * u, 2 * u, 0xff9ac0);
+          break;
+        case 'torre':
+          for (const [bx, by] of [[10, 13], [19, 18], [23, 12]]) P(x + bx * u, y + by * u, u, 3 * u, 0xd9c8ff);
+          break;
+        default:
+          break;
+      }
+    }
+    // Onda grande en medio de cada charca de 2x2 (desfasada con las de las casillas)
+    for (const [mx, my] of mids) {
+      const m = (k + 1) % 4;
+      rg.lineStyle(u, shade(c, 0.4), 0.9 - m * 0.2).strokeEllipse(mx, my, (8 + m * 6) * u, (3 + m * 2) * u);
+      if (m < 2) rg.lineStyle(u, shade(c, 0.55), 0.5).strokeEllipse(mx, my, (3 + m * 3) * u, (1 + m) * u);
+    }
+  };
+  paint(0);
+  links.once(Phaser.GameObjects.Events.DESTROY, () => rg.destroy());
+  if (lowFx()) return;
+  // Mismo ritmo que la textura del charco (un fotograma cada 360 ms)
+  let f = 0;
+  const ev = scene.time.addEvent({ delay: 360, loop: true, callback: () => (rg.active ? paint(++f) : ev.remove()) });
+  rg.once(Phaser.GameObjects.Events.DESTROY, () => ev.remove());
 }

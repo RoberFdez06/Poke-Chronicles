@@ -21,6 +21,10 @@ function rng(seed: number) {
 }
 
 /** Luminosidad (0-1) de un color. */
+const mixC = (a: number, c: number, t: number) => {
+  const ch = (sh: number) => Math.round(((a >> sh) & 255) * (1 - t) + ((c >> sh) & 255) * t) << sh;
+  return ch(16) | ch(8) | ch(0);
+};
 const lum = (c: number) => (0.299 * ((c >> 16) & 255) + 0.587 * ((c >> 8) & 255) + 0.114 * (c & 255)) / 255;
 
 /** Detalles 8x8: '.' vacío; letras = colores de su paleta. */
@@ -43,7 +47,10 @@ const CRACK: Decal = { rows: ['........', '..k.....', '...k....', '...kk...', '.
 const SNOWPILE: Decal = { rows: ['........', '........', '...WW...', '..WWWW..', '.WWWWBW.', 'WWWWBBWW', 'BBBBBBBB', '........'], pal: { W: 0xffffff, B: 0xb8d0e4 } };
 const MUSHROOM: Decal = { rows: ['........', '..kkkk..', '.kRWRRk.', 'kRRRRWRk', 'kkkkkkkk', '...kWk..', '...kWk..', '...kkk..'], pal: { k: K, R: 0xc8402a, W: 0xffffff } };
 const LILY: Decal = { rows: ['........', '..kkkk..', '.kGGgGk.', 'kGGGG.Gk', 'kGgGG..k', '.kGGGGk.', '..kkkk..', '........'], pal: { k: 0x1d3a1a, G: 0x58b848, g: 0x2f7a2a } };
-const LEAF: Decal = { rows: ['........', '......k.', '....kOk.', '...kOOk.', '..kOOk..', '.kOOk...', '.kk.....', 'k.......'], pal: { k: 0x5a2a14, O: 0xe08a3a } };
+// Hojas secas de arce (con puntas, nervio y rabito; antes era un palito naranja que parecía una zanahoria)
+const LEAF_ROWS = ['...k....', '.k.Ok.k.', 'kOkOOkOk', '.kOOvOk.', 'kOOOvOOk', '.kkkvkk.', '....v...', '....v...'];
+const LEAF: Decal = { rows: LEAF_ROWS, pal: { k: 0x6a2e12, O: 0xe08a3a, v: 0xb05a20 } };
+const LEAF_Y: Decal = { rows: LEAF_ROWS, pal: { k: 0x6a4a12, O: 0xe0b848, v: 0xb08a28 } };
 const RUNE: Decal = { rows: ['..PPPP..', '.P....P.', 'P..PP..P', 'P.P..P.P', 'P.P..P.P', 'P..PP..P', '.P....P.', '..PPPP..'], pal: { P: 0x8a6fc8 } };
 
 const DECALS: Record<string, Decal[]> = {
@@ -53,7 +60,7 @@ const DECALS: Record<string, Decal[]> = {
   volcan: [EMBER, EMBER, PEBBLE_BASALT, CRACK],
   mar: [SHELL, STAR, SHELL],
   torre: [RUNE, CRACK, CRACK],
-  ciudad: [LEAF, LEAF, CRACK, TUFT],
+  ciudad: [LEAF, LEAF_Y, CRACK, TUFT],
   nieve: [SNOWPILE, SNOWPILE, PEBBLE_ICE, CRACK],
   cumbre: [PEBBLE_LILAC, TUFT, FLOWER_Y, CRYSTAL],
 };
@@ -85,37 +92,121 @@ function drawOutside(g: G, b: BiomeLook, kind: Outside) {
       g.fillStyle(top, 1).fillCircle(x + ox - rad * 0.3, y + oy - rad * 0.35, rad * 0.45);
       if (hi !== undefined) g.fillStyle(hi, 1).fillRect(x + ox - rad * 0.45, y + oy - rad * 0.55, 2, 2);
     });
-  const pt = (x: number, y: number) => new Phaser.Geom.Point(x, y);
-  // Peñasco: polígono irregular con cara de arriba clara, cara derecha oscura y contorno
-  const crag = (x: number, y: number, cw: number, chh: number, base: number, top: number) => {
-    const j = () => 0.75 + r() * 0.5;
-    const v = [[-0.5, 0.35], [-0.46, 0], [-0.3, -0.3], [-0.12, -0.36], [0.04, -0.55], [0.22, -0.3], [0.36, -0.22], [0.5, 0.08], [0.46, 0.35]].map(([a, c]) => [a * cw * j(), c * chh * j()]);
-    const m = [0.04 * cw, -0.04 * chh];
-    const bt = [0.1 * cw, 0.35 * chh];
-    wrap((ox, oy) => {
-      const P = (list: number[][]) => list.map(([a, c]) => pt(x + ox + a, y + oy + c));
-      g.fillStyle(0x000000, 0.3).fillEllipse(x + ox + 2, y + oy + chh * 0.36, cw * 1.05, chh * 0.24);
-      g.fillStyle(base, 1).fillPoints(P(v), true);
-      g.fillStyle(top, 1).fillPoints(P([v[1], v[2], v[3], v[4], v[5], m]), true);
-      g.fillStyle(shade(base, -0.35), 1).fillPoints(P([m, v[5], v[6], v[7], v[8], bt]), true);
-      g.fillStyle(shade(top, 0.35), 1).fillRect(x + ox + v[3][0], y + oy + v[3][1] + 1, Math.max(2, (v[4][0] - v[3][0]) * 0.8), 1);
-      g.fillStyle(shade(base, -0.5), 1).fillRect(x + ox - cw * 0.12, y + oy + chh * 0.08, 1, chh * 0.2);
-      g.lineStyle(1, K, 1).strokePoints(P(v), true, true);
-    });
-  };
-  // Racimo de cristales que salen del suelo: [desplazamiento, alto, ancho, color]
-  const shards = (x: number, y: number, list: [number, number, number, number][]) =>
-    wrap((ox, oy) => {
-      for (const [dx, sh, sw, c] of list) {
-        const cx = x + ox + dx;
-        const by = y + oy;
-        const P = [pt(cx - sw / 2, by), pt(cx - sw / 2, by - sh + sw / 2), pt(cx, by - sh), pt(cx + sw / 2, by - sh + sw / 2), pt(cx + sw / 2, by)];
-        g.fillStyle(c, 1).fillPoints(P, true);
-        g.fillStyle(shade(c, 0.45), 1).fillRect(cx - sw / 2 + 1, by - sh + sw / 2, Math.max(1, sw / 2 - 1), sh - sw / 2 - 1);
-        g.lineStyle(1, K, 1).strokePoints(P, true, true);
-        g.fillStyle(0xffffff, 1).fillRect(cx - 1, by - sh + 2, 1, 2);
+  // Un píxel que da la vuelta por los bordes de la textura (para dibujar a mano píxel a píxel sin cortes)
+  const dotW = (x: number, y: number, c: number, a = 1) =>
+    g.fillStyle(c, a).fillRect((((Math.floor(x) % S) + S) % S), (((Math.floor(y) % S) + S) % S), 1, 1);
+  // Trama 4x4 para pasar de un tono a otro sin escalón (como el sombreado a mano de las rocas de GBA)
+  const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  /**
+   * Peñasco natural: silueta abultada (radio con ruido de varias ondas, base aplastada contra el suelo), luz píxel a
+   * píxel como una piedra redondeada (arriba a la izquierda), tonos tramados, grietas y motas. Nada de aristas rectas.
+   */
+  const boulder = (x: number, y: number, rw: number, rh: number, base: number, top: number, seed: number, moss?: number) => {
+    const rr = rng(seed);
+    const ph = [rr() * 6.28, rr() * 6.28, rr() * 6.28];
+    const am = [0.07 + rr() * 0.05, 0.05 + rr() * 0.04, 0.03 + rr() * 0.02];
+    const rad = (a: number) => 1 + am[0] * Math.sin(2 * a + ph[0]) + am[1] * Math.sin(3 * a + ph[1]) + am[2] * Math.sin(5 * a + ph[2]);
+    const tones = [shade(base, -0.5), shade(base, -0.3), shade(base, -0.1), base, top, shade(top, 0.25)];
+    const inside = (dx: number, dy: number) => dy < 0.62 && Math.hypot(dx, dy) < rad(Math.atan2(dy, dx));
+    // Bultos sueltos en la superficie: la luz se tuerce un poco en cada uno
+    const lumps = Array.from({ length: 3 }, () => [(rr() - 0.5) * 1.1, (rr() - 0.7) * 0.9, 0.25 + rr() * 0.2]);
+    // Sombra en el suelo
+    for (let yy = -2; yy <= 2; yy++) {
+      const half = Math.round(rw * 1.05 * Math.sqrt(1 - (yy / 2.6) ** 2));
+      for (let xx = -half; xx <= half; xx++) dotW(x + xx + 2, y + rh * 0.62 + yy + 1, 0x000000, 0.28);
+    }
+    const x0 = Math.floor(x - rw * 1.3);
+    const y0 = Math.floor(y - rh * 1.3);
+    for (let py = y0; py < y + rh * 1.3; py++) for (let px2 = x0; px2 < x + rw * 1.3; px2++) {
+      const dx = (px2 + 0.5 - x) / rw;
+      const dy = (py + 0.5 - y) / rh;
+      if (!inside(dx, dy)) continue;
+      const edge = !inside(dx + 1 / rw, dy) || !inside(dx - 1 / rw, dy) || !inside(dx, dy + 1 / rh) || !inside(dx, dy - 1 / rh);
+      if (edge) {
+        dotW(px2, py, K);
+        continue;
       }
-    });
+      // Normal de una piedra redondeada con bultos
+      let nx = dx;
+      let ny = dy;
+      for (const [lx, ly, lr] of lumps) {
+        const d = Math.hypot(dx - lx, dy - ly);
+        if (d < lr) {
+          nx += ((dx - lx) / lr) * 0.3;
+          ny += ((dy - ly) / lr) * 0.3;
+        }
+      }
+      const nz = Math.sqrt(Math.max(0.05, 1 - Math.min(1, nx * nx + ny * ny)));
+      const l = (-0.55 * nx - 0.7 * ny + 0.5 * nz) / Math.hypot(nx, ny, nz);
+      // La cara de abajo (la que toca el suelo) más oscura
+      const v = (l + 0.3) * 3.6 - (dy > 0.35 ? (dy - 0.35) * 4 : 0);
+      const i0 = Math.floor(v);
+      const frac = v - i0;
+      const idx = Math.max(0, Math.min(tones.length - 1, frac * 16 > BAYER[(py & 3) * 4 + (px2 & 3)] ? i0 + 1 : i0));
+      let c = tones[idx];
+      if (moss !== undefined && ny < -0.35 && rr() < 0.55) c = moss;
+      dotW(px2, py, c);
+    }
+    // Grietas: una o dos líneas quebradas oscuras con su labio claro
+    for (let n = 0; n < 2; n++) {
+      let cx = x + (rr() - 0.5) * rw * 0.9;
+      let cy = y - rh * 0.4 + rr() * rh * 0.3;
+      for (let s = 0; s < 3 + Math.floor(rr() * 3); s++) {
+        if (!inside((cx - x) / rw, (cy - y) / rh) || !inside((cx + 1 - x) / rw, (cy + 1 - y) / rh)) break;
+        dotW(cx, cy, tones[0]);
+        dotW(cx - 1, cy, tones[4]);
+        cx += rr() < 0.5 ? 1 : 0;
+        cy += 1;
+      }
+    }
+    // Motas claras y oscuras
+    for (let n = 0; n < (rw * rh) / 30; n++) {
+      const mx = x + (rr() - 0.5) * rw * 1.4;
+      const my = y + (rr() - 0.5) * rh * 1.2;
+      if (inside((mx - x) / rw, (my - y) / rh) && inside((mx + 1 - x) / rw, (my + 1 - y) / rh)) dotW(mx, my, rr() < 0.5 ? tones[1] : tones[5]);
+    }
+  };
+  /**
+   * Racimo de cristales que salen de entre las rocas: prismas inclinados que se estrechan hacia una punta torcida, con
+   * una cara clara, otra oscura y una veta de brillo. [inclinación (rad), alto, ancho, color, desplazamiento de la base]
+   */
+  const shards = (bx: number, y: number, list: [number, number, number, number, number][]) => {
+    for (const [ang, sh, sw, c, off] of list) {
+      const x = bx + off;
+      const ux = Math.sin(ang);
+      const uy = -Math.cos(ang);
+      // Contorno: base ancha, hombros a 3/4 y punta descentrada
+      const tipOff = ang > 0 ? 0.25 : -0.25;
+      const prof = (t: number) => (t < 0.72 ? sw / 2 - t * sw * 0.08 : (sw / 2) * (1 - (t - 0.72) / 0.28) * 0.95);
+      const local = (px2: number, py: number) => {
+        const rx = px2 + 0.5 - x;
+        const ry = py + 0.5 - y;
+        const t = (rx * ux + ry * uy) / sh;
+        const s = rx * -uy + ry * ux - (t > 0.72 ? tipOff * sw * ((t - 0.72) / 0.28) : 0);
+        return { t, s, inside: t >= 0 && t <= 1 && Math.abs(s) <= prof(t) };
+      };
+      const lo = Math.floor(Math.min(x, x + ux * sh) - sw - 1);
+      const hi = Math.ceil(Math.max(x, x + ux * sh) + sw + 1);
+      for (let py = Math.floor(y - sh - 2); py <= y + 1; py++) for (let px2 = lo; px2 <= hi; px2++) {
+        const p = local(px2, py);
+        if (!p.inside) continue;
+        const out = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([a, b2]) => !local(px2 + a, py + b2).inside);
+        if (out) {
+          dotW(px2, py, K);
+          continue;
+        }
+        // Cara izquierda clara, derecha oscura, veta blanca junto a la arista central
+        const f = p.s / prof(p.t);
+        let col = f < -0.15 ? shade(c, 0.35) : f > 0.25 ? shade(c, -0.3) : c;
+        if (f > -0.15 && f < 0.05 && p.t > 0.15 && p.t < 0.8) col = shade(c, 0.6);
+        if (p.t > 0.86 && f < 0.2) col = 0xffffff;
+        dotW(px2, py, col);
+      }
+    }
+    // Brillo en la punta del más alto
+    const [ang0, sh0, , , off0] = list.reduce((m, s) => (s[1] > m[1] ? s : m), list[0]);
+    dotW(bx + off0 + Math.sin(ang0) * (sh0 + 2), y - Math.cos(ang0) * (sh0 + 2), 0xffffff, 0.8);
+  };
   switch (kind) {
     case 'trees':
     case 'swamp': {
@@ -173,8 +264,8 @@ function drawOutside(g: G, b: BiomeLook, kind: Outside) {
           g.fillStyle(0xffa030, 1).fillCircle(x - 1, y - 1, rad - 1);
         }
       }
-      // Peñascos con caras (luz arriba a la izquierda, sombra a la derecha) en vez de bolas; en la cumbre, además,
-      // racimos de cristal
+      // Peñascos redondeados con luz arriba a la izquierda (sin aristas rectas: que no parezcan tejados); en la
+      // cumbre, además, racimos de cristal inclinados
       const rock = kind === 'lava' ? 0x3a2a28 : b.colors.rock;
       const top = kind === 'lava' ? 0x5e4a46 : b.colors.rockTop;
       const crags: [number, number, number, number][] =
@@ -184,10 +275,10 @@ function drawOutside(g: G, b: BiomeLook, kind: Outside) {
             ? [[14, 16, 22, 18], [52, 38, 20, 17], [24, 52, 18, 15], [2, 62, 14, 11]]
             : [[14, 16, 22, 18], [44, 12, 18, 15], [54, 40, 20, 17], [22, 46, 24, 20], [42, 62, 16, 12], [2, 60, 14, 11]];
       crags.sort((a, c) => a[1] - c[1]);
-      for (const [x, y, cw, chh] of crags) crag(x, y, cw, chh, rock, top);
+      crags.forEach(([x, y, cw, chh], n) => boulder(x, y, cw / 2, chh / 2, rock, top, n * 131 + b.id.length * 17));
       if (b.id === 'cumbre') {
-        shards(42, 22, [[-5, 10, 4, 0xc8a8ff], [0, 15, 5, 0x9fd8ff], [5, 9, 4, 0xc8a8ff]]);
-        shards(10, 40, [[-3, 8, 4, 0x9fd8ff], [2, 12, 4, 0xc8a8ff]]);
+        shards(42, 32, [[-0.55, 13, 7, 0xc8a8ff, -6], [0.65, 11, 7, 0xc8a8ff, 6], [0.08, 19, 9, 0x9fd8ff, 0], [-0.2, 8, 5, 0xe0c8ff, -2]]);
+        shards(10, 46, [[-0.45, 10, 6, 0x9fd8ff, -4], [0.3, 14, 8, 0xc8a8ff, 2]]);
       }
       break;
     }
@@ -433,9 +524,18 @@ function drawFloorFeatures(g: G, b: BiomeLook, room: Rect, r: () => number, q: n
       for (let i = 0; i < 3; i++) {
         const cx = rx();
         const cy = ry();
-        stepBlob(g, 0x2a2e3a, 0.35, cx, cy, 20 + r() * 14, 10, q);
-        g.fillStyle(0x8a6ac8, 0.5).fillRect(cx - 6, cy - 3, q * 2, q);
-        g.fillStyle(0x6ac8a8, 0.5).fillRect(cx, cy, q * 2, q);
+        // Mancha de aceite: borde difuso, centro más negro descentrado, gotas sueltas y un arco tornasolado
+        const rr = 18 + r() * 14;
+        stepBlob(g, 0x2a2e3a, 0.22, cx, cy, rr + q * 2, rr * 0.45 + q, q);
+        stepBlob(g, 0x2a2e3a, 0.3, cx + q, cy, rr * 0.75, rr * 0.33, q);
+        stepBlob(g, 0x14161c, 0.35, cx - q * 2, cy - q, rr * 0.4, rr * 0.18, q);
+        for (let k = 0; k < 3; k++) g.fillStyle(0x2a2e3a, 0.4).fillRect(Math.round((cx + (r() < 0.5 ? -1 : 1) * (rr + q * 3 + r() * 8)) / q) * q, Math.round((cy + (r() - 0.5) * rr * 0.6) / q) * q, q, q);
+        const sx = Math.round((cx - rr * 0.5) / q) * q;
+        const sy = Math.round((cy - rr * 0.12) / q) * q;
+        g.fillStyle(0x8a6ac8, 0.45).fillRect(sx, sy, q * 2, q);
+        g.fillStyle(0x6ac8a8, 0.45).fillRect(sx + q * 2, sy - q, q * 2, q);
+        g.fillStyle(0xd8c86a, 0.35).fillRect(sx + q * 4, sy - q, q * 2, q);
+        g.fillStyle(0xc86a9a, 0.4).fillRect(sx + q * 6, sy, q * 2, q);
       }
       break;
     }
@@ -696,8 +796,18 @@ function addWallDecor(scene: Phaser.Scene, b: BiomeLook, room: Rect, wall: numbe
     pool = scene.add.graphics().setDepth(0.28).setBlendMode(bright ? Phaser.BlendModes.NORMAL : Phaser.BlendModes.ADD);
     for (const l of lights) {
       const ly = Math.max(l.y, room.y0) + 18;
-      const c = bright ? l.c[0] : l.c[1];
-      for (let s = 0; s < 4; s++) stepBlob(pool, c, bright ? 0.06 : 0.05, l.x, ly, 110 - s * 24, 64 - s * 14, q * 2);
+      if (bright) {
+        // Sobre nieve: la luz aclara la sombra de la pared con un velo blanco cálido que se funde (no una mancha
+        // anaranjada) y enciende destellos de escarcha alrededor
+        const warm = mixC(l.c[1], 0xffffff, 0.9);
+        for (let s = 0; s < 5; s++) stepBlob(pool, warm, 0.09, l.x, ly - 8, 96 - s * 18, 46 - s * 8, q * 2);
+        for (let n = 0; n < 8; n++) {
+          const gx = Math.round((l.x + (r() - 0.5) * 150) / q) * q;
+          const gy = Math.round((ly - 14 + r() * 56) / q) * q;
+          pool.fillStyle(n % 2 ? 0xffe9a0 : 0xffffff, 1).fillRect(gx, gy, q, q);
+          if (n % 3 === 0) pool.fillStyle(0xfff4c8, 0.8).fillRect(gx - q, gy, q * 3, q / 2 + 1).fillRect(gx + q / 4, gy - q, q / 2 + 1, q * 3);
+        }
+      } else for (let s = 0; s < 4; s++) stepBlob(pool, l.c[1], 0.05, l.x, ly, 110 - s * 24, 64 - s * 14, q * 2);
       // Halo sobre la pared, junto a la llama
       for (let s = 0; s < 3; s++) stepBlob(pool, l.c[1], 0.07, l.x, l.y, 30 - s * 8, 26 - s * 7, q);
     }
@@ -767,7 +877,18 @@ export function decorateRoom(
   const h = room.y1 - room.y0;
   // Manchas grandes y suaves de otro tono (sin ellas el suelo se ve plano)
   const patches = scene.add.graphics().setDepth(0.05);
-  for (let i = 0; i < 7; i++) {
+  // En la torre el suelo son baldosas en rejilla: una mancha redonda que las cruza se ve como un recuadro raro.
+  // Ahí se gastan baldosas sueltas enteras (más claras o más oscuras), siguiendo la rejilla de 40 px
+  const tileGrid = b.id === 'torre';
+  if (tileGrid) for (let i = 0; i < 14; i++) {
+    const c = shade(b.colors.floor, r() < 0.5 ? -0.08 : 0.07);
+    const tx = room.x0 + Math.floor(r() * (w / 40)) * 40;
+    const ty = room.y0 + Math.floor(r() * (h / 40)) * 40;
+    patches.fillStyle(c, 0.6).fillRect(tx + 2, ty + 2, 36, 36);
+  }
+  // Las losas grandes (cueva, volcán, cumbre) ya cambian de tono una a una: una mancha encima corta las losas
+  const slabs = b.id === 'cueva' || b.id === 'volcan' || b.id === 'cumbre';
+  for (let i = 0; i < (tileGrid || slabs ? 0 : 7); i++) {
     const c = shade(b.colors.floor, r() < 0.5 ? -0.07 : 0.08);
     const px = room.x0 + 40 + r() * (w - 80);
     const py = room.y0 + 40 + r() * (h - 80);
@@ -889,13 +1010,16 @@ export function decorateRoom(
   }
   // Viñeta: los bordes del suelo más oscuros, el centro más claro (como la luz de las salas de Isaac)
   const vig = scene.add.graphics().setDepth(0.29);
+  // Sobre nieve el negro se ve como franjas grises sucias: ahí la sombra es azulada y más suave
+  const snowy = lum(b.colors.floor) > 0.8;
+  const vigC = snowy ? shade(b.colors.wall, 0.1) : 0x000000;
   for (let s = 0; s < 6; s++) {
     const d = 14 + s * 14;
-    const a = 0.05;
-    if (!open.up) vig.fillStyle(0x000000, a).fillRect(room.x0 - tl, room.y0, W2 + tl, d);
-    if (!open.down) vig.fillStyle(0x000000, a).fillRect(room.x0 - bl, room.y1 - d, W2 + bl, d);
-    if (!open.left) vig.fillStyle(0x000000, a).fillRect(room.x0, room.y0 - lu, d, H2 + lu);
-    if (!open.right) vig.fillStyle(0x000000, a).fillRect(room.x1 - d, room.y0 - ru, d, H2 + ru);
+    const a = snowy ? 0.035 : 0.05;
+    if (!open.up) vig.fillStyle(vigC, a).fillRect(room.x0 - tl, room.y0, W2 + tl, d);
+    if (!open.down) vig.fillStyle(vigC, a).fillRect(room.x0 - bl, room.y1 - d, W2 + bl, d);
+    if (!open.left) vig.fillStyle(vigC, a).fillRect(room.x0, room.y0 - lu, d, H2 + lu);
+    if (!open.right) vig.fillStyle(vigC, a).fillRect(room.x1 - d, room.y0 - ru, d, H2 + ru);
   }
   // Cara de la pared de arriba (en sombra), contorno entre pared y suelo y canto claro de las paredes de los lados
   // y de abajo: así la sala tiene relieve en vez de ser una franja plana (las puertas lo tapan con su suelo)

@@ -39,6 +39,15 @@ const px = (g: G, c: number, x: number, y: number, w = 1, h = 1) => g.fillStyle(
 
 /** Lado de la textura del suelo (se repite cada 160 px en pantalla: casa con las salas de 800x480 y la vista de 960x640). */
 export const FLOOR_TEX = 128;
+/**
+ * Las losas irregulares (cueva, volcán, cumbre) usan una textura del doble (se repite cada 320 px): con 128 la misma
+ * losa con su veta de lava volvía cada 160 px y se notaba. El suelo se pinta alineado al mundo (GameScene), así que
+ * no hay costura donde se juntan dos trozos de suelo.
+ */
+const BIG_FLOOR: Record<string, true> = { cueva: true, volcan: true, cumbre: true };
+export function floorTexSize(biomeId: string): number {
+  return BIG_FLOOR[biomeId] ? FLOOR_TEX * 2 : FLOOR_TEX;
+}
 /** Lado de la textura de la pared. */
 export const WALL_TEX = 64;
 
@@ -190,7 +199,7 @@ function blotch(g: G, c: number, cx: number, cy: number, rx: number, ry: number,
 
 /** Suelo del bioma (128x128): base con ruido, manchas de tono y el detalle propio de cada bioma. */
 function drawFloor(g: G, b: BiomeLook) {
-  const S = FLOOR_TEX;
+  const S = floorTexSize(b.id);
   const r = rngFor(b.id + 'floor2');
   const base = b.colors.floor;
   const dark = shade(base, -0.08);
@@ -206,9 +215,24 @@ function drawFloor(g: G, b: BiomeLook) {
       // algunas juntas
       const volcano = b.id === 'volcan';
       const gap = volcano ? 0x1e0c0a : shade(base, -0.32);
-      const cells = drawFlagstones(g, r, S, volcano ? 10 : 9, base, gap, { jitter: volcano ? 0.16 : 0.12, lava: volcano ? 0.14 : 0 });
-      if (volcano) dither(g, r, S, [shade(base, -0.2), shade(base, 0.1)], 50);
-      if (b.id === 'cueva') dither(g, r, S, [darker, shade(base, -0.3)], 40);
+      // Losas grandes en la cueva (pocas por textura), más menudas en el volcán y la cumbre
+      const n = volcano ? 34 : b.id === 'cueva' ? 13 : 30;
+      const cells = drawFlagstones(g, r, S, n, base, gap, { jitter: volcano ? 0.16 : 0.12, lava: volcano ? 0.14 : 0 });
+      if (volcano) dither(g, r, S, [shade(base, -0.2), shade(base, 0.1)], 200);
+      if (b.id === 'cueva') {
+        dither(g, r, S, [darker, shade(base, -0.3)], 160);
+        // En losas tan grandes, alguna grieta fina dentro de la piedra para que no queden lisas
+        for (const [x, y] of cells) if (r() < 0.6) {
+          let cx = Math.round(x / 2) * 2;
+          let cy = Math.round(y / 2) * 2;
+          for (let k = 0; k < 5 + Math.floor(r() * 4); k++) {
+            wrapRect(g, shade(base, -0.28), cx, cy, 2, 2, S);
+            wrapRect(g, shade(base, 0.14), cx, cy + 2, 2, 1, S);
+            cx += r() < 0.5 ? 2 : -2;
+            cy += r() < 0.6 ? 2 : 0;
+          }
+        }
+      }
       if (b.id === 'cumbre') {
         // Vetas de cristal en algunas losas
         for (const [x, y] of cells) if (r() < 0.3) {
@@ -733,7 +757,9 @@ export function bakeBiomeTiles(scene: Phaser.Scene, biome: BiomeLook): Record<Ti
     const key = tileKey(biome.id, part);
     keys[part] = key;
     if (scene.textures.exists(key)) continue;
-    const { w, h, draw, frames = 1 } = PARTS[part];
+    const { draw, frames = 1 } = PARTS[part];
+    const w = part === 'floor' ? floorTexSize(biome.id) : PARTS[part].w;
+    const h = part === 'floor' ? floorTexSize(biome.id) : PARTS[part].h;
     const g = scene.make.graphics({}, false);
     if (frames === 1) {
       draw(g, biome);
