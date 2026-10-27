@@ -1272,7 +1272,9 @@ export class GameScene extends Phaser.Scene {
       bossId = this.finale.ids[0];
     } else if (bossId === undefined) {
       // T64: sale de todos los legendarios y singulares; el tipo del bioma solo le da peso ×3
-      bossId = pickBossWeighted(onlyBundled(biomeBossPool(index, this.biome)), this.rng(RNG.boss), this.bossHistory, this.biome, index);
+      // El legendario de la cacería ya está decidido: el jefe del piso nunca es ese mismo (salían dos iguales)
+      const huntId = (r ? r.legendHunt : this.carry?.legendHunt)?.legendId;
+      bossId = pickBossWeighted(onlyBundled(biomeBossPool(index, this.biome)), this.rng(RNG.boss), huntId ? [...this.bossHistory, huntId] : this.bossHistory, this.biome, index);
       this.bossHistory.push(bossId);
     }
     this.bossId = bossId;
@@ -2434,6 +2436,8 @@ export class GameScene extends Phaser.Scene {
 
   /** T88: el legendario de la cacería: más vida (HUNT.hpMul), fases que lo enfurecen y captura solo al final. */
   private spawnLegend(room: Room) {
+    // Nunca dos a la vez: si ya hay uno de la cacería vivo, no se genera otro
+    if (this.enemies.getChildren().some((c) => (c as Sprite).active && (c as Sprite).getData('legendHunt'))) return;
     const k = this.legendKind!;
     const id = this.hunt.legendId;
     this.setGroupDoorsLocked(room, true, true);
