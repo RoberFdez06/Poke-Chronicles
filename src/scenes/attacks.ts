@@ -9,6 +9,7 @@ import { typeImpact, typeTrail, projKey, projTailKey, fitProjectile, PROJ_FIT } 
 import { dustBurst, hitSpark } from '../ui/art/combatFx';
 import { animate, drawPixBeam, drawPixJet, drawPixOrb, lightOf, pixBlast, pixBolt, pixCracks, pixDebris, pixGeyser, pixMarker, pixMuzzle, pixRing, pixSpeedLines, pixTrap, pixFlash, pixSpokes, pixSpikes, darkOf, PX } from '../ui/art/pixelFx';
 import { lowFx } from '../ui/theme';
+import { drawJetFx, drawWaveFx, mineBlastFx, trapFx, waveBreakFx, waveLaunchFx } from '../ui/art/flowFx';
 
 /** Mezcla dos colores (t = 0 → a, t = 1 → b). */
 function mixColor(a: number, b: number, t: number): number {
@@ -201,7 +202,7 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
             const d = side === 'player' ? h.aim() : new Phaser.Math.Vector2(h.player().x - src.x, h.player().y - src.y).normalize();
             const grow = Math.min(1, el / 120) * (el > p.ms ? 1 - (el - p.ms) / 120 : 1);
             jg.clear();
-            drawPixJet(jg, src.x, src.y, Math.atan2(d.y, d.x), len * grow, PX * 3, w1, color, el, el > p.ms ? grow : 1);
+            drawJetFx(jg, src.x, src.y, Math.atan2(d.y, d.x), len * grow, len, PX * 3, w1, color, el, el > p.ms ? grow : 1, el < p.ms ? grow : 1);
           },
         });
       }
@@ -538,9 +539,9 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
       // Arte: cresta de ola que une la fila (espuma blanca delante, cuerpo del color y borde oscuro detrás) con salpicones
       if (!lowFx()) {
         const wg = sc.add.graphics().setDepth(3.9);
-        const wl = lightOf(color);
-        const wd = mixColor(color, 0x000000, 0.35);
         const wt0 = now(h);
+        let last: { x: number; y: number }[] = [];
+        waveLaunchFx(sc, src.x + dir.x * 24, src.y + dir.y * 24, { x: px, y: py }, (p.n - 1) * p.gap, color);
         const we = sc.time.addEvent({
           delay: 40,
           loop: true,
@@ -548,42 +549,14 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
             if (!h.alive() || !row.some((r) => r.active)) {
               we.remove();
               wg.destroy();
+              if (h.alive()) waveBreakFx(sc, last, color);
               return;
             }
             const tt = now(h) - wt0;
             const al = Math.min(1, Math.max(0.15, 1 - (tt - p.life * 0.7) / (p.life * 0.3)));
+            last = row.filter((r) => r.active).map((r) => ({ x: r.x, y: r.y }));
             wg.clear();
-            const cols = [0x18202c, wd, wd, color, color, wl, 0xffffff, 0xffffff];
-            const strip = (x: number, y: number, k: number) => {
-              const rip = Math.sin(k * 0.5 + tt * 0.015) * PX * 0.8;
-              for (let r = 0; r < cols.length; r++) {
-                const back = (cols.length - 1 - r) * PX;
-                const bx = Math.round((x + dir.x * (rip - back)) / PX) * PX;
-                const by = Math.round((y + dir.y * (rip - back)) / PX) * PX;
-                wg.fillStyle(cols[r], r === 0 ? al * 0.5 : al).fillRect(bx - PX / 2, by - PX / 2, PX, PX);
-              }
-              if ((k * 7 + Math.floor(tt / 80)) % 9 === 0) {
-                const sx = Math.round((x + dir.x * (rip + PX * 2) + px * PX) / PX) * PX;
-                const sy = Math.round((y + dir.y * (rip + PX * 2) + py * PX) / PX) * PX;
-                wg.fillStyle(0xffffff, al).fillRect(sx - PX / 2, sy - PX / 2, PX, PX);
-              }
-            };
-            let k = 0;
-            for (let i = 0; i < row.length; i++) {
-              const a = row[i];
-              if (!a.active) continue;
-              const b = row[i + 1];
-              // Rebordes en los extremos para que la ola tenga forma
-              const ends = i === 0 || !row[i - 1].active ? -1 : 0;
-              const span = b?.active ? Math.hypot(b.x - a.x, b.y - a.y) : 0;
-              const n = Math.max(1, Math.round(span / PX));
-              for (let j = ends * 2; j < (b?.active ? n : 3); j++) {
-                const f = span ? j / n : 0;
-                const x = span ? Phaser.Math.Linear(a.x, b.x, f) : a.x + px * j * PX;
-                const y = span ? Phaser.Math.Linear(a.y, b.y, f) : a.y + py * j * PX;
-                strip(j < 0 ? a.x + px * j * PX : x, j < 0 ? a.y + py * j * PX : y, k++);
-              }
-            }
+            drawWaveFx(wg, row, dir, { x: px, y: py }, tt, color, al);
           },
         });
       }
@@ -674,7 +647,7 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
         const x = Phaser.Math.Clamp(src.x + Math.cos(a) * d, rm.x0 + 20, rm.x1 - 20);
         const y = Phaser.Math.Clamp(src.y + Math.sin(a) * d, rm.y0 + 20, rm.y1 - 20);
         // Runa de trampa pixel art que late (supervisor)
-        const m = pixTrap(sc, x, y, p.radius, color);
+        const m = trapFx(sc, x, y, p.radius, color, p.life);
         const t0 = now(h);
         const ev = sc.time.addEvent({
           delay: 90,
@@ -687,7 +660,7 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
             m.destroy();
             if (gone) return;
             typeImpact(sc, x, y, type, 1, 6);
-            pixBlast(sc, x, y, p.radius, color);
+            mineBlastFx(sc, x, y, p.radius, color);
             h.area(side, x, y, p.radius, dmg, type, src);
           },
         });
