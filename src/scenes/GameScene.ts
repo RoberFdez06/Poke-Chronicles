@@ -171,7 +171,7 @@ import { buildCenterArt, type CenterArt } from '../ui/art/centerArt';
 import { evolveMagikarp, GYARADOS, MAGIKARP, MAGIKARP_PRICE, MEW_CHANCE, OAK_LINE, secretVariant, sellsMagikarp } from '../data/easterEggs';
 import { drawPits, drawPuddleLinks, drawShapedWalls } from '../ui/art/roomShape';
 import {
-  SUPPLY_CHOICES, TOWER_HAZARD_LABEL, TOWER_MINIBOSS_DMG_MUL, TOWER_MINIBOSS_HP_MUL, towerFloor, towerFloorSpec, towerGrid, towerLevel,
+  SUPPLY_CHOICES, TOWER_HAZARD_LABEL, TOWER_MINIBOSS_DMG_MUL, TOWER_MINIBOSS_HP_MUL, towerFloor, towerClearCoins, towerFloorSpec, towerGrid, towerHasChest, towerLevel, towerRestCell,
   upcomingRule, type TowerFloorSpec,
 } from '../level/tower';
 import { towerArrive, towerAscend } from '../ui/art/towerFx';
@@ -694,6 +694,8 @@ export class GameScene extends Phaser.Scene {
   /** T72: cómo es el piso actual de la Torre (solo en ese modo) y la semilla de toda la subida. */
   private towerSpec?: TowerFloorSpec;
   private towerSeed = 0;
+  /** Flecha que señala la columna de luz al superar un piso de la Torre. */
+  private towerArrow?: Phaser.GameObjects.Image;
   private towerStart = 1;
   /** T72: dibujo y puntos de uso de la tienda y el altar del descanso (aparte de los de la forja). */
   private towerRestObjs: Phaser.GameObjects.GameObject[] = [];
@@ -980,6 +982,7 @@ export class GameScene extends Phaser.Scene {
     this.visited.clear();
     this.cleared.clear();
     this.trapdoor = undefined;
+    this.towerArrow = undefined;
     this.invIcons = [];
     this.activeIcon = undefined;
     this.finale = undefined;
@@ -1165,6 +1168,8 @@ export class GameScene extends Phaser.Scene {
       }
       this.biome = this.towerSpec.biome;
       this.floor = towerFloor(this.towerSpec, this.floorSeed);
+      // Cofre del piso (en la última casilla, lejos de donde apareces); en la Torre se abre sin llave
+      if (towerHasChest(this.floorNum, this.towerSeed)) this.floor = { ...this.floor, chestRooms: [this.floor.rooms.length - 1] };
     } else if (this.mode === 'waves') this.floor = arenaFloor(this.floorSeed, 'combat');
     else if (this.mode === 'bossrush' || isFinalFloor(this.mode, this.floorNum)) this.floor = arenaFloor(this.floorSeed, 'boss');
     else {
@@ -3462,6 +3467,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.centerUsed = r.centerUsed;
     this.shop = r.shop.map((s) => ({ ...s }));
     for (const f of r.floorItems) {
+      // Guardados viejos: si la sala de ese objeto ya no existe (cambió la forma del piso), va a la casilla 0
+      if (!this.floor.rooms[f.roomId]) f.roomId = 0;
       if (f.drop.kind === 'coin' || f.drop.kind === 'berry' || f.drop.kind === 'key' || f.drop.kind === 'bomb' || f.drop.kind === 'potion') {
         this.spawnLoot(f.roomId, f.x, f.y, f.drop);
         continue;
@@ -4048,8 +4055,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.ended || this.transitioning || this.openedChests.has(roomId)) return;
     const chest = this.chests.get(roomId);
     if (!chest) return;
-    if (this.keys <= 0) return this.notify('Necesitas una llave para abrir el cofre', { kind: 'warning', icon: 'key' });
-    this.keys--;
+    // En la Torre casi no hay llaves: sus cofres (towerHasChest) se abren sin gastarla
+    const free = this.mode === 'tower';
+    if (!free && this.keys <= 0) return this.notify('Necesitas una llave para abrir el cofre', { kind: 'warning', icon: 'key' });
+    if (!free) this.keys--;
     this.openedChests.add(roomId);
     this.mission({ kind: 'chest' });
     chest.img.setTexture(iconKey('chestOpen'));
@@ -7440,10 +7449,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           // Descanso: el Centro Pokémon hace de fuente, altar de 3 objetos (coges uno), tienda con descuento y forja
           const pool = this.passivePool();
           const ids = towerAltarItems(mulberry32(this.floorSeed ^ 0x3c6ef372), new Set(this.passives), pool);
+          const altarRoom = this.towerRestRoom('altar');
           ids.forEach((id, k) => {
             const it = passiveById(id);
-            const at = this.towerAltarSpot(room, k);
-            if (it) this.spawnPickup(room.id, at.x, at.y, { kind: 'passive', item: it });
+            const at = this.towerAltarSpot(altarRoom, k);
+            if (it) this.spawnPickup(altarRoom.id, at.x, at.y, { kind: 'passive', item: it });
           });
           this.notify(`Sala de descanso\nCúrate en el Centro, elige un objeto del altar\ny mira la tienda con descuento`, { kind: 'reward', icon: 'heart' });
         } else this.notify('Sala de suministros\nElige una poción, una llave o una baya', { kind: 'reward', icon: 'chest' });
@@ -7451,12 +7461,18 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.saveNow();
     }
     const L = TOWER_REST_LAYOUT;
-    if (spec.kind === 'rest') this.towerRestExtras(room);
+    if (spec.kind === 'rest') this.towerRestExtras(this.towerRestRoom('altar'));
     if (spec.kind === 'supply') this.towerSupply(room);
     // T73: el descanso siempre tiene forja (de un uso; al continuar sigue si no se había usado)
     if (spec.kind === 'rest' && !this.eventsDone.has(room.id)) this.placeForge(room, i.cx + L.forge.x, i.cy + L.forge.y);
     // Mega Piedra en la Torre: en descansos y suministros (una vez por sala; en los demás pisos no, para no romper su estructura)
-    if ((spec.kind === 'rest' || spec.kind === 'supply') && !this.eventsDone.has(megaStoneDoneKey(room.id))) this.placeMegaAltar(room, i.cx + L.mega.x, i.cy + L.mega.y);
+    const mr = this.towerRestRoom('mega');
+    // (guardados viejos: la Mega Piedra del descanso se apuntaba siempre en la casilla 0)
+    if ((spec.kind === 'rest' || spec.kind === 'supply') && !this.eventsDone.has(megaStoneDoneKey(mr.id)) && !this.eventsDone.has(megaStoneDoneKey(room.id))) {
+      const mi = this.interior(mr);
+      if (mr === room) this.placeMegaAltar(room, i.cx + L.mega.x, i.cy + L.mega.y);
+      else this.placeMegaAltar(mr, mi.cx, mi.cy);
+    }
     if (this.cleared.has(0) && !isLastStage(this.mode, this.floorNum)) this.spawnTrapdoor();
     if (spec.rule && !this.cleared.has(0)) this.notify(ruleNotice(spec.rule), { kind: 'danger', icon: 'star' });
   }
@@ -7478,7 +7494,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // El rótulo y la base del altar se van (son los dos primeros de towerRestObjs)
     this.towerRestObjs.splice(0, 2).forEach((o) => o.destroy());
     // La tienda no vende lo que ya llevas: si vendía el que has cogido, cambia ese artículo
-    this.towerShopDraw(this.floor.rooms[0]);
+    this.towerShopDraw(this.towerRestRoom('shop'));
     this.saveNow();
   }
 
@@ -7520,10 +7536,20 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.eventSpots.push(spot);
   }
 
-  /** T72: sitio de cada objeto del altar del descanso (abajo a la izquierda, debajo de la forja). */
+  /** Casilla del descanso donde va el altar, la tienda o la Mega Piedra (en 2x2 cada cosa en la suya, towerRestCell). */
+  private towerRestRoom(what: 'altar' | 'shop' | 'mega'): Room {
+    return this.towerSpec ? (this.floor.rooms[towerRestCell(this.towerSpec, what)] ?? this.floor.rooms[0]) : this.floor.rooms[0];
+  }
+
+  /** Desplazamiento del altar o la tienda: el de TOWER_REST_LAYOUT junto al Centro; centrado si tiene casilla propia. */
+  private towerRestOffset(room: Room, base: { x: number; y: number; step: number }) {
+    return room.id === 0 ? base : { x: -base.step, y: 0, step: base.step };
+  }
+
+  /** T72: sitio de cada objeto del altar del descanso (abajo a la izquierda, debajo de la forja; o en su casilla). */
   private towerAltarSpot(room: Room, k: number) {
     const i = this.interior(room);
-    const a = TOWER_REST_LAYOUT.altar;
+    const a = this.towerRestOffset(room, TOWER_REST_LAYOUT.altar);
     return { x: i.cx + a.x + k * a.step, y: i.cy + a.y };
   }
 
@@ -7543,7 +7569,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         const e = (o as Sprite).getData('entry') as FloorItemSave | undefined;
         if (e && e.roomId === room.id && spots.some((p) => p.x === e.x && p.y === e.y)) (o as Sprite).setData('towerAltar', true);
       }
-      const a = TOWER_REST_LAYOUT.altar;
+      const a = this.towerRestOffset(room, TOWER_REST_LAYOUT.altar);
       const ax = i.cx + a.x + a.step;
       const base = buildTowerAltar(this, ax, i.cy + a.y + 22, a.step, this.biome.colors.wall);
       this.towerRestObjs.push(base);
@@ -7551,7 +7577,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.towerRestObjs.push(t);
     }
     this.towerShopKey = '';
-    this.towerShopDraw(room);
+    this.towerShopDraw(this.towerRestRoom('shop'));
   }
 
   /**
@@ -7561,7 +7587,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private towerShopDraw(room: Room) {
     if (this.towerSpec?.kind !== 'rest') return;
     const i = this.interior(room);
-    const S = TOWER_REST_LAYOUT.shop;
+    const S = this.towerRestOffset(room, TOWER_REST_LAYOUT.shop);
     const sold = new Set([...this.eventsDone].filter((n) => n >= TOWER_SHOP_SOLD && n < TOWER_SHOP_SOLD + 1000).map((n) => n - TOWER_SHOP_SOLD));
     const stock = towerShopOffer(mulberry32(this.floorSeed ^ 0x1b873593), this.passivePool(), new Set(this.passives), sold);
     const key = stock.map((o) => o.k).join(',');
@@ -7628,13 +7654,57 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     const i = this.interior(room);
     if (room.kind === 'boss') this.dropItem(room.id, i.cx + 170, i.cy);
+    // Monedas del piso (solo para la tienda del descanso), cerca de donde estás
+    const coins = towerClearCoins(this.floorNum, Math.random);
+    const at = this.freeSpot(this.player.x, this.player.y + 50);
+    for (let k = 0; k < coins; k++) this.dropLoot(at.x + (k - (coins - 1) / 2) * 24, at.y, { kind: 'coin', value: 1 });
     this.spawnTrapdoor();
+    this.showTowerArrow();
     // Cartel de lo que viene: la regla especial del piso siguiente, para que se sepa antes de subir
     const next = upcomingRule(this.floorNum, this.towerSeed);
     const sign = next ? `\nArriba: ${ruleNotice(next)}` : '';
     const best = record ? '\n¡Nuevo récord!' : '';
     this.notify(`¡Piso ${this.floorNum} superado!${best}\nPisa la columna de luz para subir${sign}`, { kind: 'reward', icon: 'star' });
     this.saveNow();
+  }
+
+  /**
+   * Flecha de pixel art (dibujada aquí, sin emojis) que gira alrededor del jugador señalando la columna de luz y late;
+   * con lowFx() se queda quieta. Se esconde al estar cerca de la columna.
+   */
+  private showTowerArrow() {
+    if (!this.trapdoor || this.towerArrow) return;
+    const key = 'tower-arrow';
+    if (!this.textures.exists(key)) {
+      // 9x9 px: punta hacia la derecha, borde oscuro y relleno dorado
+      const rows = ['..X......', '..XX.....', 'XXXOX....', 'XOOOOX...', 'XOOOOOX..', 'XOOOOX...', 'XXXOX....', '..XX.....', '..X......'];
+      const g = this.make.graphics({ x: 0, y: 0 }, false);
+      rows.forEach((row, y) => [...row].forEach((c, x) => {
+        if (c === '.') return;
+        g.fillStyle(c === 'X' ? 0x5a3a00 : 0xffd34d, 1).fillRect(x, y, 1, 1);
+      }));
+      g.generateTexture(key, 9, 9);
+      g.destroy();
+    }
+    const img = this.add.image(this.player.x, this.player.y, key).setScale(4).setDepth(6);
+    this.towerArrow = img;
+    if (!lowFx()) this.tweens.add({ targets: img, scale: 5, duration: 420, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.towerArrowTick();
+  }
+
+  /** Cada fotograma: la flecha se pone entre el jugador y la columna. */
+  private towerArrowTick() {
+    const a = this.towerArrow;
+    if (!a) return;
+    const t = this.trapdoor;
+    if (!t || !a.active) {
+      a.destroy();
+      this.towerArrow = undefined;
+      return;
+    }
+    const ang = Math.atan2(t.y - this.player.y, t.x - this.player.x);
+    const far = Phaser.Math.Distance.Between(this.player.x, this.player.y, t.x, t.y) > 150;
+    a.setVisible(far).setRotation(ang).setPosition(this.player.x + Math.cos(ang) * 64, this.player.y + Math.sin(ang) * 64);
   }
 
   /** Pisar la columna: animación del supervisor (towerFx) y, al acabar, el piso siguiente. */
@@ -7874,6 +7944,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const menuPad = this.input.gamepad?.getPad(0);
     const menuPadNow = !!menuPad && menuPad.connected && (!!menuPad.buttons[8]?.pressed || (!this.ended && !!menuPad.buttons[9]?.pressed));
     if (!this.escKey) return; // create() aún no ha terminado de cargar
+    if (this.towerArrow) this.towerArrowTick();
     // Red de seguridad: ningún enemigo puede quedar fuera de la sala (empujones, remolinos, embestidas…)
     // (al reiniciar la escena, el grupo viejo ya está destruido hasta que create() termina: sin `children`)
     if (!this.transitioning && !this.ended && this.current && this.host && this.enemies?.children && this.player?.active) {
