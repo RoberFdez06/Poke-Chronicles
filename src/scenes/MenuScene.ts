@@ -85,8 +85,8 @@ export class MenuScene extends Phaser.Scene {
     this.land = addLandscape(this, nextLandscape(this));
 
     // Título con píxeles gordos y un leve balanceo
-    const title = addPixelText(this, 480, 92, 'PokeIsaac', {
-      size: 22, scale: 4, color: '#f8d030', stroke: '#283068', strokeWidth: 3, shadow: '#101828',
+    const title = addPixelText(this, 480, 92, 'Poké Chronicles', {
+      size: 22, scale: 3, color: '#f8d030', stroke: '#283068', strokeWidth: 3, shadow: '#101828',
     });
     this.tweens.add({ targets: title, y: 100, duration: 1400, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     const sub = this.add.graphics();

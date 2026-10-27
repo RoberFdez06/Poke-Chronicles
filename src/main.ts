@@ -59,7 +59,7 @@ Phaser.Loader.LoaderPlugin.prototype.image = function (this: Phaser.Loader.Loade
     this.offlineHook = true;
     this.on(Phaser.Loader.Events.FILE_LOAD_ERROR, (file: Phaser.Loader.File) => {
       if (file.type !== 'image' || typeof file.key !== 'string' || String(file.url).endsWith(PLACEHOLDER_SPRITE)) return;
-      console.warn(`[PokeIsaac] imagen sin cargar, uso la genérica: ${file.key}`);
+      console.warn(`[Poké Chronicles] imagen sin cargar, uso la genérica: ${file.key}`);
       loadImage.call(this, file.key, PLACEHOLDER_SPRITE);
     });
   }

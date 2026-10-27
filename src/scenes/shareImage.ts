@@ -57,7 +57,7 @@ export function renderShareCard(
   drawCardTicket(ticket, 80, 530, seed.width, seed.height);
   rt.draw(ticket);
   parts.push(seed);
-  parts.push(text(CARD_W - 80, 548, 'PokeIsaac', 34, HEX.gold, true).setOrigin(1, 0.5).setStroke('#2b3a67', 8));
+  parts.push(text(CARD_W - 80, 548, 'Poké Chronicles', 34, HEX.gold, true).setOrigin(1, 0.5).setStroke('#2b3a67', 8));
   parts.forEach((p) => rt.draw(p));
 
   return new Promise((done) => {
@@ -83,7 +83,7 @@ export async function shareOrDownload(blob: Blob, fileName: string): Promise<'co
   const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
   if (nav.share && nav.canShare?.({ files: [file] })) {
     try {
-      await nav.share({ files: [file], title: 'PokeIsaac' });
+      await nav.share({ files: [file], title: 'Poké Chronicles' });
       return 'compartida';
     } catch (e) {
       if ((e as Error)?.name === 'AbortError') return 'cancelada';

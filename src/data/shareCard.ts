@@ -60,7 +60,7 @@ export function shareCardData(r: RunRecord, seedCode?: string): ShareCard {
   const items = r.items.map(parseItemLabel);
   const code = seedCode?.trim();
   return {
-    title: 'PokeIsaac',
+    title: 'Poké Chronicles',
     pokemon: r.starterName,
     mode: MODE_LABEL[r.mode],
     result: r.won ? '¡Victoria!' : `Hasta ${progressText(r.mode, r.floor).toLowerCase()}`,

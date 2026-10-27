@@ -178,7 +178,7 @@ export class AccountScene extends Phaser.Scene {
     try {
       await job();
     } catch (err) {
-      console.warn('[PokeIsaac] Cuenta:', err);
+      console.warn('[Poké Chronicles] Cuenta:', err);
       this.say(accountErrorMessage(err), true);
     } finally {
       this.busy = false;

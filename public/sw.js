@@ -1,4 +1,4 @@
-// Service worker de PokeIsaac (T42): caché persistente de lo descargado de PokeAPI, sprites (PokeAPI y
+// Service worker de Poké Chronicles (T42): caché persistente de lo descargado de PokeAPI, sprites (PokeAPI y
 // SpriteCollab) y gritos. Primero la caché: lo ya visto carga al instante y funciona sin conexión.
 // Los 404 también se guardan (Pokémon sin sprite en SpriteCollab), para no volver a pedirlos.
 const CACHE = 'pokeisaac-datos-v1';

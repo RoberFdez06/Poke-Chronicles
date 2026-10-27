@@ -1,4 +1,4 @@
-// Logo pixel de PokeIsaac: letras gordas con degradado amarillo-naranja, borde azul marino y sombra,
+// Logo pixel de Poké Chronicles: letras gordas con degradado amarillo-naranja, borde azul marino y sombra,
 // como los títulos de los juegos de GBA. Medidas relativas a la escala que se le pase.
 import Phaser from 'phaser';
 import { FONT } from '../theme';
@@ -6,7 +6,7 @@ import { FONT } from '../theme';
 /** Crea el logo centrado en (x, y). `scale` multiplica los píxeles (4 = como el menú a 960×640). */
 export function addLogo(scene: Phaser.Scene, x: number, y: number, scale = 4) {
   const t = scene.add
-    .text(x, y, 'PokeIsaac', { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#f8d030', resolution: 1 })
+    .text(x, y, 'Poké Chronicles', { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#f8d030', resolution: 1 })
     .setOrigin(0.5)
     .setScale(scale)
     .setStroke('#283068', 3)

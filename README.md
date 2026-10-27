@@ -1,4 +1,4 @@
-# PokeIsaac
+# Poké Chronicles
 
 Roguelike cenital en el navegador, al estilo de *The Binding of Isaac*, pero con Pokémon.
 Recorres pisos llenos de salas, limpias a los enemigos, coges objetos y poderes, y te enfrentas a jefes legendarios.

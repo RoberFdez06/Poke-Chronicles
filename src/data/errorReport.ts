@@ -38,7 +38,7 @@ export interface ErrorContext {
 export function errorDetails(err: unknown, ctx: ErrorContext): string {
   const stack = err instanceof Error && err.stack ? err.stack : '(sin pila)';
   return [
-    `PokeIsaac — informe de error`,
+    `Poké Chronicles — informe de error`,
     `Fecha: ${ctx.when}`,
     ctx.version ? `Versión: ${ctx.version}` : null,
     `Pantallas: ${ctx.scenes.join(', ') || '(ninguna)'}`,

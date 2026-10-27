@@ -32,7 +32,7 @@ function handle(game: Phaser.Game, err: unknown) {
     userAgent: navigator.userAgent,
     when: new Date().toISOString(),
   });
-  console.error(`[PokeIsaac] ${details}`);
+  console.error(`[Poké Chronicles] ${details}`);
   if (open) return;
   showErrorScreen(game, shortMessage(err), details);
 }

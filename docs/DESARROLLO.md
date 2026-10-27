@@ -1,4 +1,4 @@
-# PokeIsaac
+# Poké Chronicles
 
 Roguelike cenital en web, estilo The Binding of Isaac, con Pokémon. Fan game gratuito y sin ánimo de lucro.
 

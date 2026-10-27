@@ -39,7 +39,7 @@ export class TitleScene extends Phaser.Scene {
 
     // Poké Ball que cae, bota y tiembla
     const ball = addIcon(this, W / 2, -60 * u, 'pokeball', Math.round(7 * u)).setDepth(5);
-    const logo = addLogo(this, W / 2, H * 0.36, Math.round(5 * u)).setDepth(6).setScale(0);
+    const logo = addLogo(this, W / 2, H * 0.36, Math.round(3.4 * u)).setDepth(6).setScale(0);
     const sub = this.add
       .text(W / 2, H * 0.36 + 84 * u, 'Un roguelike de Pokémon', {
         fontFamily: FONT, fontSize: `${Math.round(22 * u)}px`, color: '#ffffff',

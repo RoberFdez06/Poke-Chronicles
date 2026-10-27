@@ -24,7 +24,7 @@ export function onOfflineData(cb: () => void): () => void {
 function markOffline() {
   if (offlineUsed) return;
   offlineUsed = true;
-  console.warn('[PokeIsaac] PokeAPI no responde: usando datos guardados');
+  console.warn('[Poké Chronicles] PokeAPI no responde: usando datos guardados');
   offlineListeners.forEach((cb) => cb());
 }
 

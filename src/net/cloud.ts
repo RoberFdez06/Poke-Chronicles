@@ -94,7 +94,7 @@ export async function initAccount(): Promise<AccountInfo> {
     const user = await withTimeout(firstUser(f), 8000, 'Sesión');
     if (user) await attach(f, user);
   } catch (err) {
-    console.warn('[PokeIsaac] Cuentas no disponibles:', err);
+    console.warn('[Poké Chronicles] Cuentas no disponibles:', err);
     info = { ...info, error: accountErrorMessage(err) };
   }
   return info;
@@ -113,7 +113,7 @@ async function attach(f: Firebase, user: import('firebase/auth').User) {
     }
   } catch (err) {
     // Sin leer la nube no se escribe nada (no vaya a pisar el progreso bueno): se juega como invitado
-    console.warn('[PokeIsaac] No se pudo leer la nube:', err);
+    console.warn('[Poké Chronicles] No se pudo leer la nube:', err);
     info = { mode: 'guest', configured: true, email: user.email ?? undefined, name, loadFailed: true };
     return;
   }
@@ -171,7 +171,7 @@ async function flush(): Promise<void> {
     await fb.fsMod.setDoc(fb.fsMod.doc(fb.db, 'users', uid), { data, name: info.name ?? null, updatedAt: fb.fsMod.serverTimestamp() });
     attempt = 0;
   } catch (err) {
-    console.warn('[PokeIsaac] No se pudo guardar en la nube, se reintentará:', err);
+    console.warn('[Poké Chronicles] No se pudo guardar en la nube, se reintentará:', err);
     // Si mientras tanto hubo otro cambio, gana el más nuevo
     pending ??= { uid, data };
     timer = setTimeout(() => void flush(), retryDelay(attempt++));
