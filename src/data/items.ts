@@ -575,3 +575,34 @@ export const ITEM_SLOTS_BASE = 10;
 export const ITEM_SLOTS_PER_BOSS = 1;
 /** Tope de huecos, por muchos jefes que caigan. */
 export const ITEM_SLOTS_MAX = 16;
+
+/** Cuántos movimientos especiales trae equipados una partida nueva según el modo (Rush de jefes: 2, resto: 1). */
+export const starterMoveCount = (mode: string): number => (mode === 'bossrush' ? 2 : 1);
+
+/**
+ * Movimientos especiales con los que empieza una partida nueva, sacados de `pool` (ya filtrado por los tipos del
+ * Pokémon). Con 1: uno al azar de los comunes/raros (lo de siempre). Con 2 (Rush de jefes): uno ligero (potencia
+ * < 75) y uno pesado (≥ 75), como los jefes en bossStyles, prefiriendo el tipo principal; si falta alguna banda se
+ * completa con lo que haya. No modifica `pool`; nunca repite movimiento.
+ */
+export function pickStarterMoves<T extends MoveInfo>(pool: readonly T[], count: number, rand: () => number, mainType?: string): T[] {
+  if (pool.length === 0 || count <= 0) return [];
+  const pick = (list: readonly T[]) => list[Math.floor(rand() * list.length) % list.length];
+  if (count === 1) {
+    const easy = pool.filter((m) => moveRarity(m.power) !== 'epic' && moveRarity(m.power) !== 'legendary');
+    return [pick(easy.length > 0 ? easy : pool)];
+  }
+  const out: T[] = [];
+  const left = () => pool.filter((m) => !out.includes(m));
+  const band = (heavy: boolean) => {
+    const inBand = left().filter((m) => (m.power >= 75) === heavy);
+    const own = inBand.filter((m) => m.type === mainType);
+    return own.length > 0 ? own : inBand;
+  };
+  for (const heavy of [false, true]) {
+    const list = band(heavy);
+    if (list.length > 0) out.push(pick(list));
+  }
+  while (out.length < count && left().length > 0) out.push(pick(left()));
+  return out.slice(0, count);
+}
