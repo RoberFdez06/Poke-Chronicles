@@ -338,6 +338,9 @@ import { DARK_ALPHA, DARK_RADIUS, darkEdge, quantizeDarkAlpha, oneTypeFor, pickR
 import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data/secondChance';
 import type { SecondChanceChoice } from './SecondChanceScene';
 import { accountInfo } from '../net/cloud';
+import { blitzAttacksFor, bounceAngles, bounceSpec, bounceStep, crossArms, crossHits, crossMinePlaces, crossSpec, dashEnd, dashSpec, gridBeams, gridHits, gridSpec, helixAngles, helixSpec, isBlitzAttack, meteorSpec, meteorSpots, miasmaSpec, wallHits, wallPlan, wallPos, wallSpec, wallTravelMs, BLITZ_MIN_WARN, type BlitzAttack, type Orb } from '../data/bossBlitz';
+import { bounceWarn, dashWarn, drawBounceOrb, drawCrossBlast, drawGridBeam, drawMiasma, drawWallBar, gridWarn, meteorImpact, meteorWarn, miasmaWarn, mineWarn, wallWarn } from '../ui/art/blitzFx';
+import { BOSS_SAFE_TELEPORT_DIST, BOSS_TELEPORT_GRACE_MS, PHASE_INVULN_MAX_MS, SPAWN_SAFE_DIST, clearOfRects, extendGrace, nearestClearPoint, phaseShieldStuck, pickSafeSpot, shiftTimers, type Rect as SafeRect } from '../data/bossSafety';
 
 const FALL_LOOK_MS = 500; // pausa tras aterrizar en la arena nueva (nadie se mueve ni recibe daño)
 
@@ -471,6 +474,8 @@ interface EnemyAI {
   facing?: number;
   /** Temperamento del individuo (temperament.ts). */
   tempo?: Temperament;
+  /** Respiro tras aparecer, una intro o un cambio de fase: hasta entonces no salta, no se esconde ni embiste. */
+  graceUntil?: number;
 }
 
 /** Velocidad de los proyectiles enemigos (px/s) y cuánto duran. */
@@ -741,6 +746,11 @@ export class GameScene extends Phaser.Scene {
   private bossBusyUntil: number | undefined;
   /** Derrumbe de la fase 2 en marcha: jugador y jefes invulnerables (se guarda la vida de cada jefe al empezar). */
   private arenaFallAt: number | undefined;
+  /** Intro en marcha (cinemática o ficha): todo quieto. Momento (reloj del juego) en que empezó. */
+  private frozenSince: number | undefined;
+  private unstickAt = 0;
+  /** Asaltos de jefe en marcha (para cortarlos en una intro, un derrumbe o al acabar). */
+  private blitzLive = new Set<() => void>();
   /** Dibujos de la arena (fase 1 y 2) y obstáculos de cada sala, para poder quitarlos al caer a la arena nueva. */
   private arenaObjs: Phaser.GameObjects.GameObject[] = [];
   /** Peligros del suelo de la Torre (se quitan al caer a la arena nueva del jefe). */
@@ -1191,6 +1201,10 @@ export class GameScene extends Phaser.Scene {
     this.arenaTickAt = 0;
     this.bossBusyUntil = undefined;
     this.arenaFallAt = undefined;
+    // La escena se reutiliza: nada de intro congelada ni asaltos de la partida anterior
+    this.frozenSince = undefined;
+    this.unstickAt = 0;
+    this.blitzLive = new Set();
     this.arenaObjs = [];
     this.obstacleObjs = new Map();
     // Al continuar, el piso se regenera igual con la misma semilla; cada piso nuevo es más grande.
@@ -4313,7 +4327,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   // --- Objetos ---
 
   /** Deja en el suelo un objeto al azar: un pasivo propio o un poder (movimiento de PokeAPI). */
-  private dropItem(roomId: number, x: number, y: number) {
+  private dropItem(roomId: number, x0: number, y0: number) {
+    // Nunca dentro de un obstáculo o de la decoración con colisión de la arena
+    const { x, y } = this.current && this.groupIds(this.current).includes(roomId) ? this.clearSpotNear(x0, y0, 24) : { x: x0, y: y0 };
     // T54: si cae en la sala en la que estás (cofre, jefe, evento…) se ve el salto; al montar el piso, no
     this.spawnPickup(roomId, x, y, rollItem(this.rng(RNG.items), new Set(this.passives), this.movePool, ACTIVE_DROP_CHANCE, ACTIVE_IDS, this.passivePool(), this.floorNum), this.current?.id === roomId);
   }
@@ -5809,19 +5825,120 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   // --- Enemigos ---
 
-  private randomSpotInRoom(margin: number) {
-    let i = this.interior(this.current);
-    let x = i.cx;
-    let y = i.cy;
-    const cells = this.groupIds(this.current);
-    for (let tries = 0; tries < 50; tries++) {
-      // En una sala grande, cada intento cae en una de sus casillas al azar
-      i = this.interior(this.floor.rooms[cells[Math.floor(Math.random() * cells.length)]]);
-      x = Phaser.Math.Between(i.x0 + margin, i.x1 - margin);
-      y = Phaser.Math.Between(i.y0 + margin, i.y1 - margin);
-      if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) >= 220 && this.freeAt(x, y)) break;
+  // --- Congelar durante las intros y casillas libres (bossSafety.ts) ---
+
+  /** Intro de jefe: todo quieto (física en pausa, sin disparos en el aire, IA y daño parados). */
+  private freezeWorld() {
+    if (this.frozenSince !== undefined) return;
+    this.frozenSince = this.game.loop.time;
+    this.physics.pause();
+    this.foeShots?.clear(true, true);
+    this.shots?.clear(true, true);
+    this.stopBlitz();
+    this.holdFrozen();
+  }
+
+  private holdFrozen() {
+    this.player?.setVelocity(0, 0);
+    for (const c of this.enemies?.getChildren() ?? []) {
+      const e = c as Sprite;
+      if (e.active && e.body) e.setVelocity(0, 0);
     }
-    return { x, y };
+  }
+
+  /**
+   * Fin de la intro: corre los temporizadores de la IA lo que ha durado (así nadie «salta» al reanudar), da a los
+   * grandes (jefes, minijefes, legendario) su respiro sin saltos ni embestidas y reanuda la física.
+   */
+  private thawWorld() {
+    if (this.frozenSince === undefined) return;
+    const dt = this.game.loop.time - this.frozenSince;
+    this.frozenSince = undefined;
+    const now = this.time.now;
+    for (const c of this.enemies.getChildren()) {
+      const e = c as Sprite;
+      const ai = e.getData('ai') as EnemyAI | undefined;
+      if (!e.active || !ai) continue;
+      shiftTimers(ai, dt);
+      if (this.isBigFoe(e)) this.bossGrace(e, now);
+    }
+    if (!this.transitioning && !this.falling) this.physics.resume();
+  }
+
+  /** Jefe, trío, minijefe o legendario de la cacería. */
+  private isBigFoe(e: Sprite): boolean {
+    const ai = e.getData('ai') as EnemyAI | undefined;
+    return !!ai && !e.getData('helper') && (!!ai.boss || !!e.getData('miniboss') || !!e.getData('legendHunt'));
+  }
+
+  /** Respiro del jefe: un rato sin saltar, esconderse ni embestir (vuelve a caminar si estaba a medias). */
+  private bossGrace(e: Sprite, now = this.time.now, ms = BOSS_TELEPORT_GRACE_MS) {
+    const ai = e.getData('ai') as EnemyAI | undefined;
+    if (!ai) return;
+    ai.graceUntil = extendGrace(ai.graceUntil, now, ms);
+    if (ai.state !== 'walk' && ai.state !== 'vanish') {
+      ai.state = 'walk';
+      e.clearTint();
+      e.setAlpha(1);
+    }
+    ai.until = Math.max(ai.until, ai.graceUntil);
+  }
+
+  /** Paredes y bloques con colisión (rocas, uniones de las salas grandes, puertas ocultas). */
+  private wallRects(): SafeRect[] {
+    const out: SafeRect[] = [];
+    for (const c of this.walls?.getChildren() ?? []) {
+      const r = c as Phaser.GameObjects.Rectangle;
+      if (!r.active) continue;
+      out.push({ x: r.x - r.width / 2, y: r.y - r.height / 2, w: r.width, h: r.height });
+    }
+    return out;
+  }
+
+  /** ¿Cabe algo de radio `r` en (x, y)? Dentro de la arena, sin obstáculo en la casilla ni pared alrededor. */
+  private spotClear(x: number, y: number, r = 26, rects = this.wallRects(), a: { x0: number; y0: number; x1: number; y1: number } = this.arena()): boolean {
+    if (x < a.x0 + r || x > a.x1 - r || y < a.y0 + r || y > a.y1 - r) return false;
+    const k = r * 0.7;
+    for (const [dx, dy] of [[0, 0], [k, 0], [-k, 0], [0, k], [0, -k]]) if (!this.freeAt(x + dx, y + dy)) return false;
+    return clearOfRects({ x, y }, r, rects);
+  }
+
+  /** El sitio libre más cercano a (x, y) (para enemigos, objetos y la trampilla); si no hay, el de freeSpot. */
+  private clearSpotNear(x: number, y: number, r = 26, extra?: (p: { x: number; y: number }) => boolean, a?: { x0: number; y0: number; x1: number; y1: number }) {
+    const rects = this.wallRects();
+    const p = nearestClearPoint({ x, y }, (q) => this.spotClear(q.x, q.y, r, rects, a) && (!extra || extra(q)), TILE / 2, 16);
+    return p ?? this.freeSpot(x, y);
+  }
+
+  /** Seguro: cada medio segundo, quien haya quedado dentro de un obstáculo sale a la casilla libre más cercana. */
+  private unstickTick(time: number) {
+    if (time < this.unstickAt) return;
+    this.unstickAt = time + 500;
+    const rects = this.wallRects();
+    for (const c of this.enemies.getChildren()) {
+      const e = c as Sprite;
+      const body = e.body as Body | null;
+      if (!e.active || !body || !body.enable || e.getData('capturing')) continue;
+      if (this.spotClear(e.x, e.y, 6, rects)) continue;
+      const p = this.clearSpotNear(e.x, e.y, 20);
+      body.reset(p.x, p.y);
+    }
+  }
+
+  /** Sitio al azar de la sala libre de obstáculos y lejos del jugador (lo más lejos posible si no cabe). */
+  private randomSpotInRoom(margin: number) {
+    const cells = this.groupIds(this.current);
+    const cands = Array.from({ length: 60 }, () => {
+      // En una sala grande, cada intento cae en una de sus casillas al azar
+      const i = this.interior(this.floor.rooms[cells[Math.floor(Math.random() * cells.length)]]);
+      return { x: Phaser.Math.Between(i.x0 + margin, i.x1 - margin), y: Phaser.Math.Between(i.y0 + margin, i.y1 - margin) };
+    });
+    const rects = this.wallRects();
+    const r = Math.min(40, Math.max(20, margin * 0.45));
+    const p = pickSafeSpot(cands, this.player, SPAWN_SAFE_DIST, (q) => this.spotClear(q.x, q.y, r, rects));
+    if (p) return p;
+    const i = this.interior(this.current);
+    return this.clearSpotNear(i.cx, i.cy, r);
   }
 
   /** Varios enemigos del piso; al menos uno de cada tres dispara, sea del tipo que sea (T32). */
@@ -5846,7 +5963,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     /** Ayudante invocado por el jefe: sale donde se le dice, con menos vida y sin botín. */
     helper?: { x: number; y: number },
   ): Sprite {
-    const { x, y } = helper ?? this.randomSpotInRoom(60);
+    const at = helper ?? this.randomSpotInRoom(60);
+    // Nunca dentro de una roca, un muro de la arena o un bloque (también los invocados)
+    const { x, y } = this.spotClear(at.x, at.y, 24) ? at : this.clearSpotNear(at.x, at.y, 24);
     // Shiny (1/200): otro color, más vida y más premio
     // T84: la cadena shiny sube la probabilidad (en el desafío diario no: mismas condiciones para todos)
     const odds = this.daily ? SHINY_ODDS.enemy : chainOdds(this.shinyChain.speciesId === Number(kind.key.replace('foe-', '')) ? this.shinyChain.count : 0);
@@ -5936,9 +6055,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.finaleMaxSum = 0;
     this.finaleMembers.forEach((m, k) => {
       const size = trio ? 160 : GIANT_SIZE;
-      const x = trio ? room.cx + (k - 1) * 220 : room.cx;
-      const y = trio ? room.cy - 80 + (k === 1 ? -40 : 0) : room.cy - 60;
-      const b = this.enemies.create(x, y, `${m.key}-front`) as Sprite;
+      const x0 = trio ? room.cx + (k - 1) * 220 : room.cx;
+      const y0 = trio ? room.cy - 80 + (k === 1 ? -40 : 0) : room.cy - 60;
+      const at = this.spotClear(x0, y0, 60) ? { x: x0, y: y0 } : this.clearSpotNear(x0, y0, 60);
+      const b = this.enemies.create(at.x, at.y, `${m.key}-front`) as Sprite;
       b.setDisplaySize(size, size).setData('sheet', m.key).setData('size', size);
       this.applyPmd(b, m.id, size);
       const ms = bossStats(m.stats, this.difficulty);
@@ -5946,13 +6066,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       b.setData('hp', hp).setData('maxHp', hp).setData('speed', ms.speed * (trio ? 0.9 : 0.8)).setData('dmg', ms.damage);
       b.setData('bname', m.name).setData('btypes', m.types).setData('finale', true).setData('speciesId', m.id);
       const ai = this.newAI(behaviorFor([m.types[0]]), m.types[0], true);
-      ai.attacks = [...new Set([...bossAttacksFor(m.types, this.biome.types), 'summon' as const])];
+      ai.attacks = [...new Set([...bossAttacksFor(m.types, this.biome.types), ...blitzAttacksFor(m.types), 'summon' as const])];
       ai.moves = bossStyles(m.types, m.id);
       ai.nextAttack = Number.POSITIVE_INFINITY; // los activa la intro al acabar
       ai.phase = 1;
       b.setData('fbase', ai.attacks).setData('fattacks', finaleAttacks(1, ai.attacks));
       this.finaleMaxSum += hp;
       b.setData('ai', ai);
+      this.bossGrace(b);
       group.push(b);
     });
     void st;
@@ -6016,7 +6137,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   private spawnBoss() {
     if (this.finale && this.finaleMembers.length > 0) return this.spawnFinale();
-    const { x, y } = this.randomSpotInRoom(110);
+    const sp = this.randomSpotInRoom(110);
+    const { x, y } = this.spotClear(sp.x, sp.y, 60) ? sp : this.clearSpotNear(sp.x, sp.y, 60);
     const b = this.enemies.create(x, y, `${this.bossKey}-front`) as Sprite;
     b.setDisplaySize(150, 150).setData('sheet', this.bossKey).setData('size', 150);
     this.applyPmd(b, this.bossId, 150);
@@ -6031,12 +6153,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const ai = this.newAI(behaviorFor([this.bossType]), this.bossType, true);
     // Todos los legendarios invocan ayudantes de su tipo
     // T50: más los 2 ataques extra del bioma
-    ai.attacks = [...new Set([...bossAttacksFor(this.bossTypes, this.biome.types), 'summon' as const])];
+    ai.attacks = [...new Set([...bossAttacksFor(this.bossTypes, this.biome.types), ...blitzAttacksFor(this.bossTypes), 'summon' as const])];
     // Movimientos de su tipo (Lanzallamas, Hidrobomba, Terremoto…) además de sus ataques de jefe
     ai.moves = bossStyles(this.bossTypes, this.bossId);
     ai.nextAttack = this.time.now + 2200;
     ai.phase = 1;
     b.setData('ai', ai);
+    this.bossGrace(b);
     this.notify(`¡${this.bossName}, jefe legendario!`, { kind: 'danger', icon: 'pokeball' });
     void cry(this.bossId);
     playTrack(TRACKS.jefe);
@@ -6107,6 +6230,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (o.tier !== 'mini' && !o.cine && this.bossStage(ai, o.tier === 'final', () => this.showBossIntro(ai, { ...o, cine: true }))) return;
     if (!this.scene.manager.keys['BossIntro'] || this.scene.isActive('BossIntro')) return;
     ai.nextAttack = Number.POSITIVE_INFINITY;
+    this.freezeWorld();
     const cap = (n: string) => n.charAt(0).toUpperCase() + n.slice(1);
     this.scene.launch('BossIntro', {
       player: { texture: `${this.playerKey}-front`, name: cap(this.starterName), types: [this.tearType] },
@@ -6118,6 +6242,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.scene.stop('BossIntro');
         this.scene.resume();
         this.input.keyboard?.resetKeys();
+        // Todo vuelve a moverse donde estaba (sin saltos) y el jefe no puede saltarte encima nada más empezar
+        this.thawWorld();
+        ai.nextAttack = Number.POSITIVE_INFINITY;
         // Un respiro antes del primer ataque (el reloj de la escena estuvo parado)
         this.time.delayedCall(1200, () => {
           ai.nextAttack = this.time.now;
@@ -6159,7 +6286,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (seen) return false;
     // Todo quieto e invulnerable mientras dura (la vida del jefe se restaura al acabar)
     const hps = bosses.map((e) => [e, e.getData('hp')] as const);
-    this.physics.pause();
+    this.freezeWorld();
     this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 4000);
     const f = this.finale;
     const name = final && f ? (f.kind === 'trio' ? f.name : this.finaleMembers[0]?.name ?? this.bossName) : ((b.getData('bname') as string | undefined) ?? this.bossName);
@@ -6171,8 +6298,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       boss: b, others: bosses.filter((e) => e !== b), name: name.charAt(0).toUpperCase() + name.slice(1), title, color: typeColor(types[0] ?? 'normal'),
       final, low: lowFx(), hud: (o) => this.toHud(o), zoom: BOSS_CAM_ZOOM, follow: this.player, roar: () => sfx('roar'),
       onDone: () => {
-        this.physics.resume();
-        for (const [e, hp] of hps) if (e.active) e.setData('hp', hp);
+        for (const [e, hp] of hps) if (e.active) e.setData('hp', Math.max(e.getData('hp') as number, hp));
+        this.thawWorld();
         this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 600);
         this.time.delayedCall(700, () => {
           this.setRoomCamera(this.current);
@@ -6214,6 +6341,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!b.getData('finale') && this.updateArena(b, ai, ratio, time)) return;
     if (ai.phase === 1 && bossPhase(ratio) === 2 && !b.getData('finale')) {
       ai.phase = 2;
+      this.bossGrace(b, time);
       sfx('enrage');
       {
         const bb = b.body as Body | null;
@@ -6285,6 +6413,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else if (isPatternAttack(attack)) {
       const ms = this.bossPattern(b, ai, attack, ai.phase ?? 1);
       ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + TELEGRAPH_MS + ms + 500);
+    } else if (isBlitzAttack(attack)) {
+      const ms = this.bossBlitz(b, ai, attack, ai.phase ?? 1);
+      ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + ms + 600);
     } else {
       // T50: los ataques extra duran más; el siguiente espera a que acaben
       const ms = this.bossExtra(b, ai, attack, ai.phase ?? 1);
@@ -6306,6 +6437,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private updateFinale(b: Sprite, ai: EnemyAI, time: number): boolean {
     if (this.ended) return false;
     const max = b.getData('maxHp') as number;
+    // Seguro: la pausa de fase nunca se alarga más del tope
+    if (this.finaleBeatUntil - time > PHASE_INVULN_MAX_MS) this.finaleBeatUntil = time + FINALE_BEAT_MS;
     if (time < this.finaleBeatUntil) {
       b.setData('hp', Math.max(b.getData('hp') as number, (b.getData('beatHp') as number | undefined) ?? 0));
       b.setVelocity(0, 0);
@@ -6333,6 +6466,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     for (const m of group) {
       const mai = m.getData('ai') as EnemyAI;
       m.setData('beatHp', m.getData('hp')).setVelocity(0, 0);
+      this.bossGrace(m, time);
       mai.knockUntil = time + FINALE_BEAT_MS;
       mai.nextAttack = time + FINALE_BEAT_MS + FINALE_AFTER_BEAT_MS;
       m.setData('volleyAt', time + FINALE_BEAT_MS + FINALE_AFTER_BEAT_MS + 600);
@@ -6427,6 +6561,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else if (isPatternAttack(attack)) {
       const ms = this.bossPattern(b, ai, attack, ai.phase ?? 1);
       ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + TELEGRAPH_MS + ms + 500);
+    } else if (isBlitzAttack(attack)) {
+      const ms = this.bossBlitz(b, ai, attack, ai.phase ?? 1);
+      ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + ms + 600);
     } else {
       const ms = this.bossExtra(b, ai, attack, ai.phase ?? 1);
       ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + TELEGRAPH_MS + ms + 600);
@@ -6545,6 +6682,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       b.once(Phaser.GameObjects.Events.DESTROY, stopAura);
       b.clearTint();
       this.megaGrow(b);
+      this.bossGrace(b, time);
       this.notify(`¡${megaName(id, name)}!`, { kind: 'danger', icon: 'star' });
       ai.nextAttack = time + 700;
     }
@@ -6811,6 +6949,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    */
   private updateArena(b: Sprite, ai: EnemyAI, ratio: number, time: number): boolean {
     if (!ai.boss || b.getData('miniboss') || b.getData('helper') || this.ended) return false;
+    // Seguro: la protección del derrumbe nunca dura más de lo previsto (si un temporizador se pierde, se suelta)
+    if (this.arenaFallAt !== undefined && phaseShieldStuck(this.arenaFallAt, time, FALL_TOTAL_MS + FALL_LOOK_MS + PHASE_INVULN_MAX_MS)) this.releaseArenaHold();
     if (this.arenaFallAt !== undefined) {
       const hp0 = b.getData('fallHp') as number | undefined;
       if (hp0 !== undefined) b.setData('hp', Math.max(b.getData('hp') as number, hp0));
@@ -6899,10 +7039,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.time.delayedCall(Math.min(300, Math.hypot(cx - this.player.x, cy - this.player.y) * 0.6), () => pixRing(this, cx, cy, TILE * 0.9, c.kind === 'charco' ? 0x7ec8ff : c.kind === 'grieta' ? 0xff8a4a : 0xcdb88c, 340));
     }
     pixRing(this, this.player.x, this.player.y + 8, 240, 0xffffff, ARENA_BEAT_MS);
+    const beatAt = this.arenaFallAt;
     this.time.delayedCall(ARENA_BEAT_MS, () => {
-      if (this.arenaDone !== 1) return;
-      this.arenaFallAt = undefined;
-      for (const c of this.enemies.getChildren()) (c as Sprite).setData('fallHp', undefined);
+      // Antes solo se soltaba con arenaDone === 1: si cambiaba, la protección se quedaba puesta para siempre
+      if (this.arenaFallAt === beatAt) this.releaseArenaHold();
     });
   }
 
@@ -6919,6 +7059,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** T78: quita los disparos de todos (al empezar y al acabar la caída de la fase 2). */
   private clearArenaShots() {
+    this.stopBlitz();
     this.shots.clear(true, true);
     this.foeShots.clear(true, true);
   }
@@ -6985,10 +7126,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       sfx('boom');
       arenaLanding(this, this.player.x, this.player.y + 10, FALL_GLOW[fall.theme]);
     });
-    this.time.delayedCall(FALL_TOTAL_MS + FALL_LOOK_MS, () => {
-      this.arenaFallAt = undefined;
-      for (const c of this.enemies.getChildren()) (c as Sprite).setData('fallHp', undefined);
-    });
+    this.time.delayedCall(FALL_TOTAL_MS + FALL_LOOK_MS, () => this.releaseArenaHold());
+  }
+
+  /** Acaba la protección de la arena (pausa de la fase 1 o derrumbe): se puede dañar ya y el jefe tiene su respiro. */
+  private releaseArenaHold() {
+    this.arenaFallAt = undefined;
+    for (const c of this.enemies.getChildren()) {
+      const e = c as Sprite;
+      e.setData('fallHp', undefined);
+      if (e.active && (e.getData('ai') as EnemyAI | undefined)?.boss) this.bossGrace(e);
+    }
   }
 
   /** T78: cambia la sala por la arena nueva (con la pantalla en negro). */
@@ -7429,6 +7577,289 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return hz.warnMs;
   }
 
+  // --- Asaltos nuevos de los jefes (bossBlitz.ts, arte en blitzFx.ts) ---
+
+  /** Corta todos los asaltos en marcha (intro, derrumbe de la arena, fin de la pelea). */
+  private stopBlitz() {
+    for (const s of [...this.blitzLive]) s();
+    this.blitzLive.clear();
+  }
+
+  /**
+   * Un asalto: aviso legible (nunca menos de BLITZ_MIN_WARN) y luego el golpe, sin salir de la arena. Devuelve cuánto
+   * dura (ms, contando el aviso) para que el siguiente ataque espere.
+   */
+  private bossBlitz(b: Sprite, ai: EnemyAI, attack: BlitzAttack, phase: 1 | 2): number {
+    const color = typeColor(ai.type);
+    this.bossLabel(BOSS_ATTACK_LABEL[attack], color);
+    b.setData('flashUntil', this.time.now + 400).setTintFill(0xffffff);
+    const lvl = this.level();
+    const A = this.arena();
+    const low = lowFx();
+    const ok = () => b.active && !this.ended && this.frozenSince === undefined && this.arenaFallAt === undefined;
+    /** Llamada diferida que se corta con stopBlitz. */
+    const after = (ms: number, fn: () => void) => {
+      const ev = this.time.delayedCall(ms, () => {
+        this.blitzLive.delete(stop);
+        if (ok()) fn();
+      });
+      const stop = () => ev.remove();
+      this.blitzLive.add(stop);
+    };
+    /** Bucle por fotograma con su dibujo; acaba cuando `step` devuelve false (o se corta). */
+    const loop = (step: (g: Phaser.GameObjects.Graphics, dt: number, t: number) => boolean, depth = 5) => {
+      const g = this.add.graphics().setDepth(depth);
+      const t0 = this.time.now;
+      let last = t0;
+      const ev = this.time.addEvent({
+        delay: 16, loop: true,
+        callback: () => {
+          const now = this.time.now;
+          const dt = Math.min(0.05, (now - last) / 1000);
+          last = now;
+          g.clear();
+          if (!ok() || !step(g, dt, now - t0)) stop();
+        },
+      });
+      const stop = () => {
+        this.blitzLive.delete(stop);
+        ev.remove();
+        g.destroy();
+      };
+      this.blitzLive.add(stop);
+    };
+    /** Aviso simple (pocos efectos): círculo que parpadea. */
+    const lowCircle = (x: number, y: number, r: number, ms: number) => {
+      const c = this.add.circle(x, y, r, 0xff3d00, 0.15).setStrokeStyle(4, 0xff3d00, 0.9).setDepth(3);
+      this.tweens.add({ targets: c, fillAlpha: 0.4, duration: ms, onComplete: () => c.destroy() });
+    };
+    const hurt = () => this.hurtPlayer(b, true);
+
+    if (attack === 'meteor') {
+      const sp = meteorSpec(lvl, phase);
+      for (let w = 0; w < sp.waves; w++) {
+        after(w * sp.everyMs, () => {
+          const spots = meteorSpots(A, sp.perWave, sp.radius, this.player, Math.random);
+          for (const p of spots) (low ? lowCircle(p.x, p.y, sp.radius, sp.warnMs) : meteorWarn(this, p.x, p.y, sp.radius, color, sp.warnMs));
+          after(sp.warnMs, () => {
+            this.cameras.main.shake(120, 0.005);
+            sfx('boom');
+            for (const p of spots) {
+              if (low) {
+                const fx = this.add.circle(p.x, p.y, sp.radius, color, 0.7).setDepth(12);
+                this.tweens.add({ targets: fx, alpha: 0, scale: 1.2, duration: 260, onComplete: () => fx.destroy() });
+              } else meteorImpact(this, p.x, p.y, sp.radius, color);
+              if (inBlast(p.x, p.y, this.player.x, this.player.y, sp.radius)) hurt();
+            }
+          });
+        });
+      }
+      return (sp.waves - 1) * sp.everyMs + sp.warnMs + 400;
+    }
+
+    if (attack === 'helix') {
+      const sp = helixSpec(lvl, phase);
+      const base = Math.random() * Math.PI * 2;
+      const warn = BLITZ_MIN_WARN;
+      if (low) lowCircle(b.x, b.y, 60, warn);
+      else bounceWarn(this, () => b, helixAngles(sp, base, 0), color, warn);
+      after(warn, () => {
+        let i = 0;
+        const ev = this.time.addEvent({
+          delay: sp.everyMs, repeat: sp.shots - 1,
+          callback: () => {
+            if (!ok()) return stop();
+            for (const a of helixAngles(sp, base, i)) this.fireFoeShot(b, new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), ai.type);
+            i++;
+            if (i >= sp.shots) stop();
+          },
+        });
+        const stop = () => {
+          this.blitzLive.delete(stop);
+          ev.remove();
+        };
+        this.blitzLive.add(stop);
+      });
+      return warn + sp.shots * sp.everyMs;
+    }
+
+    if (attack === 'wallGap') {
+      const sp = wallSpec(lvl, phase);
+      let total = 0;
+      for (let w = 0; w < sp.walls; w++) {
+        const plan = wallPlan(A, sp, Math.random);
+        const travel = wallTravelMs(A, plan, sp.speed);
+        total = Math.max(total, w * sp.everyMs + sp.warnMs + travel);
+        after(w * sp.everyMs, () => {
+          if (low) {
+            const g = this.add.graphics().setDepth(4);
+            const start = plan.axis === 'x' ? (plan.dir === 1 ? A.x0 : A.x1) : plan.dir === 1 ? A.y0 : A.y1;
+            drawWallBar(g, A, plan, start + plan.dir * sp.thick * 0.5, sp.thick, 0xff3d00, 0, 0.6);
+            this.tweens.add({ targets: g, alpha: 0.2, yoyo: true, repeat: 2, duration: sp.warnMs / 6, onComplete: () => g.destroy() });
+          } else wallWarn(this, A, plan, sp.thick, color, sp.warnMs);
+          after(sp.warnMs, () => loop((g, _dt, t) => {
+            const pos = wallPos(A, plan, sp.speed, t / 1000);
+            if (pos === null) return false;
+            drawWallBar(g, A, plan, pos, sp.thick, color, this.time.now);
+            if (wallHits(plan, pos, sp.thick, this.player.x, this.player.y)) hurt();
+            return true;
+          }));
+        });
+      }
+      return total;
+    }
+
+    if (attack === 'crossMines') {
+      const sp = crossSpec(lvl, phase);
+      const mines = crossMinePlaces(A, sp.mines, Math.random);
+      // Una cerca de ti (en tu fila o columna, para que haya que moverse)
+      mines[0] = { x: Phaser.Math.Clamp(this.player.x + Phaser.Math.Between(-120, 120), A.x0 + 60, A.x1 - 60), y: Phaser.Math.Clamp(this.player.y, A.y0 + 60, A.y1 - 60) };
+      const arms = mines.map((m) => crossArms(m, sp.length, A));
+      mines.forEach((m, k) => {
+        if (low) {
+          lowCircle(m.x, m.y, 16, sp.fuseMs);
+          const g = this.add.graphics().setDepth(3);
+          for (const [a, l] of arms[k]) g.lineStyle(3, 0xff3d00, 0.7).lineBetween(m.x, m.y, m.x + Math.cos(a) * l, m.y + Math.sin(a) * l);
+          this.time.delayedCall(sp.fuseMs, () => g.destroy());
+        } else mineWarn(this, m, arms[k], sp.width, color, sp.fuseMs);
+      });
+      after(sp.fuseMs, () => {
+        sfx('boom');
+        this.cameras.main.shake(140, 0.006);
+        loop((g, _dt, t) => {
+          mines.forEach((m, k) => {
+            if (low) for (const [a, l] of arms[k]) g.lineStyle(sp.width, color, 0.8).lineBetween(m.x, m.y, m.x + Math.cos(a) * l, m.y + Math.sin(a) * l);
+            else drawCrossBlast(g, m, arms[k], sp.width, color, this.time.now);
+            if (crossHits(m, sp.length, sp.width, A, this.player.x, this.player.y)) hurt();
+          });
+          return t < 380;
+        }, 6);
+      });
+      return sp.fuseMs + 450;
+    }
+
+    if (attack === 'gridBeams') {
+      const sp = gridSpec(lvl, phase);
+      const sweeps = phase === 2 ? 3 : 2;
+      const first: 'x' | 'y' = Math.random() < 0.5 ? 'x' : 'y';
+      const every = sp.warnMs + sp.onMs + 250;
+      for (let s = 0; s < sweeps; s++) {
+        after(s * every, () => {
+          const axis: 'x' | 'y' = s % 2 === 0 ? first : first === 'x' ? 'y' : 'x';
+          const beams = gridBeams(A, sp, axis, Math.random);
+          if (low) {
+            const g = this.add.graphics().setDepth(4);
+            for (const bm of beams) {
+              if (bm.axis === 'x') g.lineStyle(3, 0xff3d00, 0.8).lineBetween(bm.at, A.y0, bm.at, A.y1);
+              else g.lineStyle(3, 0xff3d00, 0.8).lineBetween(A.x0, bm.at, A.x1, bm.at);
+            }
+            this.tweens.add({ targets: g, alpha: 0.2, yoyo: true, repeat: 2, duration: sp.warnMs / 6, onComplete: () => g.destroy() });
+          } else gridWarn(this, A, beams, sp.width, color, sp.warnMs);
+          after(sp.warnMs, () => loop((g, _dt, t) => {
+            for (const bm of beams) {
+              if (low) {
+                g.fillStyle(color, 0.7);
+                if (bm.axis === 'x') g.fillRect(bm.at - sp.width / 2, A.y0, sp.width, A.y1 - A.y0);
+                else g.fillRect(A.x0, bm.at - sp.width / 2, A.x1 - A.x0, sp.width);
+              } else drawGridBeam(g, A, bm, sp.width, color, this.time.now);
+              if (gridHits(bm, sp.width, this.player.x, this.player.y)) hurt();
+            }
+            return t < sp.onMs;
+          }));
+        });
+      }
+      return (sweeps - 1) * every + sp.warnMs + sp.onMs;
+    }
+
+    if (attack === 'bounce') {
+      const sp = bounceSpec(lvl, phase);
+      const aim = Math.atan2(this.player.y - b.y, this.player.x - b.x);
+      const angles = bounceAngles(sp.orbs, aim);
+      if (low) lowCircle(b.x, b.y, 50, sp.warnMs);
+      else bounceWarn(this, () => b, angles, color, sp.warnMs);
+      ai.knockUntil = Math.max(ai.knockUntil, this.time.now + sp.warnMs);
+      b.setVelocity(0, 0);
+      after(sp.warnMs, () => {
+        const sx = Phaser.Math.Clamp(b.x, A.x0 + sp.radius, A.x1 - sp.radius);
+        const sy = Phaser.Math.Clamp(b.y, A.y0 + sp.radius, A.y1 - sp.radius);
+        let orbs: Orb[] = angles.map((a) => ({ x: sx, y: sy, vx: Math.cos(a) * sp.speed, vy: Math.sin(a) * sp.speed, left: sp.bounces }));
+        loop((g, dt, t) => {
+          orbs = orbs.map((o) => bounceStep(o, dt, A, sp.radius)).filter((o) => o.left >= 0);
+          for (const o of orbs) {
+            if (low) g.fillStyle(color, 0.9).fillCircle(o.x, o.y, sp.radius).lineStyle(3, 0xffffff, 0.9).strokeCircle(o.x, o.y, sp.radius);
+            else drawBounceOrb(g, o.x, o.y, sp.radius, color, this.time.now);
+            if (Math.hypot(o.x - this.player.x, o.y - this.player.y) < sp.radius + 14) {
+              hurt();
+              o.left = -1;
+            }
+          }
+          orbs = orbs.filter((o) => o.left >= 0);
+          return orbs.length > 0 && t < 9000;
+        });
+      });
+      return sp.warnMs + 2600;
+    }
+
+    if (attack === 'miasma') {
+      const sp = miasmaSpec(lvl, phase);
+      const R = sp.radius;
+      const spots = Array.from({ length: sp.zones }, (_, k) =>
+        k === 0
+          ? { x: Phaser.Math.Clamp(this.player.x, A.x0 + R, A.x1 - R), y: Phaser.Math.Clamp(this.player.y, A.y0 + R, A.y1 - R) }
+          : { x: Phaser.Math.Between(A.x0 + R, A.x1 - R), y: Phaser.Math.Between(A.y0 + R, A.y1 - R) },
+      );
+      for (const p of spots) (low ? lowCircle(p.x, p.y, R, sp.warnMs) : miasmaWarn(this, p.x, p.y, R, color, sp.warnMs));
+      after(sp.warnMs, () => loop((g, _dt, t) => {
+        // Aparece y se va poco a poco (el daño, solo con la nube «llena»)
+        const a = Math.min(1, t / 250, (sp.lingerMs - t) / 400);
+        for (const p of spots) {
+          if (low) g.fillStyle(color, 0.35 * a).fillCircle(p.x, p.y, R);
+          else drawMiasma(g, p.x, p.y, R, color, this.time.now, a);
+          if (a > 0.6 && inBlast(p.x, p.y, this.player.x, this.player.y, R * 0.9)) hurt();
+        }
+        return t < sp.lingerMs;
+      }, 2));
+      return sp.warnMs + 900;
+    }
+
+    // Embestida marcada: línea de aviso hasta la pared, luego carga por ella (varias seguidas)
+    const sp = dashSpec(lvl, phase);
+    const half = Math.min(70, ((b.body as Body | null)?.width ?? 120) / 2);
+    const run = (k: number) => {
+      if (k >= sp.dashes) return;
+      const from = { x: b.x, y: b.y };
+      const end = dashEnd(from, this.player, A, half);
+      const dist = Math.hypot(end.x - from.x, end.y - from.y);
+      const dur = (dist / sp.speed) * 1000;
+      ai.knockUntil = Math.max(ai.knockUntil, this.time.now + sp.warnMs + dur + 200);
+      b.setVelocity(0, 0);
+      if (low) {
+        const g = this.add.graphics().setDepth(3);
+        g.lineStyle(sp.width, 0xff3d00, 0.25).lineBetween(from.x, from.y, end.x, end.y);
+        this.tweens.add({ targets: g, alpha: 0.6, duration: sp.warnMs, onComplete: () => g.destroy() });
+      } else dashWarn(this, from, end, sp.width, color, sp.warnMs);
+      after(sp.warnMs, () => {
+        const ux = (end.x - from.x) / (dist || 1);
+        const uy = (end.y - from.y) / (dist || 1);
+        b.setVelocity(ux * sp.speed, uy * sp.speed);
+        loop((_g, _dt, t) => {
+          if (Math.hypot(this.player.x - b.x, this.player.y - b.y) < sp.width / 2 + 20) hurt();
+          if (t >= dur || Math.hypot(end.x - b.x, end.y - b.y) < 20) {
+            b.setVelocity(0, 0);
+            this.cameras.main.shake(90, 0.004);
+            after(220, () => run(k + 1));
+            return false;
+          }
+          b.setVelocity(ux * sp.speed, uy * sp.speed);
+          return true;
+        });
+      });
+    };
+    run(0);
+    return sp.dashes * (sp.warnMs + 900);
+  }
+
+
   /** Estado inicial de la IA; deja un respiro al entrar antes de embestir, disparar o saltar. */
   private newAI(behavior: EnemyBehavior, type: string, boss: boolean): EnemyAI {
     return {
@@ -7455,6 +7886,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       return;
     }
     const speed = (e.getData('speed') as number) * slow;
+    // Respiro (tras aparecer, una intro o una fase): no empieza saltos, escondites ni embestidas
+    if (ai?.graceUntil !== undefined && time < ai.graceUntil && ai.state === 'walk') ai.until = Math.max(ai.until, ai.graceUntil);
     const toPlayer = new Phaser.Math.Vector2(this.player.x - e.x, this.player.y - e.y);
     const dist = toPlayer.length();
     if (dist > 0) toPlayer.normalize();
@@ -7543,7 +7976,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           }
         } else if (ai.state === 'vanish') {
           if (time >= ai.until) {
-            const p = this.hopSpot(ai.boss ? 200 : 140);
+            const p = this.hopSpot(ai.boss ? 200 : 140, this.isBigFoe(e)) ?? { x: e.x, y: e.y };
             (e.body as Body).enable = true;
             (e.body as Body).reset(p.x, p.y);
             e.setAlpha(0.55);
@@ -7658,7 +8091,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         } else if (ai.state === 'vanish') {
           // Avanza bajo tierra
           const step = (speed * 1.5 * this.game.loop.delta) / 1000;
-          if (dist > 12) e.setPosition(e.x + toPlayer.x * step, e.y + toPlayer.y * step);
+          // Los grandes se paran a distancia segura (nunca salen pegados al jugador)
+          if (dist > (this.isBigFoe(e) ? BOSS_SAFE_TELEPORT_DIST : 12)) e.setPosition(e.x + toPlayer.x * step, e.y + toPlayer.y * step);
           const mound = e.getData('mound') as Phaser.GameObjects.Ellipse | undefined;
           mound?.setPosition(e.x, e.y + 18).setScale(1 + 0.15 * Math.sin(time / 60), 1);
           if (Math.random() < 0.15 && this.fxBudget.take(this.time.now)) dustBurst(this, e.x, e.y + 18, 0.4, 2);
@@ -7810,18 +8244,23 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
   }
 
-  /** Sitio de la sala cerca del jugador (pero no encima) donde aparece quien salta. */
-  private hopSpot(minDist: number) {
-    const i = this.arena();
-    const m = 50;
-    for (let tries = 0; tries < 30; tries++) {
+  /**
+   * Sitio de la sala cerca del jugador (pero no encima) donde aparece quien salta. Los grandes (jefes, minijefes,
+   * legendario) nunca a menos de BOSS_SAFE_TELEPORT_DIST: si no hay sitio así, undefined (se queda donde estaba).
+   */
+  private hopSpot(minDist: number, big = false): { x: number; y: number } | undefined {
+    const min = big ? Math.max(minDist, BOSS_SAFE_TELEPORT_DIST) : minDist;
+    const rects = this.wallRects();
+    const cands = Array.from({ length: 30 }, () => {
       const a = Math.random() * Math.PI * 2;
-      const r = minDist + Math.random() * 90;
-      const x = this.player.x + Math.cos(a) * r;
-      const y = this.player.y + Math.sin(a) * r;
-      if (x > i.x0 + m && x < i.x1 - m && y > i.y0 + m && y < i.y1 - m && this.freeAt(x, y)) return { x, y };
-    }
-    return this.randomSpotInRoom(m);
+      const r = min + Math.random() * 90;
+      return { x: this.player.x + Math.cos(a) * r, y: this.player.y + Math.sin(a) * r };
+    });
+    const r = big ? 50 : 26;
+    const p = pickSafeSpot(cands, this.player, min, (q) => this.spotClear(q.x, q.y, r, rects));
+    if (p && Math.hypot(p.x - this.player.x, p.y - this.player.y) >= min) return p;
+    if (big) return undefined;
+    return p ?? this.randomSpotInRoom(50);
   }
 
   /** Proyectil enemigo del color de su tipo, con borde oscuro para no confundirlo con los tuyos. */
@@ -8172,15 +8611,35 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   // --- Trampilla al piso siguiente ---
 
+  /**
+   * Dónde va la trampilla: el centro de la arena del jefe si está libre y se puede llegar; si no (la unión de las
+   * salas grandes, una roca o un muro de la arena nueva), la casilla libre y alcanzable más cercana.
+   */
+  private trapdoorSpot(g: { x0: number; y0: number; x1: number; y1: number; cx: number; cy: number }) {
+    const reach = (q: { x: number; y: number }) => {
+      if (!this.player?.active) return true;
+      const room = this.cellRoom(q.x, q.y);
+      if (room.id !== this.cellRoom(this.player.x, this.player.y).id) return true;
+      const grid = this.grids.get(room.id);
+      if (!grid) return true;
+      const dist = flowField(grid, ...this.tileOf(this.player.x, this.player.y, room));
+      const [tx, ty] = this.tileOf(q.x, q.y, room);
+      return Number.isFinite(dist[ty]?.[tx] ?? Infinity);
+    };
+    return this.clearSpotNear(g.cx, g.cy, 40, reach, g);
+  }
+
   private spawnTrapdoor(final = false) {
-    // En el centro de toda la arena del jefe (sala grande de 4 a 9 casillas)
-    const i = this.groupRect(this.floor.rooms[this.floor.bossId]);
+    // En el centro de toda la arena del jefe (sala grande de 4 a 9 casillas), o en la casilla libre más cercana
+    const g = this.groupRect(this.floor.rooms[this.floor.bossId]);
+    const free = this.trapdoorSpot(g);
+    const i = { ...g, cx: free.x, cy: free.y };
     if (this.mode === 'tower') {
       // T72: columna de luz en el centro (en reposo, towerArt; al pisarla, towerFx)
       // En el descanso (con Centro, forja, altar y tienda) va abajo en medio para no pisar nada (TOWER_REST_LAYOUT)
       const rest = this.towerSpec?.kind === 'rest';
-      const cx = rest ? i.cx + TOWER_REST_LAYOUT.column.x : i.cx;
-      const cy = rest ? i.cy + TOWER_REST_LAYOUT.column.y : i.cy;
+      const cx = rest ? g.cx + TOWER_REST_LAYOUT.column.x : i.cx;
+      const cy = rest ? g.cy + TOWER_REST_LAYOUT.column.y : i.cy;
       buildLightColumn(this, cx, cy + 25, this.biome.colors.wall, 110);
       this.add.text(cx, cy - 100, 'Subir', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(0.5).setDepth(3);
       this.trapdoor = { x: cx, y: cy, armed: false };
@@ -8436,13 +8895,18 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!this.player || !this.player.active) return;
     this.dressSprites(time);
     this.orientShots();
-    updateShots(this.host, this.shots, time, delta);
-    updateShots(this.host, this.foeShots, time, delta);
+    const frozen = this.frozenSince !== undefined;
+    if (!frozen) {
+      updateShots(this.host, this.shots, time, delta);
+      updateShots(this.host, this.foeShots, time, delta);
+    }
     this.weatherFx?.update(delta, this.player);
     if (!this.ended) this.counters.seconds += delta / 1000;
-    this.weatherTick(time);
-    this.hazardTick(time);
-    this.arenaTick(time);
+    if (!frozen) {
+      this.weatherTick(time);
+      this.hazardTick(time);
+      this.arenaTick(time);
+    }
     this.musicTick(time);
     this.dayNightTick();
     // Curación por golpes: se recarga un 4 % de tus PS máximos por segundo (y no se acumula más)
@@ -8463,6 +8927,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       return;
     }
     if (this.transitioning) return;
+    // Intro de jefe en marcha: nadie se mueve, nadie ataca y nada hace daño (seguro: si se queda colgada, se suelta)
+    if (this.frozenSince !== undefined) {
+      this.holdFrozen();
+      if (this.game.loop.time - this.frozenSince > 20000 && !this.scene.isActive('BossIntro')) this.thawWorld();
+      return;
+    }
 
     // Movimiento: WASD o stick izquierdo
     let mx = (this.wasd.D.isDown ? 1 : 0) - (this.wasd.A.isDown ? 1 : 0);
@@ -8627,6 +9097,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.drawEnemyBar(e);
     });
 
+    this.unstickTick(time);
     this.updateRunaway(time);
     this.updateThief();
     this.updateTimeTrial(time);
@@ -8975,7 +9446,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * destello, empujón (no a jefes), estado del tipo y, si cae, se debilita. Devuelve los PS que le quedan.
    */
   private hitEnemy(enemy: Sprite, base: number, status: string | undefined, sx: number, sy: number, color: number, push?: Phaser.Math.Vector2): number | undefined {
-    if (!enemy.active) return undefined;
+    if (!enemy.active || this.frozenSince !== undefined) return undefined;
     // Dragón: los poderes hacen más daño; Lluvia y Sol cambian Agua y Fuego (T38)
     let dmg = base * (status ? hitDamageMul(status) : 1) * weatherPowerMul(this.weather, status);
     const shAi = enemy.getData('ai') as EnemyAI | undefined;
@@ -10065,7 +10536,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    */
   private hurtPlayer(enemy: Sprite, unblockable = false) {
     const now = this.time.now;
-    if (this.ended || this.transitioning || now < this.invulnUntil || isGodMode()) return;
+    if (this.ended || this.transitioning || now < this.invulnUntil || isGodMode() || this.frozenSince !== undefined) return;
     // Quien salta no hace daño mientras desaparece o recién aparecido
     const ai = enemy.getData('ai') as EnemyAI | undefined;
     if (ai && ai.behavior === 'hop' && ai.state !== 'walk') return;

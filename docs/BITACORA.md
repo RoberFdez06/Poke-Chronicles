@@ -1331,3 +1331,38 @@ Panel para probarlo todo rápido. **Comodidad de pruebas, no seguridad fuerte**:
 Pendiente:
 - Probar en el navegador: panel encima de la pausa/Ajustes, F9 y L3+R3, saltar de piso, jefe por número, formas de poder.
 - Una partida admin guardada en un hueco y continuada en otra sesión ya no lleva la marca.
+
+## Jefes 2 — teletransportes, intros congeladas, fases, trampilla, spawns y 8 asaltos nuevos (28/10)
+Hecho (rama `jefes2`):
+- **Teletransporte a la cara** (`src/data/bossSafety.ts`, tests en `tests/bossSafety.test.ts`): el jefe, el trío, el minijefe y el
+  legendario de la cacería tienen un **respiro** (`BOSS_TELEPORT_GRACE_MS` = 4,5 s) tras aparecer, tras cada intro y tras cada fase (fase 2,
+  megaevolución, fin de la pausa/derrumbe de la arena, fases del reto final): en ese tiempo no saltan, no se esconden ni embisten
+  (`ai.graceUntil`; `bossGrace`). Un salto (`hop`) de un grande nunca lo deja a menos de `BOSS_SAFE_TELEPORT_DIST` (240 px): `hopSpot` usa
+  `pickSafeSpot` y, si no hay sitio así, se queda donde estaba. Bajo tierra (`burrow`) un grande se para a esa distancia. El jefe sale en un
+  sitio libre y a ≥ 220 px del jugador. La causa del fallo: al reanudar tras la intro, los temporizadores de la IA (reloj del juego) ya
+  habían vencido y el jefe saltaba al instante junto al jugador.
+- **Intros congeladas de verdad**: `freezeWorld`/`thawWorld`. Durante la cinemática del jefe (antes solo pausaba la física y la IA, los
+  ataques, los saltos con `setPosition` y tus disparos seguían) y la ficha BossIntro (minijefe, cacería, reto final): física en pausa,
+  velocidad 0, sin disparos en el aire, sin IA, sin daño a nadie (`hurtPlayer`/`hitEnemy`) y sin asaltos. Al acabar, `shiftTimers` corre
+  los temporizadores lo que duró la intro (sin saltos al reanudar). Seguro: si algo se queda congelado más de 20 s sin intro abierta, se
+  descongela. La escena reutilizada limpia ese estado al empezar.
+- **Fases que no dejaban bajar la vida**: la pausa de la fase 1 de arena solo se soltaba si `arenaDone === 1`; ahora se suelta siempre
+  (`releaseArenaHold`) y hay un **watchdog**: si la protección del derrumbe dura más de lo previsto + `PHASE_INVULN_MAX_MS` (6 s), se quita.
+  La pausa de fase del reto final tiene tope igual. La cinemática ya no «devuelve» vida a destiempo (se congela el daño). Revisado el
+  mínimo de vida del gigante (`clampFinaleHp`): no se atasca (test que lo recorre).
+- **Trampilla**: va al centro de la arena del jefe solo si está libre (paredes de la unión de las salas 2x2/3x3, rocas, muros de la arena
+  nueva tras el derrumbe) y es alcanzable (campo de flujo desde el jugador); si no, a la casilla libre más cercana (`nearestClearPoint`).
+  El objeto del jefe también cae en un sitio libre (`dropItem`).
+- **Spawns dentro de obstáculos**: `spotClear` (casilla libre en el centro y alrededor + sin tocar ninguna pared/bloque con colisión) en
+  `randomSpotInRoom` (ya no devuelve un sitio cualquiera al agotar intentos), `spawnEnemy` (salas, oleadas, ayudantes, invocaciones,
+  minijefes, eventos) y el trío del reto final. Seguro cada 0,5 s (`unstickTick`): quien quede dentro de un obstáculo sale a la casilla libre
+  más cercana.
+- **8 asaltos nuevos** (`src/data/bossBlitz.ts`, tests en `tests/bossBlitz.test.ts`; arte pixel en `src/ui/art/blitzFx.ts`; GameScene
+  `bossBlitz`): Lluvia de meteoros (tandas sobre zonas marcadas), Doble hélice (dos espirales en sentidos contrarios), Muro implacable (muro
+  que cruza la sala con un hueco), Minas en cruz, Rejilla de rayos (filas/columnas de pared a pared, nunca dos franjas seguidas), Orbes
+  rebotantes, Niebla persistente y Embestida marcada (de pared a pared por una línea avisada). Dos por tipo (`blitzAttacksFor`) más el
+  primero del segundo tipo; los usan el jefe y el reto final. Aviso ≥ 0,9 s, nada sale de la arena (`clipBeamToBounds`, `clampDash`,
+  rebotes dentro), versión simple con `lowFx()`, y se cortan en intros/derrumbes (`stopBlitz`). No se ha tocado el vórtice ni el rayo.
+Pendiente:
+- Probar en el navegador (solo `tsc` y `npm test`): los 8 asaltos (legibilidad y dificultad), la cinemática congelada, el respiro del jefe,
+  la trampilla en arenas 2x2/3x3 tras el derrumbe y el seguro de spawns.
