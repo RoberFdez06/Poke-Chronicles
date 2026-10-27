@@ -43,7 +43,7 @@ export const POWER_FORMS: Readonly<Record<PowerFormKind, PowerFormDef>> = {
   // que aguanta varios golpes. Gasta todo el medidor.
   dynamax: { label: 'Dinamax', item: 'banda-dinamax', durationMs: 20_000, damageMul: 1.25, speedMul: 0.9, maxHpBonus: 0, pulseMs: 0, sizeMul: 1.5, shield: 45, meterCost: 100 },
   // Gigamax: lo mismo para las especies que lo tienen, algo más fuerte y con su ataque propio (pulso de su tipo)
-  gigamax: { label: 'Gigamax', item: 'banda-dinamax', durationMs: 20_000, damageMul: 1.3, speedMul: 0.9, maxHpBonus: 0, pulseMs: 3500, sizeMul: 1.7, shield: 45, meterCost: 100 },
+  gigamax: { label: 'Gigamax', item: 'banda-dinamax', durationMs: 20_000, damageMul: 1.3, speedMul: 0.9, maxHpBonus: 0, pulseMs: 3500, sizeMul: 1.5, shield: 45, meterCost: 100 },
   // Teracristal: corto, cambia el tipo de tus ataques a uno con ventaja en el bioma. Gasta algo más de la mitad.
   tera: { label: 'Teracristalización', item: 'teragema', durationMs: 15_000, damageMul: 1.2, speedMul: 1, maxHpBonus: 0, pulseMs: 0, sizeMul: 1, shield: 0, meterCost: 60 },
 };
