@@ -13,6 +13,7 @@ import { NavInput, PadButtons, UI } from '../ui/nav';
 import { addBackButton } from '../ui/cards';
 import { COLORS, drawBox, fadeIn, goTo } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
+import { addModeIcon } from '../ui/art/modeIcons';
 import { sfx } from '../ui/audio';
 import { loadTdProgress, totalStars } from '../data/towerDefense/progress';
 import { currentPlan } from './runLaunch';
@@ -29,7 +30,6 @@ type ModeCardId = GameMode | 'daily' | 'code';
 
 interface CardDef {
   id: ModeCardId;
-  icon: string;
   name: string;
   desc: string;
   /** Qué viene después de elegirla. */
@@ -40,20 +40,15 @@ const CARD = { w: 212, h: 212, gap: 14, cols: 4, top: 92 };
 const cardX = (i: number) => (960 - (CARD.cols * CARD.w + (CARD.cols - 1) * CARD.gap)) / 2 + (i % CARD.cols) * (CARD.w + CARD.gap);
 const cardY = (i: number) => CARD.top + Math.floor(i / CARD.cols) * (CARD.h + CARD.gap);
 
-const ICON: Record<ModeCardId, string> = {
-  normal: '🗺️', waves: '🌊', endless: '♾️', bossrush: '👑', tower: '🗼', towerdef: '🏰', daily: '📅', code: '🔑',
-};
-
 const CARDS: CardDef[] = [
   ...MODES.map((m): CardDef => ({
     id: m,
-    icon: ICON[m],
     name: MODE_LABEL[m],
     desc: modeDesc(m),
     next: m === 'towerdef' ? 'Entra directo' : 'Luego: hueco y Pokémon',
   })),
-  { id: 'daily', icon: ICON.daily, name: 'Desafío diario', desc: 'Los mismos pisos, jefes, objetos y Pokémon para todos hoy. Siempre en Normal.', next: 'Luego: hueco' },
-  { id: 'code', icon: ICON.code, name: 'Partida con código', desc: 'Escribe el código de otra partida y juega exactamente lo mismo.', next: 'Luego: hueco y código' },
+  { id: 'daily', name: 'Desafío diario', desc: 'Los mismos pisos, jefes, objetos y Pokémon para todos hoy. Siempre en Normal.', next: 'Luego: hueco' },
+  { id: 'code', name: 'Partida con código', desc: 'Escribe el código de otra partida y juega exactamente lo mismo.', next: 'Luego: hueco y código' },
 ];
 
 /** La tarjeta elegida la última vez (para volver a ella). */
@@ -141,7 +136,7 @@ export class ModeScene extends Phaser.Scene {
     const { w, h } = CARD;
     const bg = drawBox(this.add.graphics(), 0, 0, w, h, { radius: 16, fill: COLORS.panel });
     const frame = this.add.graphics();
-    const icon = this.add.text(w / 2, 32, def.icon, { fontFamily: UI.FONT, fontSize: '38px' }).setOrigin(0.5);
+    const icon = addModeIcon(this, def.id, w / 2, 32);
     const name = this.add.text(w / 2, 74, def.name, { fontFamily: UI.FONT, fontSize: '20px', fontStyle: 'bold', color: '#2b3a67', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5);
     const desc = this.add.text(w / 2, 92, def.desc, { fontFamily: UI.FONT, fontSize: '12px', color: '#4a5578', align: 'center', wordWrap: { width: w - 20 } }).setOrigin(0.5, 0);
     const record = this.add.text(w / 2, h - 36, '', { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: '#b8860b', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5);
