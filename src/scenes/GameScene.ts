@@ -137,6 +137,14 @@ import { chainBreak, chainHit, chainOdds, chainVisible, newShinyChain, rollShiny
 import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
 import { cry, playMenuMusic, playTrack, sfx } from '../ui/audio';
+import { setMusicTempo } from '../ui/audio';
+import { bossCinematic, bossTitle } from '../ui/art/bossIntro';
+import { bossHud } from '../ui/art/bossHud';
+import { bossAmbience } from '../ui/art/bossArena';
+import { bossDeathFlourish, finalBossDeath, finalDeathMs, finaleVictoryBanner } from '../ui/art/bossDeath';
+import { ARENA_AT, fallTheme } from '../level/arenaPhase';
+import { BOSS_PHASE2_AT } from '../data/bossPatterns';
+import { GAME_ZOOM as BOSS_CAM_ZOOM } from '../ui/layout';
 import { shotSfx } from '../data/sounds';
 import { trackForBiome, TRACKS } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
@@ -533,6 +541,10 @@ export class GameScene extends Phaser.Scene {
   private floorIntroOn = false;
   /** Reto final (piso 6 de Normal): trío o gigante y los datos de cada miembro. */
   private finale?: Finale;
+  /** Presentación de los jefes (bossArena/bossDeath): ambiente de la sala, fase 2 ya mostrada y fin de la muerte del final. */
+  private bossFx?: ReturnType<typeof bossAmbience>;
+  private bossHot = false;
+  private finaleDeathUntil = 0;
   private finaleMembers: { id: number; name: string; types: string[]; stats: BaseStats; key: string }[] = [];
   /** Fases del reto final (finalePhases.ts): fase actual (compartida por el trío), fin de la pausa de cambio, vida
    * máxima sumada, ataques desde la última nova y hasta cuándo dura un ataque grande (juicio o nova). */
@@ -839,7 +851,7 @@ export class GameScene extends Phaser.Scene {
   /** Restos de PS del robo de vida (se cura de uno en uno). */
   private lifestealAcc = 0;
   /** Barra grande del jefe arriba de la pantalla (nombre, tipo y vida), como en Isaac. */
-  private bossBar?: { boss: Sprite; bar: ReturnType<typeof addHpBar>; objects: Phaser.GameObjects.GameObject[]; group?: Sprite[]; shield?: { g: Phaser.GameObjects.Graphics; x: number; w: number } };
+  private bossBar?: { boss: Sprite; bar: { set: (ratio: number) => void }; objects: Phaser.GameObjects.GameObject[]; group?: Sprite[]; shield?: { g: Phaser.GameObjects.Graphics; x: number; w: number } };
   private escKey!: Phaser.Input.Keyboard.Key;
   private menuPadPrev = false;
   /** El cursor está sobre una ranura de poder: ahí un clic no dispara. */
@@ -983,6 +995,14 @@ export class GameScene extends Phaser.Scene {
     this.finaleMaxSum = 0;
     this.finaleSinceNova = 0;
     this.finaleBigUntil = 0;
+    this.bossFx = undefined;
+    this.bossHot = false;
+    this.finaleDeathUntil = 0;
+    // Por si se salió en mitad de la intro de cine o de la muerte del final (física parada o a cámara lenta)
+    if (this.physics?.world) {
+      this.physics.world.timeScale = 1;
+      if (this.physics.world.isPaused) this.physics.resume();
+    }
     this.summonKinds = [];
     this.minibossRoom = undefined;
     this.healBudget = 0;
@@ -5841,7 +5861,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.finalePh = 1;
     this.finaleMaxSum = 0;
     this.finaleMembers.forEach((m, k) => {
-      const size = trio ? 130 : GIANT_SIZE;
+      const size = trio ? 160 : GIANT_SIZE;
       const x = trio ? room.cx + (k - 1) * 220 : room.cx;
       const y = trio ? room.cy - 80 + (k === 1 ? -40 : 0) : room.cy - 60;
       const b = this.enemies.create(x, y, `${m.key}-front`) as Sprite;
@@ -6001,12 +6021,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Intro "VS" (supervisor) antes de que el jefe ataque: la partida se pausa debajo y se salta con Enter/Esc/clic/A. */
-  private showBossIntro(ai: EnemyAI, o: { boss?: { texture: string; name: string; types: string[] }; extra?: { texture: string; name: string; types: string[] }[]; tier?: 'mini' | 'final'; subtitle?: string } = {}) {
+  private showBossIntro(ai: EnemyAI, o: { boss?: { texture: string; name: string; types: string[] }; extra?: { texture: string; name: string; types: string[] }[]; tier?: 'mini' | 'final'; subtitle?: string; cine?: boolean } = {}) {
     if (this.floorIntroOn) {
       ai.nextAttack = Number.POSITIVE_INFINITY;
       this.events.once('floorintro-done', () => this.showBossIntro(ai, o));
       return;
     }
+    // Jefes (no minijefes): ambiente de la sala e intro de cine antes de la ficha del combate
+    if (o.tier !== 'mini' && !o.cine && this.bossStage(ai, o.tier === 'final', () => this.showBossIntro(ai, { ...o, cine: true }))) return;
     if (!this.scene.manager.keys['BossIntro'] || this.scene.isActive('BossIntro')) return;
     ai.nextAttack = Number.POSITIVE_INFINITY;
     const cap = (n: string) => n.charAt(0).toUpperCase() + n.slice(1);
@@ -6034,6 +6056,70 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       },
     });
     this.scene.pause();
+  }
+
+  /** Mete un objeto en la capa del HUD (cámara sin zoom). */
+  private toHud<T extends Phaser.GameObjects.GameObject>(o: T): T {
+    this.hudLayer.add(o);
+    if (this.hudCam) o.cameraFilter &= ~this.hudCam.id;
+    return o;
+  }
+
+  /**
+   * Ambiente de la sala del jefe y, la primera vez que se entra (no al reanudar a mitad de pelea), la intro de cine con
+   * todo quieto e invulnerable. Devuelve true si ha lanzado la intro (y `then` se llama al acabar).
+   */
+  private bossStage(ai: EnemyAI, final: boolean, then: () => void): boolean {
+    const bosses = this.enemies.getChildren().map((c) => c as Sprite).filter((e) => e.active && (e.getData('ai') as EnemyAI | undefined)?.boss && !e.getData('miniboss') && !e.getData('helper'));
+    const b = bosses.find((e) => e.getData('ai') === ai) ?? bosses[0];
+    if (!b) return false;
+    const types = (b.getData('btypes') as string[] | undefined) ?? this.bossTypes;
+    const theme = fallTheme(types, b.getData('speciesId') as number | undefined);
+    const i = this.interior(this.current);
+    this.bossFx?.destroy();
+    this.bossHot = false;
+    this.bossFx = bossAmbience(this, { x0: i.x0, y0: i.y0, w: ROOM.w, h: ROOM.h, glow: FALL_GLOW[theme], tint: FALL_TINT[theme], final, low: lowFx() });
+    const key = `${this.floorSeed}:${this.current.id}`;
+    let seen = false;
+    try {
+      seen = !!this.resume && localStorage.getItem('pokeisaac.bossCine') === key;
+      localStorage.setItem('pokeisaac.bossCine', key);
+    } catch {
+      // sin almacenamiento: se ve siempre
+    }
+    if (seen) return false;
+    // Todo quieto e invulnerable mientras dura (la vida del jefe se restaura al acabar)
+    const hps = bosses.map((e) => [e, e.getData('hp')] as const);
+    this.physics.pause();
+    this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 4000);
+    const f = this.finale;
+    const name = final && f ? (f.kind === 'trio' ? f.name : this.finaleMembers[0]?.name ?? this.bossName) : ((b.getData('bname') as string | undefined) ?? this.bossName);
+    const title = final ? (f?.kind === 'trio' ? 'Reto final · Tres legendarios a la vez' : `Reto final · ${bossTitle(b.getData('speciesId') as number | undefined, types)}`) : bossTitle(b.getData('speciesId') as number | undefined, types);
+    bossCinematic(this, {
+      boss: b, others: bosses.filter((e) => e !== b), name: name.charAt(0).toUpperCase() + name.slice(1), title, color: typeColor(types[0] ?? 'normal'),
+      final, low: lowFx(), hud: (o) => this.toHud(o), zoom: BOSS_CAM_ZOOM, follow: this.player, roar: () => sfx('roar'),
+      onDone: () => {
+        this.physics.resume();
+        for (const [e, hp] of hps) if (e.active) e.setData('hp', hp);
+        this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 600);
+        then();
+      },
+    });
+    return true;
+  }
+
+  /** Reto final superado: espera a que acabe la muerte épica, cartel de victoria con la recompensa y luego `win`. */
+  private finaleOutro(bonus: number, win: () => void) {
+    const wait = Math.max(0, this.finaleDeathUntil - this.time.now);
+    this.invulnUntil = Math.max(this.invulnUntil, this.time.now + wait + 5000);
+    this.playerKnockUntil = Math.max(this.playerKnockUntil, this.time.now + wait + 5000);
+    this.player.setVelocity(0, 0);
+    const f = this.finale;
+    const who = f ? (f.kind === 'trio' ? f.name : (this.finaleMembers[0]?.name ?? '')) : this.bossName;
+    this.time.delayedCall(wait, () => {
+      sfx('record');
+      finaleVictoryBanner(this, (o) => this.toHud(o), { name: who.charAt(0).toUpperCase() + who.slice(1), bonus, low: lowFx(), onDone: win });
+    });
   }
 
   // --- Ataques de los jefes (bossPatterns.ts): aviso, ataque y fase 2 ---
@@ -8043,6 +8129,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const hp = list.reduce((a, e) => a + (e.active ? Math.max(0, e.getData('hp') as number) : 0), 0);
       const max = list.reduce((a, e) => a + ((e.getData('maxHp') as number | undefined) ?? 1), 0);
       bb.bar.set(hp / Math.max(1, max));
+      // Fase 2: la sala se intensifica y la música acelera
+      if (!this.bossHot && hp / Math.max(1, max) < BOSS_PHASE2_AT) {
+        this.bossHot = true;
+        this.bossFx?.intensify();
+        setMusicTempo(1.12);
+      }
       if (bb.shield) {
         // Escudo del jefe Escudado: barra azul acero bajo la de vida
         const sh = list.reduce((a, e) => a + (e.active ? Math.max(0, (e.getData('shieldHp') as number | undefined) ?? 0) : 0), 0);
@@ -8561,7 +8653,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const etypes = boss ? ((enemy.getData('btypes') as string[] | undefined) ?? this.bossTypes) : ((enemy.getData('types') as string[] | undefined) ?? ['normal']);
     const ecolor = typeColor(etypes[0] ?? 'normal');
     const mini = !!enemy.getData('miniboss');
-    if (boss || mini) faintBoss(this, enemy, feetY, ecolor, (x, y) => typeImpact(this, x, y, etypes[0] ?? this.bossType, 1.4, 12));
+    if (boss && others.length === 0 && enemy.getData('finale')) {
+      // Reto final: muerte épica (el cartel de victoria espera a que acabe, ver finaleOutro)
+      this.finaleDeathUntil = this.time.now + finalDeathMs(lowFx());
+      this.invulnUntil = Math.max(this.invulnUntil, this.finaleDeathUntil + 600);
+      finalBossDeath(this, enemy, { color: ecolor, zoom: BOSS_CAM_ZOOM, follow: this.player, low: lowFx(), onDone: () => undefined });
+    } else if (boss || mini) {
+      faintBoss(this, enemy, feetY, ecolor, (x, y) => typeImpact(this, x, y, etypes[0] ?? this.bossType, 1.4, 12));
+      if (boss && others.length === 0) bossDeathFlourish(this, enemy.x, enemy.y, enemy.displayWidth, ecolor, lowFx());
+    }
     else faintEnemy(this, enemy, feetY, ecolor);
     if (enemy.getData('runaway') || enemy.getData('mimic')) this.eventFoeDefeated(enemy);
     if (enemy.getData('thief')) this.thiefDefeated();
@@ -8581,6 +8681,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (shouldMultiply(this.activeRule(), boss || mini || !!enemy.getData('helper') || !!enemy.getData('runaway') || !!enemy.getData('mimic'), Math.random)) this.spawnSmallCopy(enemy);
     enemy.destroy();
     if (boss && others.length === 0) {
+      this.bossFx?.destroy();
+      this.bossFx = undefined;
       playTrack(trackForBiome(this.biome.id));
       // Al caer el jefe se van sus ayudantes
       for (const c of [...this.enemies.getChildren()]) {
@@ -8630,20 +8732,22 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   private buildBossBar(boss: Sprite, label = this.bossName, type = this.bossType, group?: Sprite[]) {
     this.bossBar?.objects.forEach((o) => o.destroy());
-    // En la franja de arriba, encima de la sala (no la tapa)
-    const bx = CX - 440;
-    const box = drawHudFrame(this.add.graphics(), bx, 4, 880, 52);
-    const name = this.add.text(bx + 22, 30, label, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: '#f8f8f8' }).setOrigin(0, 0.5);
-    const chip = addTypeChip(this, bx + 20 + name.width + 56, 30, typeNameEs(type), typeColor(type), 92, 24);
-    const barX = bx + 20 + name.width + 116;
-    const bar = addHpBar(this, barX, 23, bx + 860 - barX, 14);
+    // En la franja de arriba, encima de la sala (no la tapa). Barra de jefe (bossHud): marcas de fase y título;
+    // la del reto final, dorada y más gruesa.
+    const final = !!boss.getData('finale');
+    const types = (boss.getData('btypes') as string[] | undefined) ?? this.bossTypes;
+    const sp = boss.getData('speciesId') as number | undefined;
+    const marks = [ARENA_AT[0], BOSS_PHASE2_AT, ARENA_AT[1], ...(final && this.finale?.kind === 'giant' ? [GIANT_RAGE_AT] : [])];
+    const title = final ? (this.finale?.kind === 'trio' ? 'Reto final · Trío legendario' : `Reto final · ${bossTitle(sp, types)}`) : bossTitle(sp, types);
+    const hud = bossHud(this, { x: CX - 440, w: 880, label, title, typeLabel: typeNameEs(type), color: typeColor(type), final, marks });
+    const bar = { set: hud.set };
     const shG = this.add.graphics();
-    const objects = [box, name, ...chip, ...bar.objects, shG];
+    const objects = [...hud.objects, shG];
     for (const o of objects) {
       this.hudLayer.add(o);
       if (this.hudCam) o.cameraFilter &= ~this.hudCam.id;
     }
-    this.bossBar = { boss, bar, objects, group, shield: { g: shG, x: barX + 36, w: bx + 860 - barX - 36 } };
+    this.bossBar = { boss, bar, objects, group, shield: { g: shG, x: hud.barX, w: hud.barW } };
   }
 
   // --- Monedas y bayas en el suelo ---
@@ -9239,8 +9343,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (isFinalFloor(this.mode, this.floorNum)) {
         // Reto final superado
         this.mission({ kind: 'win' });
-        this.giveTickets(FINALE_BONUS);
-        this.finish(true, `¡Has superado el reto final!\n+${this.earned} tickets en total\nPulsa R, Start o haz clic para ver el resumen`);
+        const bonus = this.giveTickets(FINALE_BONUS);
+        this.finaleOutro(bonus, () => this.finish(true, `¡Has superado el reto final!\n+${this.earned} tickets en total\nPulsa R, Start o haz clic para ver el resumen`));
         return;
       }
       if (isFinaleGate(this.mode, this.floorNum)) {

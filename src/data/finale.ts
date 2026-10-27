@@ -34,9 +34,9 @@ export const TRIO_HP_MUL = 1.3;
 export const GIANT_HP_MUL = 3.5;
 /** El gigante se enfurece por debajo de esta parte de su vida. */
 export const GIANT_RAGE_AT = 0.25;
-export const GIANT_SIZE = 200;
+export const GIANT_SIZE = 230;
 /** Tickets extra por superar el reto final. */
-export const FINALE_BONUS = 60;
+export const FINALE_BONUS = 90;
 
 /**
  * Elige el reto: trío o gigante al 50 %. `ok` dice qué Pokémon se pueden usar (sin conexión, solo los guardados);

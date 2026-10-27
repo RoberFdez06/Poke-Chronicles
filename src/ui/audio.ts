@@ -14,6 +14,7 @@ let musicWanted = false;
 let musicTimer: number | undefined;
 let nextStepAt = 0;
 let step = 0;
+let tempoMul = 1;
 /** Pista que suena: la del menú por defecto; playTrack() la cambia (biomas y jefe, ver data/music.ts). */
 const MENU_TRACK: MusicTrack = { bpm: MUSIC.bpm, lead: 'square', melody: MUSIC.melody, bass: MUSIC.bass };
 let track: MusicTrack = MENU_TRACK;
@@ -126,8 +127,14 @@ export async function cry(id: number) {
 export function playTrack(next: MusicTrack) {
   if (track === next) return;
   track = next;
+  tempoMul = 1;
   step = 0;
   playMusic();
+}
+
+/** Ritmo de la pista que suena (1 = normal). La fase 2 del jefe la acelera; cambiar de pista lo devuelve a 1. */
+export function setMusicTempo(mul: number) {
+  tempoMul = Math.max(0.5, Math.min(2, mul));
 }
 
 /** Vuelve a la música del menú. */
@@ -147,7 +154,7 @@ function startLoop() {
   musicTimer = window.setInterval(() => {
     // Programa los pasos del próximo cuarto de segundo
     while (nextStepAt < c.currentTime + 0.25) {
-      dur = stepSeconds(track.bpm);
+      dur = stepSeconds(track.bpm * tempoMul);
       const i = step % track.melody.length;
       const m = track.melody[i];
       const b = track.bass[i % track.bass.length];
