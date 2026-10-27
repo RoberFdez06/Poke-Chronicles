@@ -19,14 +19,20 @@ test('con mando: se juega, se guarda, se continúa y B vuelve atrás', async ({ 
   await waitScene(page, 'Title', 1500);
   await toMenu(page, () => padPress(page, PAD.A));
 
-  // Menú → Huecos y B vuelve
+  // Menú → Modos y B vuelve
   await padPress(page, PAD.A);
-  await waitScene(page, 'Slots');
+  await waitScene(page, 'Mode');
   await padPress(page, PAD.B);
   await waitScene(page, 'Menu');
 
-  // Primera partida: hueco → región (B vuelve a los huecos) → inicial (con la cruceta)
+  // Primera partida: modos (la cruceta cambia de tarjeta y vuelve) → hueco → región (B vuelve a los huecos) → inicial
   await padPress(page, PAD.A);
+  await waitScene(page, 'Mode');
+  await padPress(page, PAD.RIGHT);
+  await waitSceneProp(page, 'Mode', 'selected', 1);
+  await padPress(page, PAD.LEFT);
+  await waitSceneProp(page, 'Mode', 'selected', 0);
+  await padPress(page, PAD.A); // Normal
   await waitScene(page, 'Slots');
   await padPress(page, PAD.A);
   await waitScene(page, 'FirstStarter');
@@ -37,18 +43,6 @@ test('con mando: se juega, se guarda, se continúa y B vuelve atrás', async ({ 
   await padPress(page, PAD.A); // Kanto
   await waitSceneProp(page, 'FirstStarter', 'step', 'starter');
   await padPress(page, PAD.A); // inicial del medio
-  await waitScene(page, 'Mode');
-  // Modo: B vuelve a la colección; A otra vez al modo y A a Normal
-  await padPress(page, PAD.B);
-  await waitScene(page, 'Starter', 1200);
-  await padPress(page, PAD.A);
-  await waitScene(page, 'Mode');
-  // La cruceta cambia de modo y vuelve
-  await padPress(page, PAD.DOWN);
-  await waitSceneProp(page, 'Mode', 'shown', 1);
-  await padPress(page, PAD.UP);
-  await waitSceneProp(page, 'Mode', 'shown', 0);
-  await padPress(page, PAD.A);
   await waitScene(page, 'Game', 3000);
 
   // Stick izquierdo: se mueve; stick derecho: dispara
@@ -74,7 +68,9 @@ test('con mando: se juega, se guarda, se continúa y B vuelve atrás', async ({ 
   await waitScene(page, 'Menu');
   expect(await runSaved(page, 0)).not.toBeNull();
 
-  // Hueco ocupado → diálogo; B lo cierra; A → Continuar
+  // Modos → Normal → hueco ocupado → diálogo; B lo cierra; A → Continuar
+  await padPress(page, PAD.A);
+  await waitScene(page, 'Mode');
   await padPress(page, PAD.A);
   await waitScene(page, 'Slots');
   await padPress(page, PAD.A);

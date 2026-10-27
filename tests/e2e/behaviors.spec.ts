@@ -18,13 +18,13 @@ test('tirador, mina, escudado y curandero', async ({ page }) => {
   await waitScene(page, 'Title', 1500);
   await toMenu(page);
   await press(page, 'Enter');
+  await waitScene(page, 'Mode');
+  await press(page, 'Enter');
   await waitScene(page, 'Slots');
   await press(page, 'Enter');
   await waitScene(page, 'FirstStarter');
   await press(page, 'Enter');
   await waitSceneProp(page, 'FirstStarter', 'step', 'starter');
-  await press(page, 'Enter');
-  await waitScene(page, 'Mode');
   await press(page, 'Enter');
   await waitScene(page, 'Game', 3500);
   await page.waitForTimeout(1200);

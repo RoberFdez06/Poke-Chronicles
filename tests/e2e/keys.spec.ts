@@ -39,13 +39,13 @@ test('cambiar una tecla en Ajustes y usarla en la partida', async ({ page }) => 
 
   // Partida: Q suelta la bomba (empiezas con una)
   await press(page, 'Enter');
+  await waitScene(page, 'Mode');
+  await press(page, 'Enter');
   await waitScene(page, 'Slots');
   await press(page, 'Enter');
   await waitScene(page, 'FirstStarter');
   await press(page, 'Enter');
   await waitSceneProp(page, 'FirstStarter', 'step', 'starter');
-  await press(page, 'Enter');
-  await waitScene(page, 'Mode');
   await press(page, 'Enter');
   await waitScene(page, 'Game', 3500);
   await waitSceneProp(page, 'Game', 'bombs', 1, 1500);

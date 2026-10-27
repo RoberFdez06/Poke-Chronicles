@@ -165,7 +165,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
   private goBack() {
     if (this.stage === 'team') return this.showStage('levels');
     if (this.stage === 'levels') return this.showStage('maps');
-    goTo(this, 'Mode', { slot: this.back.slot, starterId: this.back.starterId });
+    goTo(this, 'Mode', { select: 'towerdef' });
   }
 
   private title(text: string, sub?: string) {

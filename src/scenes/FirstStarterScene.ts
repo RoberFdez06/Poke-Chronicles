@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { startWithStarter } from './runLaunch';
 import { fitDesign } from '../ui/layout';
 import { fetchPokemonCard, PokemonCard } from '../data/pokeapi';
 import { REGIONS, Region } from '../data/regions';
@@ -142,7 +143,7 @@ export class FirstStarterScene extends Phaser.Scene {
     const id = this.cards[i].id;
     unlockPokemon(id);
     void cry(id);
-    goTo(this, 'Mode', { starterId: id, slot: this.slot });
+    startWithStarter(this, this.slot, id);
   }
 
   private back() {

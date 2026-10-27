@@ -9,6 +9,7 @@ import { accountInfo } from '../net/cloud';
 import { FONT, drawBox, fadeIn, goTo } from '../ui/theme';
 import { addLandscape, nextLandscape, PIX, WALK_Y, type Landscape } from '../ui/art/landscape';
 import { addPixelText, drawPixelArrow } from '../ui/art/pixel';
+import { NavInput } from '../ui/nav';
 
 /** Récord de cada modo en una línea: "Normal 2 · Oleadas 7 · …". */
 const recordsLine = () => {
@@ -24,8 +25,6 @@ const MENU = { x: 480, top: 200, w: 340, row: 42, pad: 18 };
 const TEXT = '#303848';
 const TEXT_SHADOW = '#c8c8c0';
 
-type Key = Phaser.Input.Keyboard.Key;
-type KeyName = 'UP' | 'DOWN' | 'W' | 'S' | 'ENTER' | 'SPACE' | 'ESC' | 'BACKSPACE';
 
 interface MenuItem {
   label: string;
@@ -43,13 +42,13 @@ export class MenuScene extends Phaser.Scene {
   private items: MenuItem[] = [];
   private rows: Phaser.GameObjects.Text[] = [];
   private arrow!: Phaser.GameObjects.Graphics;
-  private keys!: Record<KeyName, Key>;
+  /** Teclado y mando como en el resto de menús (ui/nav.ts): cada uno funciona solo. */
+  private nav?: NavInput;
   private selected = 0;
   private overlay?: Phaser.GameObjects.Container;
   private toast!: Phaser.GameObjects.Container;
   private toastText!: Phaser.GameObjects.Text;
   private toastTimer?: Phaser.Time.TimerEvent;
-  private padPrev = { up: false, down: false, ok: false, back: false };
   private alive = true;
   private land!: Landscape;
   private walkers: Walker[] = [];
@@ -60,7 +59,7 @@ export class MenuScene extends Phaser.Scene {
 
   create() {
     this.items = [
-      { label: 'Jugar', action: () => goTo(this, 'Slots') },
+      { label: 'Jugar', action: () => goTo(this, 'Mode') },
       { label: 'Gacha', action: () => this.openGacha() },
       { label: 'Pokédex', action: () => goTo(this, 'Pokedex') },
       { label: 'Mejoras', action: () => goTo(this, 'Upgrades') },
@@ -73,9 +72,6 @@ export class MenuScene extends Phaser.Scene {
     this.selected = 0;
     this.overlay = undefined;
     this.toastTimer = undefined;
-    // N23: como si todo estuviera pulsado al llegar; así una A que sigue apretada desde la pantalla anterior no
-    // cuenta como pulsación nueva (hay que soltarla primero)
-    this.padPrev = { up: true, down: true, ok: true, back: true };
     this.alive = true;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (this.alive = false));
     fadeIn(this);
@@ -104,7 +100,7 @@ export class MenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5).setDepth(21);
     this.add
-      .text(480, 628, 'Flechas o W S, ratón o mando para moverte · Enter, espacio, clic o A para elegir', {
+      .text(480, 628, 'Flechas o W S, o ratón para moverte · Enter, espacio o clic para elegir', {
         fontFamily: FONT, fontSize: '12px', color: '#a8b0c8',
       })
       .setOrigin(0.5).setDepth(21);
@@ -115,8 +111,8 @@ export class MenuScene extends Phaser.Scene {
     this.toastText = this.add.text(480, 22, '', this.rowStyle(18)).setOrigin(0.5);
     this.toast = this.add.container(0, 510, [tg, this.toastText]).setDepth(40).setVisible(false);
 
-    this.keys = this.input.keyboard!.addKeys('UP,DOWN,W,S,ENTER,SPACE,ESC,BACKSPACE') as Record<KeyName, Key>;
-    Object.values(this.keys).forEach((k) => k.reset()); // ver NavInput: olvida pulsaciones viejas
+    // N23: NavInput ignora lo que ya estaba pulsado al llegar (una A que sigue apretada de la pantalla anterior)
+    this.nav = new NavInput(this);
     this.select(0);
 
     // Pokémon de tu colección paseando por el camino. Se cargan en segundo plano.
@@ -254,30 +250,11 @@ export class MenuScene extends Phaser.Scene {
   update(_time: number, delta: number) {
     this.land?.update(delta);
     this.moveWalkers(delta);
-    if (!this.keys) return;
-    const J = Phaser.Input.Keyboard.JustDown;
-    const k = this.keys;
-
-    const up = J(k.UP) || J(k.W);
-    const down = J(k.DOWN) || J(k.S);
-    let dy = (down ? 1 : 0) - (up ? 1 : 0);
-    let ok = J(k.ENTER) || J(k.SPACE);
-    let back = J(k.ESC) || J(k.BACKSPACE);
-
-    const pad = this.input.gamepad?.getPad(0);
-    if (pad && pad.connected) {
-      const now = {
-        up: pad.up || pad.leftStick.y < -0.5,
-        down: pad.down || pad.leftStick.y > 0.5,
-        ok: pad.A,
-        back: pad.B,
-      };
-      if (now.up && !this.padPrev.up) dy -= 1;
-      if (now.down && !this.padPrev.down) dy += 1;
-      if (now.ok && !this.padPrev.ok) ok = true;
-      if (now.back && !this.padPrev.back) back = true;
-      this.padPrev = now;
-    }
+    if (!this.nav) return;
+    const s = this.nav.read();
+    const dy = s.dy;
+    const ok = s.ok;
+    const back = s.back;
 
     if (this.overlay) {
       if (ok || back) this.closeControls();

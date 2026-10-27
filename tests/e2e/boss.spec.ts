@@ -26,13 +26,13 @@ test('el jefe invoca ayudantes con aviso y se van con él', async ({ page }) => 
   await waitScene(page, 'Title', 2500);
   await toMenu(page);
   await press(page, 'Enter');
+  await waitScene(page, 'Mode');
+  await press(page, 'Enter');
   await waitScene(page, 'Slots');
   await press(page, 'Enter');
   await waitScene(page, 'FirstStarter');
   await press(page, 'Enter');
   await waitSceneProp(page, 'FirstStarter', 'step', 'starter');
-  await press(page, 'Enter');
-  await waitScene(page, 'Mode');
   await press(page, 'Enter');
   await waitScene(page, 'Game', 3500);
   await page.waitForTimeout(1500);
@@ -77,13 +77,13 @@ test('al acabar: resumen, historial y vuelta al menú (T28)', async ({ page }) =
   await waitScene(page, 'Title', 2500);
   await toMenu(page);
   await press(page, 'Enter');
+  await waitScene(page, 'Mode');
+  await press(page, 'Enter');
   await waitScene(page, 'Slots');
   await press(page, 'Enter');
   await waitScene(page, 'FirstStarter');
   await press(page, 'Enter');
   await waitSceneProp(page, 'FirstStarter', 'step', 'starter');
-  await press(page, 'Enter');
-  await waitScene(page, 'Mode');
   await press(page, 'Enter');
   await waitScene(page, 'Game', 3500);
   await page.waitForTimeout(1500);
@@ -105,6 +105,8 @@ test('al acabar: resumen, historial y vuelta al menú (T28)', async ({ page }) =
   await press(page, 'Escape');
   await waitScene(page, 'Menu');
   // Desde Partidas: el botón Historial (opción 4: arriba dos veces desde el hueco 1) y Esc vuelve a Partidas
+  await press(page, 'Enter');
+  await waitScene(page, 'Mode');
   await press(page, 'Enter');
   await waitScene(page, 'Slots');
   await press(page, 'ArrowUp');
