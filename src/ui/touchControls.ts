@@ -34,6 +34,8 @@ export class TouchControls {
   private buttons: Btn[] = [];
   private pressed = new Set<TouchButton>();
   private objects: Phaser.GameObjects.GameObject[] = [];
+  /** Radio de toque de los botones (mínimo 44 px CSS de diámetro). */
+  private hitR = BTN + 10;
 
   constructor(
     private scene: Phaser.Scene,
@@ -60,26 +62,34 @@ export class TouchControls {
       move: stick(HUD.left.w / 2, bottom, 0x8fd3ff),
       aim: stick(W - HUD.right.w / 2, bottom, 0xff9a7a),
     };
+    // Tamaño de los botones según lo que mide de verdad la pantalla: al menos 44 px CSS de zona de toque (en un
+    // móvil el lienzo de 1920×1080 se ve a ~0,36, y con radio 30 los botones medían 22 px)
+    const disp = Math.max(0.1, scene.scale.displaySize.width / W);
+    const r = Math.round(Math.min(58, Math.max(BTN, 21 / disp)));
+    this.hitR = Math.max(r + 8, 22 / disp);
     const btn = (id: TouchButton, x: number, y: number, label: string, color: number) => {
-      const circle = keep(scene.add.circle(x, y, BTN, color, 0.5).setStrokeStyle(3, 0xffffff, 0.7));
-      keep(scene.add.text(x, y, label, { fontFamily: 'sans-serif', fontSize: label.length > 2 ? '15px' : '24px', fontStyle: 'bold', color: '#ffffff' }).setOrigin(0.5));
+      const circle = keep(scene.add.circle(x, y, r, color, 0.55).setStrokeStyle(3, 0xffffff, 0.75));
+      const size = Math.round(r * (label.length > 2 ? 0.46 : 0.8));
+      keep(scene.add.text(x, y, label, { fontFamily: 'sans-serif', fontSize: `${size}px`, fontStyle: 'bold', color: '#ffffff' }).setOrigin(0.5).setStroke('#101828', 3));
       this.buttons.push({ id, x, y, circle });
     };
-    // Encima del joystick derecho: poderes 1-4 en rombo; encima del izquierdo: activo, bomba y usar
+    // Dos columnas dentro de cada franja lateral, encima de su joystick (no tapan la sala ni se pisan)
+    const col = Math.min(62, HUD.right.w / 2 - r - 2);
+    const row1 = bottom - R - r - 14;
+    const row2 = row1 - 2 * r - 14;
+    const row3 = row2 - 2 * r - 14;
     const ax = this.sticks.aim.cx;
-    const ay = bottom - R - 100;
-    btn('power1', ax, ay - 46, '1', 0x3b6fd6);
-    btn('power2', ax + 56, ay, '2', 0x3b6fd6);
-    btn('power3', ax, ay + 46, '3', 0x3b6fd6);
-    btn('power4', ax - 56, ay, '4', 0x3b6fd6);
-    // T53: parry encima del rombo de poderes, a mano del pulgar derecho (el que apunta)
-    btn('parry', ax, ay - 112, 'Parry', 0xd4a017);
+    btn('power1', ax - col, row2, '1', 0x3b6fd6);
+    btn('power2', ax + col, row2, '2', 0x3b6fd6);
+    btn('power3', ax - col, row1, '3', 0x3b6fd6);
+    btn('power4', ax + col, row1, '4', 0x3b6fd6);
+    // T53: parry encima de los poderes, a mano del pulgar derecho (el que apunta)
+    btn('parry', ax, row3, 'Parry', 0xd4a017);
     const lx = this.sticks.move.cx;
-    const ly = bottom - R - 70;
-    btn('active', lx - 64, ly, 'Activo', 0x8e44ad);
-    btn('bomb', lx, ly - 30, 'Bomba', 0x555555);
-    btn('use', lx + 64, ly, 'Usar', 0x2e9e5b);
-    btn('potion', lx, ly + 34, 'Poción', 0x9b59d0);
+    btn('active', lx - col, row2, 'Activo', 0x8e44ad);
+    btn('bomb', lx + col, row2, 'Bomba', 0x555555);
+    btn('use', lx - col, row1, 'Usar', 0x2e9e5b);
+    btn('potion', lx + col, row1, 'Poción', 0x9b59d0);
 
     scene.input.on('pointerdown', this.onDown, this);
     scene.input.on('pointermove', this.onMove, this);
@@ -109,7 +119,7 @@ export class TouchControls {
   }
 
   private hitButton(p: Phaser.Input.Pointer): Btn | null {
-    return this.buttons.find((b) => Phaser.Math.Distance.Between(p.x, p.y, b.x, b.y) <= BTN + 10) ?? null;
+    return this.buttons.find((b) => Phaser.Math.Distance.Between(p.x, p.y, b.x, b.y) <= this.hitR) ?? null;
   }
 
   private onDown(p: Phaser.Input.Pointer) {

@@ -2964,8 +2964,9 @@ export class GameScene extends Phaser.Scene {
       if (this.shop.length === 0) this.shop = rollShop(this.rng(RNG.shop), new Set(this.passives), this.movePool, this.passivePool(), this.floorNum);
       this.buildShop(this.floor.rooms[this.floor.shopId]);
     }
-    // «Enter / A / clic: …» en un panel fijo en la franja de abajo (antes flotaba sobre cada cosa)
-    this.prompt = new PromptPanel(this, GAME_VIEW.x + 12, HUD.bottom.y + HUD.bottom.h / 2, GAME_VIEW.w - 24, (o) => this.toHud(o));
+    // «Enter / A / clic: …» en un panel fijo abajo a la izquierda de la sala (antes flotaba sobre cada cosa; la franja
+    // de abajo es de los consejos)
+    this.prompt = new PromptPanel(this, GAME_VIEW.x + 12, HUD.bottom.y - 34, GAME_VIEW.w - 24, (o) => this.toHud(o));
 
     // Si ya habías vencido al jefe, la trampilla sigue ahí
     if (this.mode === 'tower') this.towerEnter();
@@ -4147,7 +4148,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.megaRoomId !== undefined && this.visited.has(this.megaRoomId) && !this.eventsDone.has(megaStoneDoneKey(this.megaRoomId))) marks.set(this.megaRoomId, ROOM_EVENT_COLOR.megaStone);
     // T56: salas con regla, en cuanto se ven en el mapa y hasta limpiarlas
     for (const [id, rule] of this.roomRules) if (!this.cleared.has(id)) marks.set(id, ROOM_RULE_COLOR[rule]);
-    const bottom = drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2, marks);
+    const bottom = drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2, marks, (o) => this.toHud(o));
     this.toasts?.setTop(bottom + 16);
   }
 

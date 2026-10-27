@@ -56,7 +56,7 @@ function keyCap(scene: Phaser.Scene, c: Phaser.GameObjects.Container, h: number,
   const g = scene.add.graphics();
   c.add(g);
   const arrow = ['↑', '↓', '←', '→'].includes(text);
-  const size = Math.max(8, Math.round(h * (text.length > 2 ? 0.48 : 0.6)));
+  const size = Math.max(8, Math.round(h * (text.length > 2 ? 0.55 : 0.62)));
   let w = h;
   let t: Phaser.GameObjects.Text | undefined;
   if (!arrow) {

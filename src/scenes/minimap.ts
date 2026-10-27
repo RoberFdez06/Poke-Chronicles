@@ -74,16 +74,17 @@ function drawDiamond(g: Phaser.GameObjects.Graphics, cx: number, cy: number, p: 
 }
 
 /** Marco que late alrededor de la sala actual (un objeto aparte, así no hay que redibujar el mapa). */
-function pulseFor(g: Phaser.GameObjects.Graphics): Phaser.GameObjects.Graphics {
+function pulseFor(g: Phaser.GameObjects.Graphics, adopt?: (o: Phaser.GameObjects.GameObject) => void): Phaser.GameObjects.Graphics {
   let pulse = g.getData('pulse') as Phaser.GameObjects.Graphics | undefined;
   if (pulse?.active) return pulse;
   const scene = g.scene;
   pulse = scene.add.graphics().setDepth(g.depth);
-  // Mismo sitio que el mapa (capa del HUD y cámaras)
-  const list = (g as unknown as { displayList?: { add?: (o: Phaser.GameObjects.GameObject) => void } }).displayList;
-  list?.add?.(pulse);
-  pulse.cameraFilter = g.cameraFilter;
-  pulse.setScrollFactor(g.scrollFactorX, g.scrollFactorY);
+  // Mismo sitio que el mapa (capa del HUD y sus cámaras)
+  if (adopt) adopt(pulse);
+  else {
+    pulse.cameraFilter = g.cameraFilter;
+    pulse.setScrollFactor(g.scrollFactorX, g.scrollFactorY);
+  }
   g.setData('pulse', pulse);
   g.once(Phaser.GameObjects.Events.DESTROY, () => pulse?.destroy());
   if (!lowFx()) scene.tweens.add({ targets: pulse, alpha: 0.35, duration: 520, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
@@ -108,6 +109,8 @@ export function drawMinimap(
   maxW = Infinity,
   /** Marcas extra por sala (id → color), p. ej. el minijefe (supervisor). */
   marks: ReadonlyMap<number, number> = new Map(),
+  /** Mete el marco que late en la misma capa que el mapa (la del HUD). */
+  adopt?: (o: Phaser.GameObjects.GameObject) => void,
 ): number {
   g.clear();
 
@@ -209,7 +212,7 @@ export function drawMinimap(
   }
 
   // Sala actual: marco amarillo que late
-  const pulse = pulseFor(g);
+  const pulse = pulseFor(g, adopt);
   pulse.clear();
   if (cur) {
     pulse.fillStyle(0xffd34d, 1);
