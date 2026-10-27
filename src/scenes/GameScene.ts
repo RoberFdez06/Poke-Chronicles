@@ -146,7 +146,7 @@ import { ARENA_AT, fallTheme } from '../level/arenaPhase';
 import { BOSS_PHASE2_AT } from '../data/bossPatterns';
 import { GAME_ZOOM as BOSS_CAM_ZOOM } from '../ui/layout';
 import { shotSfx } from '../data/sounds';
-import { trackForBiome, TRACKS } from '../data/music';
+import { trackForBiome, trackForMood, TRACKS, type MusicMood } from '../data/music';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
 import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_GLOW, FALL_HAZARD, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
@@ -3006,6 +3006,8 @@ export class GameScene extends Phaser.Scene {
     // T72: llegada al piso nuevo de la Torre con su destello
     if (this.mode === 'tower' && this.carry && !this.resume) towerArrive(this, this.player.x, this.player.y, { lift: this.player, low: lowFx() });
     // Música del bioma (la del jefe la pone spawnBoss); al salir de la partida, la del menú
+    this.musicMood = 'calm';
+    this.musicAt = 0;
     playTrack(trackForBiome(this.biome.id));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => playMenuMusic());
     // Nada sale del mapa: también justo después de mover la física (embestidas, empujones, teletransportes)
@@ -5908,7 +5910,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.buildBossBar(group[0], label, this.finaleMembers[0].types[0], group);
     this.notify(trio ? `¡Reto final: ${f.name}!` : `¡Reto final: ${label}, más fuerte que nunca!`, { kind: 'danger', icon: 'star' });
     this.finaleMembers.forEach((m) => void cry(m.id));
-    playTrack(TRACKS.jefe);
+    playTrack(TRACKS.jefeFinal);
+    this.musicMood = 'final';
     const fighter = (m: (typeof this.finaleMembers)[number]) => ({ texture: `${m.key}-front`, name: m.name, types: m.types });
     this.showBossIntro(group[0].getData('ai') as EnemyAI, {
       boss: { ...fighter(this.finaleMembers[0]), name: label },
@@ -5987,6 +5990,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.notify(`¡${this.bossName}, jefe legendario!`, { kind: 'danger', icon: 'pokeball' });
     void cry(this.bossId);
     playTrack(TRACKS.jefe);
+    this.musicMood = 'boss';
     this.showBossIntro(ai);
   }
 
@@ -7946,6 +7950,30 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   // --- Bucle ---
 
+  private musicAt = 0;
+  private musicMood: MusicMood = 'calm';
+
+  /**
+   * Música según el combate: épica de jefe final, de jefe (también minijefes), de combate mientras hay enemigos y la
+   * del bioma al terminar. La pista solo cambia al cambiar de situación (playTrack no reinicia la misma).
+   */
+  private musicTick(time: number) {
+    if (time < this.musicAt || this.ended || this.transitioning || !this.enemies?.children) return;
+    this.musicAt = time + 400;
+    let mood: MusicMood = 'calm';
+    for (const c of this.enemies.getChildren()) {
+      const e = c as Sprite;
+      if (!e.active || e.getData('helper')) continue;
+      const ai = e.getData('ai') as EnemyAI | undefined;
+      if (e.getData('finale')) { mood = 'final'; break; }
+      if (ai?.boss || e.getData('miniboss')) mood = 'boss';
+      else if (mood === 'calm') mood = 'combat';
+    }
+    if (mood === this.musicMood) return;
+    this.musicMood = mood;
+    playTrack(trackForMood(mood, this.biome.id));
+  }
+
   /** ¿Las puertas de la sala (grande) actual están cerradas (combate)? */
   private roomLocked(): boolean {
     for (const id of this.groupIds(this.current))
@@ -8019,6 +8047,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.weatherTick(time);
     this.hazardTick(time);
     this.arenaTick(time);
+    this.musicTick(time);
     this.dayNightTick();
     // Curación por golpes: se recarga un 4 % de tus PS máximos por segundo (y no se acumula más)
     const healCap = this.stats.maxHp * 0.04;

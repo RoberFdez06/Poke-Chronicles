@@ -164,6 +164,15 @@ function startLoop() {
         if (d === 1) playTone(c, musicGain!, { freq: 90, slideTo: 40, dur: 0.12, wave: 'sine', gain: 0.5 }, nextStepAt);
         if (d === 2) playTone(c, musicGain!, { freq: 1200, dur: 0.08, wave: 'noise', gain: 0.18 }, nextStepAt);
         if (b !== null) playTone(c, musicGain!, { freq: midiToFreq(b), dur: dur * 1.8, wave: 'triangle', gain: 0.35 }, nextStepAt);
+        // Capas de los temas de combate y de jefe: charles, segunda voz y arpegio
+        if (d === 3) playTone(c, musicGain!, { freq: 6000, dur: 0.03, wave: 'noise', gain: 0.07 }, nextStepAt);
+        const hm = track.harmony ? track.harmony[i % track.harmony.length] : null;
+        if (hm !== null && hm !== undefined) playTone(c, musicGain!, { freq: midiToFreq(hm), dur: dur * 3.5, wave: 'square', gain: 0.07 }, nextStepAt);
+        if (track.arp) {
+          const root = track.bass[(i - (i % 4) + track.bass.length) % track.bass.length] ?? b ?? 48;
+          const steps = [24, 28, 31, 36];
+          playTone(c, musicGain!, { freq: midiToFreq((root ?? 48) + steps[i % 4]), dur: dur * 0.45, wave: 'square', gain: 0.05 }, nextStepAt);
+        }
       }
       nextStepAt += dur;
       step++;

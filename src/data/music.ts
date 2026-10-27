@@ -9,6 +9,10 @@ export interface MusicTrack {
   melody: (number | null)[];
   bass: (number | null)[];
   drums?: number[];
+  /** Segunda voz (capa de armonía, onda cuadrada suave). */
+  harmony?: (number | null)[];
+  /** Arpegio rápido de la nota del bajo (dos octavas arriba) en cada paso: más intensidad. */
+  arp?: boolean;
 }
 
 export const TRACKS: Record<string, MusicTrack> = {
@@ -76,7 +80,39 @@ export const TRACKS: Record<string, MusicTrack> = {
     bass: [48, null, 48, 48, 48, null, 48, 48, 56, null, 56, 56, 56, null, 56, 56, 58, null, 58, 58, 58, null, 58, 58, 55, null, 55, 55, 55, null, 55, 55, 48, null, 48, 48, 48, null, 48, 48, 56, null, 56, 56, 56, null, 56, 56, 53, null, 53, 53, 53, null, 53, 53, 55, null, 55, 55, 55, null, 55, 55],
     drums: [1, 1, 2, 0, 1, 1, 2, 2, 1, 1, 2, 0, 1, 1, 2, 2, 1, 1, 2, 0, 1, 1, 2, 2, 1, 1, 2, 0, 1, 1, 2, 2, 1, 1, 2, 0, 1, 1, 2, 2, 1, 1, 2, 0, 1, 1, 2, 2, 1, 1, 2, 0, 1, 1, 2, 2, 1, 1, 2, 0, 1, 1, 2, 2],
   },
+  // Combate (salas con enemigos): más rápida que la del bioma, con batería y una segunda voz
+  combate: {
+    bpm: 148,
+    lead: 'square',
+    melody: [76, null, 79, 81, 83, null, 81, 79, 76, null, 74, 76, 79, null, null, null, 72, null, 76, 79, 81, null, 79, 76, 74, 76, 77, 79, 81, null, null, null],
+    harmony: [64, null, null, null, 67, null, null, null, 64, null, null, null, 67, null, null, null, 60, null, null, null, 64, null, null, null, 62, null, null, null, 65, null, null, null],
+    bass: [45, null, 45, 57, 45, null, 45, 57, 43, null, 43, 55, 43, null, 43, 55, 41, null, 41, 53, 41, null, 41, 53, 43, null, 43, 55, 47, null, 47, 59],
+    drums: [1, 3, 2, 3, 1, 3, 2, 3, 1, 3, 2, 3, 1, 1, 2, 3, 1, 3, 2, 3, 1, 3, 2, 3, 1, 3, 2, 3, 1, 1, 2, 2],
+  },
+  // Jefe final: la más épica, rapidísima, con armonía, arpegio y doble bombo
+  jefeFinal: {
+    bpm: 176,
+    lead: 'sawtooth',
+    melody: [74, 86, 74, 81, 74, 77, 74, 86, 82, 94, 82, 89, 82, 86, 82, 94, 84, 84, 96, 84, 91, 84, 88, 91, 81, 85, 88, 93, 88, 85, 81, 93, 74, 86, 74, 81, 74, 77, 74, 86, 79, 91, 79, 86, 79, 82, 79, 91, 77, 89, 77, 84, 77, 81, 77, 89, 81, 85, 88, 93, 96, 93, 88, 85],
+    harmony: [62, null, null, null, 65, null, null, null, 70, null, null, null, 74, null, null, null, 72, null, null, null, 76, null, null, null, 69, null, null, null, 73, null, null, null, 62, null, null, null, 65, null, null, null, 67, null, null, null, 70, null, null, null, 65, null, null, null, 69, null, null, null, 69, null, null, null, 73, null, 76, null],
+    bass: [38, 38, 50, 38, 38, 38, 50, 38, 46, 46, 58, 46, 46, 46, 58, 46, 48, 48, 60, 48, 48, 48, 60, 48, 45, 45, 57, 45, 45, 45, 57, 45, 38, 38, 50, 38, 38, 38, 50, 38, 43, 43, 55, 43, 43, 43, 55, 43, 41, 41, 53, 41, 41, 41, 53, 41, 45, 45, 57, 45, 45, 45, 57, 45],
+    drums: [1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 2, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 2, 2, 2, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 2, 1, 1, 2, 3, 1, 1, 2, 3, 1, 2, 1, 2, 2, 2, 2, 2],
+    arp: true,
+  },
 };
+
+// El jefe normal: segunda voz y arpegio encima de su pista (más capas que la de combate)
+TRACKS.jefe.harmony = [60, null, null, null, 63, null, null, null, 68, null, null, null, 72, null, null, null, 70, null, null, null, 74, null, null, null, 67, null, null, null, 71, null, null, null];
+TRACKS.jefe.arp = true;
+
+/** Qué música toca según lo que pasa en la sala: jefe final, jefe (o minijefe), combate o la del bioma. */
+export type MusicMood = 'final' | 'boss' | 'combat' | 'calm';
+export function trackForMood(mood: MusicMood, biomeId: string): MusicTrack {
+  if (mood === 'final') return TRACKS.jefeFinal;
+  if (mood === 'boss') return TRACKS.jefe;
+  if (mood === 'combat') return TRACKS.combate;
+  return trackForBiome(biomeId);
+}
 
 /** Pista de cada bioma (por id de src/level/biomes.ts); si no hay, la del bosque. */
 export const trackForBiome = (biomeId: string): MusicTrack => TRACKS[biomeId] ?? TRACKS.bosque;
