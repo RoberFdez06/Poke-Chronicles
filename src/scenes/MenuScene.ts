@@ -3,6 +3,7 @@ import { fitDesign, COVER_H, COVER_W, DCX, DCY } from '../ui/layout';
 import { fetchPokemonCard } from '../data/pokeapi';
 import { loadRecords, loadUnlocked } from '../data/save';
 import { RUN_MODES, MODE_LABEL } from '../data/modes';
+import { loadTdProgress } from '../data/towerDefense/progress';
 import { openControls } from './ControlsScene';
 import { accountInfo } from '../net/cloud';
 import { FONT, drawBox, fadeIn, goTo } from '../ui/theme';
@@ -12,7 +13,10 @@ import { addPixelText, drawPixelArrow } from '../ui/art/pixel';
 /** Récord de cada modo en una línea: "Normal 2 · Oleadas 7 · …". */
 const recordsLine = () => {
   const r = loadRecords();
-  return RUN_MODES.map((m) => `${MODE_LABEL[m]} ${r[m]}`).join(' · ');
+  const td = Object.values(loadTdProgress().maps).reduce((a, m) => Math.max(a, m.endless), 0);
+  const parts = RUN_MODES.map((m) => `${MODE_LABEL[m]} ${r[m]}`);
+  if (td > 0) parts.push(`Torres ${td}`);
+  return parts.join(' · ');
 };
 
 /** Menú en un único cuadro, como en la GBA: filas de texto y la flecha ▶ en la elegida. */

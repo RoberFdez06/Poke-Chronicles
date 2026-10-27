@@ -411,7 +411,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     this.layer.add(panel);
     const sel = this.add.graphics();
     this.layer.add(sel);
-    const infoText = this.add.text(40, 452, '', { fontFamily: UI.FONT, fontSize: '16px', color: '#ffffff', wordWrap: { width: 500 }, lineSpacing: 4 }).setStroke('#18202c', 4);
+    const infoText = this.add.text(286, 456, '', { fontFamily: UI.FONT, fontSize: '16px', color: '#ffffff', align: 'center', wordWrap: { width: 500 }, lineSpacing: 4 }).setOrigin(0.5, 0).setStroke('#18202c', 4);
     this.layer.add(infoText);
     const pageText = this.add.text(286, 438, '', { fontFamily: UI.FONT, fontSize: '15px', color: '#ffe9a8' }).setOrigin(0.5).setStroke('#18202c', 3);
     this.layer.add(pageText);

@@ -16,7 +16,7 @@ export function showTdTip(scene: Phaser.Scene, id: TipId): boolean {
   const w = 700;
   const h = 64;
   const x = 480 - w / 2;
-  const y = 6;
+  const y = 100; // debajo de la barra superior (vida de la base, dinero, oleada)
   scene.data.set('tdTip', true);
   const c = scene.add.container(0, 0).setDepth(90);
   const box = drawBox(scene.add.graphics(), x, y, w, h, { radius: 12 }).setAlpha(0.95);
