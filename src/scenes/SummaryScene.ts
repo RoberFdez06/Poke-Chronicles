@@ -210,10 +210,12 @@ export class SummaryScene extends Phaser.Scene {
       if (!this.sys.isActive() || !this.textures.exists(key)) return;
     }
     this.textures.get(key).setFilter(Phaser.Textures.FilterMode.NEAREST);
-    const img = this.add.image(124, 228, key).setOrigin(0.5, 0.9);
-    img.setScale(120 / Math.max(img.width, img.height, 1));
+    // Cabe en una caja de 112 × 100 con los pies en el pedestal: ningún Pokémon grande o ancho (Lunala, Regidrago…)
+    // se sale hacia las filas de abajo
+    const img = this.add.image(124, 232, key).setOrigin(0.5, 1);
+    img.setScale(Math.min(112 / Math.max(img.width, 1), 100 / Math.max(img.height, 1)));
     if (won) {
-      this.tweens.add({ targets: img, y: 214, duration: 380, yoyo: true, repeat: -1, repeatDelay: 500, ease: 'Quad.easeOut' });
+      this.tweens.add({ targets: img, y: 222, duration: 380, yoyo: true, repeat: -1, repeatDelay: 500, ease: 'Quad.easeOut' });
     } else {
       // Debilitado: tumbado y apagado
       img.setTint(0x8890a8).setAngle(90).setOrigin(0.5, 0.5).setY(208);
