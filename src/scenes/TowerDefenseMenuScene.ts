@@ -149,8 +149,9 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
       });
       const parts: Phaser.GameObjects.GameObject[] = [g, thumb, name, info];
       if (open) {
-        parts.push(tdIcon(this, cx + 106, cy + 59, 'star', 1.6).setOrigin(0, 0.5));
-        info.setText(`Niveles ${cleared}/${LEVELS_PER_MAP}\n     ${mapStars(this.progress, m.id)}/${LEVELS_PER_MAP * 3}`);
+        info.setText(`Niveles ${cleared}/${LEVELS_PER_MAP}`);
+        parts.push(tdIcon(this, cx + 108, cy + 63, 'star', 1.8));
+        parts.push(this.add.text(cx + 120, cy + 63, `${mapStars(this.progress, m.id)}/${LEVELS_PER_MAP * 3}`, { fontFamily: UI.FONT, fontSize: '13px', color: NAVY }).setOrigin(0, 0.5));
         // Barra de niveles superados
         const bar = this.add.graphics();
         bar.fillStyle(0x18202c, 1).fillRect(cx + 100, cy + 84, 98, 8);
@@ -399,7 +400,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
         g.fillStyle(0x18202c, 0.85).fillRect(x, y, cell - 6, cell - 6);
         g.fillStyle(inTeam ? 0x2e5a3a : 0x2a3350, 1).fillRect(x + 3, y + 3, cell - 12, cell - 12);
         g.fillStyle(RARITY_COLORS[p.rarity], 1).fillRect(x + 3, y + cell - 13, cell - 12, 4);
-        const img = this.textures.exists(tdMonKey(p.id)) ? this.add.image(x + (cell - 6) / 2, y + (cell - 6) / 2 - 4, tdMonKey(p.id)).setScale(0.75) : null;
+        const img = this.textures.exists(tdMonKey(p.id)) ? this.add.image(x + (cell - 6) / 2, y + (cell - 6) / 2 - 4, tdMonKey(p.id)).setScale(0.75) : tdIcon(this, x + (cell - 6) / 2, y + (cell - 6) / 2 - 4, 'ball', 3);
         const parts: Phaser.GameObjects.GameObject[] = [g];
         if (img) parts.push(img);
         if (inTeam) parts.push(this.add.text(x + cell - 12, y + 6, '✓', { fontFamily: UI.FONT, fontSize: '16px', color: '#7cf07a' }).setOrigin(1, 0));
@@ -448,9 +449,9 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
         const q = teamNow[k];
         if (q) {
           g.fillStyle(RARITY_COLORS[q.rarity], 1).fillRect(sx, sy + 86, 140, 4);
-          if (this.textures.exists(tdMonKey(q.id))) slotImgs.push(this.add.image(sx + 38, sy + 44, tdMonKey(q.id)).setScale(0.8));
-          slotImgs.push(this.add.text(sx + 76, sy + 22, shorten(q.name, 9), { fontFamily: UI.FONT, fontSize: '14px', fontStyle: 'bold', color: NAVY }));
-          slotImgs.push(this.add.text(sx + 76, sy + 44, `${towerCost(q)} $\n${STYLE_LABEL[towerStyle(q)]}`, { fontFamily: UI.FONT, fontSize: '12px', color: NAVY }));
+          slotImgs.push(this.textures.exists(tdMonKey(q.id)) ? this.add.image(sx + 38, sy + 44, tdMonKey(q.id)).setScale(0.8) : tdIcon(this, sx + 38, sy + 44, 'ball', 3));
+          slotImgs.push(this.add.text(sx + 74, sy + 22, shorten(q.name, 8), { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: NAVY }));
+          slotImgs.push(this.add.text(sx + 74, sy + 44, `${towerCost(q)} $\n${STYLE_LABEL[towerStyle(q)]}`, { fontFamily: UI.FONT, fontSize: '12px', color: NAVY }));
         } else slotImgs.push(this.add.text(sx + 70, sy + 45, 'vacío', { fontFamily: UI.FONT, fontSize: '14px', color: '#8a90a0' }).setOrigin(0.5));
       }
       slotImgs.forEach((o) => side.add(o));

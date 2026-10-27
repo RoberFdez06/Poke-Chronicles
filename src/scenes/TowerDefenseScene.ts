@@ -24,7 +24,7 @@ import { bakeCombatFx, bossAura, damageNumber, evolveBurst, evolveGlow, hitSpark
 import { pixBlast, pixBolt, pixDebris, pixFlash, pixRing } from '../ui/art/pixelFx';
 import {
   P, bakeTdArt, confetti, drawAbilityFrame, drawAura, drawBar, drawBase, drawCursor, drawDecor, drawFlow, drawPads, drawPedestal, drawPortal,
-  drawRange, drawRoad, pickDecor, tdIcon, type Decor, type MapGeom,
+  drawRange, drawRoad, pickDecor, tdIcon, tdIconKey, type Decor, type MapGeom,
 } from '../ui/art/tdArt';
 import { biomeById } from '../level/biomes';
 import { TD_COLS, TD_MAPS, TD_ROWS, baseCell, buildableCells, entryCells, type TdMap } from '../data/towerDefense/maps';
@@ -100,6 +100,7 @@ export class TowerDefenseScene extends Phaser.Scene {
   private overG!: Phaser.GameObjects.Graphics;
   private uiG!: Phaser.GameObjects.Graphics;
   private decor: Decor[] = [];
+  private freeCells: { x: number; y: number }[] = [];
   private enemyViews = new Map<number, EnemyView>();
   private towerViews = new Map<number, TowerView>();
   private shotViews = new Map<number, Phaser.GameObjects.Image>();
@@ -127,9 +128,10 @@ export class TowerDefenseScene extends Phaser.Scene {
   }
 
   init(data: TowerDefenseData) {
-    this.args = data?.team?.length
-      ? data
-      : { mapIdx: 0, level: 1, team: TRIAL_TEAM.map((t) => ({ id: t.id, name: t.name, types: [...t.types], rarity: t.rarity, bst: 300 })), trial: true };
+    // Sin equipo (no debería pasar desde el menú): el equipo de prueba
+    const trialTeam = TRIAL_TEAM.map((t) => ({ id: t.id, name: t.name, types: [...t.types], rarity: t.rarity, bst: 300 }));
+    const hasTeam = !!data?.team?.length;
+    this.args = { mapIdx: data?.mapIdx ?? 0, level: data?.level ?? 1, team: hasTeam ? data.team : trialTeam, trial: hasTeam ? data.trial : true };
     this.map = TD_MAPS[this.args.mapIdx] ?? TD_MAPS[0];
     this.ready = false;
     this.paused = false;
@@ -252,7 +254,8 @@ export class TowerDefenseScene extends Phaser.Scene {
     for (const b of this.map.blocked) {
       this.add.image(sx(b.x) + CELL / 2, sy(b.y) + CELL / 2 + 2, tiles.rock).setDisplaySize(CELL, CELL).setDepth(10 + b.y);
     }
-    this.decor = pickDecor(this.map, buildableCells(this.map), GEO);
+    this.freeCells = buildableCells(this.map);
+    this.decor = pickDecor(this.map, this.freeCells, GEO);
     this.ambient = this.add.graphics().setDepth(0.3);
     this.towerG = this.add.graphics().setDepth(0.6);
     this.overG = this.add.graphics().setDepth(40);
@@ -278,11 +281,12 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.buildTeam();
     this.buildBar();
     this.drawAmbient(0);
-    // Avisos arriba a la izquierda del mapa (nunca en el centro)
-    this.toasts = new ToastStack(this, OX + 8, OY + 8, 280, (c) => c.setDepth(70));
-    const lv = this.td.endless ? 'Infinito' : `Nivel ${this.args.level}/${LEVELS_PER_MAP}`;
-    this.toasts.show(`${this.map.name} · ${lv}: coloca tus torres y llama a la oleada`, { kind: 'info' });
-    if (this.args.trial) this.toasts.show('Equipo de prueba: juega con tu colección para ir más lejos', { kind: 'warning' });
+    // Avisos arriba a la izquierda del mapa (nunca en el centro): estrechos, como mucho 2 y breves para no tapar el camino
+    this.toasts = new ToastStack(this, OX + 6, OY + 6, 220, (c) => c.setDepth(70), 2);
+  }
+
+  private toast(text: string, kind: 'info' | 'reward' | 'warning' | 'danger' = 'info') {
+    this.toasts.show(text, { kind, ms: kind === 'warning' ? 1800 : 2600 });
   }
 
   private cellAt(p: Phaser.Input.Pointer): { x: number; y: number } | null {
@@ -317,8 +321,8 @@ export class TowerDefenseScene extends Phaser.Scene {
     tdIcon(this, 232, 30, 'coin', 3).setDepth(62);
     const st = (x: number, size = 18, color = NAVY) =>
       this.add.text(x, 30, '', { fontFamily: UI.FONT, fontSize: `${size}px`, fontStyle: 'bold', color }).setOrigin(0, 0.5).setDepth(62);
-    this.hud = { hp: st(150, 15), money: st(252, 20, '#8a6a00'), wave: st(340), next: st(480, 15), title: st(632, 13) };
-    this.hud.title.setText(shorten(`${this.map.name} · ${this.td.endless ? 'Infinito' : `Nv. ${this.args.level}`}`, 22));
+    this.hud = { hp: st(150, 15), money: st(252, 20, '#8a6a00'), wave: st(340), next: st(470, 15), title: st(612, 12) };
+    this.hud.title.setText(shorten(`${this.map.name} · ${this.td.endless ? 'Infinito' : `Nv. ${this.args.level}`}`, 26));
     const side = this.add.graphics().setDepth(55);
     drawBox(side, PANEL_X, 4, 164, 588, { radius: 10 });
     this.add.text(PANEL_X + 82, 24, 'Tu equipo', { fontFamily: UI.FONT, fontSize: '16px', fontStyle: 'bold', color: NAVY }).setOrigin(0.5).setDepth(62);
@@ -334,7 +338,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       const tex = this.monTexture(m.id);
       b.icon = this.add.image(x + 33, y + 28, tex.key, tex.frame).setDepth(62);
       const fit = 44 / Math.max(1, b.icon.width, b.icon.height);
-      b.icon.setScale(tex.pmd ? Math.min(2.2, fit * 1.5) : fit * 1.3);
+      b.icon.setScale(tex.pmd ? Math.min(2.2, fit * 1.5) : tex.key === tdIconKey('ball') ? 2.6 : fit * 1.3);
       b.text = this.add.text(x + 33, y + 56, `${towerCost(m)} $`, { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: NAVY }).setOrigin(0.5).setDepth(62);
       this.teamBtns.push(b);
     });
@@ -360,7 +364,13 @@ export class TowerDefenseScene extends Phaser.Scene {
   private monTexture(id: number): { key: string; frame?: number; pmd: boolean } {
     const sheet = this.sheets.get(id);
     if (sheet) return { key: pmdKey(id, sheet.hasIdle ? 'idle' : 'walk'), frame: 0, pmd: true };
-    return { key: this.textures.exists(tdMonKey(id)) ? tdMonKey(id) : '__MISSING', pmd: false };
+    return { key: this.staticKey(id), pmd: false };
+  }
+
+  /** Sprite de PokeAPI o, si no ha cargado (sin conexión), una Poké Ball de píxeles. */
+  private staticKey(id: number): string {
+    const k = tdMonKey(id);
+    return this.textures.exists(k) && this.textures.get(k).key !== '__MISSING' && this.textures.get(k).getSourceImage().width > 1 ? k : tdIconKey('ball');
   }
 
   // --- Acciones del jugador ---
@@ -390,7 +400,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       const err = this.td.placeError(this.placing, x, y);
       if (err) {
         sfx('warn');
-        this.toasts.show(err, { kind: 'warning' });
+        this.toast(err, 'warning');
         return;
       }
       const tw = this.td.place(this.placing, x, y)!;
@@ -422,9 +432,9 @@ export class TowerDefenseScene extends Phaser.Scene {
       starBurst(this, cx, cy - 10, 0xffd34d, 5, 1, 9);
     } else if (r === 'poor') {
       sfx('warn');
-      this.toasts.show('No tienes bastante dinero', { kind: 'warning' });
+      this.toast('No tienes bastante dinero', 'warning');
     } else if (r === 'branch') {
-      this.toasts.show('Elige una rama en el panel', { kind: 'info' });
+      this.toast('Elige una rama en el panel', 'info');
       this.focus = { zone: 'panel', i: 0 };
     }
   }
@@ -461,7 +471,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (!this.td.useAbility(id)) {
       const left = Math.ceil(this.td.cooldowns[id]);
       sfx('warn');
-      this.toasts.show(left > 0 ? `${ABILITY_INFO[id].name}: lista en ${left} s` : id === 'curar' ? 'La base ya está entera' : 'No hay enemigos', { kind: 'warning' });
+      this.toast(left > 0 ? `${ABILITY_INFO[id].name}: lista en ${left} s` : id === 'curar' ? 'La base ya está entera' : 'No hay enemigos', 'warning');
       return;
     }
     if (id === 'rayo') {
@@ -752,7 +762,8 @@ export class TowerDefenseScene extends Phaser.Scene {
         if (!lowFx() || e.special) typeImpact(this, x, y, e.type, e.special ? 1.3 : 0.7, e.special ? 12 : 4, 30);
         if (e.splash > 0) pixRing(this, x, y + 6, e.splash * CELL, typeColor(e.type), 300, 7);
         if (e.special) pixBlast(this, x, y, 28, typeColor(e.type), 31);
-        if (!lowFx() || e.mul >= 2 || e.crit) {
+        // Números: siempre los críticos, súper eficaces y especiales; los normales, uno de cada tres (para no tapar el mapa)
+        if (e.mul >= 2 || e.crit || e.special || (!lowFx() && Math.random() < 0.34)) {
           damageNumber(this, x, y - 14, e.dmg, {
             crit: e.crit || e.special,
             color: e.mul >= 2 ? '#ffd34d' : e.mul < 1 ? '#9aa4b8' : e.shielded ? '#8fd0ff' : undefined,
@@ -775,7 +786,7 @@ export class TowerDefenseScene extends Phaser.Scene {
           pixBlast(this, x, y, 70, 0xffd34d, 31);
           starBurst(this, x, y, 0xffd34d, 10, 1.6, 32);
           this.cameras.main.shake(320, 0.01);
-          this.toasts.show('¡Has vencido al jefe legendario!', { kind: 'reward' });
+          this.toast('¡Has vencido al jefe legendario!', 'reward');
         } else sfx('hit');
         break;
       }
@@ -798,16 +809,16 @@ export class TowerDefenseScene extends Phaser.Scene {
       case 'bossPhase':
         sfx('enrage');
         phaseShock(this, X(e.x), Y(e.y), 0xff5a4a, 1.4, 30);
-        this.toasts.show(e.phase === 2 ? '¡El jefe llama a su escolta!' : '¡El jefe se enfurece y recupera el escudo!', { kind: 'danger' });
+        this.toast(e.phase === 2 ? '¡El jefe llama a su escolta!' : '¡El jefe se enfurece y recupera el escudo!', 'danger');
         break;
       case 'waveStart':
         sfx(e.boss ? 'roar' : 'door');
-        this.toasts.show(e.boss ? `Oleada ${e.wave}: ¡jefe legendario!` : `Oleada ${e.wave}`, { kind: e.boss ? 'danger' : 'info' });
+        this.toast(e.boss ? `Oleada ${e.wave}: ¡jefe legendario!` : `Oleada ${e.wave}`, e.boss ? 'danger' : 'info');
         for (const c of entryCells(this.map)) pixRing(this, sx(c.x) + CELL / 2, sy(c.y) + CELL / 2, 36, 0xb08aff, 500, 5);
         break;
       case 'waveEnd':
         sfx('clear');
-        this.toasts.show(`Oleada superada: +${e.bonus} $${e.perfect ? ' (sin fugas)' : ''}${e.farm ? ` · granjas +${e.farm} $` : ''}`, { kind: 'reward' });
+        this.toast(`Oleada superada: +${e.bonus} $${e.perfect ? ' (sin fugas)' : ''}${e.farm ? ` · granjas +${e.farm} $` : ''}`, 'reward');
         break;
       case 'farm': {
         const t = this.td.towers.find((q) => q.id === e.towerId);
@@ -837,11 +848,11 @@ export class TowerDefenseScene extends Phaser.Scene {
             this.time.delayedCall(900, done);
           }
           const evoName = t.evolved ? this.names.get(t.evolved) : null;
-          this.toasts.show(
+          this.toast(
             t.evolved
-              ? `¡${t.mon.name} ha evolucionado${evoName ? ` en ${evoName}` : ''}! Nuevo ataque: ${specialMoveOf(t.mon)}`
-              : `¡${t.mon.name} alcanza su nivel final! Nuevo ataque: ${specialMoveOf(t.mon)}`,
-            { kind: 'reward' },
+              ? `¡${t.mon.name} evoluciona${evoName ? ` en ${evoName}` : ''}! Ataque: ${specialMoveOf(t.mon)}`
+              : `¡${t.mon.name}: nivel final! Ataque: ${specialMoveOf(t.mon)}`,
+            'reward',
           );
         }
         break;
@@ -926,9 +937,9 @@ export class TowerDefenseScene extends Phaser.Scene {
       spr = this.add.sprite(0, 0, pmdKey(e.def.species, 'walk'), 0).setScale(pmdScale(size) * 1.25);
       spr.anims.play(pmdAnimKey(e.def.species, 'walk', row));
     } else {
-      const key = this.textures.exists(tdMonKey(e.def.species)) ? tdMonKey(e.def.species) : '__MISSING';
+      const key = this.staticKey(e.def.species);
       spr = this.add.sprite(0, 0, key);
-      spr.setScale((size / Math.max(1, spr.width)) * 1.4);
+      spr.setScale((size / Math.max(1, spr.width)) * (key === tdIconKey('ball') ? 0.7 : 1.4));
     }
     spr.setOrigin(0.5, 0.62);
     const shadow = this.add.ellipse(0, 0, size * (e.def.air ? 0.45 : 0.7), size * 0.22, 0x000000, e.def.air ? 0.18 : 0.3);
@@ -949,8 +960,9 @@ export class TowerDefenseScene extends Phaser.Scene {
       v.pmd = true;
     } else {
       v.spr.anims.stop();
-      v.spr.setTexture(this.textures.exists(tdMonKey(id)) ? tdMonKey(id) : '__MISSING');
-      v.spr.setScale((46 / Math.max(1, v.spr.width)) * 1.4);
+      const key = this.staticKey(id);
+      v.spr.setTexture(key);
+      v.spr.setScale((46 / Math.max(1, v.spr.width)) * (key === tdIconKey('ball') ? 0.7 : 1.4));
       v.pmd = false;
     }
   }
@@ -1083,7 +1095,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (this.placing !== null && !this.ended) {
       const m = this.td.team[this.placing];
       // Casillas libres en verde suave
-      for (const c of buildableCells(this.map)) {
+      for (const c of this.freeCells) {
         if (this.td.towerAt(c.x, c.y)) continue;
         g.fillStyle(0x7cf07a, 0.08 + (still ? 0 : 0.05 * Math.sin(t / 220))).fillRect(sx(c.x) + 3, sy(c.y) + 3, CELL - 6, CELL - 6);
       }

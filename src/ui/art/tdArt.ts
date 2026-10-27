@@ -34,7 +34,7 @@ const PATH_LOOK: Record<string, { edge: number; fill: number; speck: number }> =
   ciudad: { edge: 0x30343c, fill: 0x707684, speck: 0xf0d050 },
   nieve: { edge: 0x6a88a4, fill: 0xc6d8e8, speck: 0xffffff },
   pantano: { edge: 0x3a3020, fill: 0x7a6a44, speck: 0x5a8a3a },
-  cumbre: { edge: 0x4a3a6a, fill: 0xb8a8d8, speck: 0xf0b8d8 },
+  cumbre: { edge: 0x2e2050, fill: 0x8270b0, speck: 0xf0b8d8 },
 };
 const pathLook = (biome: string) => PATH_LOOK[biome] ?? PATH_LOOK.bosque;
 
@@ -88,6 +88,10 @@ const ICONS: Record<string, { rows: string[]; pal: Record<string, number> }> = {
   speed: {
     pal: { k: OUT, W: 0xffffff, Y: 0x8fe39a },
     rows: ['...kkkk...', '.kkWWWWkk.', 'kWWk..kYWk', 'kWk..kYk.k', 'kWk.kYk..k', 'kWkkYk...k', 'kWWkkk..Wk', '.kkWWWWkk.', '...kkkk...'],
+  },
+  ball: {
+    pal: { k: OUT, R: 0xe53935, L: 0xff8a80, W: 0xffffff, G: 0xc8ccd4 },
+    rows: ['...kkkkkk...', '..kRRRRRRk..', '.kRLRRRRRRk.', 'kRLRRRRRRRRk', 'kRRRRkkRRRRk', 'kkkkkWWkkkkk', 'kWWWkWWkWWWk', 'kWWWWkkWWWGk', 'kGWWWWWWWWGk', '.kGWWWWWWGk.', '..kGGGGGGk..', '...kkkkkk...'],
   },
   pause: {
     pal: { k: OUT, W: 0xffffff },
