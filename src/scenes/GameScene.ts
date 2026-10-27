@@ -3400,7 +3400,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    */
   private async applyMaxLook(choice: 'dynamax' | 'gigamax') {
     const size = Math.round(84 * POWER_FORMS[choice].sizeMul);
-    const form = choice === 'gigamax' ? gmaxFormName(this.formId) : null;
+    // Los dibujos Gigamax de PokeAPI quedaban muy feos: el Gigamax usa el sprite de siempre con el aura roja, las nubes y más tamaño
+    const form: string | null = null;
     if (form) {
       const sprites = await fetchFormSprites(form);
       if (sprites && powerFormActive(this.powerForm) && this.player?.active && !this.ended) {
