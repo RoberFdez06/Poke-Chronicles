@@ -9,6 +9,7 @@ import { typeImpact, typeTrail, projKey, projTailKey, fitProjectile, PROJ_FIT } 
 import { dustBurst, hitSpark } from '../ui/art/combatFx';
 import { animate, drawPixBeam, drawPixJet, drawPixOrb, lightOf, pixBlast, pixBolt, pixCracks, pixDebris, pixGeyser, pixMarker, pixMuzzle, pixRing, pixSpeedLines, pixTrap, pixFlash, pixSpokes, pixSpikes, darkOf, PX } from '../ui/art/pixelFx';
 import { lowFx } from '../ui/theme';
+import { clipBeamToBounds } from '../level/bounds';
 import { drawJetFx, drawWaveFx, mineBlastFx, trapFx, waveBreakFx, waveLaunchFx } from '../ui/art/flowFx';
 
 /** Mezcla dos colores (t = 0 → a, t = 1 → b). */
@@ -224,7 +225,6 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
       // Rayo: aviso fino (enemigos) y luego un haz con núcleo blanco que golpea cada poco
       const g = sc.add.graphics().setDepth(6);
       const warn = side === 'foe' ? 600 : 90;
-      const len = p.length;
       const t0 = now(h) + warn;
       const hits = new Map<object, number>();
       const draw = () => {
@@ -232,6 +232,8 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
         const d = side === 'player' ? h.aim() : dir;
         let a = Math.atan2(d.y, d.x);
         if (p.sweep && t > t0) a += (((t - t0) / p.ms) - 0.5) * p.sweep;
+        // El haz se corta en el borde de la arena: ni se dibuja ni golpea fuera del mapa
+        const len = clipBeamToBounds(src.x, src.y, a, p.length, h.room());
         const x2 = src.x + Math.cos(a) * len;
         const y2 = src.y + Math.sin(a) * len;
         g.clear();

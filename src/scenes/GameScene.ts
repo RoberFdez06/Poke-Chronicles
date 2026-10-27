@@ -296,7 +296,7 @@ import {
 } from '../data/forge';
 import { canAfford, describeEffects, optionLabel, pickStory, resolveChoice, type ChoiceEffects, type ChoiceState, type ChoiceStory } from '../level/choiceEvents';
 import { GARDEN_BERRIES, GARDEN_HEAL, GARDEN_SHIELD, growGarden, rollSeed, SEED_CHANCE, shouldAutoHeal, useCarried, type GardenBerryId } from '../data/berries';
-import { clampToBounds as clampInArena, clampVelocity, outOfBounds } from '../level/bounds';
+import { clampToBounds as clampInArena, clampVelocity, clipBeamToBounds, outOfBounds } from '../level/bounds';
 import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
 import { biomeBossPool, biomeById, biomeEnemyPool, biomeFor, Biome, BIOMES, pickBossWeighted, pickMixedFoes } from '../level/biomes';
 import { forcedEventRng, hasRoutes, ROUTE_EVENT, routeLabel, routeMul, routeOptions, type RouteOption } from '../level/routes';
@@ -7098,17 +7098,19 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         ai.knockUntil = this.time.now + spec.warnMs;
         b.setVelocity(0, 0);
         const g = this.add.graphics().setDepth(4);
+        const arenaB = this.arena();
+        const lenOf = (a: number) => clipBeamToBounds(cx, cy, a, spec.length, arenaB);
         for (const a of angles) {
-          g.lineStyle(MEGA_BLAST_WIDTH * 2, color, 0.18).lineBetween(cx, cy, cx + Math.cos(a) * spec.length, cy + Math.sin(a) * spec.length);
-          g.lineStyle(2, color, 0.9).lineBetween(cx, cy, cx + Math.cos(a) * spec.length, cy + Math.sin(a) * spec.length);
+          g.lineStyle(MEGA_BLAST_WIDTH * 2, color, 0.18).lineBetween(cx, cy, cx + Math.cos(a) * lenOf(a), cy + Math.sin(a) * lenOf(a));
+          g.lineStyle(2, color, 0.9).lineBetween(cx, cy, cx + Math.cos(a) * lenOf(a), cy + Math.sin(a) * lenOf(a));
         }
         this.tweens.add({ targets: g, alpha: 0.45, yoyo: true, repeat: 3, duration: spec.warnMs / 8 });
         this.time.delayedCall(spec.warnMs, () => {
           this.tweens.killTweensOf(g);
           g.destroy();
           if (!b.active || this.ended) return;
-          megaBlastFx(this, cx, cy, angles, spec.length, MEGA_BLAST_WIDTH, color);
-          if (angles.some((a) => laserHits(cx, cy, a, spec.length, this.player.x, this.player.y, MEGA_BLAST_WIDTH))) this.hurtPlayer(b, true);
+          megaBlastFx(this, cx, cy, angles, spec.length, MEGA_BLAST_WIDTH, color, 12, lenOf);
+          if (angles.some((a) => laserHits(cx, cy, a, lenOf(a), this.player.x, this.player.y, MEGA_BLAST_WIDTH))) this.hurtPlayer(b, true);
         });
       });
     }
@@ -7353,11 +7355,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const angles = (t: number) => Array.from({ length: ls.beams }, (_, k) => start + (k / ls.beams) * Math.PI * 2 + dirSign * ls.turnSpeed * t);
       // Aviso: líneas finas donde saldrán los rayos; el jefe se queda quieto mientras dispara
       const low = lowFx();
+      // Los rayos se cortan en el borde de la arena (dibujo y hitbox)
+      const lenAt = (a: number) => clipBeamToBounds(b.x, b.y, a, ls.length, this.arena());
       if (low) {
         const warn = this.add.graphics().setDepth(4);
-        for (const a of angles(0)) warn.lineStyle(3, color, 0.6).lineBetween(b.x, b.y, b.x + Math.cos(a) * ls.length, b.y + Math.sin(a) * ls.length);
+        for (const a of angles(0)) warn.lineStyle(3, color, 0.6).lineBetween(b.x, b.y, b.x + Math.cos(a) * lenAt(a), b.y + Math.sin(a) * lenAt(a));
         this.tweens.add({ targets: warn, alpha: 0.15, yoyo: true, repeat: 2, duration: TELEGRAPH_MS / 6, onComplete: () => warn.destroy() });
-      } else laserWarn(this, () => b, angles(0), ls.length, color, TELEGRAPH_MS);
+      } else laserWarn(this, () => b, angles(0), lenAt, color, TELEGRAPH_MS);
       ai.knockUntil = this.time.now + TELEGRAPH_MS + ls.durationMs;
       b.setVelocity(0, 0);
       this.time.delayedCall(TELEGRAPH_MS, () => {
@@ -7371,13 +7375,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             b.setVelocity(0, 0);
             g.clear();
             for (const a of angles(st.t)) {
-              const x2 = b.x + Math.cos(a) * ls.length;
-              const y2 = b.y + Math.sin(a) * ls.length;
+              const ln = lenAt(a);
+              const x2 = b.x + Math.cos(a) * ln;
+              const y2 = b.y + Math.sin(a) * ln;
               if (low) {
                 g.lineStyle(26, color, 0.35).lineBetween(b.x, b.y, x2, y2);
                 g.lineStyle(10, 0xffffff, 0.9).lineBetween(b.x, b.y, x2, y2);
-              } else drawBossLaser(g, b.x, b.y, a, ls.length, color, this.time.now);
-              if (laserHits(b.x, b.y, a, ls.length, this.player.x, this.player.y)) this.hurtPlayer(b, true);
+              } else drawBossLaser(g, b.x, b.y, a, ln, color, this.time.now);
+              if (laserHits(b.x, b.y, a, ln, this.player.x, this.player.y)) this.hurtPlayer(b, true);
             }
           },
           onComplete: () => g.destroy(),

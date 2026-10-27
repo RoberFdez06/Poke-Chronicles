@@ -191,21 +191,23 @@ export function reactionChain(scene: Phaser.Scene, x: number, y: number, targets
  * Estallido de rayos del jefe megaevolucionado: rayos gruesos que salen del centro y se estrechan, destello y anillo
  * en el centro y chispas al final de cada rayo. Con pocos efectos, los rayos quietos un momento.
  */
-export function megaBlastFx(scene: Phaser.Scene, cx: number, cy: number, angles: readonly number[], length: number, width: number, color: number, depth = 12) {
+export function megaBlastFx(scene: Phaser.Scene, cx: number, cy: number, angles: readonly number[], length: number, width: number, color: number, depth = 12, lenOf: (a: number) => number = () => length) {
   if (lowFx()) {
     const g = scene.add.graphics().setDepth(depth);
-    for (const a of angles) drawPixBeam(g, cx, cy, cx + Math.cos(a) * length, cy + Math.sin(a) * length, width * 2, color, 0);
+    for (const a of angles) drawPixBeam(g, cx, cy, cx + Math.cos(a) * lenOf(a), cy + Math.sin(a) * lenOf(a), width * 2, color, 0);
     scene.time.delayedCall(260, () => g.destroy());
     return;
   }
   animate(scene, depth, 380, (g, k, t) => {
     const w = width * 2.4 * (1 - k * 0.85);
-    const len = length * Math.min(1, k * 5);
-    for (const a of angles) drawPixBeam(g, cx, cy, cx + Math.cos(a) * len, cy + Math.sin(a) * len, Math.max(PX, w), color, t);
+    for (const a of angles) {
+      const len = lenOf(a) * Math.min(1, k * 5);
+      drawPixBeam(g, cx, cy, cx + Math.cos(a) * len, cy + Math.sin(a) * len, Math.max(PX, w), color, t);
+    }
   }, 40);
   pixFlash(scene, cx, cy, 60, color, 300, depth + 1);
   pixRing(scene, cx, cy, 120, color, 380, depth);
   scene.time.delayedCall(80, () => {
-    for (const a of angles) starBurst(scene, cx + Math.cos(a) * length, cy + Math.sin(a) * length, color, 4, 0.8, depth + 1);
+    for (const a of angles) starBurst(scene, cx + Math.cos(a) * lenOf(a), cy + Math.sin(a) * lenOf(a), color, 4, 0.8, depth + 1);
   });
 }

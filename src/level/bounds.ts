@@ -48,3 +48,23 @@ export function clampVelocity(x: number, y: number, vx: number, vy: number, b: B
     vy: (y <= b.y0 + margin && vy < 0) || (y >= b.y1 - margin && vy > 0) ? 0 : vy,
   };
 }
+
+/**
+ * Longitud real de un haz que sale de (x, y) con ángulo `a` y largo `len`: se corta donde toca el borde de la arena
+ * (con `margin` de hueco), para que ni se dibuje ni golpee fuera del mapa. Origen fuera: se acota primero al borde.
+ */
+export function clipBeamToBounds(x: number, y: number, a: number, len: number, b: Bounds, margin = 0): number {
+  const o = clampToBounds(x, y, b, margin);
+  const dx = Math.cos(a);
+  const dy = Math.sin(a);
+  const lx = b.x0 + margin;
+  const hx = b.x1 - margin;
+  const ly = b.y0 + margin;
+  const hy = b.y1 - margin;
+  let t = len;
+  if (dx > 1e-9) t = Math.min(t, (hx - o.x) / dx);
+  else if (dx < -1e-9) t = Math.min(t, (lx - o.x) / dx);
+  if (dy > 1e-9) t = Math.min(t, (hy - o.y) / dy);
+  else if (dy < -1e-9) t = Math.min(t, (ly - o.y) / dy);
+  return Math.max(0, Math.min(len, t));
+}

@@ -46,3 +46,22 @@ test('cualquier punto al azar queda dentro tras el clamp', () => {
     assert.ok(!outOfBounds(q.x, q.y, B));
   }
 });
+
+test('clipBeamToBounds corta el haz en el borde de la arena', async () => {
+  const { clipBeamToBounds } = await import('../src/level/bounds.ts');
+  // Hacia la derecha desde (500,300): borde en x=900 -> 400
+  assert.equal(clipBeamToBounds(500, 300, 0, 2000, B), 400);
+  // Hacia arriba: borde y=50 -> 250
+  assert.ok(Math.abs(clipBeamToBounds(500, 300, -Math.PI / 2, 2000, B) - 250) < 1e-6);
+  // Si cabe, no se toca
+  assert.equal(clipBeamToBounds(500, 300, 0, 100, B), 100);
+  // Diagonal: el primer borde que toque
+  const d = clipBeamToBounds(500, 300, Math.PI / 4, 5000, B);
+  assert.ok(Math.abs(d - 350 * Math.SQRT2) < 1e-6);
+  // Con margen
+  assert.equal(clipBeamToBounds(500, 300, 0, 2000, B, 20), 380);
+  // Pegado al borde hacia fuera: longitud 0
+  assert.equal(clipBeamToBounds(900, 300, 0, 500, B), 0);
+  // Origen fuera: se acota al borde y no sale
+  assert.equal(clipBeamToBounds(1000, 300, Math.PI, 5000, B), 800);
+});

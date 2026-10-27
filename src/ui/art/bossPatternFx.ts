@@ -311,13 +311,14 @@ export function ringWarn(sc: Phaser.Scene, at: Pos, n: number, off: number, colo
 // ---------------- Láser giratorio ----------------
 
 /** Aviso del láser: rayas de píxeles discontinuas que avanzan por donde saldrán los rayos. */
-export function laserWarn(sc: Phaser.Scene, at: Pos, angles: number[], len: number, color: number, ms: number, depth = 4) {
+export function laserWarn(sc: Phaser.Scene, at: Pos, angles: number[], len: number | ((a: number) => number), color: number, ms: number, depth = 4) {
   animate(sc, depth, ms, (g, k, t) => {
     const { x, y } = at();
     for (const a of angles) {
       const ca = Math.cos(a);
       const sa = Math.sin(a);
-      for (let d = 30; d < len; d += PX) {
+      const max = typeof len === 'function' ? len(a) : len;
+      for (let d = 30; d < max; d += PX) {
         if (Math.floor((d - t * 0.4) / (PX * 3)) % 2) continue;
         dot(g, x + ca * d, y + sa * d, k > 0.66 && Math.floor(t / 70) % 2 ? 0xffffff : color, 0.75);
       }
