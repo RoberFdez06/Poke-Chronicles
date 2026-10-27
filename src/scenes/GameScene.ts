@@ -309,7 +309,7 @@ import {
 } from '../data/legendHunt';
 import { unlockPokemon } from '../data/save';
 import { canCapture, canThrow, CAPTURE_RANGE, CAPTURE_RETRY_MS, newCaptureState, nextFloorCapture, resolveThrow, rollCapture, type CaptureState } from '../data/capture';
-import { DARK_RADIUS, darkEdge, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, ruleDamageMul, ruleNotice, shouldMultiply, speedRoomBonus, MULTIPLY_HP, MULTIPLY_SIZE, SPEED_ROOM_MUL, type RoomRule } from '../level/roomRules';
+import { DARK_ALPHA, DARK_RADIUS, darkEdge, quantizeDarkAlpha, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, ruleDamageMul, ruleNotice, shouldMultiply, speedRoomBonus, MULTIPLY_HP, MULTIPLY_SIZE, SPEED_ROOM_MUL, type RoomRule } from '../level/roomRules';
 import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data/secondChance';
 import type { SecondChanceChoice } from './SecondChanceScene';
 import { accountInfo } from '../net/cloud';
@@ -5187,15 +5187,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (edge > 0) {
         const grad = ctx.createRadialGradient(R, R, R - edge, R, R, R);
         grad.addColorStop(0, 'rgba(0,0,0,0)');
-        grad.addColorStop(1, 'rgba(0,0,0,0.93)');
+        grad.addColorStop(1, `rgba(0,0,0,${DARK_ALPHA})`);
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, R * 2, R * 2);
         // Escalones: el borde de la luz se ve a bandas, como un sprite, no como un degradado de foto
         const img = ctx.getImageData(0, 0, R * 2, R * 2);
-        for (let i = 3; i < img.data.length; i += 4) img.data[i] = Math.round((img.data[i] / 255) * 6) * (255 / 6);
+        for (let i = 3; i < img.data.length; i += 4) img.data[i] = quantizeDarkAlpha(img.data[i]);
         ctx.putImageData(img, 0, 0);
       } else {
-        ctx.fillStyle = 'rgba(0,0,0,0.93)';
+        ctx.fillStyle = `rgba(0,0,0,${DARK_ALPHA})`;
         ctx.fillRect(0, 0, R * 2, R * 2);
         ctx.globalCompositeOperation = 'destination-out';
         ctx.beginPath();
@@ -5210,7 +5210,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const hole = this.add.image(this.player.x, this.player.y, key).setDepth(depth);
     const big = 4000;
     const side = (ox: number, oy: number, w: number, h: number) =>
-      this.add.rectangle(0, 0, w, h, 0x000000, 0.93).setOrigin(ox, oy).setDepth(depth);
+      this.add.rectangle(0, 0, w, h, 0x000000, DARK_ALPHA).setOrigin(ox, oy).setDepth(depth);
     // Ojos brillantes de los enemigos que están en la sombra (por encima de la oscuridad)
     const eyes = this.add.graphics().setDepth(depth + 1);
     this.darkness = { hole, sides: [side(1, 0.5, big, big * 2), side(0, 0.5, big, big * 2), side(0.5, 1, R * 2, big), side(0.5, 0, R * 2, big)], eyes };
@@ -5223,11 +5223,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!d || !this.player) return;
     const { x, y } = this.player;
     const R = DARK_RADIUS;
-    d.hole.setPosition(x, y);
-    d.sides[0].setPosition(x - R, y);
-    d.sides[1].setPosition(x + R, y);
-    d.sides[2].setPosition(x, y - R);
-    d.sides[3].setPosition(x, y + R);
+    const px = Math.round(x), py = Math.round(y), o = R - 2; // solape bajo la textura: sin costuras con zoom/temblor
+    d.hole.setPosition(px, py);
+    d.sides[0].setPosition(px - o, py);
+    d.sides[1].setPosition(px + o, py);
+    d.sides[2].setPosition(px, py - o);
+    d.sides[3].setPosition(px, py + o);
     // Dos píxeles rojos por enemigo fuera de la luz; parpadean con un ritmo distinto para cada uno
     d.eyes.clear();
     const t = this.time.now;

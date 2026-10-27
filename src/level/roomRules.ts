@@ -94,6 +94,18 @@ export const shouldMultiply = (rule: RoomRule | undefined, special: boolean, rng
 export const DARK_RADIUS = 190;
 export const DARK_EDGE = 70;
 export const darkEdge = (lowFx: boolean): number => (lowFx ? 0 : DARK_EDGE);
+/** Opacidad de la capa oscura (la misma en la textura y en los rectángulos que la rodean). */
+export const DARK_ALPHA = 0.93;
+export const DARK_STEPS = 6;
+/**
+ * Cuantiza un alpha 0..255 del halo en escalones, SIN pasarse del alpha de los rectángulos (DARK_ALPHA):
+ * si el escalón más alto llegaba a 255 la textura quedaba más oscura que el relleno y se veía un recuadro.
+ */
+export const quantizeDarkAlpha = (a: number): number => {
+  const max = DARK_ALPHA * 255;
+  const v = Math.min(Math.max(a, 0), max);
+  return Math.min(max, Math.round((v / max) * DARK_STEPS) * (max / DARK_STEPS));
+};
 
 // --- Velocidad ---
 
