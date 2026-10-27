@@ -288,9 +288,9 @@ import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBeh
   MINE_RADIUS,
   ORBIT_RADIUS,
   ORBIT_SHOT_MS,
-  SHIELD_FRONT_MUL,
   SHIELD_TURN,
-  hitFromFront,
+  absorbShieldHit,
+  shieldPoolFor,
   turnToward,
 } from '../data/enemies';
 import { drawMinimap } from './minimap';
@@ -826,7 +826,7 @@ export class GameScene extends Phaser.Scene {
   /** Restos de PS del robo de vida (se cura de uno en uno). */
   private lifestealAcc = 0;
   /** Barra grande del jefe arriba de la pantalla (nombre, tipo y vida), como en Isaac. */
-  private bossBar?: { boss: Sprite; bar: ReturnType<typeof addHpBar>; objects: Phaser.GameObjects.GameObject[]; group?: Sprite[] };
+  private bossBar?: { boss: Sprite; bar: ReturnType<typeof addHpBar>; objects: Phaser.GameObjects.GameObject[]; group?: Sprite[]; shield?: { g: Phaser.GameObjects.Graphics; x: number; w: number } };
   private escKey!: Phaser.Input.Keyboard.Key;
   private menuPadPrev = false;
   /** El cursor está sobre una ranura de poder: ahí un clic no dispara. */
@@ -6984,15 +6984,25 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         if (dist > 70) walk(f);
         else e.setVelocity(0, 0);
         this.face(e, f);
+        if (e.getData('shieldHp') === undefined) {
+          const pool = shieldPoolFor((e.getData('maxHp') as number | undefined) ?? 10);
+          e.setData('shieldHp', pool).setData('shieldMax', pool);
+        }
         let g = e.getData('shieldGfx') as Phaser.GameObjects.Graphics | undefined;
         if (!g) {
           g = this.add.graphics().setDepth(5);
           e.setData('shieldGfx', g);
           e.once(Phaser.GameObjects.Events.DESTROY, () => g!.destroy());
         }
+        const sLeft = (e.getData('shieldHp') as number) / Math.max(1, e.getData('shieldMax') as number);
         const size = (e.getData('size') as number | undefined) ?? 60;
-        g.clear().lineStyle(8, 0xcfd8dc, 0.95).beginPath().arc(e.x, e.y, size * 0.62, ai.facing - 1.0, ai.facing + 1.0).strokePath();
-        g.lineStyle(3, 0x37474f, 1).beginPath().arc(e.x, e.y, size * 0.62 + 5, ai.facing - 1.0, ai.facing + 1.0).strokePath();
+        g.clear();
+        if (sLeft > 0) {
+          // Burbuja de escudo: se va apagando y se rompe en trozos cuanto menos le queda
+          const pulse = lowFx() ? 0 : Math.sin(this.time.now / 220) * 0.08;
+          g.lineStyle(5, 0x8ecbff, 0.35 + 0.5 * sLeft + pulse).strokeCircle(e.x, e.y, size * 0.62);
+          g.lineStyle(2, 0xffffff, 0.35 * sLeft).strokeCircle(e.x, e.y, size * 0.62 + 4);
+        }
         break;
       }
 
@@ -7766,6 +7776,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const hp = list.reduce((a, e) => a + (e.active ? Math.max(0, e.getData('hp') as number) : 0), 0);
       const max = list.reduce((a, e) => a + ((e.getData('maxHp') as number | undefined) ?? 1), 0);
       bb.bar.set(hp / Math.max(1, max));
+      if (bb.shield) {
+        // Escudo del jefe Escudado: barra azul acero bajo la de vida
+        const sh = list.reduce((a, e) => a + (e.active ? Math.max(0, (e.getData('shieldHp') as number | undefined) ?? 0) : 0), 0);
+        const shMax = list.reduce((a, e) => a + ((e.getData('shieldMax') as number | undefined) ?? 0), 0);
+        bb.shield.g.clear();
+        if (sh > 0 && shMax > 0) {
+          bb.shield.g.fillStyle(0x1d2848, 1).fillRoundedRect(bb.shield.x - 2, 40, bb.shield.w + 4, 8, 4);
+          bb.shield.g.fillStyle(0x6e8196, 1).fillRoundedRect(bb.shield.x, 41, Math.max(6, bb.shield.w * (sh / shMax)), 6, 3);
+          bb.shield.g.fillStyle(0xcfeaff, 1).fillRect(bb.shield.x + 3, 42, Math.max(0, bb.shield.w * (sh / shMax) - 6), 1);
+        }
+      }
     }
     this.paintActive();
     this.paintParry();
@@ -8069,12 +8090,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!enemy.active) return undefined;
     // Dragón: los poderes hacen más daño; Lluvia y Sol cambian Agua y Fuego (T38)
     let dmg = base * (status ? hitDamageMul(status) : 1) * weatherPowerMul(this.weather, status);
-    // T51: el escudado solo se lleva el golpe entero por la espalda
     const shAi = enemy.getData('ai') as EnemyAI | undefined;
-    if (shAi?.behavior === 'shielded' && hitFromFront(shAi.facing ?? 0, sx - enemy.x, sy - enemy.y)) {
-      dmg *= SHIELD_FRONT_MUL;
-      if (this.fxBudget.take(this.time.now)) this.popup(enemy.x, enemy.y - 44, '¡Bloqueado!', 0xb0bec5);
-    }
     // Eficacia de tipos (como en Pokémon): súper eficaz, no muy eficaz o casi sin efecto
     const defTypes = this.foeTypesOf(enemy);
     dmg *= damageMul(status, defTypes);
@@ -8103,6 +8119,18 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       }
       this.lifestealAcc = Math.min(this.lifestealAcc, 5);
     }
+    // El Escudado tiene una reserva de escudo (barra azul sobre su vida) que se come el daño de cualquier dirección
+    const shieldLeft = enemy.getData('shieldHp') as number | undefined;
+    if (shAi?.behavior === 'shielded' && shieldLeft !== undefined && shieldLeft > 0) {
+      const r = absorbShieldHit(shieldLeft, dmg);
+      enemy.setData('shieldHp', r.left);
+      dmg = r.through;
+      if (r.left <= 0) {
+        this.popup(enemy.x, enemy.y - 44, '¡Escudo roto!', 0xcfd8dc);
+        pixRing(this, enemy.x, enemy.y, 60, 0xcfd8dc, 320);
+        sfx('boom');
+      } else if (this.fxBudget.take(this.time.now)) this.popup(enemy.x, enemy.y - 44, '¡Escudo!', 0x8ecbff);
+    }
     this.countDamage(enemy, dmg);
     let hp = (enemy.getData('hp') as number) - dmg;
     sfx('hit');
@@ -8112,7 +8140,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     enemy.setTintFill(0xffffff);
     enemy.setData('flashUntil', this.time.now + 70);
     if (crit || this.fxBudget.take(this.time.now)) hitSpark(this, sx, sy, color, crit ? 9 : 5, crit ? 1.3 : 0.9);
-    damageNumber(this, enemy.x, enemy.y - (enemy.getData('size') as number) * 0.45, dmg, { crit });
+    if (dmg > 0) damageNumber(this, enemy.x, enemy.y - (enemy.getData('size') as number) * 0.45, dmg, { crit });
     if (crit) this.cameras.main.shake(90, 0.004);
     const hitAi = enemy.getData('ai') as EnemyAI | undefined;
     if (hp > 0 && hitAi && !hitAi.boss && push && push.lengthSq() > 0 && this.time.now >= hitAi.knockUntil) {
@@ -8298,7 +8326,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const hp = e.getData('hp') as number;
     const max = (e.getData('maxHp') as number | undefined) ?? hp;
     let g = e.getData('bar') as Phaser.GameObjects.Graphics | undefined;
-    if (hp >= max) {
+    const sh = (e.getData('shieldHp') as number | undefined) ?? 0;
+    if (hp >= max && sh <= 0) {
       g?.setVisible(false);
       return;
     }
@@ -8314,6 +8343,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     g.fillStyle(0x1d2848, 1).fillRoundedRect(x - 2, y - 2, w + 4, 8, 3);
     g.fillStyle(0x404a5c, 1).fillRect(x, y, w, 4);
     g.fillStyle(hpColor(ratio), 1).fillRect(x, y, w * ratio, 4);
+    if (sh > 0) {
+      // Escudo: barra azul acero encima de la vida
+      const sr = Math.min(1, sh / Math.max(1, (e.getData('shieldMax') as number | undefined) ?? sh));
+      g.fillStyle(0x1d2848, 1).fillRoundedRect(x - 2, y - 8, w + 4, 6, 2);
+      g.fillStyle(0x6e8196, 1).fillRect(x, y - 6, w * sr, 3);
+      g.fillStyle(0xcfeaff, 1).fillRect(x, y - 6, w * sr, 1);
+    }
   }
 
   private buildBossBar(boss: Sprite, label = this.bossName, type = this.bossType, group?: Sprite[]) {
@@ -8325,12 +8361,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const chip = addTypeChip(this, bx + 20 + name.width + 56, 30, typeNameEs(type), typeColor(type), 92, 24);
     const barX = bx + 20 + name.width + 116;
     const bar = addHpBar(this, barX, 23, bx + 860 - barX, 14);
-    const objects = [box, name, ...chip, ...bar.objects];
+    const shG = this.add.graphics();
+    const objects = [box, name, ...chip, ...bar.objects, shG];
     for (const o of objects) {
       this.hudLayer.add(o);
       if (this.hudCam) o.cameraFilter &= ~this.hudCam.id;
     }
-    this.bossBar = { boss, bar, objects, group };
+    this.bossBar = { boss, bar, objects, group, shield: { g: shG, x: barX + 36, w: bx + 860 - barX - 36 } };
   }
 
   // --- Monedas y bayas en el suelo ---

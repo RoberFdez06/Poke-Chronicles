@@ -79,7 +79,7 @@ test('el láser y la onda tocan donde deben', () => {
 
 // --- T51 ---
 import { MAX_HEALERS, MAX_MINES, biomeExtraBehaviors, mixBehaviors, twistBehaviors, twistChance } from '../src/data/bossPatterns.ts';
-import { EXTRA_BEHAVIORS, EXTRA_BEHAVIOR_LABEL, enemyStats, hitFromFront, turnToward } from '../src/data/enemies.ts';
+import { EXTRA_BEHAVIORS, EXTRA_BEHAVIOR_LABEL, absorbShieldHit, enemyStats, hitFromFront, shieldPoolFor, turnToward } from '../src/data/enemies.ts';
 import { difficultyFor } from '../src/level/progression.ts';
 import { mulberry32 } from '../src/level/floorGen.ts';
 
@@ -124,4 +124,11 @@ test('T51: escudado (golpes de frente), giro limitado y estadísticas', () => {
   assert.ok(enemyStats(400, 'shielded', d).hp > enemyStats(400, 'shoot', d).hp);
   assert.ok(enemyStats(400, 'mine', d).hp < enemyStats(400, 'chase', d).hp);
   for (const b of EXTRA_BEHAVIORS) assert.ok(enemyStats(400, b, d).speed > 0, b);
+});
+
+test('escudado: el escudo es una reserva de PS que absorbe de cualquier lado', () => {
+  assert.equal(shieldPoolFor(100), 60);
+  assert.deepEqual(absorbShieldHit(60, 25), { absorbed: 25, through: 0, left: 35 });
+  assert.deepEqual(absorbShieldHit(10, 25), { absorbed: 10, through: 15, left: 0 });
+  assert.deepEqual(absorbShieldHit(0, 25), { absorbed: 0, through: 25, left: 0 });
 });
