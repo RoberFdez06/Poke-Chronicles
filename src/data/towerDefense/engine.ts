@@ -6,10 +6,10 @@ import {
   ABILITY_INFO, FREEZE_BOSS_TIME, FREEZE_TIME, HEAL_PART, LIGHTNING_TARGETS, abilityReady, freshCooldowns, lightningDamage, tickCooldowns,
   type AbilityId, type Cooldowns,
 } from './abilities.ts';
-import { flightPoints, isBuildable, pathPoints, pointAt, polyLength, roadSet, type TdMap } from './maps.ts';
+import { isBuildable, pathPoints, pointAt, polyLength, roadSet, type TdMap } from './maps.ts';
 import { MAP_FOES, type TdMon } from './species.ts';
 import {
-  BRANCH_LEVEL, MAX_TOWER_LEVEL, bestTypeMul, sellValue, towerCost, towerStats, upgradeCostFor, type Branch, type TowerStats,
+  BRANCH_LEVEL, MAX_TOWER_LEVEL, MEGA_LEVEL, bestTypeMul, megaCostFor, megaSpeciesOf, sellValue, towerCost, towerStats, upgradeCostFor, type Branch, type TowerStats,
 } from './towers.ts';
 import {
   earlyCallBonus, enemyDef, isBossWave, isEndless, prepTime, stagePower, waveBonus, waveSpawns, wavesInLevel,
@@ -45,6 +45,8 @@ export interface TdTower {
   branch: Branch | null;
   /** Especie a la que ha evolucionado (nivel 5), o null (nivel final con aura). */
   evolved: number | null;
+  /** Especie megaevolucionada (nivel 6), o null. */
+  mega: number | null;
   cooldown: number;
   shots: number;
   targeting: Targeting;
@@ -104,6 +106,7 @@ export type TdEvent =
   | { t: 'waveEnd'; wave: number; bonus: number; farm: number; perfect: boolean }
   | { t: 'farm'; towerId: number; amount: number }
   | { t: 'evolve'; towerId: number }
+  | { t: 'mega'; towerId: number }
   | { t: 'ability'; id: AbilityId }
   | { t: 'won' }
   | { t: 'lost' };
@@ -123,7 +126,7 @@ function mulberry(seed: number) {
 
 export interface TdGameOptions {
   map: TdMap;
-  /** Nivel 1-12, o 0 para el infinito. */
+  /** Nivel 1..niveles del mapa, o 0 para el infinito. */
   level: number;
   team: readonly TeamMon[];
   seed?: number;
@@ -156,19 +159,17 @@ export class TdGame {
   private rng: () => number;
   private road: Set<string>;
   private groundPts: { x: number; y: number }[][];
-  private airPts: { x: number; y: number }[][];
 
   constructor(o: TdGameOptions) {
     this.map = o.map;
-    this.stage = { tier: o.map.tier, level: Math.max(0, Math.floor(o.level)) };
+    this.stage = { tier: o.map.tier, level: Math.max(0, Math.min(o.map.levels, Math.floor(o.level))), levels: o.map.levels };
     this.team = o.team;
-    this.totalWaves = isEndless(this.stage) ? Infinity : wavesInLevel(this.stage.level);
+    this.totalWaves = isEndless(this.stage) ? Infinity : wavesInLevel(this.stage.level, this.stage.levels);
     this.money = o.map.startMoney;
     this.prepLeft = prepTime(1);
     this.rng = mulberry(o.seed ?? 12345);
     this.road = roadSet(o.map);
     this.groundPts = o.map.paths.map((p) => pathPoints(p));
-    this.airPts = o.map.paths.map((_, i) => flightPoints(o.map, i));
   }
 
   get endless(): boolean {
@@ -216,7 +217,7 @@ export class TdGame {
     if (this.placeError(slot, x, y)) return null;
     const mon = this.team[slot];
     this.money -= towerCost(mon);
-    const t: TdTower = { id: this.nextId++, slot, mon, x, y, level: 1, branch: null, evolved: null, cooldown: 0.2, shots: 0, targeting: 'first', kills: 0, facing: Math.PI / 2 };
+    const t: TdTower = { id: this.nextId++, slot, mon, x, y, level: 1, branch: null, evolved: null, mega: null, cooldown: 0.2, shots: 0, targeting: 'first', kills: 0, facing: Math.PI / 2 };
     this.towers.push(t);
     return t;
   }
@@ -228,21 +229,38 @@ export class TdGame {
     for (const o of this.towers) {
       if (o === t) continue;
       const os = towerStats(o.mon, o.level, o.branch);
-      if (os.aura > 1 && Math.hypot(o.x - t.x, o.y - t.y) <= AURA_RANGE) aura = Math.max(aura, os.aura);
+      const a = Math.max(os.aura, os.megaAura);
+      if (a > 1 && Math.hypot(o.x - t.x, o.y - t.y) <= AURA_RANGE) aura = Math.max(aura, a);
     }
     return aura > 1 ? { ...s, damage: Math.round(s.damage * aura * 10) / 10 } : s;
   }
 
+  /** Especie que megaevolucionaría (nivel 5 con forma mega), o null. */
+  megaSpecies(t: TdTower): number | null {
+    return t.level === MAX_TOWER_LEVEL ? megaSpeciesOf(t.mon.id, t.evolved) : null;
+  }
+
+  /** Dinero para el siguiente nivel: el normal hasta el 5 y el de la megaevolución del 5 al 6 (null si no hay más). */
   upgradeCost(t: TdTower): number | null {
+    if (t.level >= MEGA_LEVEL) return null;
+    if (t.level === MAX_TOWER_LEVEL) return this.megaSpecies(t) !== null ? megaCostFor(t.mon) : null;
     return upgradeCostFor(t.mon, t.level);
   }
 
-  /** Mejora un nivel. Al pasar al nivel 3 hay que elegir rama. */
+  /** Mejora un nivel. Al pasar al nivel 3 hay que elegir rama; del 5 al 6 megaevoluciona (si puede). */
   upgrade(towerId: number, branch?: Branch): 'ok' | 'max' | 'poor' | 'branch' | 'none' {
     const t = this.towers.find((q) => q.id === towerId);
     if (!t || this.over) return 'none';
-    const cost = upgradeCostFor(t.mon, t.level);
+    const cost = this.upgradeCost(t);
     if (cost === null) return 'max';
+    if (t.level === MAX_TOWER_LEVEL) {
+      if (this.money < cost) return 'poor';
+      this.money -= cost;
+      t.mega = this.megaSpecies(t);
+      t.level = MEGA_LEVEL;
+      this.events.push({ t: 'mega', towerId: t.id });
+      return 'ok';
+    }
     if (t.level + 1 === BRANCH_LEVEL && !t.branch && !branch) return 'branch';
     if (this.money < cost) return 'poor';
     this.money -= cost;
@@ -262,7 +280,7 @@ export class TdGame {
   sell(towerId: number): number {
     const i = this.towers.findIndex((q) => q.id === towerId);
     if (i < 0 || this.over) return 0;
-    const v = sellValue(this.towers[i].mon, this.towers[i].level);
+    const v = this.sellValue(this.towers[i]);
     this.money += v;
     this.towers.splice(i, 1);
     return v;
@@ -298,7 +316,8 @@ export class TdGame {
   private spawn(s: Spawn, distOffset = 0, kindOverride?: EnemyDef) {
     const def = kindOverride ?? enemyDef(s.kind, s.species, this.wave, stagePower(this.stage));
     const path = Math.min(s.path, this.map.paths.length - 1);
-    const pts = def.air ? this.airPts[path] : this.groundPts[path];
+    // Los voladores siguen el mismo camino (solo los alcanzan las torres con alcance aéreo)
+    const pts = this.groundPts[path];
     const len = polyLength(pts);
     const p = pointAt(pts, distOffset);
     const e: TdEnemy = {

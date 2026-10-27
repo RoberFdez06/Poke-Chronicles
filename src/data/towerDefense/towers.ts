@@ -1,10 +1,14 @@
 // Defensa de torres: estadísticas de cada torre a partir de las estadísticas reales del Pokémon (pokeStats), su
 // rareza y sus mejoras de la colección; niveles 1-5 con dinero, dos ramas al nivel 3 y evolución (o nivel final con
-// aura) al 5. Lógica pura, sin Phaser.
+// aura) al 5. Quien tenga megaevolución (powerForm.ts) puede pagar un nivel 6 extra: forma mega, ataque mega y aura
+// mega que refuerza a las torres cercanas. Lógica pura, sin Phaser.
 import { rawEffectiveness } from '../typeChart.ts';
+import { hasMegaEvolution, megaFormName } from '../powerForm.ts';
 import { FARM_IDS, finalMoveOf, type TdMon } from './species.ts';
 
 export const MAX_TOWER_LEVEL = 5;
+/** Nivel extra de megaevolución (solo quien tenga forma mega). */
+export const MEGA_LEVEL = 6;
 /** Nivel en el que se elige rama. */
 export const BRANCH_LEVEL = 3;
 
@@ -105,6 +109,10 @@ export interface TowerStats {
   income: number;
   /** Cada cuántos disparos sale el ataque nuevo del nivel final (0 = aún no). */
   specialEvery: number;
+  /** Megaevolucionada (nivel 6): ataque mega en lugar del final y aura mega. */
+  mega: boolean;
+  /** Aura mega: multiplicador de daño de las torres a AURA_RANGE (1 si no tiene). */
+  megaAura: number;
 }
 
 export function towerStyle(mon: Pick<TdMon, 'id' | 'types'>): TowerStyle {
@@ -123,7 +131,7 @@ export function upgradeCostFor(mon: Pick<TdMon, 'rarity'>, level: number): numbe
 
 /** Lo gastado en total en una torre de ese nivel (para vender). */
 export function spentFor(mon: Pick<TdMon, 'rarity'>, level: number): number {
-  let n = towerCost(mon);
+  let n = towerCost(mon) + (level >= MEGA_LEVEL ? megaCostFor(mon) : 0);
   for (let l = 1; l < level; l++) n += upgradeCostFor(mon, l) ?? 0;
   return n;
 }
@@ -136,6 +144,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v
 export function towerStats(mon: TdMon, level: number, branch: Branch | null): TowerStats {
   const s = mon.stats;
   const style = towerStyle(mon);
+  const mega = Math.floor(level) >= MEGA_LEVEL;
   const lv = clamp(Math.floor(level), 1, MAX_TOWER_LEVEL);
   const up = mon.upgrades ?? {};
   const power = RARITY_POWER[mon.rarity];
@@ -188,6 +197,15 @@ export function towerStats(mon: TdMon, level: number, branch: Branch | null): To
     }
   }
   if (style === 'support' && lv >= 4) aura += 0.05;
+  // Megaevolución: mucho más fuerte, más rápida y con más alcance; alcanza voladores y la granja da más
+  if (mega) {
+    damage *= MEGA_DAMAGE_MUL;
+    rate *= 1.15;
+    range *= 1.1;
+    crit += 0.05;
+    air = true;
+    if (income) income = Math.round(income * 1.3);
+  }
   return {
     style,
     damage: Math.round(damage * 10) / 10,
@@ -202,15 +220,44 @@ export function towerStats(mon: TdMon, level: number, branch: Branch | null): To
     aura,
     income,
     // Nivel final: el ataque nuevo sale uno de cada 4 disparos (triple de daño y en área)
-    specialEvery: lv >= MAX_TOWER_LEVEL ? 4 : 0,
+    specialEvery: mega ? 3 : lv >= MAX_TOWER_LEVEL ? 4 : 0,
+    mega,
+    megaAura: mega ? MEGA_AURA : 1,
   };
 }
 
 /** Nombre del ataque nuevo del nivel final. */
 export const specialMoveOf = (mon: Pick<TdMon, 'types'>): string => finalMoveOf(mon.types[0] ?? 'normal');
 
+/** Multiplicador de daño de la megaevolución y aura mega (+12 % a las torres cercanas). */
+export const MEGA_DAMAGE_MUL = 1.6;
+export const MEGA_AURA = 1.12;
+/** Coste del nivel 6 (megaevolución): bastante dinero, tres veces la torre. */
+export const megaCostFor = (mon: Pick<TdMon, 'rarity'>): number => Math.round((towerCost(mon) * 3) / 5) * 5;
+
+/**
+ * Especie que megaevoluciona: la evolucionada (o la propia si no evoluciona) si tiene forma mega; null si no tiene y
+ * se queda en el nivel 5.
+ */
+export function megaSpeciesOf(monId: number, evolved: number | null): number | null {
+  const id = evolved ?? monId;
+  return hasMegaEvolution(id) ? id : null;
+}
+/** Nombre de la forma mega en PokeAPI (para su sprite). */
+export const megaSpriteName = (speciesId: number): string | null => megaFormName(speciesId);
+
+/** Ataque mega del nivel 6, por tipo. */
+export const MEGA_MOVE: Readonly<Record<string, string>> = {
+  normal: 'Mega Hiperrayo', fire: 'Anillo Ígneo', water: 'Hidroariete', electric: 'Electrocañón', grass: 'Planta Feroz', ice: 'Frío Polar',
+  fighting: 'Puño Dinámico', poison: 'Lanza Mugre', ground: 'Filo del Abismo', flying: 'Ascenso Draco', psychic: 'Onda Mental',
+  bug: 'Megacuerno', rock: 'Joya de Luz', ghost: 'Golpe Fantasma', dragon: 'Enfado Draco', dark: 'Juego Sucio',
+  steel: 'Meteoimpacto', fairy: 'Carantoña',
+};
+export const megaMoveOf = (mon: Pick<TdMon, 'types'>): string => MEGA_MOVE[mon.types[0] ?? 'normal'] ?? 'Mega Hiperrayo';
+
 /** Texto corto de cada nivel para el panel. */
 export function levelLabel(level: number, evolved: boolean): string {
+  if (level >= MEGA_LEVEL) return 'Nv. 6 · Megaevolución';
   if (level >= MAX_TOWER_LEVEL) return evolved ? 'Nv. 5 · Evolución' : 'Nv. 5 · Aura final';
   return `Nv. ${level}`;
 }

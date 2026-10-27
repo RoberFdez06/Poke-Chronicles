@@ -13,7 +13,7 @@ import { sfx } from '../ui/audio';
 import { currentInput } from '../ui/inputMode';
 import { loadPmd, pmdAnimKey, pmdKey, type PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
-import { fetchNextEvolutions, fetchPokemonCard, fetchSpeciesName } from '../data/pokeapi';
+import { fetchFormSprites, fetchNextEvolutions, fetchPokemonCard, fetchSpeciesName } from '../data/pokeapi';
 import { withTimeout } from '../data/offline';
 import { addCandies, addTickets, loadUpgrades } from '../data/save';
 import { levelsFor } from '../data/upgrades';
@@ -30,9 +30,10 @@ import { biomeById } from '../level/biomes';
 import { TD_COLS, TD_MAPS, TD_ROWS, baseCell, buildableCells, entryCells, type TdMap } from '../data/towerDefense/maps';
 import { BASE_HP, TARGETING_LABEL, TdGame, type TdEnemy, type TdEvent, type TdTower, type TeamMon } from '../data/towerDefense/engine';
 import { ABILITIES, ABILITY_INFO, LIGHTNING_TARGETS, type AbilityId } from '../data/towerDefense/abilities';
-import { BRANCH_LEVEL, MAX_TOWER_LEVEL, STYLE_LABEL, branchInfo, levelLabel, specialMoveOf, towerCost, towerStats, upgradeCostFor } from '../data/towerDefense/towers';
+import { BRANCH_LEVEL, MAX_TOWER_LEVEL, MEGA_LEVEL, STYLE_LABEL, branchInfo, levelLabel, megaMoveOf, megaSpriteName, specialMoveOf, towerCost, towerStats } from '../data/towerDefense/towers';
+import { drawMegaAura, towerMegaFx } from '../ui/art/tdMegaArt';
 import { ENEMY_KIND_LABEL, MAP_FOES, TRIAL_TEAM, type EnemyKind } from '../data/towerDefense/species';
-import { LEVELS_PER_MAP, waveSpawns } from '../data/towerDefense/waves';
+import { waveSpawns } from '../data/towerDefense/waves';
 import { isLevelUnlocked, loadTdProgress, starsFor, submitTdOutcome, type TdRewards } from '../data/towerDefense/progress';
 import { tdMonKey, type TowerDefenseData } from './TowerDefenseMenuScene';
 import { openConfirm } from './ConfirmScene';
@@ -627,7 +628,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (won) confetti(this, 250, 710, 90, 101);
     const opts: { label: string; act: () => void }[] = [];
     const nextLevel = this.args.level + 1;
-    if (won && !endless && nextLevel <= LEVELS_PER_MAP && isLevelUnlocked(loadTdProgress(), this.args.mapIdx, nextLevel)) {
+    if (won && !endless && nextLevel <= this.map.levels && isLevelUnlocked(loadTdProgress(), this.args.mapIdx, nextLevel)) {
       opts.push({ label: `Siguiente: nivel ${nextLevel}`, act: () => goTo(this, 'TowerDefense', { ...this.args, level: nextLevel }) });
     }
     opts.push({ label: 'Reintentar', act: () => this.restart() });
@@ -751,7 +752,7 @@ export class TowerDefenseScene extends Phaser.Scene {
           const cx = sx(t.x) + CELL / 2;
           const cy = sy(t.y) + CELL / 2 - 12;
           pixFlash(this, cx, cy, 26, typeColor(t.mon.types[0]), 200, 30);
-          this.floatText(cx, cy - 24, specialMoveOf(t.mon), '#ffe9a8', 13);
+          this.floatText(cx, cy - 24, t.mega ? megaMoveOf(t.mon) : specialMoveOf(t.mon), t.mega ? '#ffb8f0' : '#ffe9a8', 13);
         }
         if (Math.random() < 0.2) sfx('shot');
         break;
@@ -778,7 +779,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         break;
       case 'kill': {
         const x = X(e.x);
-        const y = Y(e.y) - (e.air ? 22 : 8);
+        const y = Y(e.y) - (e.air ? 26 : 8);
         pixDebris(this, x, y, 0xffffff, e.boss ? 24 : 8, e.boss ? 2 : 1, 30);
         this.floatMoney(x, y - 10, e.money);
         if (e.boss) {
@@ -857,9 +858,52 @@ export class TowerDefenseScene extends Phaser.Scene {
         }
         break;
       }
+      case 'mega':
+        this.onMega(e.towerId);
+        break;
       default:
         break;
     }
+  }
+
+  /** Nivel 6: destello de megaevolución (megaFx) y cambio al sprite de la forma mega de PokeAPI si lo hay. */
+  private onMega(towerId: number) {
+    const t = this.td.towers.find((q) => q.id === towerId);
+    if (!t || t.mega === null) return;
+    const v = this.towerViews.get(towerId);
+    const cx = sx(t.x) + CELL / 2;
+    const cy = sy(t.y) + CELL / 2;
+    sfx('evolve');
+    const ms = towerMegaFx(this, cx, cy - 8, cy + 16, typeColor(t.mon.types[0]), 40);
+    if (v && !lowFx()) evolveGlow(this, v.spr, ms * 0.7, 35);
+    const species = t.mega;
+    const name = this.names.get(species) ?? (t.evolved ? null : t.mon.name);
+    this.toast(`¡${name ? `Mega ${name}` : `${t.mon.name} megaevoluciona`}! Ataque: ${megaMoveOf(t.mon)}`, 'reward');
+    const form = megaSpriteName(species);
+    const key = `tdmega-${species}`;
+    const swap = () => {
+      const view = this.towerViews.get(towerId);
+      if (!view || !view.spr.active || !this.textures.exists(key)) return;
+      view.spr.anims.stop();
+      view.pmd = false;
+      view.id = -species;
+      view.spr.setTexture(key).setScale((46 / Math.max(1, view.spr.width)) * 1.5);
+    };
+    if (!form) return;
+    const loaded = this.textures.exists(key)
+      ? Promise.resolve(true)
+      : fetchFormSprites(form).then(
+          (sp) =>
+            new Promise<boolean>((res) => {
+              if (!sp?.front || !this.scene.isActive()) return res(false);
+              this.load.image(key, sp.front);
+              this.load.once(Phaser.Loader.Events.COMPLETE, () => res(this.textures.exists(key)));
+              this.load.start();
+            }),
+        );
+    void loaded.then((ok) => {
+      if (ok) this.time.delayedCall(Math.max(0, ms * 0.73), swap);
+    });
   }
 
   private floatText(x: number, y: number, text: string, color: string, size = 14) {
@@ -891,7 +935,7 @@ export class TowerDefenseScene extends Phaser.Scene {
   }
 
   private enemyPos(e: TdEnemy) {
-    return { x: OX + e.x * CELL, y: OY + e.y * CELL - (e.def.air ? 22 : 6) };
+    return { x: OX + e.x * CELL, y: OY + e.y * CELL - (e.def.air ? 26 : 6) };
   }
 
   private syncEnemies(time: number) {
@@ -904,9 +948,14 @@ export class TowerDefenseScene extends Phaser.Scene {
         this.enemyViews.set(e.id, v);
       }
       const p = this.enemyPos(e);
-      const bob = e.def.air && !lowFx() ? Math.sin(time / 180 + v.bob) * 4 : 0;
+      // Voladores: siguen el camino por encima, con un vuelo suave (sube y baja, se mece) y la sombra en el suelo,
+      // separada del cuerpo, que se encoge y se aclara cuando sube
+      const fly = e.def.air && !lowFx() ? Math.sin(time / 200 + v.bob) : 0;
+      const bob = fly * 5;
       v.spr.setPosition(p.x, p.y + bob).setDepth(10 + e.y + (e.def.air ? 20 : 0));
-      v.shadow.setPosition(p.x, OY + e.y * CELL + 8).setDepth(2);
+      if (e.def.air) v.spr.setRotation(lowFx() ? 0 : Math.sin(time / 330 + v.bob) * 0.08);
+      v.shadow.setPosition(p.x, OY + e.y * CELL + 10).setDepth(2);
+      if (e.def.air) v.shadow.setScale(1 + fly * 0.12).setAlpha(0.85 + fly * 0.15);
       const row = dir8Row(e.dx, e.dy, v.row);
       if (row !== v.row && v.pmd) {
         v.row = row;
@@ -1044,7 +1093,8 @@ export class TowerDefenseScene extends Phaser.Scene {
       const cx = sx(tw.x) + CELL / 2;
       const cy = sy(tw.y) + CELL / 2 + 10;
       drawPedestal(g, cx, cy, RARITY_COLORS[tw.mon.rarity], tw.level, tw.branch, tw.id === this.selected, t);
-      if (tw.level >= MAX_TOWER_LEVEL) drawAura(g, cx, cy - 2, typeColor(tw.mon.types[0]), t, tw.evolved !== null);
+      if (tw.level >= MEGA_LEVEL) drawMegaAura(g, cx, cy - 2, typeColor(tw.mon.types[0]), t);
+      else if (tw.level >= MAX_TOWER_LEVEL) drawAura(g, cx, cy - 2, typeColor(tw.mon.types[0]), t, tw.evolved !== null);
     }
   }
 
@@ -1165,7 +1215,7 @@ export class TowerDefenseScene extends Phaser.Scene {
 
   private updatePanel(g: Phaser.GameObjects.Graphics, kbd: boolean) {
     const tw = this.selectedTower();
-    const key = tw ? `t${tw.id}-${tw.level}-${tw.branch}-${tw.targeting}-${tw.evolved}` : this.placing !== null ? `p${this.placing}` : `i${this.td.wave}-${this.td.phase}`;
+    const key = tw ? `t${tw.id}-${tw.level}-${tw.branch}-${tw.targeting}-${tw.evolved}-${tw.mega}` : this.placing !== null ? `p${this.placing}` : `i${this.td.wave}-${this.td.phase}`;
     if (key !== this.panelKey) {
       this.panelKey = key;
       this.rebuildPanel(tw);
@@ -1204,7 +1254,8 @@ export class TowerDefenseScene extends Phaser.Scene {
       return t;
     };
     if (tw) {
-      const name = tw.evolved ? this.names.get(tw.evolved) ?? tw.mon.name : tw.mon.name;
+      const base = tw.evolved ? this.names.get(tw.evolved) ?? tw.mon.name : tw.mon.name;
+      const name = tw.mega !== null ? `Mega ${base}` : base;
       txt(y0, `${shorten(name, 13)}\n${levelLabel(tw.level, tw.evolved !== null)}`, 15, NAVY, true);
       txt(y0 + 40, '', 12);
       let by = y0 + 130;
@@ -1212,7 +1263,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         this.panelBtns.push(this.makeBtn(x, by, 140, h, label, act, en, 12, color));
         by += h + 8;
       };
-      const cost = upgradeCostFor(tw.mon, tw.level);
+      const cost = this.td.upgradeCost(tw);
       if (cost === null) {
         txt(by, 'Nivel máximo', 13, '#b8860b', true);
         by += 24;
@@ -1225,7 +1276,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         btn(`${bb.name}\n${bb.desc}`, () => this.doUpgrade('b'), () => this.td.money >= cost, 0xa8d0ff, 50);
         for (const b of this.panelBtns) b.text?.setWordWrapWidth(132).setFontSize(10);
       } else {
-        const evo = tw.level + 1 === MAX_TOWER_LEVEL ? (tw.mon.evolveId ? '\nEvoluciona' : '\nAura final') : '';
+        const evo = tw.level + 1 === MEGA_LEVEL ? '\nMegaevoluciona' : tw.level + 1 === MAX_TOWER_LEVEL ? (tw.mon.evolveId ? '\nEvoluciona' : '\nAura final') : '';
         btn(`Mejorar · ${cost} $${evo}`, () => this.doUpgrade(), () => this.td.money >= cost, 0xb8f0c8, evo ? 40 : 34);
       }
       btn(`Objetivo: ${TARGETING_LABEL[tw.targeting]}`, () => this.td.cycleTargeting(tw.id), () => true);

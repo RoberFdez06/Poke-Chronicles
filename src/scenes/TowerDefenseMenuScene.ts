@@ -10,9 +10,9 @@ import { addMenuBackdrop } from '../ui/art/landscape';
 import { ToastStack } from '../ui/toast';
 import { bakeTdArt, drawMapThumb, tdIcon } from '../ui/art/tdArt';
 import { TD_MAPS } from '../data/towerDefense/maps';
-import { LEVELS_PER_MAP, wavesInLevel } from '../data/towerDefense/waves';
+import { wavesInLevel } from '../data/towerDefense/waves';
 import {
-  LEVELS_TO_UNLOCK_NEXT, isEndlessUnlocked, isLevelUnlocked, isMapUnlocked, levelsCleared, loadTdProgress, mapProgress, mapStars, type TdProgress,
+  LEVEL_COLS, LEVEL_GRID_BOTTOM, levelBox, levelsNeeded, isEndlessUnlocked, isLevelUnlocked, isMapUnlocked, levelsCleared, loadTdProgress, mapProgress, mapStars, type TdProgress,
 } from '../data/towerDefense/progress';
 import { TRIAL_TEAM } from '../data/towerDefense/species';
 import { towerCost, towerStyle, STYLE_LABEL } from '../data/towerDefense/towers';
@@ -144,18 +144,18 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
       drawMapThumb(thumb, m, biomeById(m.biome).colors, cx + 12, cy + 30, 5, !open);
       const name = this.add.text(cx + 12, cy + 10, `${i + 1}. ${m.name}`, { fontFamily: UI.FONT, fontSize: '16px', fontStyle: 'bold', color: NAVY });
       const cleared = levelsCleared(this.progress, m.id);
-      const info = this.add.text(cx + 100, cy + 32, open ? `Niveles ${cleared}/${LEVELS_PER_MAP}\n${mapStars(this.progress, m.id)}/${LEVELS_PER_MAP * 3}` : `Supera ${LEVELS_TO_UNLOCK_NEXT}\nniveles del\nmapa ${i}`, {
+      const info = this.add.text(cx + 100, cy + 32, open ? `Niveles ${cleared}/${m.levels}\n${mapStars(this.progress, m.id)}/${m.levels * 3}` : `Supera ${levelsNeeded(TD_MAPS[i - 1]?.levels ?? 0)}\nniveles del\nmapa ${i}`, {
         fontFamily: UI.FONT, fontSize: '13px', color: open ? NAVY : '#6a7080', lineSpacing: 2,
       });
       const parts: Phaser.GameObjects.GameObject[] = [g, thumb, name, info];
       if (open) {
-        info.setText(`Niveles ${cleared}/${LEVELS_PER_MAP}`);
+        info.setText(`Niveles ${cleared}/${m.levels}`);
         parts.push(tdIcon(this, cx + 108, cy + 63, 'star', 1.8));
-        parts.push(this.add.text(cx + 120, cy + 63, `${mapStars(this.progress, m.id)}/${LEVELS_PER_MAP * 3}`, { fontFamily: UI.FONT, fontSize: '13px', color: NAVY }).setOrigin(0, 0.5));
+        parts.push(this.add.text(cx + 120, cy + 63, `${mapStars(this.progress, m.id)}/${m.levels * 3}`, { fontFamily: UI.FONT, fontSize: '13px', color: NAVY }).setOrigin(0, 0.5));
         // Barra de niveles superados
         const bar = this.add.graphics();
         bar.fillStyle(0x18202c, 1).fillRect(cx + 100, cy + 84, 98, 8);
-        bar.fillStyle(cleared >= LEVELS_PER_MAP ? 0xffd34d : 0x2ecc71, 1).fillRect(cx + 101, cy + 85, (96 * cleared) / LEVELS_PER_MAP, 6);
+        bar.fillStyle(cleared >= m.levels ? 0xffd34d : 0x2ecc71, 1).fillRect(cx + 101, cy + 85, (96 * cleared) / m.levels, 6);
         parts.push(bar);
         if (isEndlessUnlocked(this.progress, m.id)) parts.push(this.add.text(cx + 100, cy + 94, '∞ abierto', { fontFamily: UI.FONT, fontSize: '12px', color: '#b8860b' }));
       } else {
@@ -185,11 +185,11 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
 
   private pickMap(i: number) {
     if (!isMapUnlocked(this.progress, i)) {
-      this.toasts.show(`Mapa cerrado: supera ${LEVELS_TO_UNLOCK_NEXT} niveles de «${TD_MAPS[i - 1].name}»`, { kind: 'warning', icon: 'key' });
+      this.toasts.show(`Mapa cerrado: supera ${levelsNeeded(TD_MAPS[i - 1].levels)} niveles de «${TD_MAPS[i - 1].name}»`, { kind: 'warning', icon: 'key' });
       return;
     }
     this.mapSel = i;
-    this.levelSel = Math.min(LEVELS_PER_MAP - 1, levelsCleared(this.progress, TD_MAPS[i].id));
+    this.levelSel = Math.min(TD_MAPS[i].levels - 1, levelsCleared(this.progress, TD_MAPS[i].id));
     this.showStage('levels');
   }
 
@@ -199,23 +199,22 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     const m = TD_MAPS[this.mapSel];
     const mp = mapProgress(this.progress, m.id);
     this.title(m.name, `${biomeById(m.biome).name} · ${m.desc}`);
-    const bw = 136;
-    const bh = 112;
-    const x0 = 72;
-    const y0 = 108;
+    // Rejilla de LEVEL_COLS columnas: 2 filas con 10 niveles y 3 con 15 (todo cabe encima del infinito)
+    const L = m.levels;
     const boxes: { g: Phaser.GameObjects.Graphics; i: number; x: number; y: number; w: number; h: number }[] = [];
-    for (let i = 0; i < LEVELS_PER_MAP; i++) {
-      const x = x0 + (i % 6) * bw;
-      const y = y0 + Math.floor(i / 6) * (bh + 10);
+    for (let i = 0; i < L; i++) {
+      const { x, y, w: bw0, h: bh } = levelBox(i);
+      const bw = bw0 + 10;
       const open = isLevelUnlocked(this.progress, this.mapSel, i + 1);
       const g = this.add.graphics();
       const parts: Phaser.GameObjects.GameObject[] = [g];
-      parts.push(this.add.text(x + (bw - 10) / 2, y + 20, `Nivel ${i + 1}`, { fontFamily: UI.FONT, fontSize: '20px', fontStyle: 'bold', color: open ? NAVY : '#6a7080' }).setOrigin(0.5));
+      const mid = x + (bw - 10) / 2;
+      parts.push(this.add.text(mid, y + 15, `Nivel ${i + 1}`, { fontFamily: UI.FONT, fontSize: '17px', fontStyle: 'bold', color: open ? NAVY : '#6a7080' }).setOrigin(0.5));
       if (open) {
-        for (let s = 0; s < 3; s++) parts.push(tdIcon(this, x + (bw - 10) / 2 + (s - 1) * 30, y + 52, s < mp.stars[i] ? 'star' : 'starOff', 2.6));
-        parts.push(this.add.text(x + (bw - 10) / 2, y + 84, i === LEVELS_PER_MAP - 1 ? `${wavesInLevel(i + 1)} oleadas + jefe` : `${wavesInLevel(i + 1)} oleadas`, { fontFamily: UI.FONT, fontSize: '13px', color: NAVY }).setOrigin(0.5));
-      } else parts.push(tdIcon(this, x + (bw - 10) / 2, y + 60, 'lock', 3));
-      if (i === LEVELS_PER_MAP - 1) parts.push(tdIcon(this, x + bw - 26, y + 16, 'skull', 2.4));
+        for (let s = 0; s < 3; s++) parts.push(tdIcon(this, mid + (s - 1) * 24, y + 38, s < mp.stars[i] ? 'star' : 'starOff', 2));
+        parts.push(this.add.text(mid, y + 60, i === L - 1 ? `${wavesInLevel(i + 1, L)} oleadas + jefe` : `${wavesInLevel(i + 1, L)} oleadas`, { fontFamily: UI.FONT, fontSize: '12px', color: NAVY }).setOrigin(0.5));
+      } else parts.push(tdIcon(this, mid, y + 46, 'lock', 2.4));
+      if (i === L - 1) parts.push(tdIcon(this, x + bw - 24, y + 14, 'skull', 2));
       const zone = this.add.zone(x, y, bw - 10, bh).setOrigin(0).setInteractive({ useHandCursor: true });
       zone.on('pointerover', () => {
         this.levelSel = i;
@@ -228,14 +227,14 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     }
     // Infinito
     const ex = 72;
-    const ey = 364;
+    const ey = LEVEL_GRID_BOTTOM;
     const ew = 806;
     const eg = this.add.graphics();
     const endlessOpen = isEndlessUnlocked(this.progress, m.id);
     this.layer.add(eg);
     this.layer.add(
       this.add
-        .text(ex + ew / 2, ey + 30, endlessOpen ? `Modo infinito · Récord: oleada ${mp.endless}` : `Modo infinito · supera los ${LEVELS_PER_MAP} niveles para abrirlo`, {
+        .text(ex + ew / 2, ey + 30, endlessOpen ? `Modo infinito · Récord: oleada ${mp.endless}` : `Modo infinito · supera los ${L} niveles para abrirlo`, {
           fontFamily: UI.FONT, fontSize: '20px', fontStyle: 'bold', color: endlessOpen ? NAVY : '#6a7080',
         })
         .setOrigin(0.5),
@@ -243,26 +242,26 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     if (!endlessOpen) this.layer.add(tdIcon(this, ex + 30, ey + 30, 'lock', 2.6));
     const ez = this.add.zone(ex, ey, ew, 60).setOrigin(0).setInteractive({ useHandCursor: true });
     ez.on('pointerover', () => {
-      this.levelSel = LEVELS_PER_MAP;
+      this.levelSel = L;
       this.redraw();
     });
-    ez.on('pointerdown', () => this.pickLevel(LEVELS_PER_MAP));
+    ez.on('pointerdown', () => this.pickLevel(L));
     this.layer.add(ez);
-    boxes.push({ g: eg, i: LEVELS_PER_MAP, x: ex, y: ey, w: ew, h: 60 });
+    boxes.push({ g: eg, i: L, x: ex, y: ey, w: ew, h: 60 });
     // Descripción del nivel elegido
     const info = this.add.text(480, 470, '', { fontFamily: UI.FONT, fontSize: '17px', color: '#ffffff', align: 'center', wordWrap: { width: 800 } }).setOrigin(0.5, 0).setStroke('#18202c', 4);
     this.layer.add(info);
     this.redraw = () => {
       for (const b of boxes) {
         b.g.clear();
-        const open = b.i === LEVELS_PER_MAP ? endlessOpen : isLevelUnlocked(this.progress, this.mapSel, b.i + 1);
+        const open = b.i === L ? endlessOpen : isLevelUnlocked(this.progress, this.mapSel, b.i + 1);
         drawBox(b.g, b.x, b.y, b.w, b.h, { selected: b.i === this.levelSel, fill: open ? undefined : 0xc8ccd4 });
       }
       const i = this.levelSel;
       info.setText(
-        i === LEVELS_PER_MAP
+        i === L
           ? 'Oleadas sin fin cada vez más duras, con un jefe legendario cada 10. Guarda tu mejor oleada.'
-          : `Nivel ${i + 1}: ${wavesInLevel(i + 1)} oleadas${i === LEVELS_PER_MAP - 1 ? ' y un jefe legendario al final' : ''}. Estrellas según la vida de la base que conserves (3: 90 % o más).`,
+          : `Nivel ${i + 1} de ${L}: ${wavesInLevel(i + 1, L)} oleadas${i === L - 1 ? ' y un jefe legendario al final' : ''}. Estrellas según la vida de la base que conserves (3: 90 % o más).`,
       );
     };
     this.redraw();
@@ -271,9 +270,9 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
 
   private pickLevel(i: number) {
     const m = TD_MAPS[this.mapSel];
-    const open = i === LEVELS_PER_MAP ? isEndlessUnlocked(this.progress, m.id) : isLevelUnlocked(this.progress, this.mapSel, i + 1);
+    const open = i === m.levels ? isEndlessUnlocked(this.progress, m.id) : isLevelUnlocked(this.progress, this.mapSel, i + 1);
     if (!open) {
-      this.toasts.show(i === LEVELS_PER_MAP ? `Supera los ${LEVELS_PER_MAP} niveles para abrir el infinito` : 'Supera antes el nivel anterior', { kind: 'warning', icon: 'key' });
+      this.toasts.show(i === m.levels ? `Supera los ${m.levels} niveles para abrir el infinito` : 'Supera antes el nivel anterior', { kind: 'warning', icon: 'key' });
       return;
     }
     this.levelSel = i;
@@ -284,7 +283,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
 
   private buildTeam() {
     const m = TD_MAPS[this.mapSel];
-    const lvText = this.levelSel === LEVELS_PER_MAP ? 'Infinito' : `Nivel ${this.levelSel + 1}`;
+    const lvText = this.levelSel === m.levels ? 'Infinito' : `Nivel ${this.levelSel + 1}`;
     this.title('Elige tu equipo', `${m.name} · ${lvText} · hasta ${TEAM_MAX} Pokémon de tu colección`);
     this.sideSel = -1;
     this.teamSel = 0;
@@ -510,7 +509,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
         // sin almacenamiento
       }
     }
-    const level = this.levelSel === LEVELS_PER_MAP ? 0 : this.levelSel + 1;
+    const level = this.levelSel === TD_MAPS[this.mapSel].levels ? 0 : this.levelSel + 1;
     goTo(this, 'TowerDefense', { mapIdx: this.mapSel, level, team, trial: this.trial } satisfies TowerDefenseData);
   }
 
@@ -530,11 +529,12 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     } else if (this.stage === 'levels') {
       if (s.dx || s.dy) {
         let i = this.levelSel;
-        if (i === LEVELS_PER_MAP) {
-          if (s.dy < 0) i = 6;
-        } else if (s.dy > 0 && i >= 6) i = LEVELS_PER_MAP;
-        else if (s.dy) i = Math.max(0, Math.min(LEVELS_PER_MAP - 1, i + s.dy * 6));
-        else i = Math.max(0, Math.min(LEVELS_PER_MAP - 1, i + s.dx));
+        const L = TD_MAPS[this.mapSel].levels;
+        if (i === L) {
+          if (s.dy < 0) i = Math.max(0, L - LEVEL_COLS);
+        } else if (s.dy > 0 && i + LEVEL_COLS >= L) i = L;
+        else if (s.dy) i = Math.max(0, Math.min(L - 1, i + s.dy * LEVEL_COLS));
+        else i = Math.max(0, Math.min(L - 1, i + s.dx));
         this.levelSel = i;
         this.redraw();
       }

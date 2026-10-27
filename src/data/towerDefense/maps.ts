@@ -28,7 +28,16 @@ export interface TdMap {
   layout: number;
   /** Plantilla volteada en horizontal. */
   mirrored: boolean;
+  /** Niveles del mapa (de MIN_LEVELS a MAX_LEVELS, crecen con la dificultad); el último trae jefe legendario. */
+  levels: number;
 }
+
+/** Niveles del primer y del último mapa. */
+export const MIN_LEVELS = 10;
+export const MAX_LEVELS = 15;
+/** Niveles de un mapa según su dificultad: 10 en los dos primeros y 15 en los últimos, subiendo poco a poco. */
+export const levelsForTier = (tier: number): number =>
+  MIN_LEVELS + Math.max(0, Math.min(MAX_LEVELS - MIN_LEVELS, Math.round((Math.max(0, tier) * (MAX_LEVELS - MIN_LEVELS)) / 15 - 0.01)));
 
 const c = (x: number, y: number): Cell => ({ x, y });
 
@@ -105,6 +114,7 @@ export const TD_MAPS: readonly TdMap[] = MAP_LIST.map(([id, name, biome, layout,
   return {
     id, name, biome, tier, layout, mirrored,
     startMoney: 240 + tier * 10,
+    levels: levelsForTier(tier),
     desc: `${L.shape}${n > 1 ? ` (${n} entradas)` : ''}. ${tier < 4 ? 'Para empezar.' : tier < 9 ? 'Dificultad media.' : tier < 13 ? 'Difícil.' : 'Solo para expertos.'}`,
     paths: L.paths.map((p) => p.map((q) => flip(q, mirrored))),
     blocked: L.blocked.map((q) => flip(q, mirrored)),
@@ -187,9 +197,3 @@ export function pointAt(pts: readonly { x: number; y: number }[], d: number): { 
   const p = pts[pts.length - 1];
   return { x: p.x, y: p.y, dx: 0, dy: 0 };
 }
-
-/** Recorrido de los voladores: en línea recta de la entrada a la base. */
-export const flightPoints = (m: TdMap, pathIdx: number) => {
-  const p = m.paths[pathIdx];
-  return pathPoints([p[0], p[p.length - 1]]);
-};
