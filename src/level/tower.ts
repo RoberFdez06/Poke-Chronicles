@@ -164,8 +164,11 @@ function pickShapeAndTemplate(f: number, kind: TowerFloorKind, prev: Picked | nu
   };
   let shapes: readonly TowerShape[];
   if (kind === 'boss' || kind === 'final' || kind === 'miniboss') shapes = BIG_SHAPES;
-  else if (kind === 'rest' || kind === 'supply') shapes = ['normal'];
-  else shapes = ALL_SHAPES;
+  // Desde el piso 11 el descanso (Centro, altar, tienda, forja y Mega Piedra) va en 2x2 para no saturar una casilla
+  else if (kind === 'rest') shapes = f > TOWER_SEGMENT ? ['square'] : ['normal'];
+  else if (kind === 'supply') shapes = ['normal'];
+  // Desde el piso 11 hay más enemigos: nada de salas pequeñas con muros (siempre se gasta un rng(), la secuencia no cambia)
+  else shapes = f > TOWER_SEGMENT ? ALL_SHAPES.filter((x) => x !== 'small') : ALL_SHAPES;
   const shape = choose(shapes, prev?.shape);
   if (kind === 'rest' || kind === 'supply') return { shape, template: null };
   const names = shape === 'small' ? WALLED_TEMPLATE_NAMES : OPEN_TEMPLATE_NAMES;
@@ -228,7 +231,9 @@ export function towerRoomKind(kind: TowerFloorKind): RoomKind {
 export function towerFloor(spec: TowerFloorSpec, seed: number): Floor {
   const kind = towerRoomKind(spec.kind);
   const big = spec.cells.length > 1;
-  const rooms: Room[] = spec.cells.map(([gx, gy], id) => ({ id, gx, gy, kind, depth: 0, doors: {}, ...(big ? { group: 0 } : {}) }));
+  // En un descanso grande solo la casilla 0 es el Centro; las demás son suelo libre (altar, tienda, Mega Piedra)
+  const cellKind = (id: number): RoomKind => (kind === 'center' && id > 0 ? 'start' : kind);
+  const rooms: Room[] = spec.cells.map(([gx, gy], id) => ({ id, gx, gy, kind: cellKind(id), depth: 0, doors: {}, ...(big ? { group: 0 } : {}) }));
   for (const a of rooms)
     for (const b of rooms) {
       if (b.gx === a.gx + 1 && b.gy === a.gy) { a.doors.right = b.id; b.doors.left = a.id; }
@@ -261,4 +266,32 @@ export function towerPlayable(spec: TowerFloorSpec): boolean {
     const g = gridWithHazards(grid, spec.hazards, c);
     return allConnected(g, KEY_TILES) && spec.hazards.filter((h) => h.cell === c).every((h) => isWalkable(grid[h.ty][h.tx]) && !protectedTile(h.tx, h.ty));
   });
+}
+
+/** Casilla de la sala de descanso donde va cada cosa (en 2x2 se reparte; en una sola casilla, todo en la 0). */
+export function towerRestCell(spec: Pick<TowerFloorSpec, 'cells'>, what: 'altar' | 'shop' | 'mega'): number {
+  if (spec.cells.length < 4) return 0;
+  return what === 'altar' ? 2 : what === 'shop' ? 1 : 3;
+}
+
+/**
+ * Monedas y cofres de la Torre (las monedas solo sirven en la tienda del descanso). Cada piso de combate limpio da
+ * monedas; los cofres salen en algunos pisos de combate (nunca seguidos) y en los de minijefe.
+ */
+export const TOWER_CLEAR_COINS = { base: 1, perSegments: 3, max: 3 } as const;
+export function towerClearCoins(floor: number, rng: () => number): number {
+  const f = clampFloor(floor);
+  const base = Math.min(TOWER_CLEAR_COINS.max, TOWER_CLEAR_COINS.base + Math.floor((f - 1) / TOWER_SEGMENT / TOWER_CLEAR_COINS.perSegments));
+  return base + (rng() < 0.35 ? 1 : 0);
+}
+/** Probabilidad de cofre en un piso de combate (el minijefe siempre deja uno). */
+export const TOWER_CHEST_CHANCE = 0.25;
+export function towerHasChest(floor: number, seed: number): boolean {
+  const f = clampFloor(floor);
+  const kind = towerFloorKind(f, seed);
+  if (kind === 'miniboss') return true;
+  if (kind !== 'combat') return false;
+  const roll = (n: number) => mulberry32((seed ^ Math.imul(n, 0x9e3779b1) ^ 0x51ed270b) >>> 0)() < TOWER_CHEST_CHANCE;
+  // Nunca dos pisos de combate seguidos con cofre
+  return roll(f) && !(f > 1 && towerFloorKind(f - 1, seed) === 'combat' && roll(f - 1));
 }
