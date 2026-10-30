@@ -7,6 +7,7 @@ import { addIcon, bakeIcons, iconKey, type IconName } from '../ui/art/icons';
 import { addPixelText } from '../ui/art/pixel';
 import { MODE_LABEL, progressText } from '../data/modes';
 import { formatDuration, type RunRecord } from '../data/runHistory';
+import { COMBO_LEVELS, comboLevel } from '../data/combo';
 import { MenuList, NavInput } from '../ui/nav';
 import { drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
@@ -174,24 +175,33 @@ export class SummaryScene extends Phaser.Scene {
     this.add.text(654, 444, `Rutas: ${routes.length}\n${text}`, { fontFamily: FONT, fontSize: '12px', color: HEX.text, lineSpacing: 2 }).setOrigin(0, 1);
   }
 
-  /** Cuadro de la derecha: parrys, objetos cogidos, sala más rápida y tiempo de cada piso. */
+  /** Cuadro de la derecha: combo máximo y su nivel, parrys, objetos cogidos, sala más rápida y tiempo de cada piso. */
   private moreStats(r: RunRecord) {
-    if (r.parries === undefined && r.picked === undefined && r.fastestRoom === undefined && !r.floorSeconds?.length) return;
-    drawBox(this.add.graphics(), 636, 452, 288, 146, { radius: 14 });
-    const line = (y: number, label: string, value: string) => {
+    if (r.parries === undefined && r.picked === undefined && r.fastestRoom === undefined && !r.floorSeconds?.length && r.bestCombo === undefined) return;
+    drawBox(this.add.graphics(), 636, 452, 288, 150, { radius: 14 });
+    const line = (y: number, label: string, value: string, color: string = HEX.text) => {
       this.add.text(654, y, label, { fontFamily: FONT, fontSize: '15px', color: HEX.textSoft }).setOrigin(0, 0.5);
-      this.add.text(906, y, value, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: HEX.text }).setOrigin(1, 0.5);
+      return this.add.text(906, y, value, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color }).setOrigin(1, 0.5);
     };
-    line(474, 'Parrys acertados', `${r.parries ?? 0}`);
-    line(498, 'Objetos cogidos', `${r.picked ?? 0}`);
-    line(522, 'Sala más rápida', r.fastestRoom ? formatDuration(r.fastestRoom) : '—');
+    // Combo máximo con el nombre del nivel alcanzado (de su color) y sello si es récord de todas las partidas
+    const lvl = r.comboLevel !== undefined && r.comboLevel >= 0 ? COMBO_LEVELS[r.comboLevel] : comboLevel(r.bestCombo ?? 0);
+    const combo = line(472, 'Combo máximo', `x${r.bestCombo ?? 0}${lvl ? ` · ${lvl.name}` : ''}`, lvl?.hex === '#ffd34d' ? '#b8860b' : (lvl?.hex ?? HEX.text));
+    combo.setStroke(lvl ? '#1d2848' : '#00000000', lvl ? 3 : 0);
+    if (r.comboRecord) {
+      const st = this.add.image(combo.x - combo.width - 14, 472, iconKey('star')).setScale(1.4);
+      this.tweens.add({ targets: st, angle: 360, duration: 2400, repeat: -1 });
+    }
+    const perf = r.perfectParries ?? 0;
+    line(494, 'Parrys acertados', `${r.parries ?? 0}${perf > 0 ? ` (${perf} perf.)` : ''}`);
+    line(516, 'Objetos cogidos', `${r.picked ?? 0}`);
+    line(538, 'Sala más rápida', r.fastestRoom ? formatDuration(r.fastestRoom) : '—');
     const floors = r.floorSeconds ?? [];
     if (floors.length > 0) {
       // Hasta 8 pisos; si hay más se ven los últimos (en la partida infinita pueden ser muchos)
       const first = Math.max(0, floors.length - 8);
       const text = floors.slice(first).map((s, k) => `P${first + k + 1} ${formatDuration(s)}`).join('  ');
-      this.add.text(654, 548, 'Tiempo por piso', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0, 0.5);
-      this.add.text(654, 576, text, { fontFamily: FONT, fontSize: '13px', color: HEX.text, wordWrap: { width: 252 } }).setOrigin(0, 0.5);
+      this.add.text(654, 560, 'Tiempo por piso', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0, 0.5);
+      this.add.text(654, 584, text, { fontFamily: FONT, fontSize: '13px', color: HEX.text, wordWrap: { width: 252 } }).setOrigin(0, 0.5);
     }
   }
 

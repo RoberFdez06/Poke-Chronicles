@@ -594,6 +594,34 @@ export function addRunHistory(r: RunRecord, storage: StorageLike | null = browse
   return list;
 }
 
+// --- Récord de combo (el más alto de todas las partidas) ---
+
+export const COMBO_BEST_KEY = 'pokeisaac.comboBest';
+
+export function parseComboBest(raw: string | null): number {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+export function loadComboBest(storage: StorageLike | null = browserStorage()): number {
+  try {
+    return parseComboBest(storage?.getItem(COMBO_BEST_KEY) ?? null);
+  } catch {
+    return 0;
+  }
+}
+
+/** Apunta un combo; devuelve true si bate el récord (las partidas con trucos no cuentan). */
+export function submitComboBest(count: number, storage: StorageLike | null = browserStorage()): boolean {
+  if (isCheatRun() || !Number.isFinite(count) || count <= loadComboBest(storage)) return false;
+  try {
+    storage?.setItem(COMBO_BEST_KEY, String(Math.floor(count)));
+  } catch {
+    return false;
+  }
+  return true;
+}
+
 // --- Teclas (ver keybinds.ts). Como el volumen, no se borran con el progreso ---
 
 export const KEYS_KEY = 'pokeisaac.keys';
@@ -637,6 +665,7 @@ export const PROGRESS_KEYS: readonly string[] = [
   KONAMI_KEY,
   TUTORIAL_KEY,
   HISTORY_KEY,
+  COMBO_BEST_KEY,
   // Defensa de torres (src/data/towerDefense/progress.ts, TD_KEY)
   'pokeisaac.towerdef',
   'pokeisaac.towerdef.team',

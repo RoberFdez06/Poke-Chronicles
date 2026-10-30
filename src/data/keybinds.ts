@@ -16,6 +16,8 @@ export const ACTIONS = [
   'charge',
   // Formas de poder: cambia cuál suelta el botón de forma (Mega, Dinamax, Teracristal o Movimiento Z), al final
   'powerNext',
+  // Esquiva (dash), también al final para que los guardados de antes se lean igual
+  'dash',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 export type KeyMap = Record<Action, string>;
@@ -44,6 +46,7 @@ export const ACTION_LABEL: Readonly<Record<Action, string>> = {
   mega: 'Megaevolucionar',
   charge: 'Ataque cargado (mantener)',
   powerNext: 'Cambiar forma de poder',
+  dash: 'Esquiva (impulso)',
 };
 
 export const DEFAULT_KEYS: Readonly<KeyMap> = {
@@ -56,6 +59,8 @@ export const DEFAULT_KEYS: Readonly<KeyMap> = {
   mega: 'M',
   charge: 'V',
   powerNext: 'X',
+  // Mayús: libre (Espacio es el objeto activo) y a mano del meñique mientras mueves con W A S D
+  dash: 'SHIFT',
 };
 
 /**
@@ -133,7 +138,8 @@ export function controlsFor(k: KeyMap): [string, string][] {
     ['Disparar', `${L('shootUp')} ${L('shootLeft')} ${L('shootDown')} ${L('shootRight')} (dos a la vez, en diagonal) · clic izquierdo · stick derecho`],
     ['Poderes · Objeto activo', `Poderes: ${L('power1')} ${L('power2')} ${L('power3')} ${L('power4')} · clic en la ranura · A B X Y    Activo: ${L('active')} · clic en su cuadro · LB`],
     ['Pausa', `${L('pause')} o ${L('back')} · botón ❚❚ de arriba a la izquierda · Start`],
-    ['Parry', `${L('parry')} · clic central · RT (justo antes de que te den: bloquea y tu siguiente golpe es crítico)`],
+    ['Parry', `${L('parry')} · clic central · RT (pulsa al ver la marca del golpe que llega: lo anula, lo devuelve y tu siguiente golpe es crítico)`],
+    ['Esquiva', `${L('dash')} · doble clic derecho · clic en su cuadro del HUD · cruceta abajo (impulso corto e invulnerable; recarga 1,2 s)`],
     ['Ataque cargado', `Mantén ${L('charge')} · botón lateral del ratón · LT: carga 0,8 s y al soltar sale un disparo grande (doble de daño, atraviesa). Disparar sigue siendo mantener el botón`],
     ['Poké Ball', `${L('ball')} · clic en la Poké Ball del HUD · R3 (pulsar el stick derecho) con un enemigo débil cerca`],
     ['Megaevolución', `${L('mega')} · clic en la Mega Piedra del HUD · cruceta arriba (basta con llevar la Mega Piedra; una vez por piso)`],

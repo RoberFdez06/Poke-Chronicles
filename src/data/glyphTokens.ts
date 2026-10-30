@@ -28,6 +28,7 @@ const padRules: Rule[] = [
   { re: /\b(LB|RB|LT|RT|L3|R3|Start|Select)\b/y, glyph: (m) => `pad:${m[1]}`, replace: true },
   { re: /([ABXY])(?![\p{L}\p{N}])/uy, glyph: (m) => `pad:${m[1]}`, replace: true },
   { re: /[Cc]ruceta arriba(?!\/)/y, glyph: () => 'pad:dpad-up', replace: true },
+  { re: /[Cc]ruceta abajo/y, glyph: () => 'pad:dpad-down', replace: true },
   { re: /[Cc]ruceta/y, glyph: () => 'pad:dpad', replace: true },
   { re: /(?:[Ss]tick|[Pp]alanca) (?:izquierd[oa]|izq\.)/y, glyph: () => 'pad:stickL', replace: true },
   { re: /(?:[Ss]tick|[Pp]alanca) (?:derech[oa]|der\.)/y, glyph: () => 'pad:stickR', replace: true },

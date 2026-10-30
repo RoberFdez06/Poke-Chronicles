@@ -31,6 +31,14 @@ export interface RunRecord {
   /** T81 (las partidas antiguas no lo tienen): código de semilla para jugar la misma partida y si se jugó con código. */
   seedCode?: string;
   fromCode?: boolean;
+  /** Combo máximo de la partida y nivel alcanzado (índice de COMBO_LEVELS, −1 = ninguno). Las antiguas no lo tienen. */
+  bestCombo?: number;
+  comboLevel?: number;
+  /** El combo máximo batió el récord de todas las partidas. */
+  comboRecord?: boolean;
+  /** Parrys perfectos y esquivas (las partidas antiguas no lo tienen). */
+  perfectParries?: number;
+  dashes?: number;
 }
 
 /** Cuántas partidas se guardan en el historial. */
@@ -49,7 +57,9 @@ function isRecord(r: unknown): r is RunRecord {
     isNum(o.damage) && Array.isArray(o.items) && o.items.every((i) => typeof i === 'string') && isNum(o.tickets) &&
     typeof o.newRecord === 'boolean' && optNum(o.parries) && optNum(o.picked) && optNum(o.fastestRoom) && optNums(o.floorSeconds) &&
     (o.routes === undefined || (Array.isArray(o.routes) && o.routes.every((x) => typeof x === 'string'))) &&
-    (o.seedCode === undefined || typeof o.seedCode === 'string') && (o.fromCode === undefined || typeof o.fromCode === 'boolean')
+    (o.seedCode === undefined || typeof o.seedCode === 'string') && (o.fromCode === undefined || typeof o.fromCode === 'boolean') &&
+    optNum(o.bestCombo) && (o.comboLevel === undefined || (Number.isInteger(o.comboLevel) && o.comboLevel >= -1)) &&
+    optNum(o.perfectParries) && optNum(o.dashes) && (o.comboRecord === undefined || typeof o.comboRecord === 'boolean')
   );
 }
 
@@ -95,6 +105,10 @@ export interface RunCounters {
    * reinicia en cada piso y al continuar una partida: así el tiempo del piso sobrevive a las dos cosas.
    */
   floorStartedAt?: number;
+  /** Combo máximo de toda la partida (la escena se reinicia en cada piso: aquí sobrevive), parrys perfectos y esquivas. */
+  bestCombo?: number;
+  perfectParries?: number;
+  dashes?: number;
 }
 
 export const emptyCounters = (): RunCounters => ({ seconds: 0, kills: 0, damage: 0, newRecord: false });
@@ -102,7 +116,8 @@ export const emptyCounters = (): RunCounters => ({ seconds: 0, kills: 0, damage:
 export const isCounters = (c: unknown): c is RunCounters => {
   const o = c as RunCounters;
   return !!o && isNum(o.seconds) && isNum(o.kills) && isNum(o.damage) && typeof o.newRecord === 'boolean' &&
-    optNum(o.parries) && optNum(o.picked) && optNum(o.fastestRoom) && optNums(o.floorSeconds) && optNum(o.floorStartedAt);
+    optNum(o.parries) && optNum(o.picked) && optNum(o.fastestRoom) && optNums(o.floorSeconds) && optNum(o.floorStartedAt) &&
+    optNum(o.bestCombo) && optNum(o.perfectParries) && optNum(o.dashes);
 };
 
 /** Una sala limpiada en menos de esto no cuenta como «sala más rápida» (tienda, objeto… se limpian al entrar). */
@@ -110,6 +125,19 @@ export const MIN_ROOM_SECONDS = 2;
 
 export function noteParry(c: RunCounters) {
   c.parries = (c.parries ?? 0) + 1;
+}
+
+/** Anota el combo actual: se queda con el máximo de la partida. */
+export function noteCombo(c: RunCounters, count: number) {
+  if (Number.isFinite(count) && count > (c.bestCombo ?? 0)) c.bestCombo = Math.floor(count);
+}
+
+export function notePerfectParry(c: RunCounters) {
+  c.perfectParries = (c.perfectParries ?? 0) + 1;
+}
+
+export function noteDash(c: RunCounters) {
+  c.dashes = (c.dashes ?? 0) + 1;
 }
 
 export function notePickup(c: RunCounters) {

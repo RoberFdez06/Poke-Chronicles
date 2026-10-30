@@ -1,7 +1,7 @@
 // Tutorial (T25): consejos cortos que salen la primera vez que pasa algo en la partida. Lógica pura; el guardado
 // (qué consejos ya se han visto y si se han desactivado) está en save.ts.
 
-export const TIP_IDS = ['move', 'shoot', 'pause', 'powers', 'items', 'active', 'center', 'shop', 'chest', 'forms', 'td_place', 'td_upgrade', 'td_air', 'td_skills'] as const;
+export const TIP_IDS = ['move', 'shoot', 'pause', 'powers', 'items', 'active', 'center', 'shop', 'chest', 'forms', 'td_place', 'td_upgrade', 'td_air', 'td_skills', 'defend'] as const;
 export type TipId = (typeof TIP_IDS)[number];
 
 /** Texto de cada consejo, con los tres controles (teclado, ratón y mando). */
@@ -63,6 +63,10 @@ export const TIPS: Readonly<Record<TipId, { title: string; text: string }>> = {
     title: 'Habilidades',
     text: 'Rayo, Ventisca y Curar base: teclas Z, X y C, LT, RT e Y en el mando o clic en su botón de abajo (cada botón enseña su tecla). Tardan en recargarse.',
   },
+  defend: {
+    title: 'Parry y esquiva',
+    text: 'Parry: F, clic central o RT justo antes del golpe (cuando la marca ! se pone blanca): lo anula y lo devuelve. Esquiva: Mayús, doble clic derecho o cruceta abajo: impulso corto invulnerable.',
+  },
 };
 
 export interface TutorialState {
@@ -101,6 +105,7 @@ export const TOUCH_TIPS: Readonly<Partial<Record<TipId, string>>> = {
   center: 'Te cura la mitad de los PS una vez por piso: toca «Usar» cerca del mostrador o písalo.',
   shop: 'Gasta las monedas de la partida: toca «Usar» cerca de un artículo o písalo.',
   chest: 'Los cofres se abren con una llave. Las bombas (botón «Bomba») rompen rocas y abren paredes.',
+  defend: 'Toca «Parry» justo antes del golpe (cuando la marca ! se pone blanca): lo anula y lo devuelve. «Esquiva» da un impulso corto invulnerable hacia donde te mueves.',
   forms: 'Toca el icono junto a la Poké Ball para usar la forma elegida; mantenlo pulsado para cambiar entre Mega, Dinamax, Teracristal y Movimiento Z. Se llenan con el medidor de poder.',
 };
 

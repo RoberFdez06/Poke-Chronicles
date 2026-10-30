@@ -105,17 +105,34 @@ test('T74: megaevolucionar tiene su tecla (M), va justo antes de la de carga y s
 
 test('T77: el ataque cargado tiene su tecla (V), es la última acción y sale en los controles', () => {
   assert.equal(DEFAULT_KEYS.charge, 'V');
-  assert.equal(ACTIONS.indexOf('charge'), ACTIONS.length - 2);
+  assert.equal(ACTIONS.indexOf('charge'), ACTIONS.indexOf('powerNext') - 1);
   assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([n]) => n === 'Ataque cargado'));
 });
 
 test('Formas de poder: cambiar de forma tiene su tecla (X), es la última acción y sale en los controles', () => {
   assert.equal(DEFAULT_KEYS.powerNext, 'X');
-  assert.equal(ACTIONS[ACTIONS.length - 1], 'powerNext');
+  assert.equal(ACTIONS.indexOf('powerNext'), ACTIONS.indexOf('dash') - 1);
   assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([what, how]) => what.includes('Tera') && how.includes('X') && how.includes('cruceta izquierda')));
   // Un guardado de antes con la X en otra acción no pierde sus teclas
   const k = parseKeys(JSON.stringify({ ...DEFAULT_KEYS, powerNext: undefined, bomb: 'X' }));
   assert.equal(k.bomb, 'X');
   assert.notEqual(k.powerNext, 'X');
   assert.equal(new Set(Object.values(k)).size, ACTIONS.length);
+});
+
+test('Esquiva: tecla propia (Mayús, libre), última acción, reasignable y en los controles', () => {
+  assert.equal(DEFAULT_KEYS.dash, 'SHIFT');
+  assert.equal(ACTIONS[ACTIONS.length - 1], 'dash');
+  assert.equal(keyLabel(DEFAULT_KEYS.dash), 'Mayús');
+  assert.ok(controlsFor({ ...DEFAULT_KEYS }).some(([what, how]) => what === 'Esquiva' && how.includes('Mayús') && how.includes('cruceta abajo')));
+  const r = bindKey(DEFAULT_KEYS, 'dash', 'Q');
+  assert.ok(r.ok && r.keys.dash === 'Q');
+  // Un guardado de antes con Mayús en otra acción no pierde sus teclas
+  const k = parseKeys(JSON.stringify({ ...DEFAULT_KEYS, dash: undefined, bomb: 'SHIFT' }));
+  assert.equal(k.bomb, 'SHIFT');
+  assert.notEqual(k.dash, 'SHIFT');
+  assert.equal(new Set(Object.values(k)).size, ACTIONS.length);
+  // Un guardado sin la esquiva se lee igual y la recibe
+  const old = parseKeys(JSON.stringify({ ...DEFAULT_KEYS, dash: undefined }));
+  assert.equal(old.dash, 'SHIFT');
 });

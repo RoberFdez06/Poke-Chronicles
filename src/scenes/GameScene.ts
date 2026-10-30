@@ -83,7 +83,7 @@ import {
 import { acceptNpcMission, gainSeed, takeGardenBerries, updateGarden, addRunHistory, loadKeys, loadMissions, loadShinies, loadDarks, addDark, loadTutorial, loadUpgrades, recordMissionEvent, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
 import { disableTips, markTipSeen, shouldShowTip, tipButtons, tipText, TIPS, type TipId } from '../data/tutorial';
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
-import { closeFloor, emptyCounters, floorTimes, noteParry, notePickup, noteRoomTime, openFloor, type RunCounters, type RunRecord } from '../data/runHistory';
+import { closeFloor, emptyCounters, floorTimes, noteCombo, noteDash, noteParry, notePerfectParry, notePickup, noteRoomTime, openFloor, type RunCounters, type RunRecord } from '../data/runHistory';
 import { ToastStack, type ToastOptions } from '../ui/toast';
 import { reportError } from '../ui/errorScreen';
 import { keyCode } from '../ui/keys';
@@ -178,7 +178,7 @@ import { buildClue, buildNpc, drawBallIcon } from '../ui/art/worldArt';
 import { buildShopArt, type ShopArt } from '../ui/art/shopArt';
 import { buildForgeArt, buildLagoonArt, buildSlotArt } from '../ui/art/eventArt';
 import { ballEscape, ballShake, ballSuccess, ballThrow, dayNightLayer, megaAura, megaEvolveFx } from '../ui/art/powerFx';
-import { adrenalineTrail, lootFlash, parryHit, parryStance, reviveBurst, bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
+import { adrenalineTrail, lootFlash, reviveBurst, bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
 import { bakeBiomeTiles, bushKeyAt, shade, TILE as ART_TILE } from '../ui/art/tiles';
@@ -244,7 +244,9 @@ import {
   ShopSlot,
 } from '../data/loot';
 import { canReact, consumeStatus, discover, discoveredLine, findReaction, reactionDamage, type ReactionId } from '../data/reactions';
-import { comboAlive, comboBreak, comboHit, milestoneReward, newCombo, type ComboState } from '../data/combo';
+import { comboBonus, comboHit, comboHurt, comboLevelIndex, newCombo, tickCombo, type ComboLevel, type ComboState } from '../data/combo';
+import { DASH_INVULN_MS, DASH_MS, dashCooldownLeft, dashing, newDash, startDash, type DashState } from '../data/dash';
+import { dashPuff, dashTrail, parryBurst, parryShield, threatMark } from '../ui/art/parryFx';
 import { ComboHud } from '../ui/art/comboHud';
 import { addHpBar, addTypeChip, COLORS, drawBox, fadeIn, FONT, goTo, HEX, hpColor, lowFx, shorten } from '../ui/theme';
 import {
@@ -324,7 +326,7 @@ import { drawMinimap } from './minimap';
 import { byDevice, drawKeyGlyph, GlyphText } from '../ui/art/keyGlyphs';
 import { bossCallout, floatPopup, PromptPanel } from '../ui/floatText';
 import { cancelCharge, chargedShapeFor, chargeProgress, CHARGE_DAMAGE_MUL, CHARGE_MOVE_MUL, CHARGE_SOURCES, isCharging, newCharge, stepCharge, type ChargeSource, type ChargeState } from '../data/charge.ts';
-import { newParry, parryCooldownLeft, pressParry, takeCounterCrit, tryParry, PARRY_GRACE_MS, type ParryState } from '../data/parry';
+import { newParry, parryCooldownLeft, parryOpen, parryReflectDamage, parryStun, pressParry, takeCounterCrit, threatLevel, timeToImpact, tryParry, PARRY_GRACE_MS, PARRY_WINDOW_MS, type ParryResult, type ParryState } from '../data/parry';
 import { clampToBounds, launchLoot, magnetRadius, restingLoot, scatterTarget, stepLoot, type Bounds as LootBounds, type LootBody } from '../data/lootMotion';
 import { openConfirm } from './ConfirmScene';
 import { onFocusLost } from '../ui/focusPause';
@@ -336,7 +338,7 @@ import {
   canCaptureLegend, CLUE_NAMES, clueOnFloor, finishLair, HUNT, huntText, lairOnFloor, leaveFloor, legendCaptureChance, legendPhase,
   noHunt, pickHuntRoom, rollHunt, takeClue, type LegendHunt,
 } from '../data/legendHunt';
-import { unlockPokemon } from '../data/save';
+import { submitComboBest, unlockPokemon } from '../data/save';
 import { canCapture, canThrow, CAPTURE_RANGE, CAPTURE_RETRY_MS, newCaptureState, nextFloorCapture, resolveThrow, rollCapture, type CaptureState } from '../data/capture';
 import { DARK_ALPHA, DARK_RADIUS, darkEdge, quantizeDarkAlpha, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, ruleDamageMul, ruleNotice, shouldMultiply, speedRoomBonus, MULTIPLY_HP, MULTIPLY_SIZE, SPEED_ROOM_MUL, type RoomRule } from '../level/roomRules';
 import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data/secondChance';
@@ -866,6 +868,19 @@ export class GameScene extends Phaser.Scene {
   private charges: Record<ChargeSource, ChargeState> = this.newCharges();
   private chargeKey!: Key;
   private parryKey!: Key;
+  /** Esquiva (dash): estado, tecla, cuadro del HUD con la recarga, cruceta abajo y doble clic derecho. */
+  private dash: DashState = newDash();
+  private dashKey!: Key;
+  private dashHud?: { g: Phaser.GameObjects.Graphics; x: number; y: number; w: number; h: number; shown: string; glyph?: Phaser.GameObjects.Container };
+  private dpadDownPrev = false;
+  private rightDownAt = -1;
+  private dashTrailAt = 0;
+  /** Última dirección de movimiento pedida (para la esquiva). */
+  private moveDir = new Phaser.Math.Vector2();
+  /** Marcas de aviso del parry sobre lo que está a punto de golpearte (se redibujan cada fotograma). */
+  private threatG?: Phaser.GameObjects.Graphics;
+  /** Escudo del parry mientras su ventana está abierta. */
+  private parryShieldFx?: Phaser.GameObjects.Graphics;
   private parryHud?: { g: Phaser.GameObjects.Graphics; x: number; y: number; w: number; h: number; shown: string };
   /** T55: adrenalina (sube con bajas, esquivas y parrys) y su barra del HUD. */
   private adrenaline: AdrenalineState = newAdrenaline();
@@ -994,6 +1009,15 @@ export class GameScene extends Phaser.Scene {
     this.parry = newParry();
     this.charges = this.newCharges();
     this.parryHud = undefined;
+    // El combo empieza en cada piso y en cada partida (antes se arrastraba incluso de una partida a la siguiente);
+    // el máximo de la partida va en los contadores (noteCombo)
+    this.combo = newCombo();
+    this.dash = newDash();
+    this.dashHud = undefined;
+    this.dpadDownPrev = false;
+    this.rightDownAt = -1;
+    this.threatG = undefined;
+    this.parryShieldFx = undefined;
     this.adrenaline = newAdrenaline();
     this.adrenalineHud = undefined;
     this.dexIndex = undefined;
@@ -1639,7 +1663,7 @@ export class GameScene extends Phaser.Scene {
   private dmgMul(): number {
     // T55: la adrenalina activa se suma a Ataque X (se multiplican)
     // T74: la megaevolución también
-    return (this.time.now < this.buffUntil ? this.buffMul : 1) * adrenalineDamageMul(this.adrenaline) * powerFormDamageMul(this.powerForm);
+    return (this.time.now < this.buffUntil ? this.buffMul : 1) * adrenalineDamageMul(this.adrenaline) * powerFormDamageMul(this.powerForm) * comboBonus(this.combo).damage;
   }
 
   /**
@@ -2938,6 +2962,7 @@ export class GameScene extends Phaser.Scene {
     this.bombKey = key('bomb');
     this.potionKey = key('potion');
     this.parryKey = key('parry');
+    this.dashKey = key('dash');
     this.ballKey = key('ball');
     this.chargeKey = key('charge');
     this.megaInputKey = key('mega');
@@ -3035,7 +3060,7 @@ export class GameScene extends Phaser.Scene {
       this.comboHud = new ComboHud(this, GAME_VIEW.x + (ROOM.x + 22) * k, GAME_VIEW.y + (ROOM.y + 36) * k, FONT, hud);
       // T84: contador de la cadena shiny, debajo del combo (la estrella la pinta shinyChainBadge a su izquierda)
       this.shinyChainHud = hud(
-        this.add.text(GAME_VIEW.x + (ROOM.x + 22) * k + 18, GAME_VIEW.y + (ROOM.y + 96) * k, '', { fontFamily: FONT, fontSize: '16px', color: '#ffd34d', stroke: '#000000', strokeThickness: 4 }),
+        this.add.text(GAME_VIEW.x + (ROOM.x + 22) * k + 18, GAME_VIEW.y + (ROOM.y + 36) * k + 92, '', { fontFamily: FONT, fontSize: '16px', color: '#ffd34d', stroke: '#000000', strokeThickness: 4 }),
       ).setVisible(false);
     }
     // T49: cuatro contadores (monedas, llaves, bombas y pociones); clic en la bomba o en la poción para usarlas
@@ -3106,6 +3131,15 @@ export class GameScene extends Phaser.Scene {
       slotZones.push(zone);
       zone.on('pointerdown', () => !this.ended && !this.transitioning && this.castSlot(i, this.time.now));
     }
+    // Esquiva: cuadro pequeño encima de las ranuras con su tecla/botón y la recarga (clic en él también esquiva)
+    {
+      const dy = this.slotY(0) - 52;
+      this.dashHud = { g: hud(this.add.graphics()), x: RX, y: dy, w: RW, h: 38, shown: '' };
+      txt(RX + 54, dy + 19, 15, '#f8f8f8', true).setOrigin(0, 0.5).setText('Esquiva');
+      const dashBtn = over(hud(this.add.zone(RX + RW / 2, dy + 19, RW, 38).setInteractive({ useHandCursor: true })));
+      dashBtn.on('pointerdown', (p: Phaser.Input.Pointer) => !p.rightButtonDown() && this.doDash());
+      if (this.touch) dashBtn.disableInteractive();
+    }
     // Minimapa arriba a la derecha
     this.minimap = hud(this.add.graphics());
     // Contador de FPS (Ajustes > Mostrar FPS), abajo a la derecha
@@ -3144,6 +3178,18 @@ export class GameScene extends Phaser.Scene {
     pb.on('pointerdown', () => this.openPause());
     // T53: con ratón, el parry es el clic central (rueda): no hay que quitar el puntero de donde apuntas
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => p.middleButtonDown() && this.doParry());
+    // Esquiva con ratón: doble clic derecho (el clic derecho mantenido mueve hacia el cursor; el segundo toque impulsa)
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (this.touch || !p.rightButtonDown() || !this.inGameView(p)) return;
+      const now = this.game.loop.time;
+      if (this.rightDownAt >= 0 && now - this.rightDownAt <= 300) {
+        this.rightDownAt = -1;
+        this.doDash({ x: p.worldX - this.player.x, y: p.worldY - this.player.y });
+      } else this.rightDownAt = now;
+    });
+    // Marcas de aviso del parry (en el mundo, encima de los enemigos y proyectiles)
+    this.threatG = this.add.graphics().setDepth(12);
+    this.hudCam?.ignore(this.threatG);
 
     // Tienda: al continuar, lo que quedaba; si no, artículos nuevos para este piso
     if (this.floor.shopId !== undefined) {
@@ -5468,30 +5514,183 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /**
-   * T53: se pulsa parry (tecla, RT, clic central, clic en su cuadro o botón táctil). La recarga va con el reloj del
-   * bucle (game.loop.time) y no con el de la escena, que se para en pausa (ver data/parry.ts).
+   * Parry (rehecho): se pulsa con su tecla, RT, clic central, clic en su cuadro o el botón táctil. Abre una ventana
+   * amplia (PARRY_WINDOW_MS) en la que el siguiente golpe se anula; mientras está abierta se ve un escudo del color de tu
+   * tipo. La ventana y el enfriamiento van con el reloj del bucle (ver data/parry.ts).
    */
   private doParry() {
-    if (this.ended || this.transitioning || this.evolving) return;
+    if (this.ended || this.transitioning || this.evolving || !this.player?.active) return;
     if (!pressParry(this.parry, this.game.loop.time)) return;
     sfx('select');
-    parryStance(this, this.player.x, this.player.y);
+    this.parryShieldFx?.destroy();
+    this.parryShieldFx = parryShield(this, this.player, typeColor(this.shotType()), PARRY_WINDOW_MS);
   }
 
-  /** Cuadro del parry: dorado cuando está listo; mientras recarga, una barra que se vacía. */
+  /**
+   * Parry acertado: anula el golpe, da adrenalina y medidor, y devuelve algo: el proyectil sale reflejado hacia el
+   * enemigo más cercano y quien pega cuerpo a cuerpo se queda aturdido. Perfecto (primera mitad de la ventana): más.
+   */
+  private onParry(result: ParryResult, src: Sprite) {
+    const now = this.time.now;
+    const perfect = result === 'perfect';
+    this.invulnUntil = now + PARRY_GRACE_MS;
+    // Aviso sobre el jugador, como "¡Esquivado!" (nunca en el centro de la pantalla)
+    this.popup(this.player.x, this.player.y - 50, perfect ? '¡Parry perfecto!' : '¡Parry!', perfect ? 0xfff2a8 : 0xffd34d);
+    this.addAdrenaline('parry');
+    meterOnParry(this.powerMeter);
+    noteParry(this.counters);
+    if (perfect) notePerfectParry(this.counters);
+    sfx(perfect ? 'levelup' : 'crit');
+    this.parryShieldFx?.destroy();
+    this.parryShieldFx = undefined;
+    parryBurst(this, this.player.x, this.player.y, typeColor(this.shotType()), perfect);
+    if (perfect && !lowFx()) this.cameras.main.shake(90, 0.003);
+    if (!src.active) return;
+    if (this.foeShots.contains(src)) {
+      // Reflejo: un disparo tuyo, desde donde estaba el proyectil, hacia el enemigo más cercano (o de vuelta)
+      const foes = (this.enemies.getChildren() as Sprite[]).filter((e) => e.active && !e.getData('capturing'));
+      let dir: Phaser.Math.Vector2;
+      const near = foes.sort((a, b) => Phaser.Math.Distance.Between(src.x, src.y, a.x, a.y) - Phaser.Math.Distance.Between(src.x, src.y, b.x, b.y))[0];
+      if (near) dir = new Phaser.Math.Vector2(near.x - src.x, near.y - src.y).normalize();
+      else {
+        const v = (src.body as Body | null)?.velocity;
+        dir = v && v.lengthSq() > 0 ? v.clone().negate().normalize() : this.aim.clone().negate().normalize();
+      }
+      const incoming = (src.getData('dmg') as number | undefined) ?? 1;
+      const type = this.shotType();
+      this.spawnShot(dir, 0, {
+        damage: parryReflectDamage(result, incoming, this.stats.damage * this.dmgMul()), speed: 620, life: 1100, size: perfect ? 1.4 : 1.1,
+        color: typeColor(type), pierce: perfect ? 1 : 0, bounces: 0, type, from: { x: src.x, y: src.y },
+      });
+      return;
+    }
+    // Cuerpo a cuerpo: aturdido un momento (los jefes, poco) y empujado hacia atrás
+    const ai = src.getData('ai') as EnemyAI | undefined;
+    if (!ai) return;
+    const ms = parryStun(result, !!ai.boss);
+    const prev = (src.getData('statuses') as ActiveStatus[] | undefined) ?? [];
+    src.setData('statuses', applyStatus(prev, { ...STATUS_EFFECTS.stun, duration: ms }, now, 0));
+    if (!ai.boss && src.body) {
+      const away = new Phaser.Math.Vector2(src.x - this.player.x, src.y - this.player.y);
+      if (away.lengthSq() > 0) {
+        away.normalize().scale(perfect ? 320 : 220);
+        src.setVelocity(away.x, away.y);
+        ai.knockUntil = now + 140;
+      }
+    }
+    this.popup(src.x, src.y - ((src.getData('size') as number | undefined) ?? 60) * 0.6, '¡Aturdido!', 0xd8d8c0);
+  }
+
+  /** Cuadro del parry: dorado cuando está listo; blanco con la ventana abierta; mientras recarga, una barra que se vacía. */
   private paintParry() {
     const h = this.parryHud;
     if (!h) return;
-    const left = parryCooldownLeft(this.parry, this.game.loop.time);
+    const loop = this.game.loop.time;
+    const left = parryCooldownLeft(this.parry, loop);
+    const open = parryOpen(this.parry, loop);
     const counter = this.parry.counterUntil > this.time.now;
     // Redibujar solo cuando cambia algo que se vea (pasos de 1/20)
-    const key = `${Math.ceil(left * 20)}:${counter}`;
+    const key = `${Math.ceil(left * 20)}:${counter}:${open}`;
     if (h.shown === key) return;
     h.shown = key;
     h.g.clear();
     h.g.fillStyle(0x101828, 1).fillRoundedRect(h.x, h.y, h.w, h.h, 8);
-    h.g.fillStyle(counter ? 0xff6b3d : left > 0 ? 0x3a4560 : COLORS.gold, 1).fillRoundedRect(h.x + 3, h.y + 3, h.w - 6, h.h - 6, 6);
-    if (left > 0) h.g.fillStyle(0x6a7898, 1).fillRect(h.x + 3, h.y + h.h - 7, (h.w - 6) * left, 4);
+    h.g.fillStyle(open ? 0xfff2a8 : counter ? 0xff6b3d : left > 0 ? 0x3a4560 : COLORS.gold, 1).fillRoundedRect(h.x + 3, h.y + 3, h.w - 6, h.h - 6, 6);
+    if (left > 0 && !open) h.g.fillStyle(0x6a7898, 1).fillRect(h.x + 3, h.y + h.h - 7, (h.w - 6) * left, 4);
+  }
+
+  /**
+   * Marcas de aviso del parry: sobre cada proyectil o enemigo que te va a dar pronto, un rombo pixel («prepárate»)
+   * que se vuelve blanco y late cuando entra en la ventana del parry («¡ahora!»). Solo lo que se puede bloquear.
+   */
+  private paintThreats() {
+    const g = this.threatG;
+    if (!g) return;
+    g.clear();
+    if (this.ended || this.transitioning || this.frozenSince !== undefined || !this.player?.active) return;
+    const pb = this.player.body as Body | null;
+    const pvx = pb?.velocity.x ?? 0;
+    const pvy = pb?.velocity.y ?? 0;
+    const px = this.player.x;
+    const py = this.player.y;
+    const t = this.time.now;
+    let marks = 0;
+    for (const c of this.foeShots.getChildren()) {
+      const sh = c as Sprite;
+      const b = sh.body as Body | null;
+      if (!sh.active || !b || marks >= 8) continue;
+      const lvl = threatLevel(timeToImpact(sh.x - px, sh.y - py, b.velocity.x - pvx, b.velocity.y - pvy, 30));
+      if (lvl === 'none') continue;
+      threatMark(g, sh.x, sh.y - 22, lvl === 'now', t);
+      marks++;
+    }
+    for (const c of this.enemies.getChildren()) {
+      const e = c as Sprite;
+      const b = e.body as Body | null;
+      const ai = e.getData('ai') as EnemyAI | undefined;
+      if (!e.active || !b || !ai || marks >= 8 || e.getData('runaway') || e.getData('thief') || e.getData('capturing')) continue;
+      const size = (e.getData('size') as number | undefined) ?? 60;
+      const lvl = threatLevel(timeToImpact(e.x - px, e.y - py, b.velocity.x - pvx, b.velocity.y - pvy, size * 0.35 + 22));
+      if (lvl === 'none') continue;
+      threatMark(g, e.x, e.y - size * 0.6 - 10, lvl === 'now', t);
+      marks++;
+    }
+  }
+
+  /**
+   * Esquiva: impulso corto hacia donde te mueves (o hacia donde miras), invulnerable un momento. Las paredes, las
+   * puertas cerradas y los agujeros los para la física (colisiones del jugador) y el borde de la sala keepInside.
+   * No gasta adrenalina. `toward`: dirección pedida (doble clic derecho: hacia el cursor).
+   */
+  private doDash(toward?: { x: number; y: number }) {
+    if (this.ended || this.transitioning || this.evolving || this.falling || this.frozenSince !== undefined || !this.player?.active) return;
+    const now = this.time.now;
+    const v = startDash(this.dash, now, toward ?? this.moveDir, this.aim);
+    if (!v) return;
+    this.player.setVelocity(v.x, v.y);
+    this.playerKnockUntil = now + DASH_MS;
+    this.invulnUntil = Math.max(this.invulnUntil, now + DASH_INVULN_MS);
+    noteDash(this.counters);
+    sfx('select');
+    this.face(this.player, this.dash.dir);
+    dashPuff(this, this.player.x, this.player.y, -this.dash.dir.x, -this.dash.dir.y, typeColor(this.shotType()));
+    this.dashTrailAt = 0;
+  }
+
+  /** Estela de la esquiva mientras dura (imágenes del jugador que se apagan, de su color). */
+  private updateDashFx() {
+    if (!this.player?.active || !dashing(this.dash, this.time.now) || this.time.now < this.dashTrailAt) return;
+    this.dashTrailAt = this.time.now + (lowFx() ? 70 : 35);
+    dashTrail(this, this.player, typeColor(this.shotType()));
+  }
+
+  /** Cuadro de la esquiva: listo (claro), recargando (gris con barra que se vacía) y su tecla o botón. */
+  private paintDash() {
+    const h = this.dashHud;
+    if (!h) return;
+    const left = dashCooldownLeft(this.dash, this.time.now);
+    const device = currentInput();
+    const key = `${Math.ceil(left * 20)}:${device}`;
+    if (h.shown === key) return;
+    h.shown = key;
+    const g = h.g.clear();
+    const ready = left <= 0;
+    g.fillStyle(0x101828, 1).fillRoundedRect(h.x, h.y, h.w, h.h, 8);
+    g.fillStyle(ready ? 0x3f8fd0 : 0x3a4560, 1).fillRoundedRect(h.x + 3, h.y + 3, h.w - 6, h.h - 6, 6);
+    // Icono pixel: tres rayas de velocidad y una flecha
+    const ix = h.x + h.w - 44;
+    const iy = h.y + h.h / 2;
+    g.fillStyle(0x1d2848, 1).fillRect(ix - 2, iy - 9, 34, 18);
+    g.fillStyle(ready ? 0xffffff : 0x8c98b6, 1).fillRect(ix, iy - 6, 10, 3).fillRect(ix + 3, iy - 1, 12, 3).fillRect(ix, iy + 4, 10, 3);
+    g.fillRect(ix + 18, iy - 7, 3, 15).fillRect(ix + 21, iy - 5, 3, 11).fillRect(ix + 24, iy - 3, 3, 7).fillRect(ix + 27, iy - 1, 2, 3);
+    if (!ready) g.fillStyle(0x9fd3ff, 1).fillRect(h.x + 3, h.y + h.h - 7, (h.w - 6) * left, 4);
+    h.glyph?.destroy();
+    h.glyph = undefined;
+    if (device !== 'touch') {
+      const name = device === 'gamepad' ? 'pad:dpad-down' : `key:${keyLabel(loadKeys().dash)}`;
+      h.glyph = this.hudGlyph(h.x + 26, h.y + h.h / 2, name, 24, 44).setAlpha(ready ? 1 : 0.5);
+    }
+    this.touch?.setDashReady(ready);
   }
 
   // --- T56: salas con reglas especiales (level/roomRules.ts) ---
@@ -5763,7 +5962,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else if (room.kind === 'shop') this.tip('shop');
     if (room.kind === 'center' || room.kind === 'shop') this.npcEncounter(room);
     if (room.kind === 'boss' && !this.cleared.has(room.id)) this.gardenBossBerries();
-    if (!this.cleared.has(room.id) && (this.mode === 'waves' || room.kind === 'combat' || room.kind === 'boss' || room.kind === 'challenge')) this.tip('shoot');
+    if (!this.cleared.has(room.id) && (this.mode === 'waves' || room.kind === 'combat' || room.kind === 'boss' || room.kind === 'challenge')) {
+      this.tip('shoot');
+      this.tip('defend');
+    }
     if (this.chests.has(room.id)) this.tip('chest');
 
     if (this.mode === 'waves') this.startWave(1200);
@@ -9293,13 +9495,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     const dir = new Phaser.Math.Vector2(mx, my);
     if (dir.length() > 1) dir.normalize();
+    this.moveDir.copy(dir);
     // En los charcos vas más despacio
     const wade = this.cellAt(this.player.x, this.player.y) === 'W' ? 0.6 : 1;
     // T55: con la adrenalina activa vas más rápido
     // T77: mientras cargas el disparo vas un 40 % más lento
     const loopNow = this.game.loop.time;
     const chargeSlow = CHARGE_SOURCES.some((k) => isCharging(this.charges[k], loopNow)) ? CHARGE_MOVE_MUL : 1;
-    const spd = this.stats.speed * wade * chargeSlow * adrenalineSpeedMul(this.adrenaline) * powerFormSpeedMul(this.powerForm);
+    const spd = this.stats.speed * wade * chargeSlow * adrenalineSpeedMul(this.adrenaline) * powerFormSpeedMul(this.powerForm) * comboBonus(this.combo).speed;
     if (this.time.now >= this.playerKnockUntil) {
       // T78: en el hielo de la arena resbalas: la velocidad cambia poco a poco
       const [itx, ity] = this.tileOf(this.player.x, this.player.y, this.current);
@@ -9385,6 +9588,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // RT sigue cerrando el consejo si hay uno: las dos cosas a la vez no estorban y así no hay que elegir.
     if (Phaser.Input.Keyboard.JustDown(this.parryKey) || (rtNow && !this.triggerPrev[1]) || this.touch?.consume('parry')) this.doParry();
     this.triggerPrev = [ltNow, rtNow];
+    // Esquiva: su tecla (Mayús por defecto), la cruceta abajo (botón 13, libre en partida) o el botón táctil
+    // (el doble clic derecho y el clic en su cuadro van por eventos del puntero)
+    const dpadDownNow = hasPad && !!pad!.buttons[13]?.pressed;
+    if (Phaser.Input.Keyboard.JustDown(this.dashKey) || (dpadDownNow && !this.dpadDownPrev) || this.touch?.consume('dash')) this.doDash();
+    this.dpadDownPrev = dpadDownNow;
+    this.updateDashFx();
     const padA = hasPad && pad!.A && !this.padPrev[0];
     const usedA = this.updateInteract(Phaser.Input.Keyboard.JustDown(this.enterKey) || !!this.touch?.consume('use'), padA);
 
@@ -9500,8 +9709,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.paintPowerMeter();
     this.slots.forEach((m, i) => this.paintSlot(i, m, !m || time >= this.slotReady[i]));
 
-    if (this.combo.count > 0 && !comboAlive(this.combo, time)) this.comboLose();
-    this.comboHud?.update(this.combo, time);
+    // Combo: su tiempo solo corre aquí (update no corre en pausa) y no durante intros ni transiciones entre salas;
+    // sin enemigos en la sala baja más despacio, para que cruzar a la siguiente no lo corte
+    if (!this.transitioning && this.frozenSince === undefined && !this.ended) {
+      const was = tickCombo(this.combo, delta, this.enemies.countActive(true) === 0);
+      if (was > 0) this.comboHud?.broke(was);
+    }
+    this.comboHud?.update(this.combo);
+    this.paintDash();
+    this.paintThreats();
     this.checkTrapdoor();
     if (!this.transitioning) this.checkExit();
   }
@@ -9829,7 +10045,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         sfx('boom');
       } else if (this.fxBudget.take(this.time.now)) this.popup(enemy.x, enemy.y - 44, '¡Escudo!', 0x8ecbff);
     }
-    this.countDamage(enemy, dmg);
+    this.countDamage(enemy, dmg, shieldLeft !== undefined && shieldLeft > 0 && shAi?.behavior === 'shielded');
     let hp = (enemy.getData('hp') as number) - dmg;
     sfx('hit');
     if (status && this.fxBudget.take(this.time.now)) typeImpact(this, enemy.x, enemy.y, status, 0.8, 7);
@@ -9872,8 +10088,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Suma al daño hecho de la partida (sin contar lo que sobra al rematar). */
-  private countDamage(e: Sprite, dmg: number) {
+  private countDamage(e: Sprite, dmg: number, blocked = false) {
     const done = Math.max(0, Math.min(dmg, e.getData('hp') as number));
+    // Combo: todo golpe que llega a un enemigo cuenta, también el que se come su escudo (blocked)
+    if (dmg > 0 || blocked) this.comboStrike();
     this.counters.damage += done;
     if (done > 0) {
       touchAdrenaline(this.adrenaline);
@@ -9884,21 +10102,26 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       }
     }
     // T75: el daño que haces llena el medidor de poder
-    meterOnDamage(this.powerMeter, done);
+    meterOnDamage(this.powerMeter, done * comboBonus(this.combo).meter);
   }
 
-  /** Combo de bajas: suma, avisa en los hitos y da un pequeño premio. */
-  private comboKill(enemy: Sprite) {
-    if (enemy.getData('helper')) return;
-    const milestone = comboHit(this.combo, this.time.now);
-    if (this.combo.count >= 3) sfx('crit');
-    if (milestone === null) return;
-    const r = milestoneReward(milestone);
-    this.hp = Math.min(this.stats.maxHp, this.hp + r.heal);
-    this.popup(this.player.x, this.player.y - 70, `¡Combo x${milestone}! +${r.heal} PS`, 0xffd34d);
-    this.cameras.main.shake(120, 0.004);
+  /**
+   * Combo de golpes: cada daño hecho a un enemigo suma uno (lo llama countDamage, por donde pasa todo el daño tuyo:
+   * disparos, áreas, rayos, ayudante, estados, reacciones, reflejos, jefes y golpes al escudo). Al subir de nivel:
+   * sonido, destello en el contador, aviso con la bonificación y un poco de PS.
+   */
+  private comboStrike() {
+    const up = comboHit(this.combo);
+    noteCombo(this.counters, this.combo.count);
+    if (up) this.comboLevelUp(up);
+  }
+
+  private comboLevelUp(l: ComboLevel) {
     sfx('levelup');
-    if (this.floor.shopId !== undefined) for (let k = 0; k < r.coins; k++) this.dropLoot(enemy.x + (k - r.coins / 2) * 16, enemy.y, { kind: 'coin', value: 1 });
+    this.comboHud?.levelUp(l);
+    this.hp = Math.min(this.stats.maxHp, this.hp + l.heal);
+    if (this.player?.active) this.popup(this.player.x, this.player.y - 70, `¡${l.name}! +${l.heal} PS`, l.color);
+    if (!lowFx()) this.cameras.main.flash(120, (l.color >> 16) & 255, (l.color >> 8) & 255, l.color & 255);
   }
 
   /** T84: derrotar o capturar suma a la cadena shiny si es la misma especie (los ayudantes del jefe no cuentan). */
@@ -9912,12 +10135,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const show = chainVisible(this.shinyChain);
     this.shinyChainHud?.setVisible(show).setText(show ? `Cadena shiny x${this.shinyChain.count}` : '');
     if (this.shinyChainHud) shinyChainBadge(this, this.shinyChainHud, show ? this.shinyChain.count : 0);
-  }
-
-  /** Se rompe el combo (te han hecho daño). */
-  private comboLose() {
-    const was = comboBreak(this.combo);
-    this.comboHud?.broke(was);
   }
 
   /**
@@ -9959,12 +10176,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.registerDex(enemy);
     // T55: las bajas cargan la adrenalina (los ayudantes que invoca un jefe también cuentan: son enemigos de verdad)
     this.addAdrenaline('kill');
-    this.comboKill(enemy);
     this.chainShiny(enemy);
     this.mission({ kind: 'defeat', types: boss ? this.bossTypes : ((enemy.getData('types') as string[] | undefined) ?? []) });
     // Monedas solo donde hay tienda en la que gastarlas; bayas siempre
     const hasShop = this.floor.shopId !== undefined;
     const loot = enemy.getData('helper') ? [] : rollEnemyLoot(Math.random, boss);
+    // Combo (Frenesí o más): probabilidad de una tirada de botín extra
+    const comboLoot = comboBonus(this.combo).loot;
+    if (!enemy.getData('helper') && comboLoot > 0 && Math.random() < comboLoot) loot.push(...rollEnemyLoot(Math.random, false));
     if (enemy.getData('shiny')) {
       // Un shiny suelta más: monedas de 5 y una llave
       for (let k = 0; k < SHINY_ENEMY.extraCoins; k++) loot.push({ kind: 'coin', value: 5 });
@@ -10901,17 +11120,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Bajo tierra o escondido no hace daño al tocarte
     if (ai && (ai.behavior === 'burrow' || ai.behavior === 'ambush') && (ai.state === 'vanish' || ai.state === 'appear')) return;
     // T53: parry a tiempo. Va antes que la esquiva y el escudo para no gastarlos en un golpe que ya está parado.
-    if (tryParry(this.parry, this.game.loop.time, now, unblockable)) {
-      this.invulnUntil = now + PARRY_GRACE_MS;
-      // Aviso sobre el jugador, como "¡Esquivado!" (nunca en el centro de la pantalla)
-      this.popup(this.player.x, this.player.y - 50, '¡Parry!', 0xffd34d);
-      this.addAdrenaline('parry');
-      meterOnParry(this.powerMeter);
-      noteParry(this.counters);
-      sfx('crit');
-      parryHit(this, this.player.x, this.player.y);
-      return;
-    }
+    const parried = tryParry(this.parry, this.game.loop.time, now, unblockable);
+    if (parried) return this.onParry(parried, enemy);
     if (this.stats.dodge > 0 && Math.random() < this.stats.dodge) {
       this.invulnUntil = now + 500;
       this.popup(this.player.x, this.player.y - 50, '¡Esquivado!', 0xfff8c0);
@@ -10926,7 +11136,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     this.invulnUntil = now + 900;
     sfx('hurt');
-    this.comboLose();
+    // Recibir daño ya no corta el combo: le quita tiempo (antes un roce lo dejaba a cero)
+    comboHurt(this.combo);
     // Casco Dentado: quien te toca se hace daño
     if (ai && this.stats.thorns > 0 && enemy.active) {
       this.countDamage(enemy, this.stats.thorns);
@@ -11078,6 +11289,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // Los pisos ya cerrados al bajar y el de ahora, que sigue abierto
       floorSeconds: floorTimes(this.counters),
       routes: this.routesTaken.map(routeLabel),
+      bestCombo: this.counters.bestCombo ?? 0,
+      // Récord de combo de todas las partidas (las de código o trucos no cuentan)
+      comboRecord: !this.codeRun && submitComboBest(this.counters.bestCombo ?? 0),
+      comboLevel: comboLevelIndex(this.counters.bestCombo ?? 0),
+      perfectParries: this.counters.perfectParries ?? 0,
+      dashes: this.counters.dashes ?? 0,
       ...(code ? { seedCode: code } : {}),
       ...(this.codeRun ? { fromCode: true } : {}),
     };

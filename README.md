@@ -28,9 +28,15 @@ Es un **fan game gratuito y sin ánimo de lucro** (nunca se cobra dinero real po
 - Al terminar el piso 5 puedes aceptar el **reto final**: el trío legendario o un gigante, elegido al azar.
 - **«Una más»**: al caer, una vez por partida, puedes volver con media vida pagando caramelos o tickets (tú eliges).
 - Los **pasivos** de los objetos se combinan en sinergias.
-- **Parry**: pulsado justo antes de un golpe lo bloquea y tu siguiente ataque es crítico (los ataques de zona y
-  los láseres de los jefes no se bloquean). Las bajas, esquivas y parrys llenan la **adrenalina**: al llenarse, unos
-  segundos con más velocidad y daño.
+- **Parry**: púlsalo justo antes de un golpe (ventana amplia de 0,4 s; una marca «!» sobre el enemigo o el proyectil
+  avisa y se pone blanca cuando toca pulsar). Anula el golpe, devuelve el proyectil o aturde a quien te pega, y tu
+  siguiente ataque es crítico; en la primera mitad de la ventana es **perfecto** (más premio). Fallar solo tiene un
+  enfriamiento corto. Los ataques de zona y los láseres de los jefes no se bloquean: para eso está la **esquiva**
+  (impulso corto invulnerable, recarga 1,2 s). Las bajas, esquivas y parrys llenan la **adrenalina**: al llenarse,
+  unos segundos con más velocidad y daño.
+- **Combo**: cada golpe que daña a un enemigo suma (también quemaduras, áreas, reflejos y el ayudante); tienes 2,5 s
+  para el siguiente (no corre en pausa ni en las intros). Niveles **Racha** (x5), **Frenesí** (x15), **Imparable**
+  (x30) y **Leyenda** (x60) con más daño, velocidad, botín y medidor. El máximo sale en el resumen y queda como récord.
 - El **botín** sale despedido al caer y vuela hacia ti cuando te acercas (más lejos con el Zahorí).
 
 ## Modos
@@ -63,6 +69,7 @@ Tres dificultades (Fácil, Normal, Difícil), cada una con sus récords.
 | Poderes 1-4 | 1, 2, 3, 4 | Clic en la ranura | A, B, X, Y |
 | Objeto activo / bomba | Espacio / E | Clic en su cuadro | LB / RB |
 | Parry (justo antes del golpe) | F | Clic central (rueda) o clic en su cuadro | RT |
+| Esquiva | Mayús | Doble clic derecho o clic en su cuadro | Cruceta abajo |
 | Pausa | Esc o P | Botón ❚❚ | Start |
 
 Las teclas se pueden cambiar en **Ajustes > Controles y teclas**. En el juego, **Controles** enseña solo los del

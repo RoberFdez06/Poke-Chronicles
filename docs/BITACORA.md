@@ -1491,3 +1491,65 @@ Pendiente:
 - Límites: con el tope ×1,5 los menús llegan a ~12 px CSS, pero el HUD (sin zoom de diseño) se queda en ~7-8 px CSS; textos que
   cambian de tamaño después (`setFontSize`/`setStyle`) no se agrandan. No se pasó a Scale.RESIZE (demasiado riesgo).
 - Pendiente: Playwright no arrancó en la VM (sin navegador); falta mirar en un móvil real que nada se salga de su cuadro.
+
+## Combate: parry perdonador, esquiva (dash) y combo de golpes arreglado (rama `combate`)
+**Parry rehecho** (`src/data/parry.ts`, arte en `src/ui/art/parryFx.ts`):
+- Ventana amplia `PARRY_WINDOW_MS = 400` (antes 200); perfecto en los primeros `PARRY_PERFECT_MS = 200`. Fallar solo
+  cuesta `PARRY_MISS_COOLDOWN_MS = 300` tras cerrarse la ventana; acertar deja volver a pulsar a los 120 ms (ráfagas).
+  `tryParry` devuelve `'perfect' | 'normal' | null` (antes boolean). Mismos relojes que antes (bucle para ventana y
+  enfriamiento, escena para el crítico del contraataque). Compatible con adrenalina, medidor y guardado (sin cambios).
+- Aviso: `timeToImpact` + `threatLevel` (puros) y `paintThreats` en GameScene dibujan un rombo pixel «!» sobre cada
+  proyectil o enemigo que te va a dar en menos de 0,7 s; se vuelve blanco y late dentro de la ventana («¡ahora!»).
+- Con la ventana abierta, escudo hexagonal pixel del color del tipo del jugador que le sigue; el cuadro del HUD se
+  pone blanco. Al acertar (`onParry`): destello, anillo y partículas pixel (`parryBurst`; perfecto: anillo doble,
+  más chispas y más grandes, leve temblor), «¡Parry!» / «¡Parry perfecto!» sobre el jugador. Devuelve algo: el
+  proyectil sale reflejado como disparo tuyo hacia el enemigo más cercano (`parryReflectDamage`: ×1,6 / ×2,5 y nunca
+  menos que tu disparo; el perfecto atraviesa uno) y quien pega cuerpo a cuerpo queda aturdido (`parryStun`: 0,9 s /
+  1,4 s; jefes 0,35 s) y empujado. Sigue dando adrenalina, medidor y el crítico siguiente. Contadores: parrys
+  perfectos (`notePerfectParry`). Los ataques de jefe imparables siguen sin bloquearse.
+**Esquiva** (`src/data/dash.ts`): acción nueva `dash` (al final de `ACTIONS`, por defecto **Mayús**: Espacio es el
+  objeto activo; reasignable en Teclas, con migración de guardados igual que las demás). Mando: cruceta abajo (botón 13,
+  libre en partida). Ratón: doble clic derecho (≤ 300 ms, hacia el cursor; el clic central ya es el parry) o clic en su
+  cuadro. Táctil: botón «Esquiva» junto al parry. Impulso de 170 px en 170 ms en la dirección de movimiento (o de la
+  mirada), invulnerable 250 ms, recarga 1,2 s, no gasta adrenalina. Usa la velocidad del cuerpo + `playerKnockUntil`
+  (como el dash de los ataques): paredes, puertas cerradas y agujeros los paran las colisiones y el borde `keepInside`
+  (`dashEnd` usa `clampDash` de bounds.ts y está probado). Estela de imágenes del jugador teñidas y polvo pixel
+  (`dashTrail`, `dashPuff`). Cuadro «Esquiva» encima de las ranuras de poderes con glifo pixel (tecla o cruceta abajo,
+  nuevo glifo `pad:dpad-down` y regla «Cruceta abajo» en glyphTokens) y barra de recarga. Añadida a Controles
+  (fila nueva en las 4 pestañas; filas a 24 px), Teclas (24 acciones = 2 columnas de 12 justas), `controlsFor`
+  (ayuda), consejo nuevo `defend` (parry + esquiva, con versión táctil) y README.
+**Combo: causas encontradas** (antes `combo.ts` contaba *bajas*, no golpes):
+1. Solo sumaban las bajas y no las de los ayudantes de jefe ni las de la plaga (`helper`): golpear sin rematar no
+   contaba nada, y el clima que remata tampoco.
+2. El plazo era `expiresAt = time.now + ventana`, y `time.now` de Phaser es el reloj del bucle: **sigue corriendo en
+   pausa**, en las intros de jefe (`frozenSince`), en la elección de objeto y en las transiciones. Al volver, roto.
+3. La ventana se acortaba con el combo (de 3 s hasta 1,6 s): en combos largos se cortaba enseguida.
+4. Cualquier daño recibido lo ponía a cero.
+5. `combo` era un campo inicializado una vez y nunca se reiniciaba en `init`: pasaba de una partida a otra.
+**Arreglo**: ahora cuenta golpes. `countDamage` (por donde pasa todo el daño del jugador: disparos, poderes de área,
+  rayos que atraviesan, ayudante, quemadura/veneno, reacciones, espinas, bombas, reflejos del parry, jefes) llama a
+  `comboStrike`; los golpes que se come el escudo del Escudado también cuentan (`blocked`); varios en el mismo
+  fotograma son varios. El tiempo es lo que queda en ms (`left`) y solo baja con `tickCombo` desde `update()` (que no
+  corre en pausa), con paso recortado a 100 ms, y no se llama con `transitioning`, `frozenSince` ni al acabar. Ventana
+  fija perdonadora de 2,5 s que se rellena entera con cada golpe; sin enemigos en la sala baja al 35 % (cruzar a la
+  siguiente no lo corta). Recibir daño le quita la mitad del tiempo (`comboHurt`) en vez de romperlo. Se reinicia en
+  cada piso/partida; el máximo de la partida va en `RunCounters.bestCombo` (sobrevive a los pisos y al continuar).
+- Niveles (`COMBO_LEVELS`): x5 Racha, x15 Frenesí, x30 Imparable, x60 Leyenda con daño (×1,05→×1,25, entra en
+  `dmgMul`), velocidad (hasta ×1,12), probabilidad de tirada de botín extra (hasta 20 %) y medidor de poder (hasta
+  ×1,5), más unos PS al alcanzarlos. Al subir: sonido, destello de cámara (no con efectos bajos), chispas pixel en el
+  contador y aviso sobre el jugador. Sustituye a los hitos antiguos (`milestoneReward`, monedas por hito: quitados).
+- HUD (`comboHud.ts`, esquina de arriba a la izquierda de la sala): número que late, nombre del nivel, barra pixel
+  segmentada del tiempo (parpadea al quedar < 30 %), cuatro rombos de nivel y la bonificación en letra pequeña. La
+  cadena shiny baja un poco para no pisarlo.
+- Resumen: «Combo máximo x34 · Imparable» (color del nivel) con estrella si es récord de todas las partidas, y parrys
+  con los perfectos. Récord global en `save.ts` (`COMBO_BEST_KEY`, `loadComboBest`/`submitComboBest`, en
+  `PROGRESS_KEYS`; las partidas con código o trucos no cuentan). `RunRecord` gana `bestCombo`, `comboLevel`,
+  `comboRecord`, `perfectParries` y `dashes`, todos opcionales: el historial antiguo se sigue leyendo (sin migración).
+- Tests nuevos/rehechos: `parry.test.ts` (8), `dash.test.ts` (4), `combo.test.ts` (7), `comboRecord.test.ts` (4),
+  keybinds (+1). 714 en total.
+Pendiente / no verificado:
+- Solo `tsc` y `npm test`; `npm run build` no arranca en la VM (falta `@rollup/rollup-linux-x64-gnu`, node_modules de
+  Windows). Falta probar en el navegador: marcas de aviso, escudo y estallido del parry, reflejo, estela de la esquiva
+  (que no atraviese paredes ni puertas a 1000 px/s), cuadro «Esquiva» encima de las ranuras (y que los avisos de la
+  derecha no lo tapen), botones táctiles, doble clic derecho y el contador del combo con su barra.
+- El daño del clima (arena/granizo) a los enemigos no es tuyo y no suma al combo.

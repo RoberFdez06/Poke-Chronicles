@@ -5,7 +5,7 @@
 import Phaser from 'phaser';
 import { H, HUD, W } from './layout';
 
-export type TouchButton = 'power1' | 'power2' | 'power3' | 'power4' | 'active' | 'bomb' | 'potion' | 'use' | 'parry';
+export type TouchButton = 'power1' | 'power2' | 'power3' | 'power4' | 'active' | 'bomb' | 'potion' | 'use' | 'parry' | 'dash';
 
 const R = 86; // radio del joystick
 const KNOB = 38;
@@ -87,7 +87,9 @@ export class TouchControls {
     btn('power3', ax - col, row1, '3', 0x3b6fd6);
     btn('power4', ax + col, row1, '4', 0x3b6fd6);
     // T53: parry encima de los poderes, a mano del pulgar derecho (el que apunta)
-    btn('parry', ax, row3, 'Parry', 0xd4a017);
+    btn('parry', ax + col, row3, 'Parry', 0xd4a017);
+    // Esquiva al lado del parry: las dos defensas bajo el mismo pulgar
+    btn('dash', ax - col, row3, 'Esquiva', 0x3f8fd0);
     const lx = this.sticks.move.cx;
     btn('active', lx - col, row2, 'Activo', 0x8e44ad);
     btn('bomb', lx + col, row2, 'Bomba', 0x555555);
@@ -118,6 +120,14 @@ export class TouchControls {
     const b = this.buttons.find((x) => x.id === 'active');
     if (!b) return;
     b.color = has ? 0x8e44ad : 0x4a5468;
+    b.dim = !ready;
+    this.paint(b);
+  }
+
+  /** Botón «Esquiva»: apagado mientras recarga. */
+  setDashReady(ready: boolean): void {
+    const b = this.buttons.find((x) => x.id === 'dash');
+    if (!b || b.dim === !ready) return;
     b.dim = !ready;
     this.paint(b);
   }

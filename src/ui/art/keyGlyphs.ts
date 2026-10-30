@@ -157,6 +157,7 @@ function dpad(scene: Phaser.Scene, c: Phaser.GameObjects.Container, h: number, d
   g.fillStyle(0x5a6684, 1).fillRect(k, y0 + u, k, s - 2 * u).fillRect(u, y0 + k, s - 2 * u, k);
   g.fillStyle(0x3a4560, 1).fillRect(k + u, y0 + k + u, k - 2 * u, k - 2 * u);
   if (dir === 'up') g.fillStyle(HILITE, 1).fillRect(k, y0 + u, k, k - u);
+  if (dir === 'down') g.fillStyle(HILITE, 1).fillRect(k, y0 + 2 * k, k, k - u);
   return s;
 }
 
