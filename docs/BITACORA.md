@@ -1656,3 +1656,8 @@ Pendiente / no verificado:
 - Solo `tsc` y `npm test`; `npm run build` no arranca en la VM (falta `@rollup/rollup-linux-x64-gnu`). Sin probar en el
   navegador: aspecto de las 14 formas y estelas sobre los proyectiles, la vista previa, el destello, el marco dorado,
   el menú de pausa con 8-9 opciones y el equilibrio real.
+
+## Fallos visuales en la pelea de jefe (Lunala, desierto) — rama `fallos`
+- **Bloque de ladrillo hueco en mitad de la arena (colisión mala)**: en las salas grandes de 2x2, la unión derecha y la de abajo pintaban cada una su muro hacia la esquina central y nadie ponía suelo allí. Quedaba un pilar de muro con el fondo asomando, con colisión para el jugador; los voladores (Lunala) lo atravesaban. Ahora, si las cuatro casillas forman un bloque 2x2, la esquina es suelo y se quitan esos muros interiores (`src/level/joinCorner.ts`, `buildJoin`). Test: `tests/joinCorner.test.ts`.
+- **Filtro en pantalla**: el tinte del clima seguía a `worldView`, que va un fotograma por detrás de la cámara, y dejaba una franja sin cubrir; ahora lleva 96 px de margen. Los rayos del sol (triángulos de un solo tono) eran más suaves pero se veían como cantos: ahora son más tenues y van en tres capas.
+- **Oscuridad con bordes**: el halo se cuantizaba en 6 escalones (anillos visibles) y los rectángulos de alrededor se solapaban 2 px con la textura (marco más oscuro). Ahora el degradado es suave (`darkHoleAlpha`, smoothstep), con efectos bajos también tiene degradado (más estrecho) y el solape es de 1 px. Test en `tests/darkAlpha.test.ts`.

@@ -51,16 +51,23 @@ export class WeatherFx {
     if (view.width <= 0) return;
     const dt = Math.min(delta, 50) / 1000;
     this.t += dt;
-    this.tint.setPosition(view.x, view.y).setSize(view.width, view.height);
+    // Con margen: worldView va un fotograma por detrás de la cámara (temblor, zoom, salas grandes) y el tinte dejaba
+    // una franja sin cubrir en un borde, que se veía como un filtro mal puesto
+    const M = 96;
+    this.tint.setPosition(view.x - M, view.y - M).setSize(view.width + M * 2, view.height + M * 2);
     const g = this.g.clear();
     const w = this.weather;
     if (w === 'sun') {
       // Rayos inclinados que laten despacio
-      const a = 0.07 + 0.03 * Math.sin(this.t * 1.3);
-      g.fillStyle(0xfff3b0, a);
+      // Tenues y de borde suave (tres capas): los triángulos de un solo tono se veían como un filtro con cantos
+      const a = 0.025 + 0.012 * Math.sin(this.t * 1.3);
       for (let k = 0; k < 4; k++) {
         const x0 = view.x + view.width * (0.1 + k * 0.27);
-        g.fillTriangle(x0, view.y, x0 + 60, view.y, x0 - view.height * 0.35, view.y + view.height);
+        for (let l = 0; l < 3; l++) {
+          const w = 30 + l * 20;
+          g.fillStyle(0xfff3b0, a);
+          g.fillTriangle(x0 - l * 10, view.y, x0 + w, view.y, x0 - view.height * 0.35 - l * 10, view.y + view.height);
+        }
       }
     }
     for (const d of this.drops) {

@@ -93,7 +93,9 @@ export const shouldMultiply = (rule: RoomRule | undefined, special: boolean, rng
 /** Radio que se ve alrededor del jugador (px del mundo). Con efectos bajos, el borde es duro y no "respira". */
 export const DARK_RADIUS = 190;
 export const DARK_EDGE = 70;
-export const darkEdge = (lowFx: boolean): number => (lowFx ? 0 : DARK_EDGE);
+/** Con efectos bajos el borde sigue siendo suave (más estrecho): un borde duro se veía como un recorte. */
+export const DARK_EDGE_LOW = 28;
+export const darkEdge = (lowFx: boolean): number => (lowFx ? DARK_EDGE_LOW : DARK_EDGE);
 /** Opacidad de la capa oscura (la misma en la textura y en los rectángulos que la rodean). */
 export const DARK_ALPHA = 0.93;
 export const DARK_STEPS = 6;
@@ -106,6 +108,18 @@ export const quantizeDarkAlpha = (a: number): number => {
   const v = Math.min(Math.max(a, 0), max);
   return Math.min(max, Math.round((v / max) * DARK_STEPS) * (max / DARK_STEPS));
 };
+
+/**
+ * Alpha (0..1) de la capa oscura a `d` px del jugador: 0 dentro, DARK_ALPHA desde R, y entre medias una curva suave
+ * (smoothstep) sin escalones. Antes se cuantizaba en DARK_STEPS bandas y se veían anillos con borde duro.
+ */
+export function darkHoleAlpha(d: number, radius: number = DARK_RADIUS, edge: number = DARK_EDGE): number {
+  const inner = radius - Math.max(1, edge);
+  if (d <= inner) return 0;
+  if (d >= radius) return DARK_ALPHA;
+  const t = (d - inner) / (radius - inner);
+  return DARK_ALPHA * t * t * (3 - 2 * t);
+}
 
 // --- Velocidad ---
 
