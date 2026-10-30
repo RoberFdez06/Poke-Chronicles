@@ -1621,7 +1621,7 @@ Qué hace: desde la pausa, «Fusionar poderes» abre `FusionScene`: eliges el pr
 previa (nombre, tipos, potencia, recarga, patrón en texto y el proyectil animado), confirmas con `ConfirmScene`
 («CONFIRMAR FUSIÓN») y salta el destello de fusión. El resultado ocupa la ranura del primero; la del segundo queda
 vacía para coger otro poder del suelo. Teclado (flechas, Enter, Esc, 1-4), ratón (filas, clic fuera = No) y mando.
-- **Recetas** (`src/data/fusion.ts`): 63 con nombre propio por pareja de tipos sin orden; el resto de parejas de tipos
+- **Recetas** (`src/data/fusion.ts`): 62 con nombre propio por pareja de tipos sin orden; el resto de parejas de tipos
   distintos tiene un nombre compuesto propio (sustantivo del tipo más potente + adjetivo del otro: «Llama Insecta»);
   mismo tipo = «<Movimiento> Superior» (×1,5 y patrones ×1,35). Cubre las 18×18.
 - **Estilo único por pareja** (cambio de requisito del usuario): nada de estilos por defecto ni reutilizados. Cada una
