@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { fitDesign } from '../ui/layout';
 import { accountErrorMessage, checkEmail, checkName, checkPassword, MAX_NAME } from '../data/account';
 import { accountInfo, deleteAccount, resetPassword, signIn, signInWithGoogle, signOutAccount, signUp } from '../net/cloud';
+import { googleIcon, mailIcon } from '../ui/art/accountIcons';
 import { COLORS, fadeIn, FONT, goTo, HEX, hex } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
 
@@ -93,12 +94,17 @@ export class AccountScene extends Phaser.Scene {
       i.addEventListener('focus', () => this.setFocus(this.controls.indexOf(i)));
       return i;
     };
-    const button = (label: string, onClick: () => void, primary = false) => {
+    const button = (label: string, onClick: () => void, primary = false, icon?: HTMLElement) => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.textContent = label;
+      if (icon) {
+        const t = document.createElement('span');
+        t.textContent = label;
+        b.append(icon, t);
+      } else b.textContent = label;
       b.style.cssText = `font-family:inherit;font-size:16px;font-weight:bold;padding:10px 14px;border:4px solid ${navy};
         border-radius:4px;cursor:pointer;color:${navy};background:${primary ? hex(COLORS.goldSoft) : hex(COLORS.panel)};`;
+      if (icon) b.style.cssText += 'display:flex;align-items:center;justify-content:center;gap:10px;';
       b.addEventListener('click', () => !this.busy && onClick());
       b.addEventListener('mouseenter', () => this.setFocus(this.controls.indexOf(b)));
       box.append(b);
@@ -130,9 +136,9 @@ export class AccountScene extends Phaser.Scene {
         void this.run(up ? 'Creando la cuenta…' : 'Entrando…', () => (up ? signUp(email.value, pass.value, name!.value) : signIn(email.value, pass.value)));
       };
       [email, pass, name].forEach((i) => i?.addEventListener('keydown', (e) => e.key === 'Enter' && submit()));
-      button(up ? 'Crear cuenta' : 'Entrar', submit, true);
-      // Google ya está activado en Firebase; el botón sale solo con VITE_FIREBASE_GOOGLE=1 en .env.local
-      if (import.meta.env.VITE_FIREBASE_GOOGLE === '1') button('Entrar con Google', () => void this.run('Abriendo Google…', () => signInWithGoogle()));
+      button(up ? 'Crear cuenta' : 'Entrar', submit, true, mailIcon(3));
+      // Google ya está activado en Firebase (VITE_FIREBASE_GOOGLE=0 lo oculta si hiciera falta)
+      if (import.meta.env.VITE_FIREBASE_GOOGLE !== '0') button('Entrar con Google', () => void this.run('Abriendo Google…', () => signInWithGoogle()), false, googleIcon(3));
       button(up ? 'Ya tengo cuenta: entrar' : 'No tengo cuenta: crear una', () => this.build(up ? 'signin' : 'signup'));
       if (!up) {
         button('He olvidado la contraseña', () => {
