@@ -4,7 +4,10 @@
 // - Aceptar (Enter/Espacio, A, clic): con un Pokémon elegido lo coloca; sobre una torre la abre; en una casilla libre
 //   sin nada elegido, elige el último Pokémon usado. Cancelar (Esc, B, clic derecho): suelta lo elegido; sin nada, pausa.
 // - Equipo: Q/E, LB/RB, rueda o clic. Torre abierta: panel con acciones numeradas (1-4, cruceta y A, o clic).
-// - Habilidades Z/X/C (LT/RT/Y), oleada N (X), velocidad F (R3), pausa P (Start): cada botón enseña su tecla.
+// - Habilidades Z/X/C/V (LT/RT/Y/L3), oleada N (X), velocidad F (R3), pausa P (Start): cada botón enseña su tecla.
+//   Tormenta, Bomba y Refuerzo se apuntan: se mueve el cursor (o el ratón) y aceptar la lanza; cancelar la suelta.
+// - Tras cada oleada, 1 de 3 mejoras (1/2/3, flechas o cruceta y aceptar, o clic). Jefes de oleada cada 5 y eventos
+//   (niebla, tormenta…) avisados arriba a la derecha del mapa, nunca en el centro.
 // Abajo a la derecha, una barra de ayuda cambia según lo elegido y el dispositivo con el que se juega.
 import Phaser from 'phaser';
 import { fitDesign } from '../ui/layout';
@@ -29,12 +32,15 @@ import { bakeCombatFx, bossAura, damageNumber, evolveBurst, evolveGlow, hitSpark
 import { pixBlast, pixBolt, pixDebris, pixFlash, pixRing } from '../ui/art/pixelFx';
 import {
   P, bakeLayer, bakeTdArt, confetti, drawAbilityFrame, drawAura, drawBar, drawBase, drawCursor, drawDecor, drawFlow, drawPads, drawPedestal, drawPortal,
-  drawRange, drawRoad, pickDecor, tdIcon, tdIconKey, type Decor, type MapGeom,
+  drawRange, drawRoad, pickDecor, tdIcon, tdIconKey, type Decor, type MapGeom, drawWarnZone, drawStun, drawBoost, drawFog, drawBossBar,
 } from '../ui/art/tdArt';
 import { biomeById } from '../level/biomes';
 import { TD_COLS, TD_MAPS, TD_ROWS, baseCell, buildableCells, entryCells, type TdMap } from '../data/towerDefense/maps';
 import { BASE_HP, TARGETING_LABEL, TdGame, type TdEnemy, type TdEvent, type TdTower, type TeamMon } from '../data/towerDefense/engine';
-import { ABILITIES, ABILITY_INFO, LIGHTNING_TARGETS, type AbilityId } from '../data/towerDefense/abilities';
+import { ABILITIES, ABILITY_INFO, isZoneAbility, type AbilityId } from '../data/towerDefense/abilities';
+import { CHIEF_NAMES, CHIEF_SKILL_INFO, CHIEF_SPECIES } from '../data/towerDefense/chiefs';
+import { STORM_RADIUS, STORM_WARN, WAVE_EVENT_INFO, type WaveEventId } from '../data/towerDefense/events';
+import { PERK_ICON, TOWER_PERKS, perkDesc, perkName, type Perk } from '../data/towerDefense/perks';
 import { BRANCH_LEVEL, MAX_TOWER_LEVEL, MEGA_LEVEL, STYLE_LABEL, branchInfo, levelLabel, megaMoveOf, megaSpriteName, specialMoveOf, towerCost, towerStats } from '../data/towerDefense/towers';
 import { drawMegaAura, towerMegaFx } from '../ui/art/tdMegaArt';
 import { ENEMY_KIND_LABEL, MAP_FOES, TRIAL_TEAM, type EnemyKind } from '../data/towerDefense/species';
@@ -56,6 +62,9 @@ const PANEL_X = 792;
 const NAVY = '#2b3a67';
 const SPEEDS = [1, 2, 3] as const;
 const spriteUrl = (id: number) => `https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/${id}.png`;
+/** Zona de avisos de arriba a la derecha del mapa (barra del jefe y evento de la oleada). */
+const EV_X = 470;
+const EV_W = 306;
 const sx = (x: number) => OX + x * CELL;
 const sy = (y: number) => OY + y * CELL;
 
@@ -139,6 +148,14 @@ export class TowerDefenseScene extends Phaser.Scene {
   private overlay: Phaser.GameObjects.Container | null = null;
   private overlayList: MenuList | null = null;
   private loadingText!: Phaser.GameObjects.Text;
+  /** Habilidad de zona que se está apuntando. */
+  private aiming: AbilityId | null = null;
+  /** Elección de mejora abierta. */
+  private perkUi: { c: Phaser.GameObjects.Container; g: Phaser.GameObjects.Graphics; i: number; cards: { x: number; y: number; w: number; h: number }[]; keys: GlyphText[] } | null = null;
+  private eventIcon!: Phaser.GameObjects.Image;
+  private eventText!: Phaser.GameObjects.Text;
+  private bossName!: Phaser.GameObjects.Text;
+  private eventIconKey = '';
 
   constructor() {
     super('TowerDefense');
@@ -175,6 +192,9 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.panelBtns = [];
     this.panelTexts = [];
     this.cdTexts = [];
+    this.aiming = null;
+    this.perkUi = null;
+    this.eventIconKey = '';
   }
 
   create() {
@@ -191,7 +211,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     onFocusLost(this, () => this.scene.isActive() && this.openPause());
     const kb = this.input.keyboard!;
     const add = (k: string) => kb.addKey(k, false);
-    const names = ['ONE', 'TWO', 'THREE', 'FOUR', 'Z', 'X', 'C', 'N', 'F', 'Q', 'E', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'W', 'A', 'S', 'D'];
+    const names = ['ONE', 'TWO', 'THREE', 'FOUR', 'Z', 'X', 'C', 'V', 'N', 'F', 'Q', 'E', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'W', 'A', 'S', 'D'];
     this.keys = Object.fromEntries(names.map((n) => [n, add(n)]));
     this.input.mouse?.disableContextMenu();
     this.loadingText = this.add.text(480, 320, 'Preparando el mapa…', { fontFamily: UI.FONT, fontSize: '24px', color: '#ffffff' }).setOrigin(0.5);
@@ -235,7 +255,8 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (!this.scene.isActive()) return;
     const foes = MAP_FOES[this.map.biome] ?? MAP_FOES.bosque;
     const evoIds = team.map((t) => t.evolveId).filter((n): n is number => !!n);
-    const ids = [...new Set([...team.map((t) => t.id), ...evoIds, ...Object.values(foes).flat()])];
+    const chiefs = CHIEF_SPECIES[this.map.biome] ?? CHIEF_SPECIES.bosque;
+    const ids = [...new Set([...team.map((t) => t.id), ...evoIds, ...Object.values(foes).flat(), ...chiefs])];
     for (const id of evoIds) void fetchSpeciesName(id).then((n) => this.names.set(id, n)).catch(() => undefined);
     try {
       this.sheets = await withTimeout(loadPmd(this, ids), 15000, 'sprites');
@@ -361,6 +382,13 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.teamHead = new GlyphText(this, PANEL_X + 82, 24, 'Tu equipo', { size: 15, color: NAVY, originX: 0.5, auto: false, maxWidth: 156 }).setDepth(62);
     const bottom = this.add.graphics().setDepth(55);
     drawBox(bottom, 4, 596, 952, 42, { radius: 10 });
+    // Arriba a la derecha del mapa: barra del jefe y aviso del evento (nunca en el centro)
+    this.bossName = this.add.text(EV_X + EV_W, 86, '', { fontFamily: UI.FONT, fontSize: '12px', fontStyle: 'bold', color: '#ffffff' }).setOrigin(1, 0).setStroke('#18202c', 4).setDepth(62);
+    this.eventIcon = tdIcon(this, EV_X + 16, 0, 'rayo', 2).setDepth(62).setVisible(false);
+    this.eventText = this.add
+      .text(EV_X + 32, 0, '', { fontFamily: UI.FONT, fontSize: '12px', fontStyle: 'bold', color: '#ffffff', wordWrap: { width: EV_W - 40 }, lineSpacing: 1 })
+      .setStroke('#18202c', 4)
+      .setDepth(62);
   }
 
   private buildTeam() {
@@ -386,18 +414,18 @@ export class TowerDefenseScene extends Phaser.Scene {
     };
     ABILITIES.forEach((id, i) => {
       // Cada habilidad: su botón cuadrado y, al lado, la tecla o el botón del mando que la lanza
-      const b = this.makeBtn(12 + i * 58, 601, 32, 32, '', () => this.useAbility(id));
-      b.zone.setSize(54, 32);
+      const b = this.makeBtn(12 + i * 50, 601, 32, 32, '', () => this.useAbility(id));
+      b.zone.setSize(48, 32);
       b.icon = tdIcon(this, b.x + 16, b.y + 16, id, 2.2).setDepth(62);
       b.color = ABILITY_INFO[id].color;
       this.cdTexts.push(this.add.text(b.x + 16, b.y + 16, '', { fontFamily: UI.FONT, fontSize: '14px', fontStyle: 'bold', color: '#ffffff' }).setOrigin(0.5).setStroke('#18202c', 4).setDepth(64));
-      keyText(b.x + 37, id);
+      keyText(b.x + 35, id, 0, 11);
       this.barBtns.push(b);
     });
-    this.barBtns.push(this.makeBtn(188, 601, 214, 32, 'Siguiente oleada', () => this.callWave(), () => this.td.phase === 'prep', 13));
+    this.barBtns.push(this.makeBtn(214, 601, 190, 32, 'Siguiente oleada', () => this.callWave(), () => this.td.phase === 'prep', 12));
     this.barBtns.push(this.makeBtn(410, 601, 74, 32, 'x1', () => this.cycleSpeed(), () => true, 14));
     this.barBtns.push(this.makeBtn(492, 601, 84, 32, 'Pausa', () => this.openPause(), () => true, 14));
-    keyText(188 + 214 - 4, 'wave', 1, 10);
+    keyText(214 + 190 - 4, 'wave', 1, 10);
     keyText(410 + 74 - 4, 'speed', 1, 10);
     keyText(492 + 84 - 4, 'pause', 1, 10);
     // Barra de ayuda: cambia con lo elegido y con el dispositivo (drawUi)
@@ -444,17 +472,19 @@ export class TowerDefenseScene extends Phaser.Scene {
   private cancel() {
     this.placing = null;
     this.selected = null;
+    this.aiming = null;
     this.focus = { zone: 'grid' };
   }
 
   /** Esc o B: cierra la torre, suelta el Pokémon o, si no hay nada elegido, abre la pausa. */
   private back() {
-    if (this.placing !== null || this.selected !== null) return this.cancel();
+    if (this.placing !== null || this.selected !== null || this.aiming !== null) return this.cancel();
     this.openPause();
   }
 
   /** Aceptar sobre una casilla (Enter, Espacio, A, clic o toque). */
   private activateCell(x: number, y: number) {
+    if (this.aiming) return this.castAt(this.aiming, x, y);
     const t = this.td.towerAt(x, y);
     if (t) {
       this.placing = null;
@@ -543,25 +573,57 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.speedIdx = (this.speedIdx + 1) % SPEEDS.length;
   }
 
+  /** Botón o tecla de una habilidad: la global se lanza ya; la de zona se apunta (otra pulsación la lanza en el cursor). */
   private useAbility(id: AbilityId) {
     if (!this.canAct()) return;
-    // Objetivos del Rayo antes de lanzarlo (para dibujar el trueno sobre ellos)
-    const strongest = [...this.td.enemies]
-      .sort((a, b) => b.hp + b.shield - (a.hp + a.shield))
-      .slice(0, LIGHTNING_TARGETS)
-      .map((e) => this.enemyPos(e));
-    if (!this.td.useAbility(id)) {
-      const left = Math.ceil(this.td.cooldowns[id]);
-      sfx('warn');
-      this.toast(left > 0 ? `${ABILITY_INFO[id].name}: lista en ${left} s` : id === 'curar' ? 'La base ya está entera' : 'No hay enemigos', 'warning');
+    const err = this.td.abilityError(id);
+    if (!isZoneAbility(id)) {
+      if (err || !this.td.useAbility(id)) {
+        sfx('warn');
+        this.toast(err ?? 'No disponible', 'warning');
+      }
       return;
     }
+    if (this.aiming === id) {
+      // En táctil no hay cursor: tocar otra vez el botón cancela
+      if (currentInput() === 'touch') return this.cancel();
+      return this.castAt(id, this.cursor.x, this.cursor.y);
+    }
+    if (err) {
+      sfx('warn');
+      this.toast(err, 'warning');
+      return;
+    }
+    this.placing = null;
+    this.selected = null;
+    this.focus = { zone: 'grid' };
+    this.aiming = id;
+    sfx('select');
+  }
+
+  private castAt(id: AbilityId, x: number, y: number) {
+    const at = { x: x + 0.5, y: y + 0.5 };
+    const err = this.td.abilityError(id, at);
+    if (err) {
+      sfx('warn');
+      this.toast(err, 'warning');
+      return;
+    }
+    this.td.useAbility(id, at);
+    this.aiming = null;
+  }
+
+  /** Efectos de una habilidad lanzada (llegan como evento del motor). */
+  private abilityFx(id: AbilityId, x: number, y: number, hits: { x: number; y: number }[]) {
+    const X = (v: number) => OX + v * CELL;
+    const Y = (v: number) => OY + v * CELL - 8;
     if (id === 'rayo') {
       sfx('boom');
-      for (const p of strongest) {
-        pixBolt(this, p.x + Phaser.Math.Between(-20, 20), OY - 10, p.x, p.y, 0xffd34d, 45);
-        pixFlash(this, p.x, p.y, 34, 0xffffff, 220, 44);
+      for (const p of hits) {
+        pixBolt(this, X(p.x) + Phaser.Math.Between(-20, 20), OY - 10, X(p.x), Y(p.y), 0xffd34d, 45);
+        pixFlash(this, X(p.x), Y(p.y), 34, 0xffffff, 220, 44);
       }
+      if (x || y) pixRing(this, X(x), Y(y) + 8, ABILITY_INFO.rayo.radius * CELL, 0xffd34d, 380, 44);
       this.cameras.main.shake(180, 0.006);
     } else if (id === 'ventisca') {
       sfx('hit');
@@ -574,12 +636,16 @@ export class TowerDefenseScene extends Phaser.Scene {
         const p = this.enemyPos(e);
         pixRing(this, p.x, p.y + 8, 24, 0x8fe0ff, 420, 6);
       }
+    } else if (id === 'bomba') {
+      sfx('boom');
+      pixBlast(this, X(x), Y(y), ABILITY_INFO.bomba.radius * CELL, 0xff7a3a, 45);
+      pixRing(this, X(x), Y(y) + 8, ABILITY_INFO.bomba.radius * CELL, 0xffd34d, 420, 44);
+      if (!lowFx()) pixDebris(this, X(x), Y(y), 0x6a7080, 14, 1.6, 44);
+      this.cameras.main.shake(220, 0.01);
     } else {
-      sfx('heal');
-      const b = this.basePos();
-      pixRing(this, b.x, b.y + 10, 50, 0x7cf07a, 500, 8);
-      pixRing(this, b.x, b.y + 10, 30, 0xffffff, 380, 8);
-      starBurst(this, b.x, b.y - 10, 0x7cf07a, 6, 1, 9);
+      sfx('levelup');
+      pixRing(this, X(x), Y(y) + 8, ABILITY_INFO.refuerzo.radius * CELL, 0x7cf07a, 500, 44);
+      for (const p of hits) starBurst(this, X(p.x), Y(p.y) - 6, 0x7cf07a, 5, 0.9, 44);
     }
   }
 
@@ -637,7 +703,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.selected = null;
     const o = this.td.outcome();
     const stars = starsFor(o.hp, o.maxHp, o.won);
-    const rewards = submitTdOutcome({ mapId: this.map.id, level: this.args.level, waves: o.waves, won: o.won, stars });
+    const rewards = submitTdOutcome({ mapId: this.map.id, level: this.args.level, waves: o.waves, won: o.won, stars, chiefs: o.chiefs });
     // Tickets y caramelos (nunca monedas)
     if (rewards.tickets > 0) addTickets(rewards.tickets);
     if (rewards.candies > 0) addCandies(rewards.candies);
@@ -696,11 +762,12 @@ export class TowerDefenseScene extends Phaser.Scene {
     }
     const lines: string[] = [];
     lines.push(endless ? (r.newRecord ? '¡Nuevo récord en este mapa!' : 'Sin mejorar el récord') : `Oleadas superadas: ${waves}/${this.td.totalWaves}`);
-    lines.push(`Vida de la base: ${this.td.hp}/${BASE_HP} · Derrotados: ${this.td.kills}`);
+    lines.push(`Vida de la base: ${this.td.hp}/${this.td.maxHp} · Derrotados: ${this.td.kills}`);
     const prize: string[] = [];
     if (r.tickets) prize.push(`+${r.tickets} tickets`);
     if (r.candies) prize.push(`+${r.candies} caramelos`);
     if (prize.length) lines.push(prize.join(' · '));
+    if (r.chiefTickets) lines.push(`Jefes vencidos: ${this.td.chiefsBeaten} (+${r.chiefTickets} tickets)`);
     if (r.newStars) lines.push(`¡${r.newStars} ${r.newStars === 1 ? 'estrella nueva' : 'estrellas nuevas'}! (premio extra)`);
     if (accountInfo().mode === 'guest') lines.push('Invitado: el progreso no se guarda al cerrar');
     const body = this.add
@@ -728,6 +795,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       this.td.step((Math.min(delta, 100) / 1000) * SPEEDS[this.speedIdx]);
       for (const e of this.td.drainEvents()) this.onEvent(e);
       if (this.td.over) this.finish();
+      else if (this.td.perkChoice && !this.perkUi) this.openPerks(this.td.perkChoice);
     }
     this.syncEnemies(time);
     this.syncTowers();
@@ -760,6 +828,15 @@ export class TowerDefenseScene extends Phaser.Scene {
     const k = this.keys;
     // Se leen siempre (si no, una pulsación vieja saltaría al abrir una torre)
     const num = [k.ONE, k.TWO, k.THREE, k.FOUR].findIndex((key) => J(key));
+    if (this.perkUi) {
+      const d = this.heldDir();
+      const st = this.repeat.update(d.dx, d.dy, delta);
+      const n = this.perkUi.cards.length;
+      if (st.dx || st.dy) this.focusPerk(cycle(this.perkUi.i, st.dx || st.dy, n));
+      if (num >= 0 && num < n) this.pickPerk(num);
+      else if (s.ok) this.pickPerk(this.perkUi.i);
+      return;
+    }
     if (this.overlayList) {
       this.repeat.update(0, 0, delta);
       if (this.paused && (s.back || s.pause)) return this.closePause();
@@ -771,7 +848,8 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (s.pause) return this.openPause();
     if (J(k.Z) || pb.has('LT')) this.useAbility('rayo');
     if (J(k.X) || pb.has('RT')) this.useAbility('ventisca');
-    if (J(k.C) || pb.has('Y')) this.useAbility('curar');
+    if (J(k.C) || pb.has('Y')) this.useAbility('bomba');
+    if (J(k.V) || pb.has('L3')) this.useAbility('refuerzo');
     if (J(k.N) || pb.has('X')) this.callWave();
     if (J(k.F) || pb.has('R3')) this.cycleSpeed();
     if (J(k.Q) || pb.has('LB')) this.cycleTeam(-1);
@@ -837,12 +915,12 @@ export class TowerDefenseScene extends Phaser.Scene {
         const y = Y(e.y) - (e.air ? 26 : 8);
         pixDebris(this, x, y, 0xffffff, e.boss ? 24 : 8, e.boss ? 2 : 1, 30);
         this.floatMoney(x, y - 10, e.money);
-        if (e.boss) {
+        if (e.boss || e.chief) {
           sfx('roar');
-          pixBlast(this, x, y, 70, 0xffd34d, 31);
+          pixBlast(this, x, y, e.boss ? 70 : 54, 0xffd34d, 31);
           starBurst(this, x, y, 0xffd34d, 10, 1.6, 32);
           this.cameras.main.shake(320, 0.01);
-          this.toast('¡Has vencido al jefe legendario!', 'reward');
+          this.toast(e.boss ? '¡Has vencido al jefe legendario!' : `¡Jefe vencido! +${e.money} $ y tickets al acabar`, 'reward');
         } else sfx('hit');
         break;
       }
@@ -869,13 +947,90 @@ export class TowerDefenseScene extends Phaser.Scene {
         break;
       case 'waveStart':
         sfx(e.boss ? 'roar' : 'door');
-        this.toast(e.boss ? `Oleada ${e.wave}: ¡jefe legendario!` : `Oleada ${e.wave}`, e.boss ? 'danger' : 'info');
+        this.toast(e.boss ? `Oleada ${e.wave}: ¡jefe legendario!` : e.chief ? `Oleada ${e.wave}: ¡jefe!` : `Oleada ${e.wave}`, e.boss || e.chief ? 'danger' : 'info');
+        if (e.event) this.eventStartFx(e.event);
         for (const c of entryCells(this.map)) pixRing(this, sx(c.x) + CELL / 2, sy(c.y) + CELL / 2, 36, 0xb08aff, 500, 5);
         if (e.wave >= 2) showTdTip(this, 'td_skills');
         break;
       case 'waveEnd':
         sfx('clear');
-        this.toast(`Oleada superada: +${e.bonus} $${e.perfect ? ' (sin fugas)' : ''}${e.farm ? ` · granjas +${e.farm} $` : ''}`, 'reward');
+        this.toast(`Oleada superada: +${e.bonus} $${e.perfect ? ' (sin fugas)' : ''}${e.farm ? ` · granjas +${e.farm} $` : ''}${e.interest ? ` · hucha +${e.interest} $` : ''}`, 'reward');
+        break;
+      case 'chiefIntro':
+        this.chiefIntro(e.species, e.skills.map((k) => CHIEF_SKILL_INFO[k].name));
+        break;
+      case 'chiefWarn': {
+        const c = this.td.enemies.find((q) => q.id === e.id);
+        const info = CHIEF_SKILL_INFO[e.skill];
+        sfx('warn');
+        if (c) {
+          const p = this.enemyPos(c);
+          this.floatText(p.x, p.y - 64, `¡${info.name}!`, '#ffe9a8', 14);
+        }
+        this.toast(`${CHIEF_NAMES[c?.def.species ?? 0] ?? 'El jefe'} prepara ${info.name}: ${info.desc.toLowerCase()}`, 'danger');
+        break;
+      }
+      case 'chiefSkill': {
+        const info = CHIEF_SKILL_INFO[e.skill];
+        const x = X(e.x);
+        const y = Y(e.y) - 8;
+        if (e.skill === 'aturdir') {
+          sfx('boom');
+          pixRing(this, x, y + 8, e.r * CELL, info.color, 360, 44);
+        } else if (e.skill === 'invocar') {
+          sfx('enrage');
+          phaseShock(this, x, y, info.color, 1.1, 30);
+        } else if (e.skill === 'curar') {
+          if (e.ok) {
+            sfx('heal');
+            pixRing(this, x, y, 40, info.color, 420, 44);
+          } else {
+            sfx('hit');
+            this.toast('¡Recuperación cortada!', 'reward');
+            pixDebris(this, x, y, info.color, 10, 1, 44);
+          }
+        } else if (e.skill === 'acelerar') {
+          sfx('enrage');
+          pixRing(this, x, y + 8, 30, info.color, 300, 44);
+        } else {
+          sfx('enrage');
+          pixRing(this, x, y, 34, info.color, 420, 44);
+          this.toast('¡El jefe se cubre con su Coraza!', 'danger');
+        }
+        break;
+      }
+      case 'stun':
+        for (const id of e.towerIds) {
+          const t = this.td.towers.find((q) => q.id === id);
+          if (!t) continue;
+          const cx = sx(t.x) + CELL / 2;
+          const cy = sy(t.y) + CELL / 2;
+          pixBolt(this, cx - 10, cy - 30, cx + 6, cy, 0xffd34d, 45);
+          hitSpark(this, cx, cy - 10, 0xffd34d, 6, 1, 45);
+        }
+        break;
+      case 'stormWarn':
+        if (Math.random() < 0.5) sfx('warn');
+        break;
+      case 'storm':
+        sfx('boom');
+        pixBolt(this, X(e.x) + Phaser.Math.Between(-24, 24), OY - 10, X(e.x), Y(e.y), 0xfff6b0, 45);
+        pixFlash(this, X(e.x), Y(e.y), e.r * CELL, 0xffffff, 200, 44);
+        break;
+      case 'eventEnd':
+        this.toast(`Se acaba: ${WAVE_EVENT_INFO[e.id].name}`, 'info');
+        break;
+      case 'perk': {
+        sfx('levelup');
+        this.toast(`Mejora: ${perkName(e.perk, typeNameEs)}`, 'reward');
+        for (const id of e.towerIds) {
+          const t = this.td.towers.find((q) => q.id === id);
+          if (t) pixRing(this, sx(t.x) + CELL / 2, sy(t.y) + CELL / 2 + 10, 34, 0x7cf07a, 420, 44);
+        }
+        break;
+      }
+      case 'ability':
+        this.abilityFx(e.id, e.x, e.y, e.hits);
         break;
       case 'farm': {
         const t = this.td.towers.find((q) => q.id === e.towerId);
@@ -920,6 +1075,116 @@ export class TowerDefenseScene extends Phaser.Scene {
       default:
         break;
     }
+  }
+
+  /** Evento de oleada que empieza: aviso arriba (el banner de la derecha sigue enseñando lo que le queda). */
+  private eventStartFx(id: WaveEventId) {
+    const info = WAVE_EVENT_INFO[id];
+    sfx('warn');
+    this.toast(`${info.name}: ${info.desc.toLowerCase()}`, id === 'monedas' ? 'reward' : 'warning');
+    if (id === 'monedas' && !lowFx()) for (let i = 0; i < 8; i++) this.floatMoney(OX + 60 + Math.random() * (TD_COLS * CELL - 120), OY + 40 + Math.random() * 120, 0);
+  }
+
+  /** Presentación corta del jefe de oleada: ficha que entra por la derecha (arriba, nunca en el centro). */
+  private chiefIntro(species: number, skills: string[]) {
+    sfx('roar');
+    const name = CHIEF_NAMES[species] ?? 'Jefe';
+    const w = 300;
+    const h = 62;
+    const x = EV_X + EV_W - w;
+    const y = 112;
+    const c = this.add.container(lowFx() ? 0 : 340, 0).setDepth(72);
+    const g = this.add.graphics();
+    drawBox(g, x, y, w, h, { radius: 10 });
+    g.fillStyle(0xe53935, 1).fillRect(x + 6, y + 6, 6, h - 12);
+    const ic = tdIcon(this, x + 36, y + 22, 'chief', 3);
+    const tex = this.monTexture(species);
+    const mon = this.add.image(x + 36, y + 44, tex.key, tex.frame);
+    mon.setScale((28 / Math.max(1, mon.width, mon.height)) * (tex.pmd ? 1.6 : 1.4));
+    const t1 = this.add.text(x + 62, y + 8, `JEFE · ${name}`, { fontFamily: UI.FONT, fontSize: '17px', fontStyle: 'bold', color: '#a01818' });
+    const t2 = this.add.text(x + 62, y + 32, skills.join(' · '), { fontFamily: UI.FONT, fontSize: '12px', color: NAVY, wordWrap: { width: w - 70 } });
+    c.add([g, ic, mon, t1, t2]);
+    if (!lowFx()) this.tweens.add({ targets: c, x: 0, duration: 260, ease: 'Back.easeOut' });
+    this.time.delayedCall(2800, () => {
+      if (!c.active) return;
+      this.tweens.add({ targets: c, alpha: 0, x: lowFx() ? 0 : 340, duration: 260, onComplete: () => c.destroy() });
+    });
+  }
+
+  // --- Mejoras entre oleadas ---
+
+  private openPerks(list: Perk[]) {
+    if (this.ended || this.perkUi || this.overlay) return;
+    this.cancel();
+    const c = this.add.container(0, 0).setDepth(100);
+    const dim = this.add.rectangle(480, 320, 1600, 1000, 0x000000, 0.55).setInteractive();
+    const epic = list.some((p) => p.epic);
+    const title = this.add
+      .text(400, 128, epic ? '¡Jefe vencido! Elige una mejora épica' : 'Elige una mejora', { fontFamily: UI.FONT, fontSize: '24px', fontStyle: 'bold', color: epic ? '#e0c8ff' : '#ffffff' })
+      .setOrigin(0.5)
+      .setStroke('#18202c', 6);
+    const g = this.add.graphics();
+    c.add([dim, g, title]);
+    const w = 220;
+    const h = 260;
+    const gap = 16;
+    const x0 = 400 - (list.length * w + (list.length - 1) * gap) / 2;
+    const cards = list.map((_, i) => ({ x: x0 + i * (w + gap), y: 160, w, h }));
+    const keys: GlyphText[] = [];
+    list.forEach((p, i) => {
+      const r = cards[i];
+      const ic = tdIcon(this, r.x + w / 2, r.y + 62, PERK_ICON[p.id], 5);
+      const kind = TOWER_PERKS.has(p.id) ? 'Mejora de torre' : 'Reliquia';
+      const t0 = this.add.text(r.x + w / 2, r.y + 112, `${p.epic ? 'Épica · ' : ''}${kind}`, { fontFamily: UI.FONT, fontSize: '11px', fontStyle: 'bold', color: p.epic ? '#7a3ac8' : '#5a6a8a' }).setOrigin(0.5, 0);
+      const t1 = this.add.text(r.x + w / 2, r.y + 130, perkName(p, typeNameEs), { fontFamily: UI.FONT, fontSize: '17px', fontStyle: 'bold', color: NAVY, align: 'center', wordWrap: { width: w - 20 } }).setOrigin(0.5, 0);
+      const t2 = this.add.text(r.x + w / 2, r.y + 160, perkDesc(p, typeNameEs), { fontFamily: UI.FONT, fontSize: '13px', color: NAVY, align: 'center', wordWrap: { width: w - 24 }, lineSpacing: 2 }).setOrigin(0.5, 0);
+      const k = new GlyphText(this, r.x + w / 2, r.y + h - 26, '', { size: 13, color: NAVY, originX: 0.5, auto: false });
+      keys.push(k);
+      const zone = this.add.zone(r.x, r.y, w, h).setOrigin(0).setInteractive({ useHandCursor: true });
+      zone.on('pointerover', () => this.focusPerk(i));
+      zone.on('pointerdown', (ptr: Phaser.Input.Pointer) => {
+        if (!ptr.rightButtonDown()) this.pickPerk(i);
+      });
+      c.add([ic, t0, t1, t2, zone]);
+      c.add(k);
+    });
+    this.overlay = c;
+    this.perkUi = { c, g, i: 0, cards, keys };
+    this.focusPerk(0);
+    sfx('select');
+  }
+
+  private focusPerk(i: number) {
+    const u = this.perkUi;
+    if (!u) return;
+    u.i = i;
+    const list = this.td.perkChoice ?? [];
+    const g = u.g;
+    g.clear();
+    const dev = currentInput() as TdDevice;
+    u.cards.forEach((r, k) => {
+      const p = list[k];
+      const on = k === i;
+      const band = !p ? 0x2e86de : p.epic ? 0xb08aff : TOWER_PERKS.has(p.id) ? 0x2ecc71 : 0x2e86de;
+      g.fillStyle(0x18202c, 1).fillRect(r.x - 4, r.y - 4, r.w + 8, r.h + 8);
+      g.fillStyle(on ? 0xffd34d : 0x18202c, 1).fillRect(r.x - 3, r.y - 3, r.w + 6, r.h + 6);
+      g.fillStyle(0xf4f6fb, 1).fillRect(r.x, r.y, r.w, r.h);
+      g.fillStyle(band, 1).fillRect(r.x, r.y, r.w, 10);
+      g.fillStyle(0xffffff, 0.5).fillRect(r.x, r.y, r.w, 3);
+      g.fillStyle(band, 0.15).fillRect(r.x + 50, r.y + 22, r.w - 100, 80);
+      // Tecla para elegirla (1 2 3 en teclado; con mando, A en la marcada)
+      const glyph = dev === 'gamepad' ? (on ? '{pad:A}' : '') : dev === 'keyboard' ? `{key:${k + 1}}` : '';
+      u.keys[k].setText(glyph, dev);
+    });
+  }
+
+  private pickPerk(i: number) {
+    const u = this.perkUi;
+    if (!u) return;
+    if (!this.td.choosePerk(i)) return;
+    u.c.destroy();
+    this.perkUi = null;
+    this.overlay = null;
   }
 
   /** Nivel 6: destello de megaevolución (megaFx) y cambio al sprite de la forma mega de PokeAPI si lo hay. */
@@ -1036,8 +1301,8 @@ export class TowerDefenseScene extends Phaser.Scene {
   }
 
   private makeEnemyView(e: TdEnemy): EnemyView {
-    const boss = e.def.kind === 'boss';
-    const size = boss ? 78 : e.def.kind === 'tank' ? 50 : e.def.kind === 'fast' ? 36 : 42;
+    const boss = e.def.kind === 'boss' || e.def.kind === 'chief';
+    const size = e.def.kind === 'boss' ? 78 : e.def.kind === 'chief' ? 64 : e.def.kind === 'tank' ? 50 : e.def.kind === 'fast' ? 36 : 42;
     const sheet = this.sheets.get(e.def.species);
     let spr: Phaser.GameObjects.Sprite;
     const row = dir8Row(e.dx, e.dy, 2);
@@ -1166,7 +1431,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     for (const e of this.td.enemies) {
       const v = this.enemyViews.get(e.id);
       if (!v) continue;
-      const boss = e.def.kind === 'boss';
+      const boss = e.def.kind === 'boss' || e.def.kind === 'chief';
       const w = boss ? 64 : 30;
       const x = Math.round(v.spr.x - w / 2);
       const y = Math.round(v.spr.y - (boss ? 58 : 32));
@@ -1193,6 +1458,26 @@ export class TowerDefenseScene extends Phaser.Scene {
       }
       if (e.haste > 0 && !still && Math.random() < 0.06) typeTrail(this, v.spr.x, v.spr.y + 6, 'electric', 0.6, 9);
     }
+    // Niebla del evento
+    if (this.td.waveEvent === 'niebla') drawFog(g, OX, OY, TD_COLS * CELL, TD_ROWS * CELL, t);
+    // Avisos de los jefes y rayos de la tormenta: zona marcada que se llena hasta que pasa
+    for (const e of this.td.enemies) {
+      const w = e.warn;
+      if (!w) continue;
+      drawWarnZone(g, OX + w.x * CELL, OY + w.y * CELL, Math.max(0.8, w.r) * CELL, CHIEF_SKILL_INFO[w.skill].color, 1 - w.left / w.total, t);
+    }
+    for (const m of this.td.storms) drawWarnZone(g, OX + m.x * CELL, OY + m.y * CELL, STORM_RADIUS * CELL, 0xffd34d, 1 - m.left / STORM_WARN, t);
+    // Torres aturdidas o con Refuerzo
+    for (const tw of this.td.towers) {
+      const v = this.towerViews.get(tw.id);
+      if (tw.stunned > 0) drawStun(g, sx(tw.x) + CELL / 2, sy(tw.y) - 2, t);
+      else if (tw.boost > 0) drawBoost(g, sx(tw.x) + CELL / 2, sy(tw.y) + 6, t);
+      if (v) {
+        if (tw.stunned > 0) v.spr.setTint(0x8a8aa0);
+        else if (tw.boost > 0) v.spr.setTint(0xd8ffd8);
+        else v.spr.clearTint();
+      }
+    }
     // Alcance de la torre elegida y fantasma al colocar
     const sel = this.selectedTower();
     if (sel) drawRange(g, sx(sel.x) + CELL / 2, sy(sel.y) + CELL / 2, this.td.statsOf(sel).range * CELL, true, t);
@@ -1212,7 +1497,14 @@ export class TowerDefenseScene extends Phaser.Scene {
         g.fillStyle(ok ? 0x7cf07a : 0xff5a4a, 0.35).fillRect(sx(target.x), sy(target.y), CELL, CELL);
       }
     }
-    if (!touch && this.focus.zone === 'grid' && !this.overlay && !this.ended) drawCursor(g, sx(this.cursor.x), sy(this.cursor.y), CELL, this.placing !== null ? 0x7cf07a : 0xffd34d, t);
+    if (this.aiming && target && !this.ended) {
+      const info = ABILITY_INFO[this.aiming];
+      const cx = sx(target.x) + CELL / 2;
+      const cy = sy(target.y) + CELL / 2;
+      g.fillStyle(info.color, 0.16).fillCircle(cx, cy, info.radius * CELL);
+      drawRange(g, cx, cy, info.radius * CELL, true, t);
+    }
+    if (!touch && this.focus.zone === 'grid' && !this.overlay && !this.ended) drawCursor(g, sx(this.cursor.x), sy(this.cursor.y), CELL, this.aiming ? ABILITY_INFO[this.aiming].color : this.placing !== null ? 0x7cf07a : 0xffd34d, t);
   }
 
   private drawUi(t: number) {
@@ -1245,24 +1537,25 @@ export class TowerDefenseScene extends Phaser.Scene {
     // Barra de abajo
     this.barBtns.forEach((b, i) => {
       const foc = false;
-      if (i < 3) {
+      const NA = ABILITIES.length;
+      if (i < NA) {
         const id = ABILITIES[i];
         const left = game.cooldowns[id];
-        drawAbilityFrame(g, b.x, b.y, b.w, ABILITY_INFO[id].color, 1 - left / ABILITY_INFO[id].cooldown, foc, t);
+        drawAbilityFrame(g, b.x, b.y, b.w, ABILITY_INFO[id].color, 1 - left / Math.max(1, game.abilityCooldown(id)), this.aiming === id, t);
         this.cdTexts[i].setText(left > 0 ? `${Math.ceil(left)}` : '');
         b.icon?.setAlpha(left > 0 ? 0.45 : 1);
       } else {
         const en = b.enabled();
         g.fillStyle(0x18202c, 1).fillRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4);
-        const base = i === 3 ? (en ? 0x7cf07a : 0xb8bcc6) : 0xe8ecf4;
+        const base = i === NA ? (en ? 0x7cf07a : 0xb8bcc6) : 0xe8ecf4;
         g.fillStyle(foc ? 0xffd34d : base, 1).fillRect(b.x, b.y, b.w, b.h);
         g.fillStyle(0xffffff, 0.5).fillRect(b.x, b.y, b.w, 3);
         // La tecla va dibujada a la derecha del botón (keyTexts); el texto se corre un poco a la izquierda
         const shift = dev === 'touch' ? 0 : -8;
         if (b.text) b.text.x = b.x + b.w / 2 + shift;
-        if (i === 4) b.text?.setText(`x${SPEEDS[this.speedIdx]}`);
-        if (i === 5) b.text?.setText('Pausa');
-        if (i === 3) {
+        if (i === NA + 1) b.text?.setText(`x${SPEEDS[this.speedIdx]}`);
+        if (i === NA + 2) b.text?.setText('Pausa');
+        if (i === NA) {
           b.text?.setText(game.phase === 'prep' ? `Oleada ya (+${Math.max(0, Math.floor(game.prepLeft))} $)` : game.phase === 'wave' ? 'Oleada en curso' : '—');
           // Flecha que empuja cuando se puede llamar
           if (en && !lowFx()) {
@@ -1272,14 +1565,64 @@ export class TowerDefenseScene extends Phaser.Scene {
         }
       }
     });
+    this.drawTopRight(g);
     this.updatePanel(g);
     this.updateHelp(dev);
+  }
+
+  /** Arriba a la derecha del mapa: barra grande del jefe y el evento (próximo o en curso, con lo que le queda). */
+  private drawTopRight(g: Phaser.GameObjects.Graphics) {
+    const game = this.td;
+    const boss = game.enemies.find((e) => e.def.kind === 'boss') ?? game.enemies.find((e) => e.def.kind === 'chief');
+    if (boss) {
+      drawBossBar(g, EV_X, 68, EV_W, boss.hp / boss.def.maxHp, boss.maxShield ? boss.shield / boss.maxShield : 0, boss.def.kind === 'boss' ? 0xb08aff : 0xe53935);
+      const name = boss.def.kind === 'boss' ? this.names.get(boss.def.species) ?? 'Jefe legendario' : `Jefe · ${CHIEF_NAMES[boss.def.species] ?? ''}`;
+      this.bossName.setText(`${name}  ${Math.max(0, Math.ceil(boss.hp))}/${boss.def.maxHp}`).setVisible(true);
+    } else this.bossName.setVisible(false);
+    let ev: WaveEventId | null = null;
+    let line = '';
+    let ratio = -1;
+    if (game.phase === 'prep' && !this.ended) {
+      ev = game.upcomingEvent;
+      if (ev) line = `Próxima oleada: ${WAVE_EVENT_INFO[ev].name}\n${WAVE_EVENT_INFO[ev].desc}`;
+      else if (game.upcomingChief) line = '¡La próxima oleada trae un jefe!\nNo amontones todas las torres';
+    } else if (game.phase === 'wave' && game.waveEvent) {
+      ev = game.waveEvent;
+      const info = WAVE_EVENT_INFO[ev];
+      line = `${info.name} · ${Number.isFinite(info.duration) ? `${Math.max(0, Math.ceil(game.eventLeft))} s` : 'toda la oleada'}\n${info.desc}`;
+      if (Number.isFinite(info.duration)) ratio = game.eventLeft / info.duration;
+    }
+    const y = boss ? 102 : 68;
+    if (!line) {
+      this.eventText.setVisible(false);
+      this.eventIcon.setVisible(false);
+      return;
+    }
+    const color = ev ? WAVE_EVENT_INFO[ev].color : 0xe53935;
+    const icon = ev ? EVENT_ICON[ev] : 'chief';
+    if (icon !== this.eventIconKey) {
+      this.eventIconKey = icon;
+      this.eventIcon.setTexture(tdIconKey(icon));
+    }
+    this.eventText.setText(line).setPosition(EV_X + 34, y + 5).setVisible(true);
+    this.eventIcon.setPosition(EV_X + 17, y + 20).setVisible(true);
+    const h = Math.max(36, this.eventText.height + 12);
+    g.fillStyle(0x18202c, 0.82).fillRect(EV_X, y, EV_W, h);
+    g.fillStyle(color, 1).fillRect(EV_X, y, 4, h);
+    if (ratio >= 0) {
+      g.fillStyle(0x3a4050, 1).fillRect(EV_X + 4, y + h - 4, EV_W - 4, 4);
+      g.fillStyle(color, 1).fillRect(EV_X + 4, y + h - 4, (EV_W - 4) * Math.max(0, Math.min(1, ratio)), 4);
+    }
   }
 
   /** Teclas de los botones, cabecera del equipo y barra de ayuda (solo se reescriben si cambian). */
   private updateHelp(dev: TdDevice) {
     const tw = this.selectedTower();
-    const ctx: TdHelpContext = tw
+    const ctx: TdHelpContext = this.perkUi
+      ? { kind: 'perks' }
+      : this.aiming
+        ? { kind: 'aiming', name: ABILITY_INFO[this.aiming].name }
+        : tw
       ? { kind: 'tower', actions: this.panelBtns.length }
       : this.placing !== null
         ? { kind: 'placing', name: this.td.team[this.placing].name, cost: towerCost(this.td.team[this.placing]), canPlace: this.td.money >= towerCost(this.td.team[this.placing]) }
@@ -1390,6 +1733,8 @@ export class TowerDefenseScene extends Phaser.Scene {
     for (const s of spawns) count.set(s.kind, (count.get(s.kind) ?? 0) + 1);
     txt(y0, this.td.phase === 'wave' ? `Oleada ${next}` : `Próxima: oleada ${next}`, 15, NAVY, true);
     const lines = [...count.entries()].map(([k, n]) => `${ENEMY_KIND_LABEL[k]}: ${n}`);
+    const up = this.td.phase === 'prep' ? this.td.upcomingEvent : this.td.waveEvent;
+    if (up) lines.push(`Evento: ${WAVE_EVENT_INFO[up].name}`);
     txt(y0 + 24, lines.join('\n'), 13);
     if (count.get('flying')) {
       showTdTip(this, 'td_air');
@@ -1402,6 +1747,9 @@ function fromBst(bst: number): BaseStats {
   const v = Math.round(Math.max(30, bst) / 6);
   return { hp: v, attack: v, defense: v, spAttack: v, spDefense: v, speed: v };
 }
+
+/** Icono pixel de cada evento. */
+const EVENT_ICON: Record<WaveEventId, string> = { niebla: 'evNiebla', tormenta: 'rayo', desvio: 'evDesvio', doble: 'evDoble', veloces: 'speed', monedas: 'coin' };
 
 const darken = (c: number) =>
   (Math.round(((c >> 16) & 255) * 0.65) << 16) | (Math.round(((c >> 8) & 255) * 0.65) << 8) | Math.round((c & 255) * 0.65);

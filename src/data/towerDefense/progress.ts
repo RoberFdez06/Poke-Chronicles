@@ -5,6 +5,7 @@
 // como todo el guardado, pasa por activeStorage() (invitado: memoria que no se guarda; cuenta: nube).
 import { activeStorage, type StorageLike } from '../storage.ts';
 import { MAX_LEVELS, TD_MAPS, mapById } from './maps.ts';
+import { CHIEF_TICKETS, CHIEF_TICKETS_MAX } from './chiefs.ts';
 
 export const TD_KEY = 'pokeisaac.towerdef';
 export const TD_VERSION = 2;
@@ -102,6 +103,8 @@ export interface TdOutcome {
   waves: number;
   won: boolean;
   stars: number;
+  /** Jefes de oleada vencidos (cada uno, tickets extra). */
+  chiefs?: number;
 }
 
 export interface TdRewards {
@@ -113,7 +116,12 @@ export interface TdRewards {
   newRecord: boolean;
   /** Primera vez que se supera este nivel. */
   firstClear: boolean;
+  /** Tickets extra por los jefes de oleada (ya sumados en `tickets`). */
+  chiefTickets: number;
 }
+
+/** Tickets por jefes de oleada vencidos (con tope). */
+export const chiefTicketsFor = (n: number | undefined): number => Math.min(CHIEF_TICKETS_MAX, Math.max(0, Math.floor(n ?? 0)) * CHIEF_TICKETS);
 
 /** Premio extra por cada estrella nueva. */
 export const STAR_TICKETS = 6;
@@ -123,14 +131,17 @@ export function rewardsFor(o: TdOutcome, before: MapProgress, mapTier = 0): TdRe
   const w = Math.max(0, Math.floor(o.waves));
   if (o.level <= 0) {
     const newRecord = w > before.endless;
-    return { tickets: Math.min(40, Math.floor(w / 2)), candies: Math.floor(w / 10) + (newRecord && w >= 10 ? 2 : 0), newStars: 0, newRecord, firstClear: false };
+    const chiefTickets = chiefTicketsFor(o.chiefs);
+    return { tickets: Math.min(40, Math.floor(w / 2)) + chiefTickets, candies: Math.floor(w / 10) + (newRecord && w >= 10 ? 2 : 0), newStars: 0, newRecord, firstClear: false, chiefTickets };
   }
   const stars = o.won ? Math.max(0, Math.min(3, o.stars)) : 0;
   const prev = before.stars[o.level - 1] ?? 0;
   const newStars = Math.max(0, stars - prev);
   const boss = o.level >= (mapById(o.mapId)?.levels ?? Math.max(1, before.stars.length));
+  const chiefTickets = chiefTicketsFor(o.chiefs);
   return {
-    tickets: Math.floor(w / 3) + (o.won ? 2 + Math.floor(mapTier / 3) : 0) + newStars * STAR_TICKETS + (boss && o.won && prev === 0 ? 20 : 0),
+    chiefTickets,
+    tickets: chiefTickets + Math.floor(w / 3) + (o.won ? 2 + Math.floor(mapTier / 3) : 0) + newStars * STAR_TICKETS + (boss && o.won && prev === 0 ? 20 : 0),
     candies: newStars * STAR_CANDIES + (boss && o.won && prev === 0 ? 5 : 0),
     newStars,
     newRecord: false,

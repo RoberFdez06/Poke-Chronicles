@@ -2,6 +2,7 @@
 // los ataques finales y el equipo de prueba. Datos fijos (con sus tipos reales) para que la lógica no dependa de
 // la red. Lógica pura, sin Phaser.
 import type { BaseStats } from '../pokeStats.ts';
+import { CHIEF_TYPES } from './chiefs.ts';
 
 /** Tipos de cada especie que puede salir como enemigo o jefe (orden de PokeAPI). */
 export const TD_TYPES: Readonly<Record<number, readonly string[]>> = {
@@ -24,10 +25,10 @@ export const TD_TYPES: Readonly<Record<number, readonly string[]>> = {
   528: ['psychic', 'flying'], 587: ['electric', 'flying'], 280: ['psychic', 'fairy'], 599: ['steel'], 125: ['electric'], 243: ['electric'], 649: ['bug', 'steel'], 148: ['dragon'], 372: ['dragon'], 610: ['dragon'], 384: ['dragon', 'flying'], 493: ['normal'],
 };
 
-export const tdTypesOf = (id: number): readonly string[] => TD_TYPES[id] ?? ['normal'];
+export const tdTypesOf = (id: number): readonly string[] => TD_TYPES[id] ?? CHIEF_TYPES[id] ?? ['normal'];
 
 /** Papeles de los enemigos. */
-export const ENEMY_KINDS = ['normal', 'fast', 'tank', 'flying', 'healer', 'shielded', 'hastener', 'boss'] as const;
+export const ENEMY_KINDS = ['normal', 'fast', 'tank', 'flying', 'healer', 'shielded', 'hastener', 'chief', 'boss'] as const;
 export type EnemyKind = (typeof ENEMY_KINDS)[number];
 
 export const ENEMY_KIND_LABEL: Record<EnemyKind, string> = {
@@ -38,6 +39,7 @@ export const ENEMY_KIND_LABEL: Record<EnemyKind, string> = {
   healer: 'Curandero',
   shielded: 'Escudado',
   hastener: 'Acelerador',
+  chief: 'Jefe',
   boss: 'Jefe legendario',
 };
 

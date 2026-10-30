@@ -146,7 +146,7 @@ export const visibleModes = (touch: boolean): ControlMode[] => CONTROL_MODES.fil
 // --- Defensa de torres: sus teclas son fijas (no entran en la configuración de teclas). Salen de TD_KEYS y TD_PAD
 // (data/towerDefense/controls.ts), las mismas que pinta la partida en sus botones y en la barra de ayuda.
 
-export const TD_CONTROL_ACTIONS = ['cursor', 'pick', 'place', 'actions', 'back', 'abilities', 'wave', 'speed', 'pause'] as const;
+export const TD_CONTROL_ACTIONS = ['cursor', 'pick', 'place', 'actions', 'back', 'abilities', 'perks', 'wave', 'speed', 'pause'] as const;
 export type TdControlAction = (typeof TD_CONTROL_ACTIONS)[number];
 
 export const TD_CONTROL_ACTION_LABEL: Record<TdControlAction, string> = {
@@ -156,6 +156,7 @@ export const TD_CONTROL_ACTION_LABEL: Record<TdControlAction, string> = {
   actions: 'Mejorar, objetivo o vender',
   back: 'Cancelar / cerrar',
   abilities: 'Habilidades',
+  perks: 'Elegir mejora entre oleadas',
   wave: 'Siguiente oleada',
   speed: 'Velocidad x1 / x2 / x3',
   pause: 'Pausa',
@@ -172,7 +173,8 @@ export const TD_CONTROLS: Record<ControlMode, Record<TdControlAction, string>> =
     place: `${K.ok} o Espacio: coloca el Pokémon elegido o abre la torre del cursor`,
     actions: `Con la torre abierta: teclas 1 2 3 4 (o flechas y ${K.ok})`,
     back: `${K.back} (sin nada elegido, abre la pausa)`,
-    abilities: `${K.rayo} Rayo · ${K.ventisca} Ventisca · ${K.curar} Curar base`,
+    abilities: `${K.rayo} Tormenta · ${K.ventisca} Congelación · ${K.bomba} Bomba · ${K.refuerzo} Refuerzo (las de zona: apunta y ${K.ok})`,
+    perks: `1 2 3 o flechas y ${K.ok}`,
     wave: K.wave,
     speed: K.speed,
     pause: `${K.pause} o ${K.back}`,
@@ -183,7 +185,8 @@ export const TD_CONTROLS: Record<ControlMode, Record<TdControlAction, string>> =
     place: 'Clic en una casilla libre; clic en una torre para abrirla',
     actions: 'Clic en los botones numerados del panel',
     back: 'Clic derecho',
-    abilities: 'Clic en los botones de abajo a la izquierda',
+    abilities: 'Clic en los botones de abajo a la izquierda (las de zona: luego clic en el mapa)',
+    perks: 'Clic en la mejora',
     wave: 'Botón "Siguiente oleada"',
     speed: 'Botón "x1"',
     pause: 'Botón "Pausa"',
@@ -194,7 +197,8 @@ export const TD_CONTROLS: Record<ControlMode, Record<TdControlAction, string>> =
     place: `${G.ok}: coloca el Pokémon elegido o abre la torre del cursor`,
     actions: `Con la torre abierta: cruceta arriba/abajo y ${G.ok}`,
     back: `${G.back} (sin nada elegido, abre la pausa)`,
-    abilities: `${G.rayo} Rayo · ${G.ventisca} Ventisca · ${G.curar} Curar base`,
+    abilities: `${G.rayo} Tormenta · ${G.ventisca} Congelación · ${G.bomba} Bomba · ${G.refuerzo} Refuerzo (apunta y ${G.ok})`,
+    perks: `Cruceta izquierda/derecha y ${G.ok}`,
     wave: G.wave,
     speed: `${G.speed} (pulsar el stick derecho)`,
     pause: G.pause,
@@ -205,7 +209,8 @@ export const TD_CONTROLS: Record<ControlMode, Record<TdControlAction, string>> =
     place: 'Toca una casilla libre; toca una torre para abrirla',
     actions: 'Toca los botones numerados del panel',
     back: 'Toca otra vez el Pokémon elegido o fuera de la torre',
-    abilities: 'Toca los botones de abajo a la izquierda',
+    abilities: 'Toca los botones de abajo a la izquierda y luego el mapa',
+    perks: 'Toca la mejora',
     wave: 'Toca "Siguiente oleada"',
     speed: 'Toca "x1"',
     pause: 'Toca "Pausa"',

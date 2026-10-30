@@ -5,13 +5,14 @@
 export type TdDevice = 'keyboard' | 'mouse' | 'gamepad' | 'touch';
 
 /** Acciones con tecla o botón propio (se enseñan en su botón de la pantalla). */
-export type TdKeyAction = 'rayo' | 'ventisca' | 'curar' | 'wave' | 'speed' | 'pause' | 'prev' | 'next' | 'ok' | 'back';
+export type TdKeyAction = 'rayo' | 'ventisca' | 'bomba' | 'refuerzo' | 'wave' | 'speed' | 'pause' | 'prev' | 'next' | 'ok' | 'back';
 
 /** Teclas fijas (no entran en la configuración de teclas de la partida). */
 export const TD_KEYS: Record<TdKeyAction, string> = {
   rayo: 'Z',
   ventisca: 'X',
-  curar: 'C',
+  bomba: 'C',
+  refuerzo: 'V',
   wave: 'N',
   speed: 'F',
   pause: 'P',
@@ -25,7 +26,8 @@ export const TD_KEYS: Record<TdKeyAction, string> = {
 export const TD_PAD: Record<TdKeyAction, string> = {
   rayo: 'LT',
   ventisca: 'RT',
-  curar: 'Y',
+  bomba: 'Y',
+  refuerzo: 'L3',
   wave: 'X',
   speed: 'R3',
   pause: 'Start',
@@ -45,19 +47,31 @@ export function tdKeyLabel(a: TdKeyAction, d: TdDevice): string {
 export type TdHelpContext =
   | { kind: 'idle' }
   | { kind: 'placing'; name: string; cost: number; canPlace: boolean }
-  | { kind: 'tower'; actions: number };
+  | { kind: 'tower'; actions: number }
+  | { kind: 'aiming'; name: string }
+  | { kind: 'perks' };
 
 /** Barra de ayuda de abajo (dos líneas): solo lo que sirve ahora con el dispositivo con el que se juega. */
 export function tdHelp(d: TdDevice, c: TdHelpContext): [string, string] {
   const K = TD_KEYS;
   const P = TD_PAD;
+  if (c.kind === 'perks') {
+    if (d === 'gamepad') return [`Cruceta izquierda/derecha: elegir mejora · ${P.ok}: quedártela`, 'Se queda la primera si llega la oleada'];
+    if (d === 'keyboard') return [`1 2 3 o flechas y ${K.ok}: quedarte una mejora`, 'Se queda la primera si llega la oleada'];
+    return [`${d === 'touch' ? 'Toca' : 'Clic en'} una de las 3 mejoras`, 'Se queda la primera si llega la oleada'];
+  }
+  if (c.kind === 'aiming') {
+    if (d === 'gamepad') return [`Cruceta: apuntar ${c.name} · ${P.ok}: lanzar`, `${P.back}: cancelar`];
+    if (d === 'keyboard') return [`Flechas/WASD: apuntar ${c.name} · ${K.ok}: lanzar`, `${K.back}: cancelar`];
+    return [`${d === 'touch' ? 'Toca' : 'Clic en'} el mapa: lanzar ${c.name}`, d === 'touch' ? 'Toca otra vez el botón: cancelar' : 'Clic derecho: cancelar'];
+  }
   if (d === 'gamepad') {
     if (c.kind === 'placing')
       return [`${P.ok}: colocar ${c.name} (${c.cost} $) · Cruceta: mover`, `${P.prev}/${P.next}: otro Pokémon · ${P.back}: cancelar`];
     if (c.kind === 'tower') return [`Cruceta arriba/abajo: elegir acción · ${P.ok}: hacerla`, `${P.back}: cerrar la torre`];
     return [
       `Cruceta: mover · ${P.ok}: colocar o abrir torre · ${P.prev}/${P.next}: Pokémon`,
-      `${P.wave}: oleada · ${P.rayo}/${P.ventisca}/${P.curar}: habilidades · ${P.speed}: velocidad · ${P.pause}: pausa`,
+      `${P.wave}: oleada · ${P.rayo}/${P.ventisca}/${P.bomba}/${P.refuerzo}: habilidades · ${P.speed}: velocidad · ${P.pause}: pausa`,
     ];
   }
   if (d === 'mouse' || d === 'touch') {
@@ -77,7 +91,7 @@ export function tdHelp(d: TdDevice, c: TdHelpContext): [string, string] {
   }
   return [
     `Flechas/WASD: mover · ${K.ok}: colocar o abrir torre · ${K.prev}/${K.next}: Pokémon`,
-    `${K.wave}: oleada · ${K.rayo} ${K.ventisca} ${K.curar}: habilidades · ${K.speed}: velocidad · ${K.pause}: pausa`,
+    `${K.wave}: oleada · ${K.rayo} ${K.ventisca} ${K.bomba} ${K.refuerzo}: habilidades · ${K.speed}: velocidad · ${K.pause}: pausa`,
   ];
 }
 

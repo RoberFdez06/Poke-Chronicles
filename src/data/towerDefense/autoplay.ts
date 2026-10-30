@@ -3,6 +3,10 @@
 import { buildableCells, pathCells, type Cell } from './maps.ts';
 import type { TdGame } from './engine.ts';
 import { towerCost, towerStats } from './towers.ts';
+import type { PerkId } from './perks.ts';
+
+/** Orden en que el bot prefiere las mejoras (la vida de la base, la última). */
+const PERK_ORDER: PerkId[] = ['evolucion', 'fusion', 'entreno', 'cadencia', 'tipo', 'alcance', 'critico', 'escarcha', 'botin', 'interes', 'recarga', 'vida'];
 
 export interface BotOptions {
   /** Si mejora torres (si no, solo coloca de nivel 1). */
@@ -20,10 +24,17 @@ export function rankCells(game: TdGame): Cell[] {
 
 export function botStep(game: TdGame, cells: Cell[], o: BotOptions) {
   if (game.over) return;
+  if (game.perkChoice && o.upgrades) {
+    const c = game.perkChoice;
+    const best = c.map((p, i) => ({ i, r: PERK_ORDER.indexOf(p.id) })).sort((a, b) => a.r - b.r)[0];
+    game.choosePerk(best.i);
+  }
   if (o.abilities) {
+    const bossy = game.enemies.some((e) => e.def.kind === 'boss' || e.def.kind === 'chief');
     if (game.enemies.length >= 6) game.useAbility('rayo');
-    if (game.enemies.some((e) => e.def.kind === 'boss') || game.enemies.length >= 12) game.useAbility('ventisca');
-    if (game.hp <= game.maxHp * 0.6) game.useAbility('curar');
+    if (bossy || game.enemies.length >= 12) game.useAbility('ventisca');
+    if (game.enemies.length >= 5) game.useAbility('bomba');
+    if (bossy || game.towers.some((t) => t.stunned > 0)) game.useAbility('refuerzo');
   }
   const hasAir = game.towers.some((t) => game.statsOf(t).air);
   // Sin torres anti-aéreas: primero una que alcance voladores

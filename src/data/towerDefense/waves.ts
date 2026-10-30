@@ -4,6 +4,7 @@
 import { shieldPoolFor } from '../enemies.ts';
 import type { TdMap } from './maps.ts';
 import { MAP_FOES, tdTypesOf, type EnemyKind } from './species.ts';
+import { CHIEF_EVERY, chiefSpecies } from './chiefs.ts';
 
 /** Escala de referencia del equilibrio: los niveles de cada mapa se reparten sobre 12 «niveles de dificultad». */
 export const REF_LEVELS = 12;
@@ -32,6 +33,9 @@ export function isBossWave(s: Stage, wave: number): boolean {
   return s.level >= s.levels && wave === wavesInLevel(s.level, s.levels);
 }
 
+/** Jefe de oleada: cada 5 oleadas, salvo si ya toca el jefe legendario. */
+export const isChiefWave = (s: Stage, wave: number): boolean => wave > 0 && wave % CHIEF_EVERY === 0 && !isBossWave(s, wave);
+
 /** Nivel equivalente en la escala de 12 (1..12; el infinito, 12): así la dificultad no depende de cuántos niveles tenga el mapa. */
 export const refLevel = (s: Stage): number => (isEndless(s) ? REF_LEVELS : 1 + ((Math.max(1, Math.min(s.levels, s.level)) - 1) * (REF_LEVELS - 1)) / Math.max(1, s.levels - 1));
 
@@ -56,6 +60,8 @@ export const KIND_STATS: Readonly<Record<EnemyKind, KindStats>> = {
   healer: { hp: 1.2, speed: 0.85, bounty: 11, leak: 1 },
   shielded: { hp: 1, speed: 0.85, bounty: 12, leak: 1 },
   hastener: { hp: 1, speed: 1.05, bounty: 10, leak: 1 },
+  // Jefe de oleada (cada 5): mucha vida y sus habilidades (chiefs.ts)
+  chief: { hp: 13, speed: 0.5, bounty: 0, leak: 5 },
   boss: { hp: 34, speed: 0.42, bounty: 160, leak: 10 },
 };
 
@@ -107,17 +113,19 @@ export interface Spawn {
   species: number;
   /** Por qué entrada sale. */
   path: number;
+  /** Multiplicador de vida (oleada doble). */
+  hpMul?: number;
 }
 
 /** Desde qué «rango» aparece cada papel (rango = 3 por mapa + nivel + oleada/3): los mapas difíciles los traen antes. */
-const FIRST_RANK: Record<Exclude<EnemyKind, 'normal' | 'boss'>, number> = {
+const FIRST_RANK: Record<Exclude<EnemyKind, 'normal' | 'boss' | 'chief'>, number> = {
   fast: 2, flying: 3.3, tank: 5, shielded: 7, healer: 10, hastener: 14,
 };
 
 export const stageRank = (s: Stage, wave: number): number => s.tier * 3 + refLevel(s) + wave / 3;
 
 export const kindUnlocked = (kind: EnemyKind, s: Stage, wave: number): boolean =>
-  kind === 'normal' || kind === 'boss' || stageRank(s, wave) >= FIRST_RANK[kind];
+  kind === 'normal' || kind === 'boss' || kind === 'chief' || stageRank(s, wave) >= FIRST_RANK[kind];
 
 /** Composición de una oleada: lista ordenada de apariciones. Siempre la misma para un mapa, nivel y oleada. */
 export function waveSpawns(map: TdMap, level: number, wave: number): Spawn[] {
@@ -129,8 +137,12 @@ export function waveSpawns(map: TdMap, level: number, wave: number): Spawn[] {
   let t = 0;
   let seq = 0;
   const add = (kind: EnemyKind, gap: number) => {
-    const pool = kind === 'boss' ? [] : foes[kind];
-    const species = kind === 'boss' ? foes.bosses[isEndless(stage) && Math.floor(w / BOSS_EVERY) % 2 === 1 ? 0 : 1] : pool[seq % pool.length];
+    const species =
+      kind === 'boss'
+        ? foes.bosses[isEndless(stage) && Math.floor(w / BOSS_EVERY) % 2 === 1 ? 0 : 1]
+        : kind === 'chief'
+          ? chiefSpecies(map.biome, w)
+          : foes[kind][seq % foes[kind].length];
     out.push({ at: Math.round(t * 100) / 100, kind, species, path: seq % nPaths });
     seq++;
     t += gap;
@@ -151,6 +163,10 @@ export function waveSpawns(map: TdMap, level: number, wave: number): Spawn[] {
     t += 2;
     add('boss', 1.5);
     for (let i = 0; i < 4; i++) add(i % 2 ? 'healer' : 'shielded', gap);
+  } else if (isChiefWave(stage, w)) {
+    t += 1.5;
+    add('chief', 1.2);
+    for (let i = 0; i < 2; i++) add(kindUnlocked('shielded', stage, w) ? 'shielded' : 'normal', gap);
   }
   return out;
 }

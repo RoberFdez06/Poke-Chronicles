@@ -211,9 +211,9 @@ test('el motor: colocar, mejorar con rama, vender, habilidades y derrota', () =>
   assert.match(g.placeError(1, buildableCells(map)[40].x, buildableCells(map)[40].y)!, /Máximo/);
   // Habilidades con enfriamiento largo
   for (const a of ABILITIES) assert.ok(ABILITY_INFO[a].cooldown >= 45 && ABILITY_INFO[a].cooldown <= 90);
-  assert.equal(tickCooldowns({ rayo: 10, ventisca: 0, curar: 5 }, 6).curar, 0);
-  assert.deepEqual(freshCooldowns(), { rayo: 0, ventisca: 0, curar: 0 });
-  assert.ok(!g.useAbility('curar'), 'base llena');
+  assert.equal(tickCooldowns({ rayo: 10, ventisca: 0, bomba: 5, refuerzo: 1 }, 6).bomba, 0);
+  assert.deepEqual(freshCooldowns(), { rayo: 0, ventisca: 0, bomba: 0, refuerzo: 0 });
+  assert.ok(!g.useAbility('bomba'), 'sin enemigos');
   g.callNextWave();
   g.step(3);
   assert.ok(g.enemies.length > 0);

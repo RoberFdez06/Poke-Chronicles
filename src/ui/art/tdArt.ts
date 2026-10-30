@@ -41,6 +41,66 @@ const pathLook = (biome: string) => PATH_LOOK[biome] ?? PATH_LOOK.bosque;
 // --- Texturas pequeñas (iconos, estrellas, monedas) ---
 
 const ICONS: Record<string, { rows: string[]; pal: Record<string, number> }> = {
+  bomba: {
+    pal: { k: OUT, D: 0x30343c, G: 0x6a7080, W: 0xffffff, O: 0xff9a3a, Y: 0xffd34d },
+    rows: ['.......kY.', '......kOk.', '.....kk...', '...kkkkk..', '..kDDGGDk.', '.kDDDWGDDk', '.kDDDGDDDk', '.kDDDDDDDk', '.kDDDDDDDk', '..kDDDDDk.', '...kkkkk..'],
+  },
+  refuerzo: {
+    pal: { k: OUT, G: 0x2ecc71, L: 0xb8f0c8, W: 0xffffff },
+    rows: ['....kk....', '...kLGk...', '..kLGGGk..', '.kLGGGGGk.', 'kkkkGGkkkk', '...kGGk...', '..kkkkkk..', '.kWWWWWWk.', '.kkkkkkkk.'],
+  },
+  pkRange: {
+    pal: { k: OUT, B: 0x5ab4ff, W: 0xffffff, D: 0x2e86de },
+    rows: ['..kkkkk...', '.kWBBBDk..', 'kWBkkkBDk.', 'kBk...kDk.', 'kBk...kDk.', 'kBk...kDk.', '.kDkkkDk..', '..kkkkkWk.', '.......kWk', '........kk'],
+  },
+  pkRate: {
+    pal: { k: OUT, Y: 0xffd34d, W: 0xfff6b0 },
+    rows: ['kk...kk...', 'kWk..kWk..', '.kWk..kWk.', '..kYk..kYk', '...kYk..kY', '..kYk..kYk', '.kYk..kYk.', 'kYk..kYk..', 'kk...kk...'],
+  },
+  pkType: {
+    pal: { k: OUT, R: 0xe53935, Y: 0xffd34d, W: 0xffffff },
+    rows: ['.kkkkkkkk.', 'kYYYYYYYYk', 'kYRRRRRRYk', 'kYRRWWRRYk', 'kYRWRRRRYk', 'kYRRRRRRYk', '.kYRRRRYk.', '..kYRRYk..', '...kYYk...', '....kk....'],
+  },
+  pkCrit: {
+    pal: { k: OUT, W: 0xffffff, G: 0xc0c8d4 },
+    rows: ['k...k...k.', 'kWk.kWk.kW', '.kWk.kWk.k', '.kWWkkWWk.', '..kWWkWWk.', '..kGWWkGWk', '...kGWWkGk', '....kGGkk.', '.....kkk..'],
+  },
+  pkBank: {
+    pal: { k: OUT, P: 0xff8ae0, L: 0xffc8f0, Y: 0xffd34d },
+    rows: ['....kkk...', '...kYYYk..', '.kkkkkkkk.', 'kLLPPPPPPk', 'kLPkPPPPPkk', 'kPPPPPPPPPk', 'kPPPPPPPPk.', '.kPPPPPPk..', '.kPk..kPk..', '.kk....kk..'],
+  },
+  pkClock: {
+    pal: { k: OUT, W: 0xfff0d0, Y: 0xffd34d, B: 0xb8860b },
+    rows: ['kkkkkkkk', 'kBBBBBBk', '.kWYYWk.', '..kYYk..', '...kk...', '..kWWk..', '.kWYYWk.', 'kBBBBBBk', 'kkkkkkkk'],
+  },
+  pkUp: {
+    pal: { k: OUT, G: 0x2ecc71, L: 0xb8f0c8 },
+    rows: ['....kk....', '...kLGk...', '..kLGGGk..', '.kLGGGGGk.', 'kkkLGGkkkk', '...kGGk...', '...kGGk...', '...kGGk...', '...kkkk...'],
+  },
+  pkEvo: {
+    pal: { k: OUT, B: 0x2e86de, L: 0x8fe0ff, W: 0xffffff },
+    rows: ['....kk....', '...kWLk...', '..kWLLBk..', '.kWLLLBBk.', 'kWLLLLBBBk', '.kLLLBBBk.', '..kLBBBk..', '...kBBk...', '....kk....'],
+  },
+  pkFuse: {
+    pal: { k: OUT, R: 0xe53935, B: 0x2e86de, P: 0xb08aff, W: 0xffffff },
+    rows: ['.kk....kk.', 'kRRk..kBBk', 'kRWk..kBWk', '.kRk..kBk.', '..kRkkBk..', '...kPPk...', '..kPWPPk..', '..kPPPPk..', '...kkkk...'],
+  },
+  evNiebla: {
+    pal: { k: OUT, G: 0xb8c0cc, W: 0xffffff },
+    rows: ['..........', '..kkkk....', '.kWWWWkk..', 'kWWGGWWWk.', 'kkkkkkkkkk', '..........', '.kkkkkkk..', 'kGGWWGGGk.', '.kkkkkkkk.'],
+  },
+  evDesvio: {
+    pal: { k: OUT, O: 0xff9a4a, W: 0xffffff },
+    rows: ['kkkk......', 'kOOk......', 'kOOkkkkk..', 'kOOOOOOOk.', 'kOOOOOOOOk', 'kkkkkkOOk.', '....kOOk..', '....kOOk..', '....kkkk..'],
+  },
+  evDoble: {
+    pal: { k: OUT, R: 0xe53935, W: 0xffffff },
+    rows: ['.kkk.kkk..', 'kRRWkRRWk.', 'kRkRkRkRk.', 'kRRRkRRRk.', '.kkk.kkk..', '..........', '.kkk.kkk..', 'kRRWkRRWk.', '.kkk.kkk..'],
+  },
+  chief: {
+    pal: { k: OUT, Y: 0xffd34d, R: 0xe53935, W: 0xfff6b0 },
+    rows: ['k..k..k..k', 'kYkYkkYkYk', 'kYYYWWYYYk', 'kYRYYYYRYk', 'kYYYYYYYYk', 'kkkkkkkkkk'],
+  },
   rayo: {
     pal: { k: OUT, Y: 0xffd34d, W: 0xfff6b0, O: 0xe0a800 },
     rows: ['......kkkk', '.....kYYWk', '....kYYWk.', '...kYYWk..', '..kYYYYkkk', '.kYYYYYYWk', 'kkkkYYYWk.', '...kYYWk..', '..kYYWk...', '..kYWk....', '.kYWk.....', '.kkk......'],
@@ -794,4 +854,67 @@ export function confetti(scene: Phaser.Scene, x0: number, x1: number, y: number,
       alpha: 0, duration: Phaser.Math.Between(1600, 2600), delay: Phaser.Math.Between(0, 500), ease: 'Sine.easeIn', onComplete: () => r.destroy(),
     });
   }
+}
+
+
+/** Zona avisada (habilidad de jefe, rayo de la tormenta, zona de una habilidad al apuntar): anillo de píxeles que late y se llena hasta que pasa. */
+export function drawWarnZone(g: G, x: number, y: number, r: number, color: number, progress: number, t: number) {
+  const pulse = lowFx() ? 0.5 : (Math.sin(t / 90) + 1) / 2;
+  g.fillStyle(color, 0.1 + 0.08 * pulse).fillCircle(x, y, r);
+  g.fillStyle(color, 0.22).fillCircle(x, y, Math.max(P, r * Math.min(1, Math.max(0, progress))));
+  const n = Math.max(20, Math.round((r * Math.PI * 2) / (P * 2.5)));
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    if (i % 2 && !lowFx()) continue;
+    px(g, OUT, x + Math.cos(a) * r - 1, y + Math.sin(a) * r - 1, P + 2, P + 2);
+    px(g, color, x + Math.cos(a) * r, y + Math.sin(a) * r, P, P, 0.7 + 0.3 * pulse);
+  }
+  // Signo de peligro en el centro
+  px(g, OUT, x - 3, y - 10, 7, 14);
+  px(g, color, x - 1, y - 8, 3, 7);
+  px(g, color, x - 1, y + 1, 3, 2);
+}
+
+/** Torre aturdida: chispas amarillas en zigzag sobre la cabeza. */
+export function drawStun(g: G, x: number, y: number, t: number) {
+  const k = lowFx() ? 0 : Math.floor(t / 120) % 4;
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 + k * 0.5;
+    const sx = x + Math.cos(a) * 12;
+    const sy = y + Math.sin(a) * 4;
+    px(g, OUT, sx - 1, sy - 1, P * 2 + 2, P + 2);
+    px(g, 0xffd34d, sx, sy, P * 2, P);
+  }
+}
+
+/** Torre con Refuerzo: flechas verdes que suben. */
+export function drawBoost(g: G, x: number, y: number, t: number) {
+  const k = lowFx() ? 0 : Math.floor(t / 90) % 6;
+  for (const dx of [-14, 12]) {
+    const yy = y - k * 2;
+    px(g, OUT, x + dx - 1, yy - 1, P * 3 + 2, P * 2 + 2);
+    px(g, 0x7cf07a, x + dx + P, yy, P, P);
+    px(g, 0x7cf07a, x + dx, yy + P, P * 3, P);
+  }
+}
+
+/** Niebla: velo gris con jirones de píxeles que se mueven (con lowFx, solo el velo). */
+export function drawFog(g: G, x: number, y: number, w: number, h: number, t: number) {
+  g.fillStyle(0xc8d0dc, 0.22).fillRect(x, y, w, h);
+  if (lowFx()) return;
+  for (let i = 0; i < 9; i++) {
+    const bx = x + ((i * 173 + t / 40) % (w + 160)) - 80;
+    const by = y + ((i * 97) % h);
+    g.fillStyle(0xe8eef4, 0.18).fillRect(Math.round(bx / P) * P, Math.round(by / P) * P, 120, 18).fillRect(Math.round(bx / P) * P + 24, Math.round(by / P) * P - 9, 72, 9);
+  }
+}
+
+/** Barra grande de un jefe (arriba del mapa): marco, vida, escudo y fases marcadas. */
+export function drawBossBar(g: G, x: number, y: number, w: number, hp: number, shield: number, color: number) {
+  g.fillStyle(OUT, 1).fillRect(x - 3, y - 3, w + 6, 18);
+  g.fillStyle(0x3a2030, 1).fillRect(x, y, w, 12);
+  g.fillStyle(color, 1).fillRect(x, y, Math.max(0, Math.min(1, hp)) * w, 12);
+  g.fillStyle(lightOf(color), 1).fillRect(x, y, Math.max(0, Math.min(1, hp)) * w, P);
+  if (shield > 0) g.fillStyle(0x5ab4ff, 1).fillRect(x, y + 9, Math.min(1, shield) * w, 3);
+  for (const f of [0.33, 0.66]) g.fillStyle(OUT, 1).fillRect(x + w * f - 1, y, 2, 12);
 }

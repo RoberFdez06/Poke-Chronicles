@@ -1444,3 +1444,37 @@ Pendiente:
   keybinds, powerForm, powerFormT75, megaAll y roomEvents.
 - Sin probar en navegador: el aspecto final del Dinamax, la corona Tera, la pose Z, el aura oscura y la intro del
   guardián (no hay navegador en la sesión; `npm run build` no corre en la VM de Linux por el binario de rollup).
+
+## Defensa de torres más viva: jefes cada 5, eventos, mejoras entre oleadas y habilidades de zona (rama `td`, 30/10)
+Hecho (lógica pura en `src/data/towerDefense/` con tests en `tests/tdChiefs.test.ts`; escena `TowerDefenseScene`):
+- **Jefes de oleada** (`chiefs.ts`, `waves.ts` `isChiefWave`, papel `chief`): cada 5 oleadas (salvo cuando toca el legendario), un
+  Pokémon fuerte del bioma (2 por bioma, alternos) con 13× la vida de un salvaje y 2 habilidades fijas por mapa/nivel/oleada: una que
+  castiga (Onda paralizante: aturde 4 s las torres del grupo más denso a ≤ 4,5 casillas; o Llamada: 3 esbirros) y otra de aguante
+  (Recuperación +12 %, que se **corta** si le quitas un 6 % durante el aviso; Agilidad ×2 3 s; Coraza: escudo del 20 % al 66 % y 33 %).
+  Siempre con **aviso** (1-1,8 s, zona marcada con `drawWarnZone` + toast + nombre sobre el jefe); la Congelación también lo retrasa.
+  El primer jefe de cada partida siempre aturde. Ficha corta de presentación que entra por la derecha y **barra grande** arriba a la
+  derecha del mapa (también para el legendario). Premio: dinero en la partida (`chiefMoney`) y **+3 tickets por jefe** (máx. 15) al acabar
+  (`rewardsFor`/`chiefTicketsFor`, solo tickets) y mejora **épica** después.
+- **Eventos de oleada** (`events.ts`): niebla (alcance −30 %), tormenta (rayos avisados 1,3 s en casillas del camino o de torres:
+  dañan enemigos y aturden torres 2,5 s), camino desviado (todos por una entrada; solo mapas con 2+ caminos), oleada doble (×2 enemigos
+  al 60 % de vida y +50 % de premio), enemigos veloces (+35 % de velocidad, +25 % de dinero) y lluvia de monedas (+60 % por baja). 38 % de
+  las oleadas desde la 2, nunca con jefe; los fija `hashStr(mapa|nivel|oleada)` (no la semilla de la partida). Aviso arriba a la derecha
+  del mapa durante la preparación («Próxima oleada: …») y, en la oleada, nombre, segundos que quedan y barra (o «toda la oleada»).
+- **Mejoras entre oleadas** (`perks.ts`): tras cada oleada, 1 de 3 (la partida se para mientras eliges; en el motor la cuenta atrás espera
+  hasta 25 s y, si llega la oleada, se queda la primera). Reliquias: Catalejo (alcance), Cinta rápida (cadencia), Emblema de un tipo del
+  equipo (daño), Escarcha (cada golpe frena), Amuleto moneda (botín), Garra afilada (crítico), Hucha (interés con tope), Reloj de arena
+  (enfriamientos), Muralla (vida de la base). De torre: Entrenamiento (nivel gratis a las más flojas), y tras un jefe Piedra evolutiva (+2
+  niveles a la mejor) y Fusión (2 torres del mismo Pokémon → una con +2/+3 niveles). Tras un jefe todas épicas (el doble). Fichas con icono
+  pixel; 1/2/3, flechas o cruceta y aceptar, o clic.
+- **Habilidades** (`abilities.ts`): Tormenta (Z/LT, zona de 2,4), Congelación (X/RT, global), Bomba (C/Y, zona de 1,5) y Refuerzo
+  (V/L3: +50 % daño y +30 % cadencia 10 s a las torres de la zona y les quita el aturdimiento). Las de zona se apuntan con el cursor
+  (teclado, mando o ratón) y se lanzan con aceptar/clic o pulsando otra vez; cancelar la suelta. `abilityError` explica por qué no.
+  «Curar base» deja de ser habilidad: ahora es la mejora Muralla.
+- Teclas en `controls.ts` (`TD_KEYS`/`TD_PAD`), ayuda nueva para apuntar y para elegir mejora, y fila «Elegir mejora» en Controles.
+  Iconos pixel nuevos en `tdArt.ts` (bomba, refuerzo, mejoras, eventos, corona de jefe) y `drawWarnZone`, `drawStun`, `drawBoost`,
+  `drawFog`, `drawBossBar` (versión simple con `lowFx()`). El bot (`autoplay.ts`) elige mejoras y usa las 4 habilidades; los tests de
+  equilibrio siguen pasando (simulación: dificultad parecida, el infinito del primer mapa llega algo más lejos, 37 → 45).
+- No hacían falta papeles nuevos de enemigo: ya había voladores, curanderos, escudados y aceleradores; quien «dispara a torres» es el jefe.
+Pendiente:
+- Probar en el navegador (solo verificado con `tsc` y `npm test`): ficha del jefe y barra, zonas de aviso, niebla, rayos de la tormenta,
+  panel de mejoras con los tres dispositivos, apuntar habilidades con ratón/mando/teclado y que la barra de abajo (4 habilidades) quepa.
