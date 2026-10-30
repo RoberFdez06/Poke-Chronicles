@@ -354,6 +354,7 @@ import type { SecondChanceChoice } from './SecondChanceScene';
 import { accountInfo } from '../net/cloud';
 import { blitzAttacksFor, bounceAngles, bounceSpec, bounceStep, crossArms, crossHits, crossMinePlaces, crossSpec, dashEnd, dashSpec, gridBeams, gridHits, gridSpec, helixAngles, helixSpec, isBlitzAttack, meteorSpec, meteorSpots, miasmaSpec, wallHits, wallPlan, wallPos, wallSpec, wallTravelMs, BLITZ_MIN_WARN, type BlitzAttack, type Orb } from '../data/bossBlitz';
 import { bounceWarn, dashWarn, drawBounceOrb, drawCrossBlast, drawGridBeam, drawMiasma, drawWallBar, gridWarn, meteorImpact, meteorWarn, miasmaWarn, mineWarn, wallWarn } from '../ui/art/blitzFx';
+import { AI_ATTACK_SLOWDOWN, AMBUSH_MAX_HIDE_MS, ARCHETYPE, flankDir, lineOfSight, newMemo, rangedDir, separation, shouldFlinch, steer, tickIdle, tickRetreat, tickStuck, unstickDir, type AIMemo } from '../data/enemyAI';
 import { BOSS_SAFE_TELEPORT_DIST, BOSS_TELEPORT_GRACE_MS, PHASE_INVULN_MAX_MS, SPAWN_SAFE_DIST, clearOfRects, extendGrace, nearestClearPoint, phaseShieldStuck, pickSafeSpot, shiftTimers, type Rect as SafeRect } from '../data/bossSafety';
 
 const FALL_LOOK_MS = 500; // pausa tras aterrizar en la arena nueva (nadie se mueve ni recibe daño)
@@ -490,6 +491,8 @@ interface EnemyAI {
   tempo?: Temperament;
   /** Respiro tras aparecer, una intro o un cambio de fase: hasta entonces no salta, no se esconde ni embiste. */
   graceUntil?: number;
+  /** IA común (enemyAI.ts): atascos, inactividad, retirada y duda. */
+  memo?: AIMemo;
 }
 
 /** Velocidad de los proyectiles enemigos (px/s) y cuánto duran. */
@@ -5613,6 +5616,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private doParry() {
     if (this.ended || this.transitioning || this.evolving || !this.player?.active) return;
     if (!pressParry(this.parry, this.game.loop.time)) return;
+    this.playerActionAt = this.time.now;
     sfx('select');
     this.parryShieldFx?.destroy();
     this.parryShieldFx = parryShield(this, this.player, typeColor(this.shotType()), PARRY_WINDOW_MS);
@@ -5743,6 +5747,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.playerKnockUntil = now + DASH_MS;
     this.invulnUntil = Math.max(this.invulnUntil, now + DASH_INVULN_MS);
     noteDash(this.counters);
+    this.playerActionAt = now;
     sfx('select');
     this.face(this.player, this.dash.dir);
     dashPuff(this, this.player.x, this.player.y, -this.dash.dir.x, -this.dash.dir.y, typeColor(this.shotType()));
@@ -8547,7 +8552,31 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** IA de un enemigo según su comportamiento: perseguir, embestir, disparar o saltar. */
+  /** Último momento en que el jugador esquivó o hizo parry (los cuerpo a cuerpo cercanos dudan). */
+  private playerActionAt = -1e9;
+
+  /**
+   * IA de un enemigo: su comportamiento y, encima, la capa común (enemyAI.ts). Vigilante: si un enemigo normal lleva
+   * más de IDLE_LIMIT_MS casi quieto fuera de una telegrafía y lejos de ti, se le empuja hacia ti (nadie se queda inerte
+   * aunque no te muevas).
+   */
   private updateEnemy(e: Sprite, time: number) {
+    this.updateEnemyCore(e, time);
+    const ai = e.getData('ai') as EnemyAI | undefined;
+    if (!e.active || !ai || ai.boss || !e.body || time < ai.knockUntil) return;
+    const m = (ai.memo ??= newMemo(e.x, e.y, time));
+    const body = e.body as Body;
+    const dist = Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y);
+    const busy = ai.state !== 'walk' || !body.enable || ai.behavior === 'shielded' || ai.behavior === 'mine' && dist < 120;
+    if (tickIdle(m, body.velocity.length(), time, busy, dist)) {
+      const to = new Phaser.Math.Vector2(this.player.x - e.x, this.player.y - e.y).normalize();
+      const v = this.flowDir(e, to);
+      const sp = (e.getData('speed') as number) * speedMultiplier((e.getData('statuses') as ActiveStatus[] | undefined) ?? [], time, false);
+      e.setVelocity(v.x * sp, v.y * sp);
+    }
+  }
+
+  private updateEnemyCore(e: Sprite, time: number) {
     const ai = e.getData('ai') as EnemyAI | undefined;
     if (ai && time < ai.knockUntil) return; // sale despedido: conserva la velocidad del empujón
     const statuses = (e.getData('statuses') as ActiveStatus[] | undefined) ?? [];
@@ -8571,7 +8600,20 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       toPlayer.rotate(wobble);
       toward.rotate(wobble);
     }
-    const walk = (v: Phaser.Math.Vector2) => e.setVelocity(v.x * speed, v.y * speed);
+    // Capa común (enemyAI.ts) para los no jefes: separación (no se apilan) y desatasco (rodean si no avanzan)
+    const memo = ai && !ai.boss ? (ai.memo ??= newMemo(e.x, e.y, time)) : undefined;
+    const walk = (v: Phaser.Math.Vector2) => {
+      if (!memo) return e.setVelocity(v.x * speed, v.y * speed);
+      let d: { x: number; y: number } = v;
+      if (tickStuck(memo, e.x, e.y, time, dist > 70)) d = unstickDir(v, memo.unstickSide);
+      const near: { x: number; y: number }[] = [];
+      for (const c of this.enemies.getChildren()) {
+        const o = c as Sprite;
+        if (o !== e && o.active && Math.abs(o.x - e.x) < 60 && Math.abs(o.y - e.y) < 60) near.push(o);
+      }
+      const s = steer(d, separation(e, near));
+      return e.setVelocity(s.x * speed, s.y * speed);
+    };
     // Asustado (Siniestro): huye de ti y no ataca
     if (isFeared(statuses, time)) {
       walk(toPlayer.clone().negate());
@@ -8579,14 +8621,31 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       return;
     }
 
+    // Poca vida (no jefes, ni enjambre ni embestidores): se retira un momento; tras tu esquiva o parry cerca, duda
+    if (ai && memo && ai.state === 'walk') {
+      const arch = ARCHETYPE[ai.behavior];
+      const hp = (e.getData('hp') as number) / Math.max(1, (e.getData('maxHp') as number | undefined) ?? 1);
+      if (shouldFlinch(arch, this.playerActionAt, time, dist)) memo.flinchUntil = time + 380;
+      if (time < memo.flinchUntil || tickRetreat(memo, arch, hp, time, false)) {
+        walk(toPlayer.clone().negate().rotate(0.5 * ai.side));
+        this.face(e, toPlayer);
+        return;
+      }
+    }
+
     if (!ai || ai.behavior === 'chase') {
-      walk(toward);
+      // Varios a la vez: cada uno busca su hueco alrededor de ti (te rodean en vez de hacer cola)
+      if (ai && !ai.boss && dist > 110 && !this.flow) {
+        const list = this.enemies.getChildren();
+        const f = flankDir(e, this.player, Math.max(0, list.indexOf(e)), Math.min(6, list.length), 90);
+        walk(new Phaser.Math.Vector2(f.x, f.y));
+      } else walk(toward);
       this.face(e, toPlayer);
       // Cerca de ti, de vez en cuando se lanza a morder (pequeño salto hacia delante)
       if (ai && !ai.boss && dist < 95 && time >= ai.until) {
         e.setVelocity(toPlayer.x * speed * 2.8, toPlayer.y * speed * 2.8);
         ai.knockUntil = time + 160;
-        ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(900, 1400));
+        ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(900, 1400)) * (ai.boss ? 1 : AI_ATTACK_SLOWDOWN);
       }
       return;
     }
@@ -8614,23 +8673,24 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           }
         } else if (time >= ai.until) {
           ai.state = 'walk';
-          ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(1200, 2000));
+          ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(1200, 2000)) * (ai.boss ? 1 : AI_ATTACK_SLOWDOWN);
         }
         break;
 
       case 'shoot': {
         // Guarda la distancia: se acerca si estás lejos, se aleja si estás cerca y si no, te rodea
+        // Sin línea de visión (roca en medio) se recoloca por el camino en vez de disparar a la piedra
         const keep = ai.boss ? 260 : 230;
-        if (dist > keep + 90) walk(toward);
-        else if (dist < keep - 50) walk(toPlayer.clone().negate());
-        else walk(new Phaser.Math.Vector2(-toPlayer.y * ai.side, toPlayer.x * ai.side));
+        const los = this.foeHasLos(e);
+        const rd = rangedDir(toPlayer, dist, keep, ai.side, los, toward);
+        walk(new Phaser.Math.Vector2(rd.x, rd.y));
         this.face(e, toPlayer);
         if (time >= ai.until) {
           if (Math.random() < 0.3) ai.side = -ai.side;
           // Su disparo según su tipo (bombas en parábola, ráfagas, ondas, persecución…)
           const weak = enemyDamageMul((e.getData('statuses') as ActiveStatus[] | undefined) ?? [], time);
           castPattern(this.host, 'foe', e, toPlayer.clone().normalize(), foeStyleFor(ai.type), Math.max(1, Math.round((e.getData('dmg') as number) * 0.8 * weak)), ai.type);
-          ai.until = time + (ai.boss ? 1100 : Phaser.Math.Between(1500, 2200));
+          ai.until = time + (ai.boss ? 1100 : Phaser.Math.Between(1500, 2200) * AI_ATTACK_SLOWDOWN);
         }
         break;
       }
@@ -8672,7 +8732,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         if (ai.state === 'dash') {
           if (time >= ai.until) {
             ai.state = 'walk';
-            ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(1800, 2800));
+            ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(1800, 2800)) * (ai.boss ? 1 : AI_ATTACK_SLOWDOWN);
           }
           break;
         }
@@ -8713,10 +8773,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         if (ai.state === 'walk' && time >= ai.until) {
           ai.state = 'vanish';
           e.setAlpha(0.3);
-          ai.until = time + 9000;
+          ai.until = time + AMBUSH_MAX_HIDE_MS;
         }
         if (ai.state === 'vanish') {
-          e.setVelocity(0, 0);
+          // Camuflado se arrastra despacio hacia ti (antes se quedaba quieto 9 s si no te acercabas)
+          if (dist > 200) e.setVelocity(toward.x * speed * 0.4, toward.y * speed * 0.4);
+          else e.setVelocity(0, 0);
           if (dist < 180 || time >= ai.until) {
             ai.state = 'windup';
             ai.until = time + 300;
@@ -8867,9 +8929,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
       case 'healer': {
         // Guarda las distancias y cada poco cura a los enemigos de alrededor (anillo verde)
-        if (dist < 260) walk(toPlayer.clone().negate());
-        else if (dist > 420) walk(toward);
-        else walk(new Phaser.Math.Vector2(-toPlayer.y * ai.side, toPlayer.x * ai.side));
+        const hd = rangedDir(toPlayer, dist, 330, ai.side, true, toward);
+        walk(new Phaser.Math.Vector2(hd.x, hd.y));
         this.face(e, toPlayer);
         if (time >= ai.until) {
           ai.until = time + HEAL_EVERY_MS;
@@ -8914,6 +8975,18 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         break;
       }
     }
+  }
+
+  /** ¿Ve el enemigo al jugador? Solo en salas con obstáculos (rejilla de la sala actual); si no, siempre. */
+  private foeHasLos(e: Sprite): boolean {
+    const grid = this.flow ? this.grids.get(this.current.id) : undefined;
+    if (!grid) return true;
+    const i = this.interior(this.current);
+    const blocked = (tx: number, ty: number) => {
+      const c = grid[ty]?.[tx];
+      return c !== undefined && c !== '.' && c !== 'W' && c !== 'H';
+    };
+    return lineOfSight({ x: e.x - i.x0, y: e.y - i.y0 }, { x: this.player.x - i.x0, y: this.player.y - i.y0 }, TILE, blocked);
   }
 
   /**
