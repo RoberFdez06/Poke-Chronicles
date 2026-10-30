@@ -141,7 +141,11 @@ import { chainBreak, chainHit, chainOdds, chainVisible, newShinyChain, rollShiny
 import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
 import { cry, playMenuMusic, playTrack, sfx } from '../ui/audio';
-import { setMusicTempo } from '../ui/audio';
+import { setMusicTempo, sfxShift } from '../ui/audio';
+import { FUSION_TYPES, fusableSlots, fusionStyleOf, moveHasType, moveTypes, powerTypes, applyFusion } from '../data/fusion';
+import { castFusion } from './fusionCast';
+import { drawFusedSlotFrame, fusionFlash } from '../ui/art/fusionArt';
+import type { FusionData } from './FusionScene';
 import { bossCinematic, bossTitle } from '../ui/art/bossIntro';
 import { bossHud } from '../ui/art/bossHud';
 import { bossAmbience } from '../ui/art/bossArena';
@@ -421,7 +425,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 export type FloorCarry = Pick<
   RunSave,
   'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed' | 'reactionsFound' | 'storiesSeen' | 'route' | 'routesTaken' | 'gardenBerries' | 'legendHunt'
-> & Partial<Pick<RunSave, 'itemLevels' | 'teraPick' | 'dark'>>;
+> & Partial<Pick<RunSave, 'itemLevels' | 'teraPick' | 'dark' | 'fusionFloor'>>;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
 const RNG = { rooms: 0, boss: 1, items: 2, chest: 3, shop: 4, clear: 5 } as const;
@@ -714,6 +718,8 @@ export class GameScene extends Phaser.Scene {
   private powerSelIcon?: Phaser.GameObjects.Image;
   /** Inicial oscuro (darkMon.ts): más fuerte en todo y con aura oscura. */
   private dark = false;
+  /** Piso (o ronda) en que se usó la fusión de poderes (data/fusion.ts); 0 = ninguna. */
+  private fusionFloor = 0;
   private darkAuraStop?: () => void;
   /** El jefe que acaba de caer era oscuro (premio extra al limpiar su sala). */
   private darkBossBeaten = false;
@@ -933,7 +939,7 @@ export class GameScene extends Phaser.Scene {
   private overHud = false;
   /** Modo admin (data/admin.ts): lo elegido para este piso, valores del panel, F9 y el distintivo del HUD. */
   private adminPick: AdminFloorPick | null = null;
-  private adminUi = { floor: 1, boss: 150, biome: 0, form: 0, mode: 0, syn: 0 };
+  private adminUi = { floor: 1, boss: 150, biome: 0, form: 0, mode: 0, syn: 0, ptype: 1 };
   private adminKey?: Phaser.Input.Keyboard.Key;
   private adminPadPrev = false;
   private adminBadge?: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; shown: string };
@@ -989,6 +995,7 @@ export class GameScene extends Phaser.Scene {
     this.shiny = loadShinies().includes(this.starterId);
     // Inicial oscuro: si lo tienes oscuro juegas con él así (como el shiny); se guarda en la partida (RunSave v29)
     this.dark = this.resume ? this.resume.dark : (data?.carry?.dark ?? loadDarks().includes(this.starterId));
+    this.fusionFloor = this.resume ? this.resume.fusionFloor : (data?.carry?.fusionFloor ?? 0);
     this.mode = this.resume?.mode ?? data?.mode ?? 'normal';
     this.daily = this.resume ? this.resume.daily : (data?.daily ?? null);
     // T81: el diario usa la semilla del día; una partida nueva sin código, una semilla nueva (las v24 cargadas no tienen)
@@ -1652,7 +1659,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Tus estadísticas: las de tu Pokémon con los objetos pasivos encima. */
   private calcStats(): PlayerStats {
-    const types = this.slots.flatMap((m) => (m ? [m.type] : []));
+    const types = powerTypes(this.slots);
     const { stats, active } = applySynergies(computeStats(this.passives, this.base, this.itemLevels), this.passives, types);
     this.synergies = active.map((syn) => syn.id);
     this.synFx = synergyFxFor(this.synergies);
@@ -3874,6 +3881,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       itemLevels: pruneLevels(this.itemLevels, this.passives),
       teraPick: this.teraPick,
       dark: this.dark,
+      fusionFloor: this.fusionFloor,
       secondChance: this.secondChanceUsed,
       bossesBeaten: this.bossesBeaten,
       captureDone: this.capture.done,
@@ -3919,7 +3927,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         ...this.synergies.map((id) => `${SYNERGIES.find((syn) => syn.id === id)?.transform ? '¡Transformación!' : '¡Sinergia!'} ${SYNERGIES.find((syn) => syn.id === id)?.name}`),
       ],
       moves: [...this.slots],
-      synergyNear: nearSynergies(this.passives, this.slots.flatMap((m) => (m ? [m.type] : [])), this.synFound).map((n) => n.label),
+      synergyNear: nearSynergies(this.passives, powerTypes(this.slots), this.synFound).map((n) => n.label),
       synergyActive: [...this.synergies],
       roomsCleared: this.cleared.size,
       coins: this.coins,
@@ -3946,6 +3954,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             this.time.delayedCall(60, () => !this.ended && this.chooseTeraType());
           }
         : undefined,
+      // Fusionar poderes: cierra la pausa y abre la pantalla de fusión (teclado, ratón y mando)
+      onFusion: () => {
+        this.scene.stop('Pause');
+        this.scene.resume();
+        this.input.keyboard?.resetKeys();
+        this.menuPadPrev = true;
+        this.padPrev = [true, true, true, true];
+        this.time.delayedCall(60, () => !this.ended && this.openFusion(false));
+      },
       onRestart: () => {
         clearRun(this.slot);
         this.scene.stop('Pause');
@@ -5072,7 +5089,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private askDropFor(item: PassiveItem, then: () => void, cancel: () => void) {
     const owned = distinctPassives(this.passives);
     // Sinergias: lo que completaría el objeto nuevo y lo que rompería soltar cada uno
-    const types = this.slots.flatMap((m) => (m ? [m.type] : []));
+    const types = powerTypes(this.slots);
     const gain = this.synergyHintFor(item.id);
     const ok = this.openItemChoice(
       'HUECOS LLENOS',
@@ -5363,6 +5380,54 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Elegir a mano el tipo Tera (o dejarlo automático). Dos páginas de 9 tipos para que quepan con teclado 1-9. */
+  /** Pantalla de fusión de poderes (FusionScene). `free` = desde el panel admin (sin límite por piso; marca la partida). */
+  private openFusion(free: boolean): boolean {
+    if (this.ended || this.transitioning || this.scene.isPaused() || !this.scene.manager.keys['Fusion'] || this.scene.isActive('Fusion')) return false;
+    if (fusableSlots(this.slots).length === 0) {
+      this.notify('Fusión: necesitas dos poderes sin fusionar en tus ranuras', { kind: 'warning', icon: 'bag' });
+      return false;
+    }
+    if (!free && this.fusionFloor === this.floorNum) {
+      this.notify('Fusión: ya has fusionado en este piso', { kind: 'warning', icon: 'bag' });
+      return false;
+    }
+    this.player?.setVelocity(0, 0);
+    const close = () => {
+      this.scene.stop('Fusion');
+      this.scene.resume();
+      this.input.keyboard?.resetKeys();
+      this.menuPadPrev = true;
+      this.padPrev = [true, true, true, true];
+    };
+    const data: FusionData = {
+      slots: [...this.slots],
+      floor: this.floorNum,
+      usedFloor: this.fusionFloor,
+      free,
+      onClose: close,
+      onFuse: (i, j) => {
+        close();
+        const r = applyFusion(this.slots, i, j, this.floorNum, this.fusionFloor, free);
+        if (!r) return;
+        if (free) this.adminCheat();
+        this.slots = r.slots;
+        this.slotReady[i] = 0;
+        this.slotReady[j] = 0;
+        if (!free) this.fusionFloor = this.floorNum;
+        this.slotShown = this.slotShown.map(() => '');
+        this.stats = this.calcStats();
+        const f = r.result.fusion!;
+        if (this.player) fusionFlash(this, this.player.x, this.player.y, typeColor(f.types[0]), typeColor(f.types[1]));
+        this.notify(`¡Fusión! ${r.result.name} (potencia ${r.result.power}) en la ranura ${i + 1}`, { kind: 'info', icon: 'star' });
+        this.saveNow();
+      },
+    };
+    this.scene.launch('Fusion', data);
+    this.scene.bringToTop('Fusion');
+    this.scene.pause();
+    return true;
+  }
+
   private chooseTeraType(page = 0) {
     const auto = typeNameEs(pickTeraType(this.biome.types, this.tearType, rawEffectiveness));
     const types = TERA_TYPES.slice(page * 9, page * 9 + 9);
@@ -7388,7 +7453,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const want = [...(syn.all ?? []), ...(syn.anyOf ? syn.anyOf.ids.slice(0, syn.anyOf.count) : [])];
     for (const pid of want) if (!this.passives.includes(pid)) this.passives.push(pid);
     let note = '';
-    if (syn.powerType && !this.slots.some((m) => m?.type === syn.powerType)) {
+    if (syn.powerType && !this.slots.some((m) => moveHasType(m, syn.powerType as string))) {
       const move = this.movePool.find((m) => m.type === syn.powerType);
       if (move) {
         const free = this.slots.indexOf(null);
@@ -7431,6 +7496,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       { label: () => 'Llenar el medidor de poder', run: () => (this.adminCheat(), (this.powerMeter.value = POWER_METER_MAX), this.powerMeterHud && (this.powerMeterHud.shown = ''), 'Medidor lleno.') },
       { label: () => `Jugar con el inicial oscuro: ${this.dark ? 'Sí' : 'No'}`, run: () => this.adminDark() },
       { label: () => `Forma de poder ◀ ${ADMIN_FORMS[u.form][1]} ▶  (Enter: activar)`, adjust: (d) => (u.form = stepValue(u.form, d, 0, ADMIN_FORMS.length - 1)), run: () => this.adminPower(ADMIN_FORMS[u.form][0]) },
+      { label: () => 'Fusionar poderes (abrir pantalla)', run: () => (this.time.delayedCall(80, () => this.openFusion(true)), 'Se abre al cerrar el panel (marca la partida).') },
+      { label: () => `Dar poder de tipo ◀ ${typeNameEs(FUSION_TYPES[u.ptype])} ▶  (Enter: dar)`, adjust: (d) => (u.ptype = stepValue(u.ptype, d, 0, FUSION_TYPES.length - 1)), run: () => this.adminGivePower(FUSION_TYPES[u.ptype]) },
       { header: true, label: () => 'Pisos y jefes' },
       { label: () => `Ir al piso ◀ ${u.floor} ▶ de ${maxF}`, adjust: (d) => (u.floor = stepValue(u.floor, d, 1, maxF)), setNumber: (n) => (u.floor = Math.max(1, Math.min(maxF, n))), run: () => this.adminGoFloor(u.floor) },
       { label: () => `Jefe ◀ ${u.boss} · ${this.adminBossName(u.boss)} ▶  (Enter: generarlo aquí)`, adjust: (d) => (u.boss = stepValue(u.boss, d, 1, 1025)), setNumber: (n) => (u.boss = Math.max(1, Math.min(1025, n))), run: () => this.adminBossHere(u.boss) },
@@ -7443,6 +7510,20 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       { label: () => 'Sacar aquí el jefe de este piso', run: () => (this.adminCheat(), this.spawnBoss(), `Jefe ${this.bossName}.`) },
       { label: () => `Partida nueva en modo ◀ ${ADMIN_MODE_LABEL[RUN_MODES[u.mode]]} ▶`, adjust: (d) => (u.mode = stepValue(u.mode, d, 0, RUN_MODES.length - 1)), run: () => this.adminNewRun(RUN_MODES[u.mode]) },
     ];
+  }
+
+  /** Panel admin: un poder del tipo pedido (de tu reserva si hay; si no, uno del catálogo de ese tipo) en una ranura. */
+  private adminGivePower(type: string): string {
+    this.adminCheat();
+    const fromPool = this.movePool.find((m) => m.type === type && !this.slots.some((s) => s?.id === m.id));
+    const style = (TYPE_STYLES[type] ?? TYPE_STYLES.normal)[0];
+    const move = fromPool ?? toMovePower({ id: 90000 + FUSION_TYPES.indexOf(type), name: style.id, type, power: 80 });
+    const free = this.slots.indexOf(null);
+    const slot = free !== -1 ? free : this.slots.length - 1;
+    this.slots[slot] = move;
+    this.slotReady[slot] = 0;
+    this.stats = this.calcStats();
+    return `${move.name} (${typeNameEs(type)}) en la ranura ${slot + 1}.`;
   }
 
   private adminNewRun(mode: GameMode): string {
@@ -9347,6 +9428,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       itemLevels: pruneLevels(this.itemLevels, this.passives),
       teraPick: this.teraPick,
       dark: this.dark,
+      fusionFloor: this.fusionFloor,
       secondChance: this.secondChanceUsed,
       bossesBeaten: this.bossesBeaten,
       powerMeter: this.powerMeter.value,
@@ -10017,17 +10099,24 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const m = this.slots[i];
     if (!m || time < this.slotReady[i]) return;
     // Cada movimiento sale con su estilo (catálogo de ataques): chorro, rayo, onda, lluvia, bumerán…
+    const fstyle = fusionStyleOf(m);
     const style = styleForMove(m);
-    this.slotReady[i] = time + m.cooldown * style.cd;
-    sfx(shotSfx(m.type));
+    // Los fusionados ya traen su recarga final (data/fusion.ts) y suenan con su propio tono
+    this.slotReady[i] = time + m.cooldown * (fstyle ? 1 : style.cd);
+    if (fstyle) sfxShift(shotSfx(m.type), fstyle.tone);
+    else sfx(shotSfx(m.type));
     this.lastShotAt = time;
 
     const dir = this.aim.clone().normalize();
     if (this.fxBudget.take(this.time.now)) muzzle(this, this.player.x, this.player.y, dir.x, dir.y, typeColor(m.type));
     // At. Esp. del Pokémon y, encima, lo que suban el daño los objetos
     // Potenciadores de tipo (Carbón, Imán…) y Ataque X van encima
-    const boost = 1 + (this.stats.typeBoost[m.type] ?? 0);
-    const dmg = Math.max(6, Math.round(m.power * 0.5 * this.stats.powerMul * (this.stats.damage / this.base.damage) * boost * this.dmgMul() * pinchMul(this.ability, m.type, this.hp, this.stats.maxHp)));
+    // Fusionados: cuenta el mejor potenciador y el mejor «apuro» de sus dos tipos
+    const types = moveTypes(m);
+    const boost = 1 + Math.max(...types.map((t) => this.stats.typeBoost[t] ?? 0));
+    const pinch = Math.max(...types.map((t) => pinchMul(this.ability, t, this.hp, this.stats.maxHp)));
+    const dmg = Math.max(6, Math.round(m.power * 0.5 * this.stats.powerMul * (this.stats.damage / this.base.damage) * boost * this.dmgMul() * pinch));
+    if (fstyle) return castFusion(this.host, this.player, dir, m, dmg);
     castPattern(this.host, 'player', this.player, dir, style.pattern, Math.max(3, Math.round(dmg * style.mul)), m.type);
   }
 
@@ -10203,7 +10292,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Texto de pista de un objeto del suelo: qué sinergia completaría con lo que llevas. */
   private synergyHintFor(itemId: string): string | undefined {
-    const types = this.slots.flatMap((m) => (m ? [m.type] : []));
+    const types = powerTypes(this.slots);
     return hintText(synergiesCompletedBy(itemId, this.passives, types).map((s) => (this.synFound.includes(s.id) ? s : { ...s, name: '???' })));
   }
 
@@ -11235,21 +11324,26 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Ranura de poder: cuadro con una franja del color del tipo; apagada mientras recarga. */
   private paintSlot(i: number, m: MovePower | null, ready: boolean) {
     const device = currentInput();
-    const key = (m ? `${m.id}:${m.name}:${ready}` : 'vacía') + ':' + device;
+    const key = (m ? `${m.id}:${m.name}:${ready}:${m.fusion ? 'f' : ''}` : 'vacía') + ':' + device;
     if (this.slotShown[i] === key) return;
     this.slotShown[i] = key;
     const g = this.slotBoxes[i].clear();
     const x = HUD.right.x + HUD.pad;
     const w = HUD.right.w - HUD.pad * 2;
     const y = this.slotY(i);
-    if (m) drawSlotFrame(g, x, y, w, 64, typeColor(m.type), ready);
+    // Fusionado: marco dorado con las dos mitades de sus colores
+    if (m?.fusion) drawFusedSlotFrame(g, x, y, w, 64, typeColor(m.fusion.types[0]), typeColor(m.fusion.types[1]), ready);
+    else if (m) drawSlotFrame(g, x, y, w, 64, typeColor(m.type), ready);
     else drawHudFrame(g, x, y, w, 64);
-    if (m) {
+    if (m?.fusion) {
+      g.fillStyle(0x1d2848, 1).fillRoundedRect(x + w - 98, y - 9, 92, 22, 11);
+      g.fillStyle(0xf8d030, 1).fillRoundedRect(x + w - 96, y - 7, 88, 18, 9);
+    } else if (m) {
       // Ficha con el nombre del tipo sobre el borde de arriba
       g.fillStyle(0x1d2848, 1).fillRoundedRect(x + w - 98, y - 9, 92, 22, 11);
       g.fillStyle(typeColor(m.type), 1).fillRoundedRect(x + w - 96, y - 7, 88, 18, 9);
     }
-    this.slotTypes[i].setText(m ? typeNameEs(m.type).toUpperCase() : '');
+    this.slotTypes[i].setText(m?.fusion ? 'FUSIÓN' : m ? typeNameEs(m.type).toUpperCase() : '');
     // Botón para lanzarlo: A B X Y con sus colores en el mando, la tecla configurada con teclado o ratón
     const badge = this.slotBadges[i];
     const bx = x + 22;

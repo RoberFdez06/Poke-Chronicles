@@ -28,6 +28,10 @@ Es un **fan game gratuito y sin ánimo de lucro** (nunca se cobra dinero real po
 - Al terminar el piso 5 puedes aceptar el **reto final**: el trío legendario o un gigante, elegido al azar.
 - **«Una más»**: al caer, una vez por partida, puedes volver con media vida pagando caramelos o tickets (tú eliges).
 - Los **pasivos** de los objetos se combinan en sinergias: 14 que transforman tu ataque (orbitales, rastros, rayos en cadena, eco, aura, reflejo…) y 3 transformaciones de tres piezas que cambian tu aspecto. Las descubiertas se apuntan en el **Libro de sinergias** (Pausa → Sinergias, o en la Pokédex con el botón, G o L3); los objetos que completarían una se marcan con una insignia y «Sinergia: …».
+- **Fusión de poderes** (Pausa → Fusionar poderes): juntas dos de tus poderes en uno más fuerte (≈1,6× de potencia)
+  que ocupa una ranura y deja la otra libre. Cada pareja de tipos tiene su receta (Vapor Ardiente, Raíz Sísmica,
+  Descarga Marina…; las del mismo tipo dan la versión «Superior») con un proyectil, estela, impacto y sonido únicos.
+  Una fusión por piso, para siempre, y lo fusionado no se vuelve a fusionar. La ranura fusionada lleva marco dorado.
 - **Parry**: púlsalo justo antes de un golpe (ventana amplia de 0,4 s; una marca «!» sobre el enemigo o el proyectil
   avisa y se pone blanca cuando toca pulsar). Anula el golpe, devuelve el proyectil o aturde a quien te pega, y tu
   siguiente ataque es crítico; en la primera mitad de la ventana es **perfecto** (más premio). Fallar solo tiene un

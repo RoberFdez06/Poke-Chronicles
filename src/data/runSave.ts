@@ -15,6 +15,7 @@ import { isRouteOption, type RouteOption } from '../level/routes.ts';
 import type { SeedRun } from './seedCode.ts';
 import { isGardenBerry, type GardenBerryId } from './berries.ts';
 import { isLegendHunt, noHunt, type LegendHunt } from './legendHunt.ts';
+import { isFusionTag } from './fusion.ts';
 
 export const RUN_SLOTS = 3;
 /**
@@ -44,8 +45,9 @@ export const RUN_SLOTS = 3;
  * v26: bayas del huerto que llevas en la partida (T85). Los v25 no llevan ninguna.
  * v28: niveles de mejora de la forja por objeto (`itemLevels`) y tipo Tera elegido a mano (`teraPick`, null = automático).
  * v29: si juegas con tu inicial en su variante oscura (`dark`, darkMon.ts). Los v28 juegan con el normal.
+ * v30: poderes fusionados (`fusion` dentro de cada poder, data/fusion.ts) y piso en que se fusionó (`fusionFloor`, 0 = nunca).
  */
-export const RUN_VERSION = 29;
+export const RUN_VERSION = 30;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -171,6 +173,8 @@ export interface RunSave {
   teraPick: string | null;
   /** v29: el inicial es su variante oscura (más fuerte en todo; ver darkMon.ts). */
   dark: boolean;
+  /** v30: piso (o ronda) en el que se usó la fusión de poderes; 0 = ninguna todavía. */
+  fusionFloor: number;
 }
 
 export interface DailyRun {
@@ -187,7 +191,7 @@ const isPairs = (a: unknown): a is [number, number][] =>
 function isMove(m: unknown): m is MovePower {
   const o = m as MovePower;
   return !!o && typeof o.name === 'string' && typeof o.type === 'string' && typeof o.power === 'number' &&
-    typeof o.shape === 'string' && typeof o.cooldown === 'number';
+    typeof o.shape === 'string' && typeof o.cooldown === 'number' && (o.fusion === undefined || isFusionTag(o.fusion));
 }
 
 function isDrop(d: unknown): d is SavedDrop {
@@ -355,6 +359,11 @@ function migrateV28(d: RunSave): RunSave {
   return { ...d, version: 29, dark: false };
 }
 
+/** v29 no tenía fusión de poderes: ninguna usada. */
+function migrateV29(d: RunSave): RunSave {
+  return { ...d, version: 30, fusionFloor: 0 };
+}
+
 const isSeedRun = (s: unknown): s is SeedRun => {
   const o = s as SeedRun;
   return !!o && typeof o === 'object' && isInt(o.seed) && o.seed >= 0 && o.seed <= 0x7fffffff && typeof o.fromCode === 'boolean';
@@ -408,6 +417,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 26) d = migrateV26(d);
   if (d.version === 27) d = migrateV27(d);
   if (d.version === 28) d = migrateV28(d);
+  if (d.version === 29) d = migrateV29(d);
   if (d.version !== RUN_VERSION) return null;
   const reactions = cleanReactions(d.reactionsFound);
   if (!reactions) return null;
@@ -439,7 +449,8 @@ export function parseRun(raw: string | null): RunSave | null {
     (d.route === null || isRouteOption(d.route)) && Array.isArray(d.routesTaken) && d.routesTaken.every(isRouteOption) &&
     (d.seeded === null || isSeedRun(d.seeded)) &&
     Array.isArray(d.gardenBerries) && d.gardenBerries.length <= 10 && d.gardenBerries.every(isGardenBerry) &&
-    isLegendHunt(d.legendHunt) && isItemLevels(d.itemLevels) && (d.teraPick === null || isTeraType(d.teraPick)) && typeof d.dark === 'boolean';
+    isLegendHunt(d.legendHunt) && isItemLevels(d.itemLevels) && (d.teraPick === null || isTeraType(d.teraPick)) && typeof d.dark === 'boolean' &&
+    isInt(d.fusionFloor) && d.fusionFloor >= 0;
   return ok ? d : null;
 }
 

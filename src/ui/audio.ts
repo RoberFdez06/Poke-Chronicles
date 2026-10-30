@@ -107,6 +107,14 @@ export function sfx(name: SfxName) {
   for (const t of SFX[name]) playTone(c, sfxGain, t, c.currentTime);
 }
 
+/** Efecto con el tono subido o bajado `semis` semitonos (poderes fusionados: cada receta suena distinta). */
+export function sfxShift(name: SfxName, semis: number) {
+  const c = ctx;
+  if (!c || !sfxGain || settings.sfx <= 0 || c.state !== 'running') return;
+  const k = Math.pow(2, semis / 12);
+  for (const t of SFX[name]) playTone(c, sfxGain, { ...t, freq: t.freq * k, slideTo: t.slideTo ? t.slideTo * k : undefined }, c.currentTime);
+}
+
 /** Grito del Pokémon (PokeAPI `cries.latest`), con el volumen de los efectos. Si falla, silencio. */
 export async function cry(id: number) {
   if (settings.sfx <= 0) return;

@@ -73,6 +73,7 @@ function sample(): RunSave {
     itemLevels: { lupa: 2 },
     teraPick: 'fire',
     dark: true,
+    fusionFloor: 0,
   };
 }
 

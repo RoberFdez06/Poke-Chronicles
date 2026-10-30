@@ -421,6 +421,18 @@ export interface MovePower extends MoveInfo {
   shape: MoveShape;
   /** Milisegundos de recarga. */
   cooldown: number;
+  /** Poder fusionado (data/fusion.ts): receta, sus dos tipos y de qué dos poderes sale. Falta en los normales. */
+  fusion?: FusionTag;
+}
+
+/** Lo que guarda un poder fusionado (también en el guardado, RunSave v30). */
+export interface FusionTag {
+  /** Clave de la receta: «fire+water», «gen:fire» (genérica) o «sup:fire» (Superior, mismo tipo). */
+  recipe: string;
+  /** Tipo principal (el del poder más potente, igual que `type`) y el segundo. */
+  types: [string, string];
+  /** Nombres de los dos poderes que se fusionaron. */
+  from: [string, string];
 }
 
 /** La potencia del movimiento decide cómo sale: más potencia, más lento y más contundente. */

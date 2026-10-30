@@ -1614,3 +1614,45 @@ Pendiente / no verificado:
   sobre los objetos, la insignia en la pausa y las 7-8 opciones del menú de pausa, y el equilibrio real.
 - Las sinergias de la partida admin no se guardan en el libro (como el resto del progreso con trucos).
 - `pokeisaac.synergies` usa el prefijo `SAVE_PREFIX` de `storage.ts`, así que va con el resto del guardado.
+
+## Fusión de poderes («combinar dos ranuras en una») — rama `fusion`
+
+Qué hace: desde la pausa, «Fusionar poderes» abre `FusionScene`: eliges el primer poder, el segundo, ves la vista
+previa (nombre, tipos, potencia, recarga, patrón en texto y el proyectil animado), confirmas con `ConfirmScene`
+(«CONFIRMAR FUSIÓN») y salta el destello de fusión. El resultado ocupa la ranura del primero; la del segundo queda
+vacía para coger otro poder del suelo. Teclado (flechas, Enter, Esc, 1-4), ratón (filas, clic fuera = No) y mando.
+- **Recetas** (`src/data/fusion.ts`): 63 con nombre propio por pareja de tipos sin orden; el resto de parejas de tipos
+  distintos tiene un nombre compuesto propio (sustantivo del tipo más potente + adjetivo del otro: «Llama Insecta»);
+  mismo tipo = «<Movimiento> Superior» (×1,5 y patrones ×1,35). Cubre las 18×18.
+- **Estilo único por pareja** (cambio de requisito del usuario): nada de estilos por defecto ni reutilizados. Cada una
+  de las 171 parejas sin orden tiene forma × estela × impacto × movimiento × partículas × escala × tono. Estela (9),
+  impacto (11) y movimiento (5) salen del índice de la pareja con módulos primos entre sí (9·11·5 = 495 > 171), así que
+  ni siquiera ese trío se repite (test); la forma (14) la elige la receta con nombre o sale del índice. El movimiento
+  cambia de verdad el vuelo (ondula, gira, acelera, zigzag) de los disparos rectos, y el tono cambia el sonido.
+- **Patrones**: 14 combinaciones de dos patrones del catálogo (ráfaga + onda, abanico + perforante, órbitas + lluvia,
+  ola + minas, bumerán + cadena, rayo corto + estallido, columnas + bombas…). La primera parte va con el tipo
+  principal (el del poder más potente) y la segunda con el otro: inflige el estado y la debilidad de cada uno. No toca
+  el código de vórtice ni de rayo (solo usa `castPattern`).
+- **Números**: potencia = máx(más fuerte, mín(240, 1,6× el más fuerte)); recarga = máx(la del más lento,
+  mín(10 s, ×1,15)), con la recarga efectiva (por el estilo) de cada uno; el daño usa el mejor potenciador de tipo y
+  el mejor «apuro» de los dos tipos.
+- **Coste**: 1 fusión por piso (o ronda/jefe en Oleadas y Rush), gratis en monedas: las monedas ya se van en tienda,
+  forja y Centro, y la fusión ya cuesta una ranura de poder y es irreversible. Lo fusionado no se vuelve a fusionar.
+- **Arte** (`src/ui/art/fusionArt.ts`): 14 formas pixel (hélice, cometa, cristal, espora, anillo, media luna,
+  estrella, gota, runa, colmillo, flor, meteoro, rayo doble, remolino), 9 estelas, 11 impactos, destello de fusión en
+  dos fases (anillos de ambos colores que se cierran, flash y chispas) y marco dorado de ranura con las dos mitades.
+  Con `lowFx()`: sin estelas, impacto y destello simples. `scenes/fusionCast.ts` viste los proyectiles del motor.
+- **HUD**: la ranura fusionada usa el marco dorado y la ficha «FUSIÓN»; en la pausa, ficha dorada «Fusión».
+- **Sinergias / efectos por tipo**: `powerTypes()` cuenta los dos tipos de un fusionado (calcStats, pistas, huecos
+  llenos, admin) y `moveHasType()` para las sinergias que piden un poder de un tipo.
+- **Guardado**: RunSave v30: `fusion` opcional dentro de cada poder (validado) y `fusionFloor` (0 = ninguna); los v29
+  se migran con 0. También pasa de piso en piso (`FloorCarry`).
+- **Panel admin**: «Fusionar poderes (abrir pantalla)» (sin límite por piso; marca la partida al fusionar) y «Dar
+  poder de tipo ◀ X ▶» (de tu reserva si hay; si no, uno del catálogo de ese tipo con potencia 80).
+- Audio: `sfxShift(nombre, semitonos)` en `ui/audio.ts`.
+- Tests: `tests/fusion.test.ts` (9): 171 parejas, simetría y cobertura 18×18, firmas únicas, nombres compuestos sin
+  repetir, potencia y recarga con topes, reglas (una por piso, sin refusionar), Superior y guardado v29→v30. 731 en total.
+Pendiente / no verificado:
+- Solo `tsc` y `npm test`; `npm run build` no arranca en la VM (falta `@rollup/rollup-linux-x64-gnu`). Sin probar en el
+  navegador: aspecto de las 14 formas y estelas sobre los proyectiles, la vista previa, el destello, el marco dorado,
+  el menú de pausa con 8-9 opciones y el equilibrio real.

@@ -50,6 +50,8 @@ export interface PauseData {
   onRestart: () => void;
   /** Elegir el tipo Tera (solo con la Teragema; si falta, no sale la opción). */
   onTera?: () => void;
+  /** Fusionar poderes (data/fusion.ts): abre FusionScene. Si falta, no sale la opción. */
+  onFusion?: () => void;
   onQuit: () => void;
   /** Tras borrar el progreso desde Ajustes: salir sin guardar. */
   onReset: () => void;
@@ -147,13 +149,22 @@ export class PauseScene extends Phaser.Scene {
       t(x, y, `${i + 1}  ${m ? shorten(pretty(m.name), 13) : '—'}`, 16, m ? typeHex(m.type) : '#9aa5b1', true)
         .setStroke(m ? '#2b3a67' : '#00000000', m ? 2 : 0);
       // Ficha del tipo del poder
-      if (m) addTypeChip(this, x + 196, y + 11, typeNameEs(m.type), typeColor(m.type), 64, 20);
+      if (m) addTypeChip(this, x + 196, y + 11, m.fusion ? 'Fusión' : typeNameEs(m.type), m.fusion ? 0xd4a017 : typeColor(m.type), 64, 20);
     });
 
-    const opts = ['Reanudar', 'Reiniciar', 'Código de semilla', 'Sinergias', 'Controles', 'Ajustes', ...(d.onTera ? ['Tipo Tera'] : []), 'Salir y guardar'];
+    const extra = [...(d.onFusion ? ['Fusionar poderes'] : []), ...(d.onTera ? ['Tipo Tera'] : [])];
+    const opts = ['Reanudar', 'Reiniciar', 'Código de semilla', 'Sinergias', 'Controles', 'Ajustes', ...extra, 'Salir y guardar'];
+    this.actions = [
+      () => this.finish(this.info.onResume), () => this.confirmRestart(), () => this.showSeedCode(), () => this.openBook(),
+      () => this.showControls(), () => this.openSettings(),
+      ...(d.onFusion ? [() => this.finish(this.info.onFusion!)] : []),
+      ...(d.onTera ? [() => this.finish(this.info.onTera!)] : []),
+      () => this.finish(this.info.onQuit),
+    ];
+    // Siete a nueve opciones a la altura del panel de la izquierda (100-570)
+    const n = opts.length;
     this.menu = new MenuList(this, 760, 150, opts, (i) => this.pick(i), {
-      // Siete opciones (ocho con la Teragema) a la altura del panel de la izquierda (100-570)
-      w: 290, h: d.onTera ? 44 : 48, gap: d.onTera ? 5 : 9,
+      w: 290, h: n >= 9 ? 40 : n === 8 ? 44 : 48, gap: n >= 9 ? 4 : n === 8 ? 5 : 9,
     });
     addHelpBar(this, 480, 612, 'Esc o P para reanudar · Flechas o ratón para elegir', {
         fontFamily: UI.FONT, fontSize: '15px', color: '#ffffff',
@@ -161,16 +172,11 @@ export class PauseScene extends Phaser.Scene {
       .setOrigin(0.5).setAlpha(0.6);
   }
 
+  private actions: (() => void)[] = [];
+
   private pick(i: number) {
     if (this.done) return;
-    if (i === 0) return this.finish(this.info.onResume);
-    if (i === 1) return this.confirmRestart();
-    if (i === 2) return this.showSeedCode();
-    if (i === 3) return this.openBook();
-    if (i === 4) return this.showControls();
-    if (i === 5) return this.openSettings();
-    if (i === 6 && this.info.onTera) return this.finish(this.info.onTera);
-    return this.finish(this.info.onQuit);
+    this.actions[i]?.();
   }
 
   /** Ajustes encima de la pausa; al cerrarlos se vuelve aquí. */
