@@ -38,7 +38,8 @@ import { COLORS, hex, loadThemeFont, setLowFxProbe } from './ui/theme';
 import { loadFx } from './data/save';
 import { initAudio, playMusic, reloadAudioSettings } from './ui/audio';
 import { initAccount } from './net/cloud';
-import { refreshControls } from './data/controls';
+import { refreshControls, touchOnlyDevice } from './data/controls';
+import { boostedSize, mobileUi, parseFontPx, setMobileUi, viewportCssPerPx } from './ui/uiScale';
 import { H, U, W } from './ui/layout';
 import { PLACEHOLDER_SPRITE } from './data/offline';
 import { installErrorScreen } from './ui/errorScreen';
@@ -48,6 +49,14 @@ import { installErrorScreen } from './ui/errorScreen';
 const TEXT_RESOLUTION = Math.ceil(U);
 const makeText = Phaser.GameObjects.GameObjectFactory.prototype.text;
 Phaser.GameObjects.GameObjectFactory.prototype.text = function (this: Phaser.GameObjects.GameObjectFactory, ...args: Parameters<typeof makeText>) {
+  // Modo móvil: las letras pequeñas se agrandan (con tope) para que se lean; en escritorio no cambia nada
+  if (mobileUi() && args[3]) {
+    const px = parseFontPx(args[3].fontSize);
+    if (px !== null) {
+      const size = boostedSize(px, viewportCssPerPx());
+      if (size !== px) args[3] = { ...args[3], fontSize: `${size}px` };
+    }
+  }
   return makeText.apply(this, args).setResolution(TEXT_RESOLUTION);
 };
 
@@ -89,6 +98,8 @@ void Promise.all([loadThemeFont(), initAccount()]).then(() => {
 
 function startGame() {
   trackInput();
+  // Modo móvil (letra mínima y filas de menú más fáciles de tocar): solo en móvil o tableta táctil
+  setMobileUi(touchOnlyDevice());
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',

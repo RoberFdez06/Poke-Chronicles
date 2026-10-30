@@ -1478,3 +1478,16 @@ Hecho (lógica pura en `src/data/towerDefense/` con tests en `tests/tdChiefs.tes
 Pendiente:
 - Probar en el navegador (solo verificado con `tsc` y `npm test`): ficha del jefe y barra, zonas de aviso, niebla, rayos de la tormenta,
   panel de mejoras con los tres dispositivos, apuntar habilidades con ratón/mando/teclado y que la barra de abajo (4 habilidades) quepa.
+
+## Modo móvil: letra mínima y filas de menú más fáciles de tocar (rama `movil`)
+- Nuevo `src/ui/uiScale.ts` (sin Phaser, probado en `tests/uiScale.test.ts`): `cssPerGamePx` (px CSS por px del lienzo con
+  Scale.FIT, suponiendo horizontal), `textBoost`/`boostedSize` (agranda la letra hasta 12 px CSS reales, tope ×1,5), `parseFontPx`,
+  `rowHitHeight` y el interruptor `setMobileUi`/`mobileUi`.
+- `main.ts` activa el modo con `touchOnlyDevice()` y, en el gancho que ya creaba todos los textos, sube el `fontSize` de los pequeños.
+  Así afecta a todas las pantallas (Título, Menú, Modo, Ajustes, Pausa, iniciales, Gacha, Cuenta, Pokédex, Resumen) y al HUD sin
+  tocar cada escena. En escritorio el factor es 1 y nada cambia (ni escala ni composición: se mantiene Scale.FIT 1920×1080).
+- `MenuList` (nav.ts): en móvil la zona de toque de cada fila cubre también el hueco con la siguiente (54+14 → ~41 px CSS en un
+  móvil de 390 px de alto).
+- Límites: con el tope ×1,5 los menús llegan a ~12 px CSS, pero el HUD (sin zoom de diseño) se queda en ~7-8 px CSS; textos que
+  cambian de tamaño después (`setFontSize`/`setStyle`) no se agrandan. No se pasó a Scale.RESIZE (demasiado riesgo).
+- Pendiente: Playwright no arrancó en la VM (sin navegador); falta mirar en un móvil real que nada se salga de su cuadro.
