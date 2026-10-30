@@ -1656,3 +1656,21 @@ Pendiente / no verificado:
 - Solo `tsc` y `npm test`; `npm run build` no arranca en la VM (falta `@rollup/rollup-linux-x64-gnu`). Sin probar en el
   navegador: aspecto de las 14 formas y estelas sobre los proyectiles, la vista previa, el destello, el marco dorado,
   el menú de pausa con 8-9 opciones y el equilibrio real.
+
+## Cinemática de la megaevolución del jugador (rama `mega`)
+- Sustituye el efecto anterior (crisálida + flash) por una cinemática de ~2,1 s (0,9 s con `lowFx()`), con el lenguaje
+  de los cambios de fase de los jefes: `freezeWorld`, zoom de cámara hacia el Pokémon (hasta ×1,45 sobre GAME_ZOOM),
+  temblor creciente, carga de energía (partículas en espiral con forma según el tipo: ascuas, gotas, chispas,
+  cristales, hojas, humo, escamas, rocas o estrellas; anillos que se cierran; viñeta oscura), la Mega Piedra baja con el
+  símbolo mega girando y lanza su rayo, destello blanco con la silueta que late y se funde de la forma base a la mega
+  (el sprite real cambia en mitad del destello: `applyMegaLook` espera a `megaLookGate`), onda expansiva con polvo,
+  escombros, estrellas y último sacudón, y vuelta de la cámara a su sitio con `thawWorld`.
+- Lógica pura en `src/scenes/megaCinematic.ts` (plan de fases, estado por instante, restauración de cámara, estilo por
+  tipo); dibujo en `src/ui/art/megaFx.ts` (`drawMegaCine`, `megaCineBurst`); conducción en
+  `GameScene.playMegaCinematic`. Invulnerable mientras dura. Se corta y restaura (zoom de sala, `setRoomCamera`, scroll
+  fijo en salas normales, deshielo solo si lo heló ella) al acabar la partida, cambiar de sala, caer o perder el
+  sprite; la pausa la detiene con el reloj de la escena. Reglas de la mega sin cambios.
+- Tests: `tests/megaCinematic.test.ts` (6). 737 en total.
+Pendiente / no verificado:
+- Solo `tsc` y `npm test`. Sin ver en el navegador (localhost:5173 sirve main): aspecto real, encuadre del zoom en salas
+  grandes, el fundido de silueta con sprites PMD y PokeAPI, y la carga tardía del sprite mega sin red.

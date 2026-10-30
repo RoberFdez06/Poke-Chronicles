@@ -176,7 +176,8 @@ import { dynamaxBurst, teraBurst, zImpactFx, zMoveFx, zStarFx } from '../ui/art/
 import { darkAura, darkBurst } from '../ui/art/darkFx';
 import { darkCooldown, darkEnemyStats, darkName, darkOdds, darkPlayerStats, darkTickets, DARK_COLORS, DARK_REWARD, rollDark, type DarkWho } from '../data/darkMon';
 import { guardianKindLabel, MEGA_GUARDIAN, pickGuardian } from '../data/guardians';
-import { drawMegaStoneHud, drawPowerMeterFill, drawPowerSelHud, playerFormAura, playerMegaFx } from '../ui/art/megaFx';
+import { drawMegaCine, drawMegaStoneHud, drawPowerMeterFill, drawPowerSelHud, megaCineBurst, playerFormAura } from '../ui/art/megaFx';
+import { megaCamRestore, megaCineFrame, megaCinePlan, megaTypeStyle, type MegaCamHome } from './megaCinematic';
 import { exhaustedFx, finaleShiftFx, judgmentRects, judgmentStrike, judgmentWarn, drawNovaWave, novaWarn } from '../ui/art/finaleFx';
 import { clampFinaleHp, FINALE_AFTER_BEAT_MS, FINALE_ATTACK_LABEL, FINALE_BEAT_MS, finaleAttacks, finaleHpFloor, finaleIntervalMul, finalePhaseText, judgmentHits, judgmentPlan, judgmentSpec, NOVA, nextFinalePhase, novaDurationMs, novaGapAt, pickFinaleAttack, type FinaleAttack, type FinalePhase } from '../data/finalePhases';
 import { chargedShotFx, chargeGlow } from '../ui/art/shotFx';
@@ -694,6 +695,10 @@ export class GameScene extends Phaser.Scene {
   private powerFormLoopAt = 0;
   private megaPulseAt = 0;
   private megaKey: string | null = null;
+  /** Cinemática de megaevolución en marcha (megaCinematic.ts): `stop` la corta y deja cámara y mundo como estaban. */
+  private megaCine?: { stop: () => void };
+  /** Mientras dura la cinemática, applyMegaLook espera a este aviso para cambiar el sprite en mitad del destello. */
+  private megaLookGate: Promise<void> | null = null;
   /** Próximo momento en que un golpe puede sumar adrenalina. */
   private adrHitAt = 0;
   /** T75: medidor de poder (Dinamax, Tera, Z), si ya se usó el Cristal Z y su barra del HUD. */
@@ -1221,6 +1226,8 @@ export class GameScene extends Phaser.Scene {
     this.powerMeterHud = undefined;
     this.megaPulseAt = 0;
     this.megaKey = null;
+    this.megaCine = undefined;
+    this.megaLookGate = null;
     this.megaGlowAt = 0;
     this.dpadUpPrev = false;
     this.megaHud = undefined;
@@ -1588,7 +1595,7 @@ export class GameScene extends Phaser.Scene {
       sh.setPosition(feet ? s.x + ((s.flipX ? s.frame.width - feet.cx : feet.cx) - s.originX * s.frame.width) * s.scaleX : body.center.x, feetY);
       sh.setSize(sw, sw * 0.3);
       // Parpadeo mientras el jugador es invulnerable tras un golpe
-      if (s === this.player && !this.ended && !this.evolving) s.setAlpha(time < this.invulnUntil && Math.floor(time / 70) % 2 ? 0.35 : 1);
+      if (s === this.player && !this.ended && !this.evolving && !this.megaCine) s.setAlpha(time < this.invulnUntil && Math.floor(time / 70) % 2 ? 0.35 : 1);
       sh.setVisible(s.visible).setAlpha(Math.max(0.4, s.alpha));
       // Al disparar se echa un poco hacia atrás; al acabar, el jugador lo anima combatFx (no se toca el ángulo)
       const kick = s === this.player ? Math.max(0, 1 - (time - this.lastShotAt) / 130) * -Math.sign(this.aim.x || 1) * 7 : 0;
@@ -3398,12 +3405,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.hp = Math.min(this.stats.maxHp, this.hp + Math.max(0, this.stats.maxHp - prevMax));
     this.hpMark = this.hp;
     sfx('evolve');
-    const pb = this.player.body as Body | null;
-    // Mega Piedra, crisálida de luz y símbolo mega (con efectos bajos, solo un anillo)
-    playerMegaFx(this, this.player.x, this.player.y, pb ? pb.bottom : this.player.y + 30, typeColor(this.tearType));
-    if (!lowFx()) this.cameras.main.flash(300, 255, 255, 255);
+    // Cinemática: mundo quieto, zoom, temblor, carga de energía y cambio de forma en directo (megaCinematic.ts)
+    this.playMegaCinematic();
     this.notify(`¡${megaDisplayName(this.formId, this.niceName())}!\nMás daño, velocidad y PS durante ${Math.round(POWER_FORMS.mega.durationMs / 1000)} s`, { kind: 'item', icon: 'pokeball' });
-    void cry(this.formId);
     void this.applyMegaLook();
     this.saveNow();
   }
@@ -3420,6 +3424,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const mid = pmdMega(this.formId, this.shiny);
     if (mid !== null) {
       for (const [k, v] of await loadPmd(this, [mid]).catch(() => new Map<number, PmdSheet>())) this.pmd.set(k, v);
+      if (this.megaLookGate) await this.megaLookGate;
       if (this.pmd.has(mid) && powerFormActive(this.powerForm) && this.player?.active && !this.ended && this.applyPmd(this.player, mid, 96, true)) {
         this.megaKey = `pmd-${mid}`;
         return;
@@ -3440,6 +3445,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.load.once(Phaser.Loader.Events.COMPLETE, () => resolve());
       this.load.start();
     });
+    if (this.megaLookGate) await this.megaLookGate;
     if (!this.textures.exists(`${key}-front`) || !powerFormActive(this.powerForm) || !this.player?.active || this.ended) return;
     for (const side of ['front', 'back']) {
       if (this.textures.exists(`${key}-${side}`)) this.textures.get(`${key}-${side}`).setFilter(Phaser.Textures.FilterMode.NEAREST);
@@ -3447,6 +3453,101 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.megaKey = key;
     // Un poco más grande: la forma mega impone más (el cuerpo físico es el de siempre)
     this.setStaticLook(key, 96);
+  }
+
+  /**
+   * Cinemática de la megaevolución del jugador (~2 s; ~0,9 s con efectos bajos), como los cambios de fase de los jefes:
+   * congela el mundo, acerca la cámara al Pokémon con temblor creciente, la Mega Piedra carga energía de su tipo,
+   * destello con la silueta blanca que se funde de la forma base a la mega (applyMegaLook espera a megaLookGate), onda
+   * expansiva con sacudón y la cámara vuelve a su sitio. Invulnerable mientras dura. Si se muere, se cambia de sala o
+   * termina la partida a medias, `stop` lo deja todo como estaba (zoom de la sala, límites, scroll y mundo).
+   */
+  private playMegaCinematic() {
+    this.megaCine?.stop();
+    const p = this.player;
+    const cam = this.cameras.main;
+    const low = lowFx();
+    const plan = megaCinePlan(low);
+    const color = typeColor(this.tearType);
+    const style = megaTypeStyle(this.tearType);
+    const roomId = this.current.id;
+    const home: MegaCamHome = { zoom: GAME_ZOOM, scrollX: cam.scrollX, scrollY: cam.scrollY, follows: this.current.group !== undefined };
+    const mid0 = { x: cam.midPoint.x, y: cam.midPoint.y };
+    const frozeWorld = this.frozenSince === undefined;
+    this.freezeWorld();
+    this.invulnUntil = Math.max(this.invulnUntil, this.time.now + plan.total + 500);
+    cam.stopFollow();
+    cam.removeBounds();
+    let openGate: () => void = () => undefined;
+    this.megaLookGate = new Promise<void>((r) => (openGate = r));
+    // Siluetas blancas: la de la forma base (fija) y la de la forma actual (sigue al sprite; tras el cambio, la mega)
+    const ghost = (key: string, frame: string | number) => this.add.image(p.x, p.y, key, frame).setDepth(p.depth + 0.2).setTintFill(0xffffff).setAlpha(0).setFlipX(p.flipX).setOrigin(p.originX, p.originY);
+    const oldG = ghost(p.texture.key, p.frame.name).setDisplaySize(p.displayWidth, p.displayHeight);
+    const curG = ghost(p.texture.key, p.frame.name);
+    const oldW = p.displayWidth;
+    const oldH = p.displayHeight;
+    const g = this.add.graphics().setDepth(p.depth + 0.1);
+    const t0 = this.time.now;
+    let burst = false;
+    let swapped = false;
+    let done = false;
+    const feet = () => {
+      const b = p.body as Body | null;
+      return b ? b.bottom : p.y + 30;
+    };
+    const stop = () => {
+      if (done) return;
+      done = true;
+      ev.remove();
+      g.destroy();
+      oldG.destroy();
+      curG.destroy();
+      openGate();
+      this.megaLookGate = null;
+      this.megaCine = undefined;
+      if (p.active) p.setAlpha(1);
+      const r = megaCamRestore(home, { frozeWorld, roomChanged: this.current.id !== roomId, ended: this.ended });
+      cam.shakeEffect.reset();
+      // Cruzando una puerta o cayendo por la trampilla, la cámara es de la transición (y la escena se reinicia)
+      if (this.transitioning || this.falling) return;
+      cam.setZoom(r.zoom);
+      this.setRoomCamera(this.current);
+      if (r.scroll && this.current.group === undefined) cam.setScroll(r.scroll.x, r.scroll.y);
+      if (r.thaw) this.thawWorld();
+      this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 400);
+    };
+    const tick = () => {
+      if (done) return;
+      if (this.ended || this.transitioning || this.falling || !p.active || this.current.id !== roomId) return stop();
+      const f = megaCineFrame(plan, this.time.now - t0);
+      if (f.phase === 'done') return stop();
+      // Cámara: zoom y encuadre hacia el Pokémon (mezcla del centro de la sala con su posición) y temblor
+      const focus = plan.zoomPeak > 1 ? (f.zoom - 1) / (plan.zoomPeak - 1) : 0;
+      cam.setZoom(home.zoom * f.zoom);
+      cam.centerOn(Phaser.Math.Linear(mid0.x, p.x, focus), Phaser.Math.Linear(mid0.y, p.y - 10, focus));
+      if (f.shake > 0.0005) cam.shake(80, f.shake, true);
+      if (!swapped && this.time.now - t0 >= plan.swapAt) {
+        swapped = true;
+        openGate(); // applyMegaLook pone ya el sprite mega si está cargado (si no, al llegar)
+        if (!low) cam.flash(180, 255, 255, 255);
+      }
+      if (!burst && f.phase === 'burst') {
+        burst = true;
+        megaCineBurst(this, p.x, p.y, feet(), color, low);
+        void cry(this.formId);
+      }
+      // Sprite: la forma real se apaga bajo la silueta blanca, que late y se funde de base a mega
+      p.setAlpha(1 - f.white * 0.85);
+      curG.setTexture(p.texture.key, p.frame.name).setFlipX(p.flipX).setPosition(p.x, p.y).setDisplaySize(p.displayWidth * f.pulse, p.displayHeight * f.pulse);
+      curG.setAlpha(swapped ? f.white * f.morph : f.white);
+      oldG.setPosition(p.x, p.y).setDisplaySize(oldW * f.pulse, oldH * f.pulse);
+      oldG.setAlpha(swapped ? f.white * (1 - f.morph) : 0);
+      g.clear();
+      drawMegaCine(g, f, p.x, p.y, feet(), color, style, this.time.now - t0, low);
+    };
+    const ev = this.time.addEvent({ delay: 33, loop: true, callback: tick });
+    this.megaCine = { stop };
+    tick();
   }
 
   /** Pone un sprite de PokeAPI (sin hoja animada de SpriteCollab) con su cuerpo redondo de siempre. */
