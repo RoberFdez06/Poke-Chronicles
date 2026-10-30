@@ -1656,3 +1656,25 @@ Pendiente / no verificado:
 - Solo `tsc` y `npm test`; `npm run build` no arranca en la VM (falta `@rollup/rollup-linux-x64-gnu`). Sin probar en el
   navegador: aspecto de las 14 formas y estelas sobre los proyectiles, la vista previa, el destello, el marco dorado,
   el menú de pausa con 8-9 opciones y el equilibrio real.
+
+## Locomoción para todos: fotogramas de andar/volar/flotar hechos por código (rama `anim`, 31/10)
+Auditoría (tests/locomotionAudit.test.ts) sobre las 1059 especies y formas del juego (species-index + formas regionales):
+- 787 no tenían modo de moverse puesto a mano y caían en el de su tipo; de ellas ~85 estaban mal (fantasmas con patas
+  que flotaban, como Gengar, Golurk o Houndstone; capullos, masas, babosas y gusanos que «andaban»; Porygon2, Munna,
+  Vanillite, Carbink, Tapus o Nihilego andando; Seel, Dewgong, Tatsugiri o Veluza andando). Nuevo `SPECIES_LOCOMOTION`
+  (manda sobre listas y tipo) y las formas regionales sin entrada usan la de su especie normal.
+- Todo lo que no tenía hoja Walk de SpriteCollab (66 especies de `PMD_MISSING`, Stunfisk de Galar, megas sin hoja con
+  el dibujo de PokeAPI, Dinamax/Gigamax/Tera sobre el dibujo fijo, shinies o formas cuya hoja no carga) solo tenía la
+  pose: un saltito con balanceo, el dibujo entero rígido. Ahora `data/procLoco.ts` saca 4 fotogramas en pixel art del
+  dibujo fijo: andar levanta y adelanta un pie y luego el otro; volar bate las alas (columnas de los lados); flotar
+  ondula por columnas; reptar/nadar, onda lateral fila a fila; botar/rodar, aplastar y estirar apoyado en el suelo.
+  `ui/locoAnim.ts#procAnimate` crea la hoja `<textura>~loco-<modo>` una vez y pone el fotograma con setFrame (no con
+  anims, para no pisar el giro frente/espalda de `face`); parado vuelve al dibujo original. Se usa en `dressSprites`
+  (jugador, enemigos, minijefes, jefes y finales), en `dressLoose` (aliado) y en el Tower Defense (también los
+  voladores, que antes no se animaban).
+- Tests nuevos: cada modo da 4 fotogramas distintos y no vacíos, andar alterna los pies, volar mueve las alas, el ciclo
+  pasa por todos los fotogramas y para en el 0, todas las especies/formas tienen animación, y las correcciones por
+  especie. `tsc` limpio y `npm test` en verde.
+Pendiente / no verificado:
+- Sin probar en el navegador (localhost:5173 sirve main, no la rama): falta ver el aspecto real de los fotogramas en
+  sprites de PokeAPI (sobre todo andar en Pokémon de frente con patas muy juntas) y que no haya parpadeos al girarse.

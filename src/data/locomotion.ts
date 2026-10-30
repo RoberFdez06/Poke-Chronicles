@@ -3,6 +3,8 @@
 // en ninguna, según su tipo. `locoPose` da la pose de cada fotograma (subida, giro, estiramiento y sombra) para que
 // nunca parezca que se desliza. Pura (sin Phaser) para poder probarla.
 
+import { regionalForm } from './regionalForms.ts';
+
 export type Locomotion = 'walk' | 'fly' | 'swim' | 'float' | 'slither' | 'hop' | 'roll';
 
 export interface LocomotionProfile {
@@ -57,8 +59,39 @@ export const HOPPING_SPECIES = ids(
 /** Ruedan (bolas sin patas). */
 export const ROLLING_SPECIES = ids(100, 101, 10109, 74, 204, 205, 213, 299, 327, 524, 557, 568, 616, 751, 835, 837);
 
+/**
+ * Correcciones por especie (mandan sobre las listas y el tipo). Salieron de la auditoría de tests/locomotionAudit:
+ * fantasmas con patas que flotaban (Gengar, Golurk, Houndstone…), capullos que andaban (Metapod, Kakuna…), masas,
+ * babosas y gusanos que andaban (Grimer, Slugma, Goomy, Wiglett…), seres que flotan y andaban (Porygon2, Munna,
+ * Vanillite, Carbink, Tapus, Nihilego…) y peces/focas que andaban (Seel, Dewgong, Tatsugiri, Veluza…).
+ */
+export const SPECIES_LOCOMOTION: ReadonlyMap<number, Locomotion> = new Map<number, Locomotion>([
+  // Fantasmas o voladores que en realidad andan
+  ...([94, 302, 623, 709, 724, 867, 897, 911, 937, 971, 972, 979, 10115, 566, 1015, 1016] as const).map((n) => [n, 'walk'] as [number, Locomotion]),
+  // Capullos y crisálidas: botan
+  ...([11, 14, 268, 412, 665, 825, 247, 102, 191, 420, 421, 406, 590, 591, 684, 761, 928, 969, 1011, 755, 597, 598, 932] as const).map((n) => [n, 'hop'] as [number, Locomotion]),
+  // Masas, babosas, gusanos y lo que se arrastra
+  ...([88, 89, 10112, 10113, 218, 219, 704, 705, 422, 423, 771, 871, 960, 961, 850, 851, 541, 345, 872, 50, 51, 10105, 10106, 618, 10180, 1001] as const).map((n) => [n, 'slither'] as [number, Locomotion]),
+  // Ruedan
+  ...([544, 953, 946, 947, 990] as const).map((n) => [n, 'roll'] as [number, Locomotion]),
+  // Flotan
+  ...([233, 517, 518, 582, 583, 584, 703, 719, 707, 764, 785, 786, 787, 788, 793, 798, 803, 826, 898, 970, 1004, 955, 938, 954, 986, 413] as const).map((n) => [n, 'float'] as [number, Locomotion]),
+  // Vuelan
+  ...([742, 804, 994, 991] as const).map((n) => [n, 'fly'] as [number, Locomotion]),
+  // Nadan
+  ...([86, 87, 902, 976, 978] as const).map((n) => [n, 'swim'] as [number, Locomotion]),
+]);
+
+/** ¿Tiene esta especie (o forma) un modo de moverse puesto a mano (no deducido del tipo)? */
+export function hasExplicitLocomotion(species: number): boolean {
+  const lists = [SPECIES_LOCOMOTION, ROLLING_SPECIES, SLITHERING_SPECIES, HOPPING_SPECIES, SWIMMING_SPECIES, FLOATING_SPECIES, FLYING_SPECIES, WALKING_FLIERS];
+  return lists.some((l) => l.has(species));
+}
+
 export function locomotionOf(types: readonly string[], species?: number): Locomotion {
   if (species !== undefined) {
+    const fixed = SPECIES_LOCOMOTION.get(species);
+    if (fixed) return fixed;
     if (ROLLING_SPECIES.has(species)) return 'roll';
     if (SLITHERING_SPECIES.has(species)) return 'slither';
     if (HOPPING_SPECIES.has(species)) return 'hop';
@@ -66,6 +99,9 @@ export function locomotionOf(types: readonly string[], species?: number): Locomo
     if (FLOATING_SPECIES.has(species)) return 'float';
     if (FLYING_SPECIES.has(species)) return 'fly';
     if (WALKING_FLIERS.has(species)) return 'walk';
+    // Forma regional sin entrada propia: se mueve como su especie normal (con los tipos de la forma)
+    const reg = regionalForm(species);
+    if (reg && !hasExplicitLocomotion(species) && hasExplicitLocomotion(reg.baseId)) return locomotionOf(types, reg.baseId);
   }
   if (types.includes('flying')) return 'fly';
   if (types.includes('ghost')) return 'float';
