@@ -6,6 +6,8 @@ import { FONT, HEX } from '../ui/theme';
 import { addForgeFrame } from '../ui/art/forgeArt';
 import { addPixelText } from '../ui/art/pixel';
 import { sfx } from '../ui/audio';
+import { badgeTexture } from '../ui/art/synergyArt';
+import { lowFx } from '../ui/theme';
 
 export interface ItemChoiceData {
   /** Título en mayúsculas (FORJA, HUECOS LLENOS…). */
@@ -18,6 +20,8 @@ export interface ItemChoiceData {
   cancel?: string;
   /** T79: opciones apagadas (no se pueden pagar): se ven más tenues y al elegirlas no pasa nada. */
   disabled?: boolean[];
+  /** Sinergias: texto corto por opción («Sinergia: …», «Rompe: …»); las que lo llevan se marcan con la insignia pixel. */
+  hints?: (string | undefined)[];
   /** Índice elegido o -1 si cancelas (Esc, B o la última opción). */
   onChoice: (index: number) => void;
 }
@@ -53,12 +57,21 @@ export class ItemChoiceScene extends Phaser.Scene {
     this.add
       .text(480, 112, this.args.text, { fontFamily: FONT, fontSize: '16px', color: HEX.text, align: 'center', wordWrap: { width: 640 }, lineSpacing: 4 })
       .setOrigin(0.5);
-    const labels = this.args.options.map((o, i) => (i < 9 ? `${i + 1} · ${o}` : o));
+    const hints = this.args.hints ?? [];
+    const labels = this.args.options.map((o, i) => (i < 9 ? `${i + 1} · ${o}` : o) + (hints[i] ? `  ·  ${hints[i]}` : ''));
     labels.push(this.args.cancel ?? 'Cancelar');
     // Hasta 16 objetos + cancelar: filas bajas para que quepan todas sin desplazar
     const many = labels.length > 8;
     this.menu = new MenuList(this, 480, 160, labels, (i) => this.pick(i), { w: 560, h: many ? 22 : 40, gap: many ? 3 : 8, fontSize: many ? 14 : 18 });
     this.args.disabled?.forEach((off, i) => off && this.menu.setDimmed(i, true));
+    // Insignia de sinergia a la izquierda de las filas con pista (late un poco salvo con efectos reducidos)
+    const rowH = many ? 22 : 40;
+    const gap = many ? 3 : 8;
+    hints.forEach((h, i) => {
+      if (!h || i >= this.args.options.length) return;
+      const b = this.add.image(480 - 280 - 16, 160 + i * (rowH + gap), badgeTexture(this)).setScale(many ? 1.6 : 2.4);
+      if (!lowFx()) this.tweens.add({ targets: b, scale: b.scale * 1.2, duration: 450, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    });
     addHelpBar(this, 480, 596, 'Flechas o ratón · Enter o clic · 1-9 elige · Esc: cancelar', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft })
       .setOrigin(0.5);
     (['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'SIX', 'SEVEN', 'EIGHT', 'NINE'] as const).forEach((k, i) =>

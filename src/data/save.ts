@@ -22,6 +22,7 @@ import { parseHistory, withRun, type RunRecord } from './runHistory.ts';
 import { parseKeys, type KeyMap } from './keybinds.ts';
 import { parseSeedBests, seedBest, withSeedBest } from './seedCode.ts';
 import { isCheatRun } from './admin.ts';
+import { parseSynergiesFound, serializeSynergiesFound } from './synergyFx.ts';
 
 export type { StorageLike } from './storage.ts';
 
@@ -455,6 +456,32 @@ export function addDark(id: number, storage: StorageLike | null = browserStorage
   return true;
 }
 
+// --- Libro de sinergias: las descubiertas (ver synergyFx.ts) ---
+
+export const SYNERGIES_KEY = 'pokeisaac.synergies';
+
+export function loadSynergiesFound(storage: StorageLike | null = browserStorage()): string[] {
+  try {
+    return parseSynergiesFound(storage?.getItem(SYNERGIES_KEY) ?? null);
+  } catch {
+    return [];
+  }
+}
+
+/** Apunta sinergias descubiertas. Devuelve las que eran nuevas. Las partidas admin no cuentan. */
+export function addSynergiesFound(ids: readonly string[], storage: StorageLike | null = browserStorage()): string[] {
+  if (isCheatRun()) return [];
+  const list = loadSynergiesFound(storage);
+  const fresh = parseSynergiesFound(JSON.stringify(ids)).filter((id) => !list.includes(id));
+  if (fresh.length === 0) return [];
+  try {
+    storage?.setItem(SYNERGIES_KEY, serializeSynergiesFound([...list, ...fresh]));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+  return fresh;
+}
+
 // --- Misiones diarias y logros (ver missions.ts) ---
 
 export const MISSIONS_KEY = 'pokeisaac.missions';
@@ -666,6 +693,7 @@ export const PROGRESS_KEYS: readonly string[] = [
   TUTORIAL_KEY,
   HISTORY_KEY,
   COMBO_BEST_KEY,
+  SYNERGIES_KEY,
   // Defensa de torres (src/data/towerDefense/progress.ts, TD_KEY)
   'pokeisaac.towerdef',
   'pokeisaac.towerdef.team',

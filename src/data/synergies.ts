@@ -66,11 +66,44 @@ export interface Synergy {
   /** Y un poder de este tipo en las ranuras. */
   powerType?: string;
   apply(s: PlayerStats): void;
+  /** Efectos nuevos que no son números (orbitales, rastros, cadenas…), ver synergyFx.ts. */
+  fx?: readonly SynergyFx[];
+  /** Transformación (3 piezas, muy rara): cambia el aspecto del jugador. */
+  transform?: { color: number; glow: number };
 }
+
+/** Efectos especiales de las sinergias: GameScene los hace de verdad (scenes/synergyRuntime.ts). */
+export type SynergyFx =
+  /** Esferas que giran a tu alrededor, dañan al tocar y paran disparos enemigos. */
+  | { kind: 'orbitals'; count: number; radius: number; dmg: number; color: number }
+  /** Rastro al moverte que daña (fuego quema, hielo congela). */
+  | { kind: 'trail'; element: 'fire' | 'ice'; dmg: number }
+  /** Al golpear, un rayo salta a otros enemigos cercanos. */
+  | { kind: 'chain'; chance: number; jumps: number; range: number; mul: number }
+  /** Cada enemigo derrotado te cura. */
+  | { kind: 'healOnKill'; hp: number }
+  /** Cada disparo se repite un instante después (eco). */
+  | { kind: 'echo'; delay: number; mul: number }
+  /** Aura que daña a quien está cerca. */
+  | { kind: 'aura'; radius: number; dps: number; color: number }
+  /** Probabilidad de devolver los disparos enemigos que te tocan. */
+  | { kind: 'reflect'; chance: number }
+  /** Probabilidad de botín extra al derrotar. */
+  | { kind: 'extraDrop'; chance: number }
+  /** Tus disparos estallan en cada impacto. */
+  | { kind: 'burst'; radius: number; mul: number }
+  /** Tus disparos se parten en varios al impactar. */
+  | { kind: 'split'; count: number; mul: number }
+  /** Tus disparos rebotan hacia otro enemigo al impactar. */
+  | { kind: 'ricochet'; times: number }
+  /** Cada poco sueltas un anillo de disparos. */
+  | { kind: 'nova'; every: number; count: number; mul: number }
+  /** Al recibir daño, onda que empuja y daña. */
+  | { kind: 'retaliate'; radius: number; dmg: number };
 
 const boostStatus = (s: PlayerStats, type: string, mul: number) => void (s.statusBoost[type] = (s.statusBoost[type] ?? 1) * mul);
 
-export const SYNERGIES: readonly Synergy[] = [
+const BASIC_SYNERGIES: readonly Synergy[] = [
   { id: 'fuego-interior', name: 'Fuego interior', description: 'Carbón + poder de Fuego: quemaduras el doble de fuertes.',
     all: ['carbon'], powerType: 'fire', apply: (s) => boostStatus(s, 'fire', 2) },
   { id: 'marea', name: 'Marea', description: 'Agua Mística + poder de Agua: empapar dura y frena el doble.',
@@ -108,6 +141,61 @@ export const SYNERGIES: readonly Synergy[] = [
   { id: 'superviviente', name: 'Superviviente', description: 'Mineral Evolutivo + Hierba Mental: un 15 % menos de daño y otro escudo.',
     all: ['mineral-evolutivo', 'hierba-mental'], apply: (s) => void ((s.damageTaken *= 0.85), (s.shieldPerRoom += 1)) },
 ];
+
+const nothing = () => undefined;
+
+/**
+ * Sinergias que transforman (T-sinergias): cada una con un efecto nuevo y visible, no solo números.
+ * Recetas de dos piezas (objetos y, alguna, un poder del tipo).
+ */
+export const COMBO_SYNERGIES: readonly Synergy[] = [
+  { id: 'rebote-eterno', name: 'Rebote Eterno', description: 'Pelota Saltarina + Bola Luminosa: al impactar, tu disparo salta hacia otro enemigo (2 veces).',
+    all: ['pelota-saltarina', 'bola-luminosa'], apply: nothing, fx: [{ kind: 'ricochet', times: 2 }] },
+  { id: 'pirotecnia', name: 'Pirotecnia', description: 'Piedra Dura + Bola Férrea: tus disparos estallan en cada enemigo que atraviesan.',
+    all: ['piedra-dura', 'bola-ferrea'], apply: nothing, fx: [{ kind: 'burst', radius: 60, mul: 0.45 }] },
+  { id: 'danza-lunar', name: 'Danza Lunar', description: 'Piedra Lunar + Polvo Brillo: dos lunas giran a tu alrededor, dañan y paran disparos.',
+    all: ['piedra-lunar', 'polvo-brillo'], apply: nothing, fx: [{ kind: 'orbitals', count: 2, radius: 62, dmg: 9, color: 0xcfd8ff }] },
+  { id: 'rueda-fuego', name: 'Rueda Fuego', description: 'Carbón + Pluma Ligera: dejas un rastro de fuego que quema al pisarlo.',
+    all: ['carbon', 'pluma-ligera'], apply: nothing, fx: [{ kind: 'trail', element: 'fire', dmg: 6 }] },
+  { id: 'pista-helada', name: 'Pista Helada', description: 'Hielo Eterno + Polvo Veloz: dejas un rastro de hielo que congela.',
+    all: ['hielo-eterno', 'polvo-veloz'], apply: nothing, fx: [{ kind: 'trail', element: 'ice', dmg: 4 }] },
+  { id: 'rayo-cadena', name: 'Rayo en Cadena', description: 'Imán + Lupa Doble: a veces, un rayo salta del golpe a 3 enemigos cercanos.',
+    all: ['iman', 'lupa-doble'], apply: nothing, fx: [{ kind: 'chain', chance: 0.3, jumps: 3, range: 220, mul: 0.6 }] },
+  { id: 'gigadrenado', name: 'Gigadrenado', description: 'Semilla Milagro + poder de Planta: cada enemigo derrotado te cura 3 PS.',
+    all: ['semilla-milagro'], powerType: 'grass', apply: nothing, fx: [{ kind: 'healOnKill', hp: 3 }] },
+  { id: 'eco-psiquico', name: 'Eco Psíquico', description: 'Cuchara Torcida + Reloj de Arena: cada disparo se repite como un eco más débil.',
+    all: ['cuchara-torcida', 'reloj-arena'], apply: nothing, fx: [{ kind: 'echo', delay: 170, mul: 0.5 }] },
+  { id: 'aura-esfera', name: 'Aura Esfera', description: 'Cinturón Negro + Piedra Escudo: un aura de lucha daña a los que se acercan.',
+    all: ['cinturon-negro', 'piedra-escudo'], apply: nothing, fx: [{ kind: 'aura', radius: 95, dps: 14, color: 0x6ab0ff }] },
+  { id: 'capa-magica', name: 'Capa Mágica', description: 'Gafas Protectoras + Hechizo: un 30 % de los disparos enemigos que te tocan rebotan contra ellos.',
+    all: ['gafas-protectoras', 'hechizo'], apply: nothing, fx: [{ kind: 'reflect', chance: 0.3 }] },
+  { id: 'dia-de-pago', name: 'Día de Pago', description: 'Moneda Amuleto + Zahorí: un 25 % de botín extra al derrotar enemigos.',
+    all: ['moneda-amuleto', 'zahori'], apply: nothing, fx: [{ kind: 'extraDrop', chance: 0.25 }] },
+  { id: 'bala-semilla', name: 'Bala Semilla', description: 'Púa Tóxica + Doble Equipo: tus disparos se parten en 3 semillas al impactar.',
+    all: ['pua-toxica', 'doble-equipo'], apply: nothing, fx: [{ kind: 'split', count: 3, mul: 0.4 }] },
+  { id: 'furia-dragon', name: 'Furia Dragón', description: 'Colmillo Dragón + poder de Dragón: cada 3 s sueltas un anillo de 8 llamas dragón.',
+    all: ['colmillo-dragon'], powerType: 'dragon', apply: nothing, fx: [{ kind: 'nova', every: 3000, count: 8, mul: 0.7 }] },
+  { id: 'represalia', name: 'Represalia', description: 'Banda Focus + Chaleco Asalto: al recibir daño sueltas una onda que golpea a todos cerca.',
+    all: ['banda-focus', 'chaleco-asalto'], apply: nothing, fx: [{ kind: 'retaliate', radius: 170, dmg: 40 }] },
+];
+
+/** Transformaciones: tres piezas, muy raras y potentes, con aspecto propio en el jugador. */
+export const TRANSFORMATIONS: readonly Synergy[] = [
+  { id: 'fuego-sagrado', name: 'Fuego Sagrado', description: 'Carbón + Concha Campana + Orbe Vital: te envuelven llamas sagradas que queman, dejas fuego al andar y cada baja cura.',
+    all: ['carbon', 'concha-campana', 'orbe-vital'], transform: { color: 0xff7a2a, glow: 0xffe066 },
+    apply: (s) => void ((s.damage *= 1.15), boostStatus(s, 'fire', 1.5)),
+    fx: [{ kind: 'aura', radius: 115, dps: 22, color: 0xff8a3a }, { kind: 'trail', element: 'fire', dmg: 8 }, { kind: 'healOnKill', hp: 2 }] },
+  { id: 'tormenta-eterna', name: 'Tormenta Eterna', description: 'Imán + Telescopio + Doble Equipo: cada golpe encadena rayos y tres chispas te orbitan.',
+    all: ['iman', 'telescopio', 'doble-equipo'], transform: { color: 0xffe14a, glow: 0x9ad7ff },
+    apply: (s) => void ((s.fireDelay *= 0.9), boostStatus(s, 'electric', 1.5)),
+    fx: [{ kind: 'chain', chance: 1, jumps: 3, range: 240, mul: 0.5 }, { kind: 'orbitals', count: 3, radius: 70, dmg: 12, color: 0xffe14a }] },
+  { id: 'velo-espectral', name: 'Velo Espectral', description: 'Hechizo + Polvo Brillo + Cuerda Huida: medio fantasma; esquivas más, devuelves disparos y cuatro almas te rodean.',
+    all: ['hechizo', 'polvo-brillo', 'cuerda-huida'], transform: { color: 0x9a6ad8, glow: 0xe0c8ff },
+    apply: (s) => void ((s.dodge = Math.min(0.6, s.dodge + 0.12)), (s.speed *= 1.08)),
+    fx: [{ kind: 'reflect', chance: 0.45 }, { kind: 'orbitals', count: 4, radius: 78, dmg: 10, color: 0xb28ae8 }] },
+];
+
+export const SYNERGIES: readonly Synergy[] = [...BASIC_SYNERGIES, ...COMBO_SYNERGIES, ...TRANSFORMATIONS];
 
 export function synergyActive(syn: Synergy, passives: readonly string[], powerTypes: readonly string[]): boolean {
   const have = new Set(passives);

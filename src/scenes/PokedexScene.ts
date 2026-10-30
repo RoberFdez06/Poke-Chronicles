@@ -9,6 +9,7 @@ import { loadCollectionIndex, loadSpeciesIndex } from '../data/speciesIndex';
 import { typeNameEs } from '../data/types';
 import { cry } from '../ui/audio';
 import { addBackButton } from '../ui/cards';
+import { bookTexture } from '../ui/art/synergyArt';
 import { FilterBar } from '../ui/collection';
 import { NavInput, PadButtons } from '../ui/nav';
 import { COLORS, drawBox, fadeIn, FONT, goTo, hex, HEX, RARITY_COLORS, shorten, strokePixelFrame } from '../ui/theme';
@@ -48,7 +49,7 @@ export class PokedexScene extends Phaser.Scene {
   private filters?: FilterBar;
   private nav!: NavInput;
   private pad!: PadButtons;
-  private keys!: Record<'Q' | 'E' | 'R' | 'T' | 'F', Key>;
+  private keys!: Record<'Q' | 'E' | 'R' | 'T' | 'F' | 'G', Key>;
   private grid?: Phaser.GameObjects.Container;
   private tiles: { box: Phaser.GameObjects.Container; glow: Phaser.GameObjects.Graphics; sprite: Phaser.GameObjects.GameObject & { y: number } }[] = [];
   /** Ficha grande abierta (Enter, A o clic sobre un Pokémon). */
@@ -89,8 +90,17 @@ export class PokedexScene extends Phaser.Scene {
     this.card = undefined;
     this.nav = new NavInput(this);
     this.pad = new PadButtons(this);
-    this.keys = this.input.keyboard!.addKeys('Q,E,R,T,F', false) as PokedexScene['keys'];
+    this.keys = this.input.keyboard!.addKeys('Q,E,R,T,F,G', false) as PokedexScene['keys'];
     addBackButton(this, () => this.goBack());
+    // Libro de sinergias: botón arriba a la derecha (clic), G en el teclado o pulsando el stick izquierdo (L3)
+    if (!this.pickFor) {
+      const bx = 960 - 82;
+      const bg = this.add.graphics().setDepth(5);
+      drawBox(bg, bx - 70, 22, 140, 36, { radius: 8 });
+      this.add.image(bx - 50, 40, bookTexture(this)).setScale(2).setDepth(6);
+      this.add.text(bx + 12, 40, 'Sinergias', { fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5).setDepth(6);
+      this.add.zone(bx, 40, 140, 36).setInteractive({ useHandCursor: true }).setDepth(7).on('pointerdown', () => this.openBook());
+    }
     const loading = this.add.text(480, 320, 'Cargando Pokédex…', { fontFamily: FONT, fontSize: '28px', color: '#ffffff' }).setOrigin(0.5);
     this.boot(loading).catch((err) => loading.setText('No se pudo cargar la lista de Pokémon.\n' + String(err)));
   }
@@ -139,7 +149,7 @@ export class PokedexScene extends Phaser.Scene {
       t.on('pointerout', () => t.setColor('#ffffff'));
       t.on('pointerdown', () => !this.filters?.searching && this.turnPage(d));
     }
-    addHelpBar(this, 480, 620, (this.pickFor ? 'Flechas: mover · Enter o clic: elegir · ' : 'Flechas: mover · Enter o clic: ficha · ') + 'Q E: región · R: rareza · T: tipo · F: buscar · Esc: volver', {
+    addHelpBar(this, 480, 620, (this.pickFor ? 'Flechas: mover · Enter o clic: elegir · ' : 'Flechas: mover · Enter o clic: ficha · ') + 'Q E: región · R: rareza · T: tipo · F: buscar · G: sinergias · Esc: volver', {
         fontFamily: FONT,
         fontSize: '13px',
         color: '#ffffff',
@@ -147,6 +157,12 @@ export class PokedexScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setAlpha(0.75);
     this.applyFilters();
+  }
+
+  private openBook() {
+    if (this.leaving || this.pickFor || this.filters?.searching) return;
+    this.leaving = true;
+    goTo(this, 'SynergyBook', { from: 'Pokedex' });
   }
 
   private goBack() {
@@ -344,6 +360,7 @@ export class PokedexScene extends Phaser.Scene {
     const J = Phaser.Input.Keyboard.JustDown;
     const k = this.keys;
     const keys = { q: J(k.Q), e: J(k.E), r: J(k.R), t: J(k.T), f: J(k.F) };
+    if ((J(k.G) || pad.has('L3')) && !this.card && !this.filters?.searching) return this.openBook();
     if (!this.filters) {
       if (s.back) this.goBack();
       return;

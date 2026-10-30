@@ -133,6 +133,10 @@ import {
   isCharged,
   SYNERGIES,
 } from '../data/synergies';
+import { emptyFx, hintText, nearSynergies, isTransformation, newDiscoveries, recipeText, synergiesBrokenBy, synergiesCompletedBy, synergyById, synergyFxFor, type SynergyFxState } from '../data/synergyFx';
+import { addSynergiesFound, loadSynergiesFound } from '../data/save';
+import { SynergyRuntime } from './synergyRuntime';
+import { badgeTexture, discoveryBurst, retaliateWave } from '../ui/art/synergyArt';
 import { chainBreak, chainHit, chainOdds, chainVisible, newShinyChain, rollShiny, SHINY_ENEMY, SHINY_ODDS, type ShinyChain } from '../data/shiny';
 import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
@@ -161,7 +165,7 @@ import { loadSpeciesIndex as loadSpeciesFacts } from '../data/speciesIndex';
 import { MODE_LABEL as ADMIN_MODE_LABEL, RUN_MODES, TOWER_FLOORS } from '../data/modes';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
 import { fallConceptFx, sacredFlame } from '../ui/art/fallArt';
-import { pixRing } from '../ui/art/pixelFx';
+import { pixBlast, pixRing } from '../ui/art/pixelFx';
 import { armMuzzle, drawBossLaser, drawShockRing, hazardBlast, hazardWarn, laserWarn, patternMuzzle, patternWarn, ringWarn, shockLaunch, shockWarn, shotTrails, spiralEndBurst, spiralWarn, vortexCharge } from '../ui/art/bossPatternFx';
 import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
 import { dynamaxBurst, teraBurst, zImpactFx, zMoveFx, zStarFx } from '../ui/art/formsFx';
@@ -907,6 +911,11 @@ export class GameScene extends Phaser.Scene {
   private activeHud?: { g: Phaser.GameObjects.Graphics; text: Phaser.GameObjects.Text; shown: string };
   /** Sinergias activas (ids) para avisar cuando aparece una nueva. */
   private synergies: string[] = [];
+  /** Efectos especiales de las sinergias activas y quien los hace en la partida (synergyRuntime.ts). */
+  private synFx: SynergyFxState = emptyFx();
+  private synRt?: SynergyRuntime;
+  /** Sinergias ya descubiertas (Libro de sinergias, se guarda aparte de la partida). */
+  private synFound: string[] = [];
   /** Ataque X: hasta cuándo dura el daño extra. */
   private buffUntil = 0;
   /** Escudo de esta sala, Banda Focus de este piso y Hierba Blanca ya usada. */
@@ -924,7 +933,7 @@ export class GameScene extends Phaser.Scene {
   private overHud = false;
   /** Modo admin (data/admin.ts): lo elegido para este piso, valores del panel, F9 y el distintivo del HUD. */
   private adminPick: AdminFloorPick | null = null;
-  private adminUi = { floor: 1, boss: 150, biome: 0, form: 0, mode: 0 };
+  private adminUi = { floor: 1, boss: 150, biome: 0, form: 0, mode: 0, syn: 0 };
   private adminKey?: Phaser.Input.Keyboard.Key;
   private adminPadPrev = false;
   private adminBadge?: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; shown: string };
@@ -1044,6 +1053,8 @@ export class GameScene extends Phaser.Scene {
     this.lbPrev = false;
     this.activeHud = undefined;
     this.synergies = [];
+    this.synFx = emptyFx();
+    this.synFound = loadSynergiesFound();
     this.buffUntil = 0;
     this.shieldLeft = 0;
     this.lowHpUsed = false;
@@ -1644,6 +1655,8 @@ export class GameScene extends Phaser.Scene {
     const types = this.slots.flatMap((m) => (m ? [m.type] : []));
     const { stats, active } = applySynergies(computeStats(this.passives, this.base, this.itemLevels), this.passives, types);
     this.synergies = active.map((syn) => syn.id);
+    this.synFx = synergyFxFor(this.synergies);
+    this.synRt?.set(this.synFx);
     this.ability?.apply?.(stats);
     // Altares (T39): los PS máximos dados se pierden para el resto de la partida
     if (this.hpSacrificed > 0) stats.maxHp = Math.max(1, stats.maxHp - this.hpSacrificed);
@@ -2926,6 +2939,11 @@ export class GameScene extends Phaser.Scene {
     this.shots = this.physics.add.group();
     this.foeShots = this.physics.add.group();
     this.host = this.makeHost();
+    // Sinergias que transforman: orbitales, rastros, aura… (scenes/synergyRuntime.ts)
+    this.synRt?.destroy();
+    this.synRt = new SynergyRuntime(this.synergyHost());
+    this.synRt.set(this.synFx);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (this.synRt?.destroy(), (this.synRt = undefined)));
 
     this.physics.add.collider(this.player, [this.walls, this.doorBlocks, this.bushes]);
     // Con Levitación cruzas los agujeros
@@ -2942,6 +2960,8 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.foeShots, [this.walls, this.doorBlocks], (s) => asSprite(s).destroy());
     this.physics.add.overlap(this.foeShots, this.bushes, (s) => asSprite(s).destroy());
     this.physics.add.overlap(this.player, this.foeShots, (_p, s) => {
+      // Capa Mágica / Velo Espectral: a veces el disparo vuelve contra quien lo lanzó
+      if (this.synergyReflect(asSprite(s))) return;
       this.hurtPlayer(asSprite(s));
       asSprite(s).destroy();
     });
@@ -3896,9 +3916,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         ...[...counts].map(([id, n]) => this.passiveName(id) + (n > 1 ? ` x${n}` : '')),
         ...(this.passives.includes(TERA_GEM_ID) ? [`Tipo Tera: ${this.teraPick ? typeNameEs(this.teraPick) : 'automático'}`] : []),
         ...(this.active ? [`Activo: ${activeById(this.active.id)?.name} (${this.active.charge}/${activeById(this.active.id)?.charge})`] : []),
-        ...this.synergies.map((id) => `¡Sinergia! ${SYNERGIES.find((syn) => syn.id === id)?.name}`),
+        ...this.synergies.map((id) => `${SYNERGIES.find((syn) => syn.id === id)?.transform ? '¡Transformación!' : '¡Sinergia!'} ${SYNERGIES.find((syn) => syn.id === id)?.name}`),
       ],
       moves: [...this.slots],
+      synergyNear: nearSynergies(this.passives, this.slots.flatMap((m) => (m ? [m.type] : [])), this.synFound).map((n) => n.label),
+      synergyActive: [...this.synergies],
       roomsCleared: this.cleared.size,
       coins: this.coins,
       keys: this.keys,
@@ -4588,7 +4610,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Cada objeto con su dibujo (gafas, garra, lupa…); los poderes, un disco de su tipo
     const tex = item.kind === 'passive' ? itemIconKey(item.item.id) : item.kind === 'move' ? iconKey('disc') : itemIconKey(item.id);
     const s = this.pickups.create(x, y, this.textures.exists(tex) ? tex : iconKey('bag')) as Sprite;
-    s.setScale(3).setDepth(2).setData('item', item).setData('entry', entry);
+    s.setScale(3).setDepth(2).setData('item', item).setData('entry', entry).setData('baseX', x).setData('baseY', y);
     if (item.kind === 'move') s.setTint(color);
     const label = this.add
       .text(x, y - 38, name, { fontFamily: FONT, fontSize: '16px', color: '#2b3a67' })
@@ -4609,6 +4631,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         }
       }
     }
+    // Sinergias: si cogerlo completa una, el nombre lo dice («Sinergia: …») con la insignia pixel al lado
+    if (item.kind === 'passive') this.refreshPickupHints();
     const bob = () => s.active && this.tweens.add({ targets: s, y: y - 8, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     if (hop) {
       // T54: cae desde arriba y rebota en su sitio (que ya es libre y dentro de la sala). Sin atracción: al cogerlo
@@ -4985,12 +5009,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.stats = this.calcStats();
       this.notify(`${pretty(item.move.name)}\nTecla ${slot + 1}`, { kind: 'item', icon: 'disc', tint: typeColor(item.move.type) });
     }
-    // ¡Sinergia! nueva (objeto + objeto o objeto + poder)
-    const fresh = this.synergies.filter((id) => !before.has(id));
-    for (const id of fresh) {
-      const syn = SYNERGIES.find((x) => x.id === id);
-      if (syn) this.time.delayedCall(1400, () => !this.ended && this.notify(`¡Sinergia!\n${syn.name}: ${syn.description}`, { kind: 'reward', icon: 'bag' }));
-    }
+    // ¡Sinergia! nueva (objeto + objeto o objeto + poder): aviso, destello y, si es la primera vez, al Libro
+    this.announceSynergies(before);
+    this.refreshPickupHints();
     this.refreshInventory();
     this.saveNow();
   }
@@ -5017,7 +5038,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * Abre la lista de ItemChoiceScene con el juego en pausa (como askSlot). Devuelve false si no se puede abrir.
    * `then(i)` recibe la opción o -1; se llama ya con la escena reanudada.
    */
-  private openItemChoice(title: string, text: string, options: string[], then: (i: number) => void, cancel?: string, disabled?: boolean[]): boolean {
+  private openItemChoice(title: string, text: string, options: string[], then: (i: number) => void, cancel?: string, disabled?: boolean[], hints?: (string | undefined)[]): boolean {
     if (this.itemChoiceOpen || this.swapOpen || !this.scene.manager.keys['ItemChoice']) return false;
     this.itemChoiceOpen = true;
     this.player?.setVelocity(0, 0);
@@ -5027,6 +5048,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       options,
       cancel,
       disabled,
+      hints,
       onChoice: (i: number) => {
         this.scene.stop('ItemChoice');
         this.scene.resume();
@@ -5049,9 +5071,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Huecos llenos: pregunta qué objeto soltar para coger `item`. Si no se puede preguntar, cuenta como cancelar. */
   private askDropFor(item: PassiveItem, then: () => void, cancel: () => void) {
     const owned = distinctPassives(this.passives);
+    // Sinergias: lo que completaría el objeto nuevo y lo que rompería soltar cada uno
+    const types = this.slots.flatMap((m) => (m ? [m.type] : []));
+    const gain = this.synergyHintFor(item.id);
     const ok = this.openItemChoice(
       'HUECOS LLENOS',
-      `Objetos ${slotsLabel(this.passives, this.bossesBeaten)}: ¿cuál sueltas para coger ${item.name}?\nEl que sueltes se queda en el suelo.`,
+      `Objetos ${slotsLabel(this.passives, this.bossesBeaten)}: ¿cuál sueltas para coger ${item.name}?\nEl que sueltes se queda en el suelo.${gain ? `\n${item.name} → ${gain}` : ''}`,
       owned.map((id) => this.passiveName(id, true)),
       (i) => {
         if (i < 0) return cancel();
@@ -5059,6 +5084,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         then();
       },
       `Dejar ${item.name} en el suelo`,
+      undefined,
+      owned.map((id) => hintText(synergiesBrokenBy(id, this.passives, types), 'Rompe')),
     );
     if (!ok) cancel();
   }
@@ -7352,6 +7379,32 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.badgeShown = '';
   }
 
+  /** Panel admin: da las piezas de una sinergia (objetos sin mirar los huecos y, si pide poder, uno de ese tipo). */
+  private adminGiveSynergy(id: string): string {
+    const syn = synergyById(id);
+    if (!syn) return 'No existe esa sinergia.';
+    this.adminCheat();
+    const before = new Set(this.synergies);
+    const want = [...(syn.all ?? []), ...(syn.anyOf ? syn.anyOf.ids.slice(0, syn.anyOf.count) : [])];
+    for (const pid of want) if (!this.passives.includes(pid)) this.passives.push(pid);
+    let note = '';
+    if (syn.powerType && !this.slots.some((m) => m?.type === syn.powerType)) {
+      const move = this.movePool.find((m) => m.type === syn.powerType);
+      if (move) {
+        const free = this.slots.indexOf(null);
+        const slot = free !== -1 ? free : 0;
+        this.slots[slot] = move;
+        this.slotReady[slot] = 0;
+      } else note = ` Falta un poder de ese tipo (tu Pokémon no tiene: ${recipeText(syn)}).`;
+    }
+    this.stats = this.calcStats();
+    this.hp = Math.min(this.stats.maxHp, Math.max(this.hp, 1));
+    this.announceSynergies(before);
+    this.refreshPickupHints();
+    this.refreshInventory();
+    return `${syn.name}: ${recipeText(syn)}.${note}`;
+  }
+
   /** Activa o quita la variante oscura del jugador (solo para probar). */
   private adminDark(): string {
     this.adminCheat();
@@ -7384,6 +7437,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       { label: () => `Bioma ◀ ${BIOMES[u.biome].name} ▶`, adjust: (d) => (u.biome = stepValue(u.biome, d, 0, BIOMES.length - 1)) },
       { label: () => `Ir al piso ${u.floor} con ese jefe y bioma`, run: () => this.adminGoFloor(u.floor, { bossId: u.boss, biomeId: BIOMES[u.biome].id }) },
       { label: () => 'Ir a la sala del jefe de este piso', run: () => this.adminToBossRoom() },
+      { header: true, label: () => 'Sinergias' },
+      { label: () => `Sinergia ◀ ${SYNERGIES[u.syn].name}${SYNERGIES[u.syn].transform ? ' (transformación)' : ''} ▶  (Enter: dar sus piezas)`, adjust: (d) => (u.syn = stepValue(u.syn, d, 0, SYNERGIES.length - 1)), run: () => this.adminGiveSynergy(SYNERGIES[u.syn].id) },
+      { label: () => 'Quitar todos los objetos pasivos', run: () => (this.adminCheat(), (this.passives = []), (this.stats = this.calcStats()), (this.hp = Math.min(this.hp, this.stats.maxHp)), this.refreshInventory(), this.refreshPickupHints(), 'Bolsa vacía.') },
       { label: () => 'Sacar aquí el jefe de este piso', run: () => (this.adminCheat(), this.spawnBoss(), `Jefe ${this.bossName}.`) },
       { label: () => `Partida nueva en modo ◀ ${ADMIN_MODE_LABEL[RUN_MODES[u.mode]]} ▶`, adjust: (d) => (u.mode = stepValue(u.mode, d, 0, RUN_MODES.length - 1)), run: () => this.adminNewRun(RUN_MODES[u.mode]) },
     ];
@@ -9574,6 +9630,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (Phaser.Input.Keyboard.JustDown(this.activeKey) || (lbNow && !this.lbPrev) || this.touch?.consume('active')) this.useActive();
     this.lbPrev = lbNow;
     if (this.stats.homing > 0) this.steerShots(delta);
+    this.synRt?.update(time);
     this.stepLootAll(time, delta);
     this.updateDarkness();
     if (tickAdrenaline(this.adrenaline, delta, this.cleared.has(this.current.id))) this.adrenalineHud && (this.adrenalineHud.shown = '');
@@ -9941,7 +9998,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       return;
     }
     if (this.fxBudget.take(this.time.now)) muzzle(this, this.player.x, this.player.y, dir.x, dir.y, opts.color);
-    for (let k = 0; k < n; k++) this.spawnShot(dir, (k - (n - 1) / 2) * SPREAD, opts);
+    for (let k = 0; k < n; k++) this.spawnShot(dir, (k - (n - 1) / 2) * SPREAD, opts).setData('basic', true);
+    // Eco Psíquico: el disparo se repite un instante después, más débil y translúcido
+    const echo = this.synFx.echo;
+    if (echo) {
+      const d0 = dir.clone();
+      this.time.delayedCall(echo.delay, () => {
+        if (this.ended || !this.player?.active) return;
+        for (let k = 0; k < n; k++) this.spawnShot(d0, (k - (n - 1) / 2) * SPREAD, { ...opts, damage: opts.damage * echo.mul }).setAlpha(0.55).setTint(0xe0a0ff);
+      });
+    }
     // Cola Gemela: también hacia atrás
     for (let k = 0; k < s.backShots; k++) this.spawnShot(dir.clone().negate(), (k - (s.backShots - 1) / 2) * SPREAD, opts);
   }
@@ -9985,14 +10051,181 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const sv = (shot.body as Body | null)?.velocity;
     // T77: el cargado de agua (y otros) empuja más
     const pushMul = (shot.getData('pushMul') as number | undefined) ?? 1;
-    const hp = this.hitEnemy(enemy, shot.getData('dmg') as number, status, shot.x, shot.y, (shot.getData('pcolor') as number | undefined) ?? 0xffffff, sv?.clone().scale(pushMul));
+    const dmg = shot.getData('dmg') as number;
+    const hp = this.hitEnemy(enemy, dmg, status, shot.x, shot.y, (shot.getData('pcolor') as number | undefined) ?? 0xffffff, sv?.clone().scale(pushMul));
     if (hp === undefined) return;
+    const basic = !!shot.getData('basic');
+    if (basic) this.synergyOnHit(shot, enemy, dmg);
 
     const pierce = shot.getData('pierce') as number;
     if (pierce > 0) shot.setData('pierce', pierce - 1);
+    else if (basic && this.synergyRicochet(shot, enemy)) return;
     else {
+      if (basic) this.synergySplit(shot, dmg);
       this.popShot(shot);
       shot.destroy();
+    }
+  }
+
+  // --- Sinergias que transforman (data/synergyFx.ts, scenes/synergyRuntime.ts) ---
+
+  /** Lo que necesita synergyRuntime de la partida. */
+  private synergyHost() {
+    return {
+      scene: this as Phaser.Scene,
+      player: () => this.player as Sprite | undefined,
+      enemies: () => (this.enemies?.getChildren() ?? []) as Sprite[],
+      foeShots: () => (this.foeShots?.getChildren() ?? []) as Sprite[],
+      hit: (e: Sprite, dmg: number, type: string | undefined, sx: number, sy: number, color: number) => void (e.active && this.hitEnemy(e, dmg, type, sx, sy, color)),
+      shotDamage: () => this.stats.damage * this.dmgMul(),
+      ring: (count: number, dmg: number) => this.synergyRing(count, dmg),
+      live: () => !this.ended && !this.transitioning && this.frozenSince === undefined,
+      canFx: () => this.fxBudget.take(this.time.now),
+      low: () => lowFx(),
+    };
+  }
+
+  /** Capa Mágica: devuelve el disparo enemigo (destruye el suyo y lanza uno tuyo hacia atrás). */
+  private synergyReflect(s: Sprite): boolean {
+    const chance = this.synFx.reflect;
+    if (chance <= 0 || !s.active || this.time.now < this.invulnUntil || Math.random() >= chance) return false;
+    const v = (s.body as Body | null)?.velocity;
+    const back = v && v.lengthSq() > 0 ? v.clone().normalize().negate() : new Phaser.Math.Vector2(0, -1);
+    const type = (s.getData('ptype') as string | undefined) ?? 'normal';
+    const dmg = Math.max(this.stats.damage, ((s.getData('dmg') as number | undefined) ?? 10) * 2);
+    this.spawnShot(back, 0, { damage: dmg, speed: 560, life: 900, size: 0.8, color: 0xb28ae8, type, pierce: 1, bounces: 0, from: { x: s.x, y: s.y } });
+    s.destroy();
+    this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 150);
+    if (this.fxBudget.take(this.time.now)) {
+      this.popup(this.player.x, this.player.y - 50, '¡Reflejo!', 0xb28ae8);
+      if (!lowFx()) pixRing(this, this.player.x, this.player.y, 48, 0xb28ae8, 220, 7);
+    }
+    return true;
+  }
+
+  /** Daño en área de las sinergias, sin estado (el tipo Normal aturdiría con cada golpe). */
+  private synergyArea(x: number, y: number, r: number, dmg: number, color: number, skip?: Sprite) {
+    for (const c of [...this.enemies.getChildren()]) {
+      const e = c as Sprite;
+      if (!e.active || e === skip) continue;
+      const er = ((e.getData('size') as number | undefined) ?? 60) * 0.35;
+      if (Phaser.Math.Distance.Between(x, y, e.x, e.y) > r + er) continue;
+      const push = new Phaser.Math.Vector2(e.x - x, e.y - y);
+      this.hitEnemy(e, dmg, undefined, e.x, e.y, color, push);
+    }
+  }
+
+  /** Furia Dragón: anillo de llamas dragón alrededor del jugador. */
+  private synergyRing(count: number, dmg: number) {
+    if (!this.player?.active) return;
+    const base = new Phaser.Math.Vector2(1, 0);
+    const opts: ShotOpts = { damage: dmg, speed: this.stats.shotSpeed * 0.8, life: 700, size: 0.8, color: typeColor('dragon'), type: 'dragon', pierce: 1, bounces: 0 };
+    for (let k = 0; k < count; k++) this.spawnShot(base, (k / count) * Math.PI * 2, opts);
+    if (!lowFx()) pixRing(this, this.player.x, this.player.y, 70, typeColor('dragon'), 260, 6);
+  }
+
+  /** Al impactar un disparo normal: Pirotecnia (estalla) y Rayo en Cadena. */
+  private synergyOnHit(shot: Sprite, enemy: Sprite, dmg: number) {
+    const fx = this.synFx;
+    if (fx.burst && !shot.getData('synChild')) {
+      const { radius, mul } = fx.burst;
+      if (lowFx()) {
+        const c = this.add.circle(shot.x, shot.y, radius, 0xff8a3a, 0.25).setDepth(7);
+        this.time.delayedCall(120, () => c.destroy());
+      } else if (this.fxBudget.take(this.time.now)) pixBlast(this, shot.x, shot.y, radius, 0xff8a3a);
+      this.synergyArea(shot.x, shot.y, radius, dmg * mul, 0xff8a3a, enemy);
+    }
+    if (fx.chain && enemy.active) this.synRt?.chainFrom(enemy, dmg);
+  }
+
+  /** Rebote Eterno: el disparo busca otro enemigo en vez de romperse. Devuelve true si rebota. */
+  private synergyRicochet(shot: Sprite, from: Sprite): boolean {
+    const max = this.synFx.ricochet;
+    const used = (shot.getData('ric') as number | undefined) ?? 0;
+    if (max <= 0 || used >= max) return false;
+    const hit = shot.getData('hit') as Set<Sprite>;
+    let best: Sprite | undefined;
+    let bestD = 420;
+    for (const c of this.enemies.getChildren()) {
+      const e = c as Sprite;
+      if (!e.active || hit.has(e) || e === from) continue;
+      const d = Phaser.Math.Distance.Between(shot.x, shot.y, e.x, e.y);
+      if (d < bestD) {
+        bestD = d;
+        best = e;
+      }
+    }
+    if (!best) return false;
+    shot.setData('ric', used + 1);
+    const speed = Math.max(300, (shot.body as Body | null)?.velocity.length() ?? 400);
+    const a = Math.atan2(best.y - shot.y, best.x - shot.x);
+    shot.setVelocity(Math.cos(a) * speed, Math.sin(a) * speed).setRotation(a);
+    if (this.fxBudget.take(this.time.now)) hitSpark(this, shot.x, shot.y, 0xfff59d, 4, 0.8);
+    return true;
+  }
+
+  /** Bala Semilla: el disparo se parte en varias semillas que salen en abanico. */
+  private synergySplit(shot: Sprite, dmg: number) {
+    const sp = this.synFx.split;
+    if (!sp || shot.getData('synChild')) return;
+    const v = (shot.body as Body | null)?.velocity;
+    const base = v && v.lengthSq() > 0 ? v.clone().normalize() : new Phaser.Math.Vector2(1, 0);
+    const hit = shot.getData('hit') as Set<Sprite>;
+    for (let k = 0; k < sp.count; k++) {
+      const ang = (k - (sp.count - 1) / 2) * 0.7;
+      const child = this.spawnShot(base, ang, { damage: dmg * sp.mul, speed: 460, life: 380, size: 0.45, color: typeColor('grass'), type: 'grass', pierce: 0, bounces: 0, from: { x: shot.x, y: shot.y } });
+      child.setData('synChild', true).setData('basic', true).setData('hit', new Set(hit));
+    }
+  }
+
+  /** Mira si hay sinergias nuevas tras coger algo: aviso (columna de avisos), destello y Libro de sinergias. */
+  private announceSynergies(before: ReadonlySet<string>) {
+    const fresh = this.synergies.filter((id) => !before.has(id));
+    if (fresh.length === 0) return;
+    const firstTime = new Set(newDiscoveries(this.synFound, fresh));
+    this.synFound = [...this.synFound, ...firstTime];
+    addSynergiesFound([...firstTime]);
+    fresh.forEach((id, k) => {
+      const syn = synergyById(id);
+      if (!syn) return;
+      const isNew = firstTime.has(id);
+      const tr = isTransformation(syn);
+      this.time.delayedCall(900 + k * 700, () => {
+        if (this.ended) return;
+        const head = tr ? (isNew ? '¡Transformación descubierta!' : '¡Transformación!') : isNew ? '¡Sinergia descubierta!' : '¡Sinergia!';
+        this.notify(`${head}\n${syn.name}: ${syn.description.replace(/^[^:]*:\s*/, '')}`, { kind: 'reward', icon: 'star', ms: tr ? 6000 : 4500 });
+        sfx(tr || isNew ? 'levelup' : 'pickup');
+        if (this.player?.active) discoveryBurst(this, this.player.x, this.player.y, syn.transform?.color ?? 0xffd34d, lowFx(), tr);
+        if (tr && !lowFx()) this.cameras.main.flash(260, 255, 230, 160);
+      });
+    });
+  }
+
+  /** Texto de pista de un objeto del suelo: qué sinergia completaría con lo que llevas. */
+  private synergyHintFor(itemId: string): string | undefined {
+    const types = this.slots.flatMap((m) => (m ? [m.type] : []));
+    return hintText(synergiesCompletedBy(itemId, this.passives, types).map((s) => (this.synFound.includes(s.id) ? s : { ...s, name: '???' })));
+  }
+
+  /** Repinta la pista de sinergia de los objetos del suelo (cambia al coger o soltar algo). */
+  private refreshPickupHints() {
+    for (const c of this.pickups?.getChildren() ?? []) {
+      const s = c as Sprite;
+      const item = s.getData('item') as DroppedItem | undefined;
+      const label = s.getData('label') as Phaser.GameObjects.Text | undefined;
+      if (!item || item.kind !== 'passive' || !label?.active) continue;
+      const hint = this.synergyHintFor(item.item.id);
+      label.setText(hint ? `${item.item.name}\n${hint}` : item.item.name).setColor(hint ? '#8a5a00' : '#2b3a67').setAlign('center').setY(s.getData('baseY') - (hint ? 48 : 38));
+      const old = s.getData('synBadge') as Phaser.GameObjects.Image | undefined;
+      if (hint && !old) {
+        const b = this.add.image(s.getData('baseX') + 30, s.getData('baseY') - 22, badgeTexture(this)).setScale(2.5).setDepth(3);
+        if (!lowFx()) this.tweens.add({ targets: b, scale: 3, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+        s.setData('synBadge', b);
+        s.once(Phaser.GameObjects.Events.DESTROY, () => b.destroy());
+      } else if (!hint && old) {
+        old.destroy();
+        s.setData('synBadge', undefined);
+      }
     }
   }
 
@@ -10192,6 +10425,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     // Un oscuro también: monedas de 5 de más
     if (enemy.getData('dark') && !enemy.getData('helper')) for (let k = 0; k < DARK_REWARD.extraCoins; k++) loot.push({ kind: 'coin', value: 5 });
+    // Sinergias: Día de Pago (botín extra) y Gigadrenado / Fuego Sagrado (cada baja cura)
+    if (!enemy.getData('helper') && this.synFx.extraDrop > 0 && Math.random() < this.synFx.extraDrop) loot.push(...rollEnemyLoot(Math.random, false));
+    if (this.synFx.healOnKill > 0 && this.hp > 0 && this.hp < this.stats.maxHp) {
+      const heal = Math.min(this.synFx.healOnKill, this.stats.maxHp - this.hp);
+      this.hp += heal;
+      if (this.player?.active && this.fxBudget.take(this.time.now)) this.popup(this.player.x, this.player.y - 60, `+${Math.round(heal)} PS`, 0x7ccf6a);
+    }
     loot
       .filter((d) => hasShop || d.kind !== 'coin')
       .forEach((d, k) => this.dropLoot(enemy.x + (k - 1) * 26, enemy.y + 10, d));
@@ -11156,6 +11396,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const taken = absorbWithShield(this.powerForm, rawTaken);
     if (taken < rawTaken) this.popup(this.player.x, this.player.y - 50, '¡Escudo Dinamax!', 0xe8384f);
     if (taken <= 0) return;
+    // Represalia: al recibir daño, onda que golpea a todos los de cerca
+    const ret = this.synFx.retaliate;
+    if (ret) {
+      retaliateWave(this, this.player.x, this.player.y, ret.radius, lowFx());
+      this.time.delayedCall(0, () => !this.ended && this.player?.active && this.synergyArea(this.player.x, this.player.y, ret.radius, ret.dmg * (this.stats.damage / this.base.damage), 0xffd34d));
+    }
     if (this.hp - taken <= 0 && this.focusLeft > 0) {
       // Banda Focus: aguanta con 1 PS
       this.focusLeft--;

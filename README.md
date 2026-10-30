@@ -27,7 +27,7 @@ Es un **fan game gratuito y sin ánimo de lucro** (nunca se cobra dinero real po
   tipo de daño, enemigos que se multiplican, sala a oscuras o de velocidad), marcada en el minimapa.
 - Al terminar el piso 5 puedes aceptar el **reto final**: el trío legendario o un gigante, elegido al azar.
 - **«Una más»**: al caer, una vez por partida, puedes volver con media vida pagando caramelos o tickets (tú eliges).
-- Los **pasivos** de los objetos se combinan en sinergias.
+- Los **pasivos** de los objetos se combinan en sinergias: 14 que transforman tu ataque (orbitales, rastros, rayos en cadena, eco, aura, reflejo…) y 3 transformaciones de tres piezas que cambian tu aspecto. Las descubiertas se apuntan en el **Libro de sinergias** (Pausa → Sinergias, o en la Pokédex con el botón, G o L3); los objetos que completarían una se marcan con una insignia y «Sinergia: …».
 - **Parry**: púlsalo justo antes de un golpe (ventana amplia de 0,4 s; una marca «!» sobre el enemigo o el proyectil
   avisa y se pone blanca cuando toca pulsar). Anula el golpe, devuelve el proyectil o aturde a quien te pega, y tu
   siguiente ataque es crítico; en la primera mitad de la ventana es **perfecto** (más premio). Fallar solo tiene un

@@ -1553,3 +1553,64 @@ Pendiente / no verificado:
   (que no atraviese paredes ni puertas a 1000 px/s), cuadro «Esquiva» encima de las ranuras (y que los avisos de la
   derecha no lo tapen), botones táctiles, doble clic derecho y el contador del combo con su barra.
 - El daño del clima (arena/granizo) a los enemigos no es tuyo y no suma al combo.
+
+## Sinergias que transforman, transformaciones y Libro de sinergias (rama `sinergias`, 30/10)
+Objetivo: combinaciones de objetos al estilo The Binding of Isaac que cambian cómo juegas, con descubrimiento.
+- **Datos** (`src/data/synergies.ts`): `Synergy` gana `fx` (efectos especiales) y `transform` (color del aspecto).
+  `SYNERGIES` = las 17 de antes (`BASIC_SYNERGIES`, sin cambios) + `COMBO_SYNERGIES` (14) + `TRANSFORMATIONS` (3).
+  Sinergias nuevas (receta → efecto):
+  - Rebote Eterno: Pelota Saltarina + Bola Luminosa → el disparo rebota hacia otro enemigo al impactar (2 veces).
+  - Pirotecnia: Piedra Dura + Bola Férrea → estallido (r 60, 45 % del daño) en cada enemigo golpeado.
+  - Danza Lunar: Piedra Lunar + Polvo Brillo → 2 lunas orbitales (9 de daño por toque, paran disparos enemigos).
+  - Rueda Fuego: Carbón + Pluma Ligera → rastro de llamas al moverte que quema.
+  - Pista Helada: Hielo Eterno + Polvo Veloz → rastro de hielo que congela (cada enemigo, como mucho cada 1,4 s).
+  - Rayo en Cadena: Imán + Lupa Doble → 30 % de que un rayo salte a 3 enemigos (60 % del daño).
+  - Gigadrenado: Semilla Milagro + poder de Planta → cada baja cura 3 PS.
+  - Eco Psíquico: Cuchara Torcida + Reloj de Arena → cada disparo se repite 170 ms después (50 %).
+  - Aura Esfera: Cinturón Negro + Piedra Escudo → aura (r 95) que hace 14 de daño por segundo.
+  - Capa Mágica: Gafas Protectoras + Hechizo → 30 % de devolver los disparos enemigos que te tocan.
+  - Día de Pago: Moneda Amuleto + Zahorí → 25 % de botín extra por baja.
+  - Bala Semilla: Púa Tóxica + Doble Equipo → el disparo se parte en 3 semillas (40 %) al romperse.
+  - Furia Dragón: Colmillo Dragón + poder de Dragón → anillo de 8 llamas dragón (70 %) cada 3 s con enemigos.
+  - Represalia: Banda Focus + Chaleco Asalto → al recibir daño, onda (r 170, 40 de daño escalado con tu daño).
+  Transformaciones (3 piezas, aspecto propio con corona pixel y silueta animada):
+  - Fuego Sagrado: Carbón + Concha Campana + Orbe Vital → aura de fuego (22/s), rastro de fuego, +2 PS por baja,
+    +15 % de daño y quemaduras ×1,5.
+  - Tormenta Eterna: Imán + Telescopio + Doble Equipo → rayo en cadena en cada golpe (3 saltos, 50 %), 3 chispas
+    orbitales, −10 % de tiempo entre disparos y parálisis ×1,5.
+  - Velo Espectral: Hechizo + Polvo Brillo + Cuerda Huida → 45 % de reflejo, 4 almas orbitales, +12 % de esquiva
+    (tope 60 %) y +8 % de velocidad.
+- **Lógica pura** (`src/data/synergyFx.ts`): `synergyFxFor` suma los efectos con topes (`FX_CAPS`: 6 orbitales,
+  probabilidades ≤ 90 %, curación por baja ≤ 6, botín extra ≤ 50 %…); recetas legibles, `synergiesCompletedBy` /
+  `synergiesBrokenBy` / `nearSynergies` para las pistas, `newDiscoveries`, `bookEntries` y el guardado
+  (`{ v: 1, ids }`, migra una lista suelta y quita ids que ya no existen). En `save.ts`: `SYNERGIES_KEY`
+  (`pokeisaac.synergies`, en `PROGRESS_KEYS`), `loadSynergiesFound` y `addSynergiesFound` (las partidas admin no
+  guardan). No toca `RunSave`: el libro es progreso de la cuenta, no de la partida.
+- **En la partida** (`src/scenes/synergyRuntime.ts`): orbitales, rastros, aura, nova y aspecto de transformación, y
+  `chainFrom` para el rayo. En GameScene: los disparos normales llevan `basic` (los efectos de golpe solo van con
+  ellos, no con poderes ni ecos); `onHit` → Pirotecnia/Rayo, rebote en vez de romperse, partir en semillas;
+  `killEnemy` → botín extra y curación; disparos enemigos → reflejo; `hurtPlayer` → Represalia. Los daños en área
+  de las sinergias van sin estado (el tipo Normal aturdía en cada golpe).
+- **Arte** (`src/ui/art/synergyArt.ts`): texturas pixel propias (orbital del color, llama, cristal, insignia de
+  sinergia, libro), aura que gira, aspecto de las transformaciones y destello al descubrir. Con `lowFx()`: aura y
+  aspecto estáticos, sin anillos ni rayos pixel (línea simple), rastro a la mitad.
+- **Descubrimiento**: al activarse una sinergia aparece el aviso en la columna de avisos (nunca centrado):
+  «¡Sinergia descubierta!» / «¡Transformación descubierta!» la primera vez, con insignia que sube sobre el jugador y
+  anillos (destello de cámara solo en transformaciones). Se apunta en el libro al momento.
+- **Libro de sinergias** (`src/scenes/SynergyBookScene.ts`, registrada en `main.ts`): lista paginada (9 por página),
+  ficha con receta y efecto; las no descubiertas salen como «???» con «Receta de N piezas». Desde la pausa (opción
+  «Sinergias», encima de la pausa, con las activas marcadas y las que están a una pieza) y desde la Pokédex (botón
+  arriba a la derecha, G o L3). Teclado (flechas, ←/→ página, Esc), ratón (filas, ◀ ▶, «Volver») y mando.
+- **Pistas**: los objetos del suelo que completarían una sinergia muestran «Sinergia: …» (o «???» si no la has
+  descubierto) con la insignia pixel latiendo; la pausa dice la primera sinergia a la que le falta una pieza; en
+  «Huecos llenos» (ItemChoiceScene, nuevo `hints`) cada objeto que rompería una sinergia activa lleva «Rompe: …» y la
+  insignia, y el texto dice qué completaría el objeto nuevo.
+- **Panel admin**: sección «Sinergias»: elegir una (◀ ▶) y Enter da sus piezas (sin mirar huecos; si pide un poder,
+  pone uno de ese tipo de tu lista de poderes si lo hay), y «Quitar todos los objetos pasivos».
+- Tests: `tests/synergyFx.test.ts` (8). 722 en total.
+Pendiente / no verificado:
+- Solo `tsc` y `npm test`; `npm run build` no arranca en la VM (falta `@rollup/rollup-linux-x64-gnu`). Sin probar en
+  el navegador: posición de las órbitas y el aspecto sobre sprites grandes (Dinamax), legibilidad de «Sinergia: …»
+  sobre los objetos, la insignia en la pausa y las 7-8 opciones del menú de pausa, y el equilibrio real.
+- Las sinergias de la partida admin no se guardan en el libro (como el resto del progreso con trucos).
+- `pokeisaac.synergies` usa el prefijo `SAVE_PREFIX` de `storage.ts`, así que va con el resto del guardado.

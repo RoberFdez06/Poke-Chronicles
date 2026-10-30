@@ -11,6 +11,8 @@ import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
 import type { SettingsData } from './SettingsScene';
 import { copyText } from '../ui/clipboard';
 import { addCodeTicket } from '../ui/art/seedArt';
+import { badgeTexture } from '../ui/art/synergyArt';
+import type { SynergyBookData } from './SynergyBookScene';
 
 export interface PauseData {
   starterName: string;
@@ -33,6 +35,10 @@ export interface PauseData {
   /** Línea con las reacciones de tipo descubiertas (T76). */
   reactions?: string;
   moves: (MovePower | null)[];
+  /** Sinergias a las que solo les falta una pieza («Rueda Fuego (falta Pluma Ligera)»). */
+  synergyNear?: string[];
+  /** Sinergias activas en la partida (ids) para marcarlas en el Libro. */
+  synergyActive?: string[];
   roomsCleared: number;
   roomCount: number;
   earned: number;
@@ -120,6 +126,12 @@ export class PauseScene extends Phaser.Scene {
       t(66, 392, d.ability.description, 13, '#4a5578');
     }
     t(66, 414, 'Objetos', 18, '#2b3a67', true);
+    // Sinergias cerca: insignia pixel y la primera a la que le falta una pieza (el resto, en el Libro de sinergias)
+    const near = d.synergyNear ?? [];
+    if (near.length > 0) {
+      this.add.image(160, 425, badgeTexture(this)).setScale(1.8);
+      t(176, 417, shorten(`Sinergia: ${near[0]}${near.length > 1 ? ` +${near.length - 1}` : ''}`, 46), 13, '#8a5a00', true);
+    }
     const itemsText = t(66, PAUSE_ITEMS_Y, d.items.length ? d.items.join(' · ') : 'Ninguno todavía', 14, '#4a5578').setMaxLines(PAUSE_ITEM_MAX_LINES);
     // Lo de debajo se coloca donde termina de verdad la lista de objetos (1, 2 o 3 líneas)
     const tail = pauseTailLayout(itemLinesFromHeight(itemsText.height), !!d.reactions, d.moves.length);
@@ -138,10 +150,10 @@ export class PauseScene extends Phaser.Scene {
       if (m) addTypeChip(this, x + 196, y + 11, typeNameEs(m.type), typeColor(m.type), 64, 20);
     });
 
-    const opts = ['Reanudar', 'Reiniciar', 'Código de semilla', 'Controles', 'Ajustes', ...(d.onTera ? ['Tipo Tera'] : []), 'Salir y guardar'];
-    this.menu = new MenuList(this, 760, 175, opts, (i) => this.pick(i), {
-      // Seis opciones (siete con la Teragema) centradas a la altura del panel de la izquierda (100-570)
-      w: 290, h: d.onTera ? 46 : 50, gap: d.onTera ? 8 : 14,
+    const opts = ['Reanudar', 'Reiniciar', 'Código de semilla', 'Sinergias', 'Controles', 'Ajustes', ...(d.onTera ? ['Tipo Tera'] : []), 'Salir y guardar'];
+    this.menu = new MenuList(this, 760, 150, opts, (i) => this.pick(i), {
+      // Siete opciones (ocho con la Teragema) a la altura del panel de la izquierda (100-570)
+      w: 290, h: d.onTera ? 44 : 48, gap: d.onTera ? 5 : 9,
     });
     addHelpBar(this, 480, 612, 'Esc o P para reanudar · Flechas o ratón para elegir', {
         fontFamily: UI.FONT, fontSize: '15px', color: '#ffffff',
@@ -154,9 +166,10 @@ export class PauseScene extends Phaser.Scene {
     if (i === 0) return this.finish(this.info.onResume);
     if (i === 1) return this.confirmRestart();
     if (i === 2) return this.showSeedCode();
-    if (i === 3) return this.showControls();
-    if (i === 4) return this.openSettings();
-    if (i === 5 && this.info.onTera) return this.finish(this.info.onTera);
+    if (i === 3) return this.openBook();
+    if (i === 4) return this.showControls();
+    if (i === 5) return this.openSettings();
+    if (i === 6 && this.info.onTera) return this.finish(this.info.onTera);
     return this.finish(this.info.onQuit);
   }
 
@@ -173,6 +186,22 @@ export class PauseScene extends Phaser.Scene {
     };
     this.scene.launch('Settings', data);
     this.scene.bringToTop('Settings');
+    this.scene.pause();
+  }
+
+  /** Libro de sinergias encima de la pausa (con las de esta partida marcadas); al cerrarlo se vuelve aquí. */
+  private openBook() {
+    const data: SynergyBookData = {
+      overlay: true,
+      active: this.info.synergyActive ?? [],
+      near: this.info.synergyNear ?? [],
+      onClose: () => {
+        this.scene.resume();
+        this.nav = new NavInput(this);
+      },
+    };
+    this.scene.launch('SynergyBook', data);
+    this.scene.bringToTop('SynergyBook');
     this.scene.pause();
   }
 
