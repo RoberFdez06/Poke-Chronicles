@@ -20,7 +20,7 @@ import { GlyphText } from '../ui/art/keyGlyphs';
 import { HoldRepeat, cycle, stepCursor, tdHelp, tdKeyLabel, type TdDevice, type TdHelpContext, type TdKeyAction } from '../data/towerDefense/controls';
 import { loadPmd, pmdAnimKey, pmdKey, type PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
-import { dressLoose } from '../ui/locoAnim';
+import { dressLoose, procAnimate } from '../ui/locoAnim';
 import { fetchFormSprites, fetchNextEvolutions, fetchPokemonCard, fetchSpeciesName } from '../data/pokeapi';
 import { withTimeout } from '../data/offline';
 import { addCandies, addTickets, loadUpgrades } from '../data/save';
@@ -263,7 +263,8 @@ export class TowerDefenseScene extends Phaser.Scene {
     } catch {
       this.sheets = new Map();
     }
-    // Sprite de PokeAPI para los que no tengan hoja animada
+    // Sprite de PokeAPI para los que no tengan hoja animada (con CORS: procAnimate tiene que leer sus píxeles)
+    this.load.crossOrigin = 'anonymous';
     let queued = 0;
     for (const id of ids) {
       if (this.sheets.has(id) || this.textures.exists(tdMonKey(id))) continue;
@@ -1285,7 +1286,10 @@ export class TowerDefenseScene extends Phaser.Scene {
       if (!v.pmd) v.spr.setFlipX(e.dx > 0);
       // Sin hoja animada (y por tierra: los voladores ya planean arriba): pasos, reptar, botar… según la especie
       // (data/locomotion.ts), para que no se deslicen por el camino
-      if (!v.pmd && !e.def.air && !lowFx()) dressLoose(v.spr, e.def.types, e.def.species, time, !this.paused && !this.ended && e.frozen <= 0);
+      // Los voladores también: sin hoja, sus alas baten (fotogramas de procAnimate) mientras planean por encima
+      const walking = !this.paused && !this.ended && e.frozen <= 0;
+      if (!v.pmd && !e.def.air && !lowFx()) dressLoose(v.spr, e.def.types, e.def.species, time, walking);
+      else if (!v.pmd) procAnimate(v.spr, e.def.types, e.def.species, time, walking);
       if (v.pmd) v.spr.anims.timeScale = this.paused || this.ended || e.frozen > 0 ? 0 : SPEEDS[this.speedIdx] * (e.slowLeft > 0 ? e.slowMul : 1);
       if (e.frozen > 0) v.spr.setTint(0x9fe0ff);
       else if (e.slowLeft > 0) v.spr.setTint(0xb8c8ff);

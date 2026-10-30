@@ -214,7 +214,7 @@ import { basicShotFor, bossStyles, foeStyleFor, styleForMove, TYPE_STYLES, type 
 import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
 import { pmdAvailable, pmdMega, pmdShiny } from '../data/pmdForms';
-import { applyPose, dressLoose, liftSprite, poseFor, resetLift } from '../ui/locoAnim';
+import { applyPose, dressLoose, liftSprite, poseFor, procAnimate, resetLift } from '../ui/locoAnim';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, W } from '../ui/layout';
 import { hudLayout, itemGrid, nameFontSize, HUD_BADGE_MAX_W, HUD_ITEM_R, HUD_PROGRESS_FONT } from '../data/hudLayout';
 import {
@@ -1582,6 +1582,8 @@ export class GameScene extends Phaser.Scene {
       // SpriteCollab, ciclo de pasos, aleteo, ondulación…; con hoja, solo balanceo y, si vuela, que vaya por el aire
       const types = (s.getData('types') as string[] | undefined) ?? (s.getData('btypes') as string[] | undefined) ?? (s === this.player ? this.playerTypes : [(s.getData('ai') as EnemyAI | undefined)?.type ?? 'normal']);
       const species = s === this.player ? this.formId : (s.getData('speciesId') as number | undefined);
+      // Sin hoja: fotogramas de locomoción hechos por código (pies, alas, onda…) además de la pose
+      if (!pmd) procAnimate(s, types, species, time, moving);
       const pose = poseFor(s, types, species, time, moving, pmd);
       // Quitar la pose antes de medir los pies (si no, la sombra subiría con el dibujo)
       liftSprite(s, 0, 0);
