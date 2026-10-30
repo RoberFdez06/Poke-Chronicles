@@ -5,8 +5,8 @@
 import { clampDash, type Bounds } from '../level/bounds.ts';
 
 /** Distancia que recorre (px de la sala) y cuánto tarda (ms). */
-export const DASH_DISTANCE = 170;
-export const DASH_MS = 170;
+export const DASH_DISTANCE = 57;
+export const DASH_MS = 100;
 /** Invulnerabilidad desde que empieza (ms). */
 export const DASH_INVULN_MS = 250;
 /** Recarga (ms) desde que empieza. */
