@@ -313,15 +313,15 @@ const SPECIAL_ITEMS: PassiveItem[] = [
     apply: (s) => void ((s.homing += 1.2), (s.range *= 1.1)) },
   // T74: permite megaevolucionar (ver powerForm.ts) a los Pokémon que pueden; los 5 PS son para que también valga algo
   // a los demás y para que, como todo pasivo, cambie alguna estadística
-  { id: 'mega-piedra', name: 'Mega Piedra', description: 'Si tu Pokémon tiene megaevolución, con la adrenalina llena puedes megaevolucionar (una vez por piso). +5 PS máximos.', color: 0x8fd3ff,
+  { id: 'mega-piedra', name: 'Mega Piedra', description: 'Si tu Pokémon tiene megaevolución, puedes megaevolucionar cuando quieras (una vez por piso). La suelta el guardián de su sala. +5 PS máximos.', color: 0x8fd3ff,
     apply: (s) => void (s.maxHp += 5) },
   // T75: formas de poder con el medidor de poder (ver powerForm.ts y powerMeter.ts). Cada una cambia algo pequeño
   // para que valga también sin usarla.
   { id: 'banda-dinamax', name: 'Banda Dinamax', description: 'Con el medidor de poder lleno y la mitad de PS o menos, Dinamax (o Gigamax si tu Pokémon lo tiene). +5 PS máximos.', color: 0xe8384f,
     apply: (s) => void (s.maxHp += 5) },
-  { id: 'teragema', name: 'Teragema', description: 'Con algo más de medio medidor de poder, tus ataques pasan unos segundos a un tipo con ventaja en el bioma. +5 % de daño.', color: 0x7fe0ff,
+  { id: 'teragema', name: 'Teragema', description: 'El Teracristal cuesta menos medidor (40 %) y puedes elegir el tipo Tera. +5 % de daño.', color: 0x7fe0ff,
     apply: (s) => void (s.damage *= 1.05) },
-  { id: 'cristal-z', name: 'Cristal Z', description: 'Con el medidor de poder lleno, un único ataque Z devastador de tu tipo (una vez por partida). +5 % de daño.', color: 0xffd34d,
+  { id: 'cristal-z', name: 'Cristal Z', description: 'El Movimiento Z se puede repetir en cada piso (sin él, una vez por partida). +5 % de daño.', color: 0xffd34d,
     apply: (s) => void (s.damage *= 1.05) },
   ...TYPE_BOOSTERS.map(([id, name, type, color]) => ({
     id,

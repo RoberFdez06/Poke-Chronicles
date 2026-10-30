@@ -72,6 +72,7 @@ function sample(): RunSave {
     legendHunt: { active: true, floors: [2, 4, 5], kinds: ['huella', 'ruido', 'pluma'], found: 1, lost: false, legendId: 150, done: false },
     itemLevels: { lupa: 2 },
     teraPick: 'fire',
+    dark: true,
   };
 }
 
@@ -451,4 +452,13 @@ test('v27 se migra a v28 sin mejoras y con Tera automático; niveles o tipos rar
     assert.equal(parseRun(JSON.stringify({ ...sample(), itemLevels: bad })), null);
   }
   assert.equal(parseRun(JSON.stringify({ ...sample(), teraPick: 'luz' })), null);
+});
+
+test('v28 se migra a v29 con el inicial normal (no oscuro); el oscuro se guarda y un valor raro invalida', () => {
+  const { dark: _d, ...old } = sample();
+  const run = parseRun(JSON.stringify({ ...old, version: 28 }))!;
+  assert.equal(run.version, RUN_VERSION);
+  assert.equal(run.dark, false);
+  assert.equal(parseRun(JSON.stringify(sample()))!.dark, true);
+  assert.equal(parseRun(JSON.stringify({ ...sample(), dark: 'sí' })), null);
 });

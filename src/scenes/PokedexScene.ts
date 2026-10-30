@@ -3,7 +3,8 @@ import { addHelpBar } from '../ui/helpBar';
 import { fitDesign } from '../ui/layout';
 import { classifyRarity, RARITY_LABEL } from '../data/gacha';
 import { countByRegion, filterCollection, type CollectionEntry } from '../data/regions';
-import { loadShinies, loadUnlocked } from '../data/save';
+import { loadDarks, loadShinies, loadUnlocked } from '../data/save';
+import { drawDarkMark } from '../ui/art/darkFx';
 import { loadCollectionIndex, loadSpeciesIndex } from '../data/speciesIndex';
 import { typeNameEs } from '../data/types';
 import { cry } from '../ui/audio';
@@ -33,6 +34,8 @@ type Key = Phaser.Input.Keyboard.Key;
 interface DexEntry extends CollectionEntry {
   owned: boolean;
   shiny: boolean;
+  /** Lo tienes en su variante oscura (darkMon.ts). */
+  dark: boolean;
 }
 
 /**
@@ -96,6 +99,7 @@ export class PokedexScene extends Phaser.Scene {
     const index = await loadCollectionIndex();
     const owned = new Set(loadUnlocked());
     const shinies = new Set(loadShinies());
+    const darks = new Set(loadDarks());
     const all = index.map((s) => ({
       id: s.id,
       name: s.nameEs ?? s.name,
@@ -103,13 +107,14 @@ export class PokedexScene extends Phaser.Scene {
       types: s.types,
       owned: owned.has(s.id),
       shiny: shinies.has(s.id),
+      dark: darks.has(s.id),
     }));
     this.entries = this.pickFor ? all.filter((e) => e.owned) : all;
     loading.destroy();
 
     const have = this.entries.filter((e) => e.owned);
     this.add
-      .text(480, 40, this.pickFor ? `Elige un Pokémon para mejorar · Tienes ${have.length}` : `Pokédex · Tienes ${have.length} de ${all.length} · ★ ${shinies.size} shiny`, { fontFamily: FONT, fontSize: '30px', color: '#ffffff' })
+      .text(480, 40, this.pickFor ? `Elige un Pokémon para mejorar · Tienes ${have.length}` : `Pokédex · Tienes ${have.length} de ${all.length} · ★ ${shinies.size} shiny${darks.size ? ` · ${darks.size} oscuros` : ''}`, { fontFamily: FONT, fontSize: '30px', color: '#ffffff' })
       .setOrigin(0.5);
     this.filters = new FilterBar(this, {
       tabsY: 92,
@@ -250,6 +255,12 @@ export class PokedexScene extends Phaser.Scene {
     if (e.shiny) {
       parts.push(this.add.text(w / 2 - 16, h / 2 - 40, '★', { fontFamily: FONT, fontSize: '18px', color: '#ffd34d' }).setOrigin(0.5).setStroke('#8a6d1a', 3));
     }
+    // Oscuro: llama morada pixel arriba a la izquierda
+    if (e.dark) {
+      const mark = this.add.graphics();
+      drawDarkMark(mark, -w / 2 + 14, -h / 2 + 30, 2);
+      parts.push(mark);
+    }
     // Legendarios y ultraentes que tienes: destellos
     if (e.owned && (e.rarity === 'legendary' || e.rarity === 'ultra')) parts.push(...addTwinkles(this, w, h, RARITY_COLORS[e.rarity], 2));
     const box = this.add.container(x, y, parts).setSize(w, h);
@@ -272,7 +283,8 @@ export class PokedexScene extends Phaser.Scene {
     if (!e) return;
     const types = (e.types ?? []).map(typeNameEs).join(' / ');
     const owned = e.shiny ? '¡Lo tienes shiny!' : e.owned ? '¡Lo tienes!' : 'Aún no lo tienes: sale en el gacha';
-    this.info.setText(`#${e.id} ${e.name} · ${RARITY_LABEL[e.rarity]}${types ? ' · ' + types : ''} · ${owned}`);
+    const darkTag = e.dark ? ' · Oscuro' : '';
+    this.info.setText(`#${e.id} ${e.name} · ${RARITY_LABEL[e.rarity]}${types ? ' · ' + types : ''} · ${owned}${darkTag}`);
     this.info.setColor(e.owned ? hex(RARITY_COLORS[e.rarity]) : HEX.textSoft);
   }
 

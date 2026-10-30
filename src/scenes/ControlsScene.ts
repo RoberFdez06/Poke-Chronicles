@@ -118,7 +118,8 @@ export class ControlsScene extends Phaser.Scene {
     const sections = controlSections(keys);
     CONTROL_ACTIONS.forEach((a, k) => {
       // T53/T65/T74/T77: 27 px por fila para que quepan parry, Poké Ball, megaevolución y ataque cargado sin pisar la ayuda de abajo
-      const y = 182 + k * 27;
+      // Con la fila de elegir forma de poder (15 filas) bajan a 25 px para no pisar la ayuda
+      const y = 182 + k * (CONTROL_ACTIONS.length > 14 ? 25 : 27);
       this.labels.push(this.add.text(100, y, CONTROL_ACTION_LABEL[a], { fontFamily: UI.FONT, fontSize: '19px', fontStyle: 'bold', color: '#2b3a67' }));
       // Teclas, botones y clics dibujados en pixel art (T: glifos), con el dispositivo de la pestaña
       this.rows.push(new GlyphText(this, 400, y + 11, '', { size: 17, color: '#4a5578', bold: false, maxWidth: 470 }));

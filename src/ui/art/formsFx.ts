@@ -127,3 +127,67 @@ export function zMoveFx(scene: Phaser.Scene, x: number, y: number, color: number
   });
   return ms;
 }
+
+/**
+ * Pose del Movimiento Z: estrella Z de cinco puntas del color del tipo que se dibuja a los pies y gira, con un anillo
+ * de píxeles alrededor. Dura lo que la pose (`ms`).
+ */
+export function zStarFx(scene: Phaser.Scene, x: number, feetY: number, color: number, ms = 900, depth = 2.6): void {
+  if (lowFx()) {
+    pixRing(scene, x, feetY, 80, color, 300, depth);
+    return;
+  }
+  animate(scene, depth, ms, (g, k, t) => {
+    const grow = Math.min(1, k * 3);
+    const fade = k < 0.75 ? 1 : 1 - (k - 0.75) / 0.25;
+    const R = 70 * grow;
+    const r = R * 0.42;
+    const rot = t * 0.003;
+    // contorno de la estrella: puntas y valles unidos con píxeles
+    const pts: [number, number][] = [];
+    for (let i = 0; i < 10; i++) {
+      const a = rot - Math.PI / 2 + (i / 10) * 6.283;
+      const rr = i % 2 ? r : R;
+      pts.push([x + Math.cos(a) * rr, feetY + Math.sin(a) * rr * 0.55]);
+    }
+    for (let i = 0; i < 10; i++) {
+      const [ax, ay] = pts[i];
+      const [bx, by] = pts[(i + 1) % 10];
+      const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / PX));
+      for (let s = 0; s <= steps; s++) {
+        const f = s / steps;
+        px(g, ax + (bx - ax) * f, ay + (by - ay) * f, i % 2 ? color : lightOf(color), fade);
+      }
+    }
+    // centro: la Z del cristal
+    for (let i = -2; i <= 2; i++) {
+      px(g, x + i * PX, feetY - PX * 1.5, 0xffffff, fade);
+      px(g, x + i * PX, feetY + PX * 1.5, 0xffffff, fade);
+      px(g, x - i * PX * 0.75, feetY + i * PX * 0.6, 0xffffff, fade);
+    }
+    // anillo exterior
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * 6.283 - rot;
+      if ((i + Math.floor(t / 90)) % 4 === 0) continue;
+      px(g, x + Math.cos(a) * (R + 18), feetY + Math.sin(a) * (R + 18) * 0.55, mixColor(color, 0xffffff, 0.3), fade * 0.8);
+    }
+  }, 50);
+}
+
+/**
+ * Golpe final del Movimiento Z: columna de luz del tipo que cae sobre `(x, y)` y una onda enorme que barre la sala.
+ * Lo que daña lo decide la escena; esto es solo el dibujo.
+ */
+export function zImpactFx(scene: Phaser.Scene, x: number, y: number, color: number, radius: number, depth = 12): void {
+  pixRing(scene, x, y, radius, color, 700, depth);
+  pixRing(scene, x, y, radius * 0.6, 0xffffff, 520, depth);
+  if (lowFx()) return;
+  animate(scene, depth, 600, (g, k) => {
+    const w = 60 * (1 - k) + 12;
+    for (let yy = y - 420; yy < y; yy += PX) {
+      for (let dx = -w / 2; dx <= w / 2; dx += PX) px(g, x + dx, yy, Math.abs(dx) < w * 0.2 ? 0xffffff : color, (1 - k) * 0.85);
+    }
+  }, 50);
+  starBurst(scene, x, y - 20, color, 14, 2, depth + 1);
+  pixDebris(scene, x, y, color, 18, 1.8, depth + 1);
+}

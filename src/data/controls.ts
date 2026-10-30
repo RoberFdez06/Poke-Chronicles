@@ -20,7 +20,7 @@ export type ControlMode = (typeof CONTROL_MODES)[number];
 export const CONTROL_MODE_LABEL: Record<ControlMode, string> = { keyboard: 'Teclado', mouse: 'Ratón', gamepad: 'Mando', touch: 'Táctil' };
 
 /** Todo lo que se puede hacer, en el orden en que sale en cada sección. */
-export const CONTROL_ACTIONS = ['move', 'shoot', 'powers', 'parry', 'active', 'bomb', 'potion', 'ball', 'mega', 'charge', 'use', 'pause', 'menus', 'back'] as const;
+export const CONTROL_ACTIONS = ['move', 'shoot', 'powers', 'parry', 'active', 'bomb', 'potion', 'ball', 'mega', 'forms', 'charge', 'use', 'pause', 'menus', 'back'] as const;
 export type ControlAction = (typeof CONTROL_ACTIONS)[number];
 
 export const CONTROL_ACTION_LABEL: Record<ControlAction, string> = {
@@ -32,7 +32,8 @@ export const CONTROL_ACTION_LABEL: Record<ControlAction, string> = {
   bomb: 'Bomba',
   potion: 'Poción',
   ball: 'Poké Ball (enemigo débil)',
-  mega: 'Megaevolución',
+  mega: 'Forma de poder (usar)',
+  forms: 'Elegir forma de poder',
   charge: 'Ataque cargado',
   use: 'Usar (Centro, tienda, cofre)',
   pause: 'Pausa',
@@ -53,7 +54,8 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       bomb: L('bomb'),
       potion: L('potion'),
       ball: L('ball'),
-      mega: `${L('mega')} (con Mega Piedra y adrenalina llena)`,
+      mega: `${L('mega')}: Mega (con Mega Piedra), Dinamax, Teracristal o Z`,
+      forms: `${L('powerNext')}: Mega → Dinamax → Teracristal → Movimiento Z`,
       charge: `Mantén ${L('charge')} y suelta tras 0,8 s`,
       use: `${L('accept')} cerca`,
       pause: `${L('pause')} o ${L('back')}`,
@@ -69,7 +71,8 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       bomb: 'Clic en la bomba del HUD',
       potion: 'Clic en la poción del HUD',
       ball: 'Clic en la Poké Ball del HUD',
-      mega: 'Clic en la Mega Piedra del HUD',
+      mega: 'Clic en el icono de forma del HUD (junto a la Poké Ball)',
+      forms: 'Clic derecho o rueda sobre el icono de forma del HUD',
       charge: 'Mantén el botón lateral (atrás o adelante) y suelta tras 0,8 s',
       use: 'Clic en el mostrador, el artículo o el cofre',
       pause: 'Botón ❚❚ de arriba a la izquierda',
@@ -86,6 +89,7 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       potion: 'Pulsar el stick izquierdo (L3)',
       ball: 'Pulsar el stick derecho (R3)',
       mega: 'Cruceta arriba',
+      forms: 'Cruceta izquierda / derecha',
       charge: 'Mantén LT y suelta tras 0,8 s',
       use: 'A cerca',
       pause: 'Start (o Select)',
@@ -101,7 +105,8 @@ export function controlSections(k: KeyMap): Record<ControlMode, Record<ControlAc
       bomb: 'Botón de la bomba (encima del joystick izquierdo)',
       potion: 'Botón de la poción (encima del joystick izquierdo)',
       ball: 'Toca la Poké Ball del HUD',
-      mega: 'Toca la Mega Piedra del HUD',
+      mega: 'Toca el icono de forma del HUD',
+      forms: 'Mantén el icono de forma del HUD (medio segundo)',
       charge: 'No disponible en táctil (el joystick dispara en ráfaga)',
       use: 'Botón "Usar" cerca',
       pause: 'Botón ❚❚ de arriba a la izquierda',

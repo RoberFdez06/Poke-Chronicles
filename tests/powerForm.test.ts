@@ -28,7 +28,8 @@ test('T74: requisitos, todos a la vez', () => {
   assert.equal(megaBlock(s, ctx()), null);
   assert.equal(megaBlock(s, ctx({ speciesId: 4 })), 'species');
   assert.equal(megaBlock(s, ctx({ passives: [] })), 'stone');
-  assert.equal(megaBlock(s, ctx({ adrenalineFull: false })), 'adrenaline');
+  // Desde el cambio de la Mega Piedra la adrenalina no cuenta: basta con la piedra
+  assert.equal(megaBlock(s, ctx({ adrenalineFull: false })), null);
   // Sin piedra o sin mega no se ofrece el botón
   assert.ok(megaOffered(ctx()));
   assert.ok(!megaOffered(ctx({ speciesId: 4 })));

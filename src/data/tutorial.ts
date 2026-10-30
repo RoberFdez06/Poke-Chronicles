@@ -1,7 +1,7 @@
 // Tutorial (T25): consejos cortos que salen la primera vez que pasa algo en la partida. Lógica pura; el guardado
 // (qué consejos ya se han visto y si se han desactivado) está en save.ts.
 
-export const TIP_IDS = ['move', 'shoot', 'pause', 'powers', 'items', 'active', 'center', 'shop', 'chest', 'td_place', 'td_upgrade', 'td_air', 'td_skills'] as const;
+export const TIP_IDS = ['move', 'shoot', 'pause', 'powers', 'items', 'active', 'center', 'shop', 'chest', 'forms', 'td_place', 'td_upgrade', 'td_air', 'td_skills'] as const;
 export type TipId = (typeof TIP_IDS)[number];
 
 /** Texto de cada consejo, con los tres controles (teclado, ratón y mando). */
@@ -41,6 +41,10 @@ export const TIPS: Readonly<Record<TipId, { title: string; text: string }>> = {
   chest: {
     title: 'Cofres y bombas',
     text: 'Los cofres se abren con una llave. Las bombas (E, RB o clic en la bomba del HUD) rompen rocas y abren paredes.',
+  },
+  forms: {
+    title: 'Formas de poder',
+    text: 'M, cruceta arriba o clic en el icono junto a la Poké Ball: usa la forma elegida. X, cruceta izquierda/derecha, clic derecho o rueda sobre el icono: cambia entre Mega, Dinamax, Teracristal y Movimiento Z. Se llenan con el medidor de poder.',
   },
   // Defensa de torres (salen en TowerDefenseScene la primera vez que toca)
   td_place: {
@@ -97,6 +101,7 @@ export const TOUCH_TIPS: Readonly<Partial<Record<TipId, string>>> = {
   center: 'Te cura la mitad de los PS una vez por piso: toca «Usar» cerca del mostrador o písalo.',
   shop: 'Gasta las monedas de la partida: toca «Usar» cerca de un artículo o písalo.',
   chest: 'Los cofres se abren con una llave. Las bombas (botón «Bomba») rompen rocas y abren paredes.',
+  forms: 'Toca el icono junto a la Poké Ball para usar la forma elegida; mantenlo pulsado para cambiar entre Mega, Dinamax, Teracristal y Movimiento Z. Se llenan con el medidor de poder.',
 };
 
 /** Texto del consejo según el dispositivo (en táctil, sin «W A S D» ni botones del mando). */

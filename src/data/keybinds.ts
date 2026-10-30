@@ -14,6 +14,8 @@ export const ACTIONS = [
   'mega',
   // T77: ataque cargado (mantener para cargar, soltar para lanzar), al final por lo mismo
   'charge',
+  // Formas de poder: cambia cuál suelta el botón de forma (Mega, Dinamax, Teracristal o Movimiento Z), al final
+  'powerNext',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 export type KeyMap = Record<Action, string>;
@@ -41,6 +43,7 @@ export const ACTION_LABEL: Readonly<Record<Action, string>> = {
   ball: 'Lanzar Poké Ball',
   mega: 'Megaevolucionar',
   charge: 'Ataque cargado (mantener)',
+  powerNext: 'Cambiar forma de poder',
 };
 
 export const DEFAULT_KEYS: Readonly<KeyMap> = {
@@ -52,6 +55,7 @@ export const DEFAULT_KEYS: Readonly<KeyMap> = {
   ball: 'G',
   mega: 'M',
   charge: 'V',
+  powerNext: 'X',
 };
 
 /**
@@ -132,8 +136,8 @@ export function controlsFor(k: KeyMap): [string, string][] {
     ['Parry', `${L('parry')} · clic central · RT (justo antes de que te den: bloquea y tu siguiente golpe es crítico)`],
     ['Ataque cargado', `Mantén ${L('charge')} · botón lateral del ratón · LT: carga 0,8 s y al soltar sale un disparo grande (doble de daño, atraviesa). Disparar sigue siendo mantener el botón`],
     ['Poké Ball', `${L('ball')} · clic en la Poké Ball del HUD · R3 (pulsar el stick derecho) con un enemigo débil cerca`],
-    ['Megaevolución', `${L('mega')} · clic en la Mega Piedra del HUD · cruceta arriba (con Mega Piedra y la adrenalina llena)`],
-    ['Dinamax · Tera · Z', `El mismo botón: ${L('mega')} · clic en su icono del HUD · cruceta arriba (con Banda Dinamax, Teragema o Cristal Z y el medidor de poder)`],
+    ['Megaevolución', `${L('mega')} · clic en la Mega Piedra del HUD · cruceta arriba (basta con llevar la Mega Piedra; una vez por piso)`],
+    ['Dinamax · Tera · Z', `El mismo botón: ${L('mega')} · clic en su icono del HUD · cruceta arriba. Elige cuál con ${L('powerNext')} · clic derecho o rueda sobre el icono · cruceta izquierda/derecha (Teracristal y Z con el medidor de poder; Dinamax con la Banda Dinamax)`],
     ['Usar · Bomba · Poción', `Usar: ${L('accept')} · clic · A    Bomba: ${L('bomb')} · clic en la bomba del HUD · RB    Poción: ${L('potion')} · clic en la poción del HUD · stick izq. (pulsar)`],
   ];
 }

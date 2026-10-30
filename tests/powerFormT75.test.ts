@@ -86,8 +86,11 @@ test('T75: una sola forma a la vez y una por piso (el Z también cuenta); el Z u
   assert.equal(powerBlock(s, 'tera', ctx()), 'used');
   s = useZMove(nextFloorPowerForm());
   assert.equal(powerBlock(s, 'dynamax', ctx()), 'used');
-  assert.equal(powerBlock(nextFloorPowerForm(), 'z', ctx({ zUsed: true })), 'zUsed');
-  assert.ok(!powerOffered('z', ctx({ zUsed: true })));
+  // Sin Cristal Z, una vez por partida; con él, una por piso
+  assert.equal(powerBlock(nextFloorPowerForm(), 'z', ctx({ zUsed: true, passives: [] })), 'zUsed');
+  assert.ok(!powerOffered('z', ctx({ zUsed: true, passives: [] })));
+  assert.ok(powerOffered('z', ctx({ zUsed: true })));
+  assert.equal(powerBlock(nextFloorPowerForm(), 'z', ctx({ zUsed: true })), null);
 });
 
 test('T75: el botón elige la primera que se puede; si ninguna, la primera ofrecida con su motivo', () => {
@@ -95,13 +98,14 @@ test('T75: el botón elige la primera que se puede; si ninguna, la primera ofrec
   assert.equal(pickPower(s, ctx())?.choice, 'dynamax');
   assert.equal(pickPower(s, ctx({ hp: 90 }))?.choice, 'tera');
   assert.deepEqual(pickPower(s, ctx({ hp: 90, meter: 10 })), { choice: 'dynamax', block: 'hp' });
-  assert.equal(pickPower(s, ctx({ passives: [] })), null);
-  assert.equal(pickPower(s, ctx({ passives: [Z_CRYSTAL_ID] }))?.choice, 'z');
+  // Teracristal y Z ya no piden objeto: sin nada, el Teracristal (el Z va después y se guarda)
+  assert.equal(pickPower(s, ctx({ passives: [] }))?.choice, 'tera');
+  assert.equal(pickPower(s, ctx({ passives: [], meter: 10 }))?.block, 'meter');
 });
 
-test('T75: Dinamax: tamaño ×1,5 y escudo que para golpes antes que los PS', () => {
+test('T75: Dinamax: tamaño ×1,65 y escudo que para golpes antes que los PS', () => {
   const s = startPowerForm(newPowerFormState(), 'dynamax');
-  assert.equal(powerFormSizeMul(s), 1.5);
+  assert.equal(powerFormSizeMul(s), 1.65);
   assert.equal(powerFormSizeMul(newPowerFormState()), 1);
   const shield = POWER_FORMS.dynamax.shield;
   assert.equal(absorbWithShield(s, 10), 0);

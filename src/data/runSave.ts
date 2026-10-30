@@ -43,8 +43,9 @@ export const RUN_SLOTS = 3;
  * v25: semilla de la partida y si se empezó con un código (T81). Los v24 no tienen semilla (ni código que compartir).
  * v26: bayas del huerto que llevas en la partida (T85). Los v25 no llevan ninguna.
  * v28: niveles de mejora de la forja por objeto (`itemLevels`) y tipo Tera elegido a mano (`teraPick`, null = automático).
+ * v29: si juegas con tu inicial en su variante oscura (`dark`, darkMon.ts). Los v28 juegan con el normal.
  */
-export const RUN_VERSION = 28;
+export const RUN_VERSION = 29;
 export const runKey = (slot: number) => `pokeisaac.run.${slot}`;
 
 /** Objeto en el suelo. Los pasivos se guardan por id (sus efectos están en items.ts); monedas y bayas, en loot.ts. */
@@ -168,6 +169,8 @@ export interface RunSave {
   itemLevels: ItemLevels;
   /** Tipo Tera elegido a mano; null = el automático (el de más ventaja en el bioma). */
   teraPick: string | null;
+  /** v29: el inicial es su variante oscura (más fuerte en todo; ver darkMon.ts). */
+  dark: boolean;
 }
 
 export interface DailyRun {
@@ -347,6 +350,11 @@ function migrateV27(d: RunSave): RunSave {
   return { ...d, version: 28, itemLevels: {}, teraPick: null };
 }
 
+/** v28 no sabía de Pokémon oscuros: el inicial es el normal. */
+function migrateV28(d: RunSave): RunSave {
+  return { ...d, version: 29, dark: false };
+}
+
 const isSeedRun = (s: unknown): s is SeedRun => {
   const o = s as SeedRun;
   return !!o && typeof o === 'object' && isInt(o.seed) && o.seed >= 0 && o.seed <= 0x7fffffff && typeof o.fromCode === 'boolean';
@@ -399,6 +407,7 @@ export function parseRun(raw: string | null): RunSave | null {
   if (d.version === 25) d = migrateV25(d);
   if (d.version === 26) d = migrateV26(d);
   if (d.version === 27) d = migrateV27(d);
+  if (d.version === 28) d = migrateV28(d);
   if (d.version !== RUN_VERSION) return null;
   const reactions = cleanReactions(d.reactionsFound);
   if (!reactions) return null;
@@ -430,7 +439,7 @@ export function parseRun(raw: string | null): RunSave | null {
     (d.route === null || isRouteOption(d.route)) && Array.isArray(d.routesTaken) && d.routesTaken.every(isRouteOption) &&
     (d.seeded === null || isSeedRun(d.seeded)) &&
     Array.isArray(d.gardenBerries) && d.gardenBerries.length <= 10 && d.gardenBerries.every(isGardenBerry) &&
-    isLegendHunt(d.legendHunt) && isItemLevels(d.itemLevels) && (d.teraPick === null || isTeraType(d.teraPick));
+    isLegendHunt(d.legendHunt) && isItemLevels(d.itemLevels) && (d.teraPick === null || isTeraType(d.teraPick)) && typeof d.dark === 'boolean';
   return ok ? d : null;
 }
 

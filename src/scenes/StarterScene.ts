@@ -3,7 +3,7 @@ import { addHelpBar } from '../ui/helpBar';
 import { startWithStarter } from './runLaunch';
 import { fitDesign } from '../ui/layout';
 import { fetchPokemonCard, PokemonCard } from '../data/pokeapi';
-import { loadShinies, loadUnlocked } from '../data/save';
+import { loadDarks, loadShinies, loadUnlocked } from '../data/save';
 import { loadCollectionIndex, loadSpeciesIndex } from '../data/speciesIndex';
 import { classifyRarity, RARITY_LABEL } from '../data/gacha';
 import { filterCollection, CollectionEntry } from '../data/regions';
@@ -45,6 +45,8 @@ export class StarterScene extends Phaser.Scene {
   private cardCache = new Map<number, PokemonCard>();
   /** Los que tienes shiny: con ellos juegas con su sprite shiny. */
   private shinies = new Set<number>();
+  /** Los que tienes oscuros: juegas con su variante oscura (más fuerte en todo). */
+  private darks = new Set<number>();
 
   private nav!: NavInput;
   private pad!: PadButtons;
@@ -77,6 +79,7 @@ export class StarterScene extends Phaser.Scene {
     // Primera partida: sin ningún Pokémon, se elige región e inicial
     const unlocked = loadUnlocked();
     this.shinies = new Set(loadShinies());
+    this.darks = new Set(loadDarks());
     if (unlocked.length === 0) {
       this.starting = true;
       this.scene.start('FirstStarter', { slot: this.slot });
@@ -213,7 +216,7 @@ export class StarterScene extends Phaser.Scene {
         scale: CARD_SCALE,
         stats: c.stats,
         shiny: this.shinies.has(c.id),
-        tag: { text: (this.shinies.has(c.id) ? 'Shiny · ' : '') + RARITY_LABEL[e.rarity], color: hex(RARITY_COLORS[e.rarity]) },
+        tag: { text: (this.shinies.has(c.id) ? 'Shiny · ' : '') + (this.darks.has(c.id) ? 'Oscuro · ' : '') + RARITY_LABEL[e.rarity], color: hex(RARITY_COLORS[e.rarity]) },
       });
       const index = page * PAGE_SIZE + k;
       t.box.on('pointerover', () => !this.filters?.searching && this.select(index));

@@ -41,7 +41,7 @@ export const POWER_FORMS: Readonly<Record<PowerFormKind, PowerFormDef>> = {
   mega: { label: 'Megaevolución', item: MEGA_STONE_ID, durationMs: 30_000, damageMul: 1.35, speedMul: 1.15, maxHpBonus: 40, pulseMs: 3000, sizeMul: 1, shield: 0, meterCost: 0 },
   // T75: Dinamax es el recurso del que va perdiendo (solo con 50 % de PS o menos): gigante, más lento y con un escudo
   // que aguanta varios golpes. Gasta todo el medidor.
-  dynamax: { label: 'Dinamax', item: 'banda-dinamax', durationMs: 20_000, damageMul: 1.25, speedMul: 0.9, maxHpBonus: 0, pulseMs: 0, sizeMul: 1.5, shield: 45, meterCost: 100 },
+  dynamax: { label: 'Dinamax', item: 'banda-dinamax', durationMs: 20_000, damageMul: 1.25, speedMul: 0.9, maxHpBonus: 0, pulseMs: 0, sizeMul: 1.65, shield: 45, meterCost: 100 },
   // Gigamax: lo mismo para las especies que lo tienen, algo más fuerte y con su ataque propio (pulso de su tipo)
   gigamax: { label: 'Gigamax', item: 'banda-dinamax', durationMs: 20_000, damageMul: 1.3, speedMul: 0.9, maxHpBonus: 0, pulseMs: 3500, sizeMul: 1.5, shield: 45, meterCost: 100 },
   // Teracristal: corto, cambia el tipo de tus ataques a uno con ventaja en el bioma. Gasta algo más de la mitad.
@@ -100,17 +100,18 @@ export const newPowerFormState = (): PowerFormState => ({ active: null, leftMs: 
 
 export const powerFormActive = (s: PowerFormState): boolean => s.active !== null && s.leftMs > 0;
 
-/** Lo que pide megaevolucionar. */
+/**
+ * Lo que pide megaevolucionar. Desde el cambio de la Mega Piedra basta con llevarla (y que tu especie tenga mega):
+ * ya no gasta la adrenalina ni otro objeto. Sigue siendo una vez por piso y sin otra forma activa.
+ */
 export interface MegaContext {
   /** Especie de la forma actual del jugador. */
   speciesId: number;
   passives: readonly string[];
-  /** La barra de adrenalina está llena (ver adrenaline.ts: adrenalineFull). */
-  adrenalineFull: boolean;
 }
 
-/** Por qué no se puede: sin especie mega, sin piedra, ya usada en el piso, ya activa o barra sin llenar. */
-export type MegaBlock = 'species' | 'stone' | 'used' | 'active' | 'adrenaline';
+/** Por qué no se puede: sin especie mega, sin piedra, ya usada en el piso o ya activa. */
+export type MegaBlock = 'species' | 'stone' | 'used' | 'active';
 
 /**
  * ¿Se ofrece el botón? Solo si llevas la Mega Piedra y tu Pokémon tiene megaevolución: a los demás la piedra no
@@ -125,7 +126,6 @@ export function megaBlock(s: PowerFormState, c: MegaContext): MegaBlock | null {
   if (!c.passives.includes(MEGA_STONE_ID)) return 'stone';
   if (powerFormActive(s)) return 'active';
   if (s.usedThisFloor) return 'used';
-  if (!c.adrenalineFull) return 'adrenaline';
   return null;
 }
 
@@ -133,9 +133,8 @@ export function megaBlock(s: PowerFormState, c: MegaContext): MegaBlock | null {
 export const MEGA_BLOCK_TEXT: Readonly<Record<MegaBlock, string>> = {
   species: 'Tu Pokémon no puede megaevolucionar',
   stone: 'Necesitas una Mega Piedra',
-  used: 'Ya has megaevolucionado en este piso',
-  active: 'Ya estás megaevolucionado',
-  adrenaline: 'Llena la barra de adrenalina para megaevolucionar',
+  used: 'Ya has usado una forma de poder en este piso',
+  active: 'Ya tienes una forma de poder activa',
 };
 
 /** Activa la forma (sin comprobar requisitos: eso es megaBlock). Gasta la del piso. */
@@ -229,8 +228,10 @@ export const TERA_GEM_ID = 'teragema';
 export const Z_CRYSTAL_ID = 'cristal-z';
 /** Dinamax y Gigamax solo con esta fracción de PS o menos: es el recurso del que va perdiendo. */
 export const DYNAMAX_HP_LIMIT = 0.5;
-/** El Cristal Z gasta todo el medidor, y solo una vez por partida. */
+/** El Movimiento Z gasta todo el medidor; sin Cristal Z, una vez por partida (con él, una por piso). */
 export const Z_MOVE_COST = 100;
+/** Con la Teragema el Teracristal cuesta menos medidor. */
+export const TERA_GEM_COST = 40;
 /** Multiplicador de daño del ataque Z sobre el daño normal. */
 export const Z_MOVE_DAMAGE_MUL = 6;
 
@@ -255,7 +256,7 @@ export interface PowerContext {
   meter: number;
   hp: number;
   maxHp: number;
-  /** El Cristal Z ya se ha usado en la partida. */
+  /** El Movimiento Z ya se ha usado en la partida (sin Cristal Z solo se puede una vez). */
   zUsed: boolean;
 }
 
@@ -263,13 +264,18 @@ export interface PowerContext {
 export type PowerChoice = 'dynamax' | 'gigamax' | 'tera' | 'z';
 export type PowerBlock = 'item' | 'active' | 'used' | 'meter' | 'hp' | 'zUsed';
 
-/** Coste en medidor de cada opción. */
-export const powerCost = (c: PowerChoice): number => (c === 'z' ? Z_MOVE_COST : POWER_FORMS[c].meterCost);
+/** Coste en medidor de cada opción (la Teragema abarata el Teracristal). */
+export const powerCost = (c: PowerChoice, passives: readonly string[] = []): number =>
+  c === 'z' ? Z_MOVE_COST : c === 'tera' && passives.includes(TERA_GEM_ID) ? TERA_GEM_COST : POWER_FORMS[c].meterCost;
 
-/** ¿Se ofrece? Lleva el objeto (Gigamax solo en sus especies; Dinamax en las demás; Z hasta usarlo). */
+/**
+ * ¿Se ofrece? Teracristal y Movimiento Z los tiene todo el mundo con el medidor de poder (antes pedían un objeto
+ * legendario y casi nunca se veían): la Teragema los abarata y el Cristal Z deja repetir el Z en cada piso. Dinamax y
+ * Gigamax siguen pidiendo la Banda Dinamax (Gigamax solo en sus especies; Dinamax en las demás).
+ */
 export function powerOffered(c: PowerChoice, ctx: Pick<PowerContext, 'speciesId' | 'passives' | 'zUsed'>): boolean {
-  if (c === 'z') return ctx.passives.includes(Z_CRYSTAL_ID) && !ctx.zUsed;
-  if (c === 'tera') return ctx.passives.includes(TERA_GEM_ID);
+  if (c === 'z') return ctx.passives.includes(Z_CRYSTAL_ID) || !ctx.zUsed;
+  if (c === 'tera') return true;
   if (!ctx.passives.includes(DYNAMAX_BAND_ID)) return false;
   return c === 'gigamax' ? hasGigamax(ctx.speciesId) : !hasGigamax(ctx.speciesId);
 }
@@ -280,7 +286,7 @@ export function powerBlock(s: PowerFormState, c: PowerChoice, ctx: PowerContext)
   if (powerFormActive(s)) return 'active';
   if (s.usedThisFloor) return 'used';
   if ((c === 'dynamax' || c === 'gigamax') && ctx.hp > ctx.maxHp * DYNAMAX_HP_LIMIT) return 'hp';
-  if (ctx.meter < powerCost(c)) return 'meter';
+  if (ctx.meter < powerCost(c, ctx.passives)) return 'meter';
   return null;
 }
 
@@ -290,7 +296,7 @@ export const POWER_BLOCK_TEXT: Readonly<Record<PowerBlock, string>> = {
   used: 'Ya has usado una forma de poder en este piso',
   meter: 'Llena más el medidor de poder',
   hp: 'El Dinamax solo con la mitad de PS o menos',
-  zUsed: 'El Cristal Z ya se ha usado en esta partida',
+  zUsed: 'Ya has usado el Movimiento Z (con un Cristal Z, uno por piso)',
 };
 
 /**
@@ -304,6 +310,30 @@ export function pickPower(s: PowerFormState, ctx: PowerContext): { choice: Power
   if (offered.length === 0) return null;
   for (const c of offered) if (powerBlock(s, c, ctx) === null) return { choice: c, block: null };
   return { choice: offered[0], block: powerBlock(s, offered[0], ctx) };
+}
+
+// --- Selector de forma de poder: una tecla/botón elige cuál suelta el botón de forma (null = la automática) ---
+
+export type PowerSel = PowerChoice | 'mega';
+export const POWER_SEL_ORDER: readonly PowerSel[] = ['mega', 'gigamax', 'dynamax', 'tera', 'z'];
+export const POWER_SEL_LABEL: Readonly<Record<PowerSel, string>> = {
+  mega: 'Megaevolución', gigamax: 'Gigamax', dynamax: 'Dinamax', tera: 'Teracristal', z: 'Movimiento Z',
+};
+
+/** Formas que se pueden elegir ahora, en orden (la mega solo si se ofrece: piedra y especie con mega). */
+export function powerOptions(megaIsOffered: boolean, ctx: Pick<PowerContext, 'speciesId' | 'passives' | 'zUsed'>): PowerSel[] {
+  return POWER_SEL_ORDER.filter((c) => (c === 'mega' ? megaIsOffered : powerOffered(c, ctx)));
+}
+
+/** La elegida si sigue en la lista; si no (o no hay), null (= automática). */
+export const validPowerSel = (opts: readonly PowerSel[], cur: PowerSel | null): PowerSel | null => (cur && opts.includes(cur) ? cur : null);
+
+/** Siguiente (dir 1) o anterior (dir -1) de la lista, dando la vuelta. Sin elegida, empieza por la primera/última. */
+export function cyclePowerSel(opts: readonly PowerSel[], cur: PowerSel | null, dir: 1 | -1 = 1): PowerSel | null {
+  if (opts.length === 0) return null;
+  const i = cur ? opts.indexOf(cur) : -1;
+  if (i < 0) return dir === 1 ? opts[0] : opts[opts.length - 1];
+  return opts[(i + dir + opts.length) % opts.length];
 }
 
 /** Gasta el piso con el ataque Z (no deja forma activa: es un golpe al momento). */

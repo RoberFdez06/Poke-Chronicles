@@ -13,7 +13,15 @@ Es un **fan game gratuito y sin ánimo de lucro** (nunca se cobra dinero real po
 - **Disparas** con los ataques de tu tipo y llevas hasta **4 poderes** (movimientos reales de tu Pokémon, con su propio
   estilo: chorros, rayos, ondas, lluvia, bumeranes…).
 - Cada piso tiene su **bioma** (bosque, cueva, mar, volcán, torre, ciudad, nieve, pantano, cumbre), sus enemigos con
-  distintas formas de moverse, un **minijefe** en su propia sala y un **jefe legendario** con dos fases.
+  distintas formas de moverse, un **minijefe** (un pseudolegendario o un ultraente) en su propia sala y un **jefe
+  legendario** con dos fases. La **Mega Piedra** la custodia un guardián (otro pseudolegendario o ultraente) en su
+  guarida: al vencerlo la suelta.
+- **Formas de poder**: Megaevolución (basta con llevar la Mega Piedra; una vez por piso), Dinamax/Gigamax (con la
+  Banda Dinamax), Teracristal y Movimiento Z (con el medidor de poder). M / cruceta arriba / clic en el icono junto a
+  la Poké Ball usa la forma elegida; X / cruceta izquierda o derecha / clic derecho o rueda sobre el icono la cambia.
+- **Pokémon oscuros**: variante rara con aura morada y negra, más fuerte en todo. Salen como enemigos (más cuanto más
+  hondo), minijefes, jefes y legendarios; capturando uno (o en el gacha) lo tienes oscuro en la colección y juegas con
+  él así.
 - Hay **Centro Pokémon**, **tienda**, cofres con llave, bombas, salas sorpresa (Pokémon raro que huye, mercader, altar,
   cofre trampa) y clima distinto en cada piso. Desde el piso 2 algunas salas traen una **regla especial** (un solo
   tipo de daño, enemigos que se multiplican, sala a oscuras o de velocidad), marcada en el minimapa.

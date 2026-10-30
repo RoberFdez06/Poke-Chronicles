@@ -5,13 +5,13 @@ import { MEGA_FORMS, MEGA_STONE_ID, megaBlock, megaOffered, newPowerFormState } 
 import { MEGA_BOSS_IDS, bossMegaForm, legendMegaAtPhase, megaKind, shouldMegaEvolve } from '../src/data/megaBoss.ts';
 import { nextBossEvent } from '../src/level/arenaPhase.ts';
 
-test('jugador: cada especie con mega puede megaevolucionar con piedra y adrenalina llena', () => {
+test('jugador: cada especie con mega puede megaevolucionar solo con la piedra (sin adrenalina)', () => {
   for (const [id, form] of MEGA_FORMS) {
     assert.match(form, /^[a-z-]+-(mega(-[xy])?|primal)$/, `forma de ${id}`);
-    const ctx = { speciesId: id, passives: [MEGA_STONE_ID], adrenalineFull: true };
+    const ctx = { speciesId: id, passives: [MEGA_STONE_ID] };
     assert.ok(megaOffered(ctx), `${id} ofrecida`);
     assert.equal(megaBlock(newPowerFormState(), ctx), null, `${id} sin bloqueo`);
-    assert.equal(megaBlock(newPowerFormState(), { ...ctx, adrenalineFull: false }), 'adrenaline');
+    assert.equal(megaBlock(newPowerFormState(), { ...ctx, passives: [] }), 'stone');
   }
 });
 

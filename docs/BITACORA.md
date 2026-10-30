@@ -1400,3 +1400,47 @@ Hecho (rama `jefes2`):
 Pendiente:
 - Probar en el navegador (solo `tsc` y `npm test`): los 8 asaltos (legibilidad y dificultad), la cinemática congelada, el respiro del jefe,
   la trampilla en arenas 2x2/3x3 tras el derrumbe y el seguro de spawns.
+## Formas de poder, Pokémon oscuros y guardián de la Mega Piedra (rama `formas`, 28/10)
+
+- **Dinamax**: el aspecto aprobado. Sprite de siempre (animado de SpriteCollab si lo hay; antes era el estático de
+  PokeAPI ampliado), ×1,65 (`POWER_FORMS.dynamax.sizeMul`), aura roja suave sin la silueta de luz dura, aro rojo y
+  nubes que suben y coronan la cabeza (`playerFormAura` 'max', `dynamaxBurst` al empezar). El Gigamax no se toca.
+- **Teracristal y Movimiento Z**: antes pedían la Teragema / el Cristal Z (legendarios, casi nunca salían) y el botón
+  único elegía siempre otra forma, así que no se veían. Ahora los tiene todo el mundo con el medidor de poder; la
+  Teragema abarata el Tera (40 % en vez de 60 %) y deja elegir el tipo; el Cristal Z deja repetir el Z en cada piso
+  (sin él, una vez por partida). Arte: corona de cinco gemas del tipo Tera sobre la cabeza, facetas que orbitan, aro
+  facetado y destellos de gema (`drawTeraAura` en megaFx.ts) y cartel «Tipo X» al cambiar (los disparos ya salían de
+  ese tipo y color). El Z: pose (el jugador se para, invulnerable), estrella Z del tipo a los pies (`zStarFx`), el
+  anillo de 16 disparos de antes y, al acabar la pose, columna de luz y onda que golpea a todo enemigo a 420 px
+  (`zImpactFx` + `hitEnemy`).
+- **Selector de forma** (`powerOptions` / `cyclePowerSel` / `validPowerSel` en powerForm.ts): acción nueva `powerNext`
+  (X por defecto, al final de ACTIONS para no romper teclas guardadas), cruceta izquierda/derecha (botones 14/15,
+  libres en partida), clic derecho o rueda sobre el icono del HUD, y en táctil mantener el icono medio segundo. El
+  botón de forma (M / cruceta arriba / clic) usa la elegida; sin elegir, la automática de antes. El icono del HUD
+  dibuja la Mega Piedra o el objeto de la forma elegida (Banda Dinamax, Teragema, Cristal Z) con su aro de estado
+  (`drawPowerSelHud`). Controles (fila «Elegir forma de poder»; filas a 25 px), Teclas (12 por columna) y consejo
+  nuevo `forms` de la tira de consejos con glifos pixel (GlyphText, según el dispositivo).
+- **Pokémon oscuros** (`src/data/darkMon.ts`): enemigos +40 % vida, +30 % daño, +25 % velocidad y +30 % cadencia
+  (tempo.cooldownMul); el inicial oscuro +25 % vida, daño y cadencia y +12 % velocidad. Probabilidad por piso: normales
+  0,4 % +0,3 %/piso (tope 4 %), minijefes 4 % (+1 %, tope 15 %), jefes 3 % (+1,2 %, tope 18 %), legendario de la
+  cacería 5 % (+1,2 %, tope 20 %); gacha 1/100. Nunca en el desafío diario ni en enemigos de evento ni ayudantes.
+  Aura morada y negra con humo y chispas (`src/ui/art/darkFx.ts`), tinte morado (paintEnemy), «¡Oscuro!» al salir,
+  nombre «X Oscuro», intro con franja morada, humo y «¡POKÉMON OSCURO!» (BossIntroScene `dark`), +3 monedas de 5 y
+  tickets ×1,5 en jefes y minijefes. Capturar uno normal (o el legendario de la cacería oscuro) lo guarda oscuro
+  (`addDark`, `pokeisaac.darks`, en PROGRESS_KEYS); la Pokédex lo marca (llama pixel y «· Oscuro»), Elegir Pokémon pone
+  «Oscuro ·» y, como el shiny, juegas con él oscuro. **RunSave v29**: `dark` (los v28 migran con `false`).
+- **Megaevolución**: solo hace falta la Mega Piedra (ya no gasta la adrenalina). La piedra ya no está suelta: la sala
+  de `planMegaStoneRoom` es la **guarida del guardián**, un pseudolegendario o ultraente (`src/data/guardians.ts`,
+  `pickGuardian`) con ×1,6 de vida y ×1,2 de daño sobre un minijefe, aura del color de la piedra e intro «GUARDIÁN»;
+  al caer suelta la Mega Piedra en el suelo (o un objeto si ya la llevas) y +6 tickets. Si no se pudiera sacar, queda
+  el altar de antes. Los **minijefes** también son pseudolegendarios/ultraentes (fijos por piso con su semilla; sus
+  sprites se cargan con el piso; sin conexión, solo los guardados; si fallan, el más fuerte del bioma). La Torre sigue
+  con su altar de descanso (no tiene salas de combate normales).
+- **Panel admin**: «Megaevolucionar» (siempre el jugador: da la piedra si falta y avisa si la especie no tiene mega;
+  antes, con un jefe en la sala, megaevolucionaba al jefe), «Dar la Mega Piedra», «Megaevolucionar al jefe de la
+  sala», «Llenar el medidor de poder», «Jugar con el inicial oscuro» y el selector de forma (Dinamax, Gigamax,
+  Teracristal, Movimiento Z) que además la deja elegida en el HUD.
+- Tests: `tests/darkMon.test.ts`, `tests/guardians.test.ts`, `tests/powerSel.test.ts`, más casos en runSave,
+  keybinds, powerForm, powerFormT75, megaAll y roomEvents.
+- Sin probar en navegador: el aspecto final del Dinamax, la corona Tera, la pose Z, el aura oscura y la intro del
+  guardián (no hay navegador en la sesión; `npm run build` no corre en la VM de Linux por el binario de rollup).
