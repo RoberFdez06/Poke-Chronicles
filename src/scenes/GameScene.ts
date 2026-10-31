@@ -16,7 +16,9 @@ import { cornerRect, joinWalls } from '../level/joinCorner';
 import { BOSS_CINE_STORE, bossCineKey, shouldShowBossCine } from '../data/bossCine';
 import { bounceOffRects, clipSegmentToRects, segmentBlocked } from '../data/projectileRules';
 import { phaseAtSeconds, phasePowerMul, pickByPhase, PHASE_DESC, PHASE_NOTICE, type Phase } from '../data/dayNight';
-import { TouchControls, type TouchButton } from '../ui/touchControls';
+import { TouchControls } from '../ui/touchControls';
+import { touchAimDir } from '../data/touchAim';
+import type { PadRect } from '../data/touchPad';
 import { touchOnlyDevice } from '../data/controls';
 import { FxBudget } from '../data/fxSettings';
 import {
@@ -3258,6 +3260,8 @@ export class GameScene extends Phaser.Scene {
       };
     }
     activeBtn.on('pointerdown', () => this.useActive());
+    // Controles táctiles (T35), solo en móvil o tableta (en PC nunca): joysticks flotantes y botones pixel
+    this.touch = touchOnlyDevice() ? new TouchControls(this, (o) => void hud(o), this.slotY(0), () => this.touchBlocked()) : undefined;
     // Poderes: cuatro cuadros abajo a la derecha (clic para lanzar)
     const slotZones: (Phaser.GameObjects.Zone | Phaser.GameObjects.Text)[] = [];
     for (let i = 0; i < SLOT_COUNT; i++) {
@@ -3271,13 +3275,16 @@ export class GameScene extends Phaser.Scene {
       this.hud.push(txt(RX + 50, y + 34, 18, '#f8f8f8', true).setOrigin(0, 0.5));
       const zone = over(hud(this.add.zone(RX + RW / 2, y + 32, RW, 64).setInteractive({ useHandCursor: true })));
       slotZones.push(zone);
-      zone.on('pointerdown', () => !this.ended && !this.transitioning && this.castSlot(i, this.time.now));
+      // En táctil sale solo hacia el enemigo más cercano (sin soltar el joystick de apuntar)
+      zone.on('pointerdown', () => !this.ended && !this.transitioning && this.castSlot(i, this.time.now, this.touch ? this.touchCastDir() : undefined));
     }
     // Esquiva: cuadro pequeño encima de las ranuras con su tecla/botón y la recarga (clic en él también esquiva)
     {
       const dy = this.slotY(0) - 52;
       this.dashHud = { g: hud(this.add.graphics()), x: RX, y: dy, w: RW, h: 38, shown: '' };
-      txt(RX + 54, dy + 19, 15, '#f8f8f8', true).setOrigin(0, 0.5).setText('Esquiva');
+      const dashLabel = txt(RX + 54, dy + 19, 15, '#f8f8f8', true).setOrigin(0, 0.5).setText('Esquiva');
+      // En táctil la esquiva es su botón pixel (encima de las ranuras): este cuadro no se ve
+      if (this.touch) dashLabel.setVisible(false);
       const dashBtn = over(hud(this.add.zone(RX + RW / 2, dy + 19, RW, 38).setInteractive({ useHandCursor: true })));
       dashBtn.on('pointerdown', (p: Phaser.Input.Pointer) => !p.rightButtonDown() && this.doDash());
       if (this.touch) dashBtn.disableInteractive();
@@ -3286,15 +3293,14 @@ export class GameScene extends Phaser.Scene {
     this.minimap = hud(this.add.graphics());
     // Contador de FPS (Ajustes > Mostrar FPS), abajo a la derecha
     if (loadFx().showFps) this.fpsText = hud(this.add.text(W - 8, H - 6, '', { fontFamily: FONT, fontSize: '16px', color: '#9fe39a' }).setOrigin(1, 1));
-    // Controles táctiles (T35), solo en móvil o tableta (en PC nunca)
-    this.touch = touchOnlyDevice() ? new TouchControls(this, (o) => void hud(o)) : undefined;
-    // En táctil los joysticks y botones van encima de las ranuras de poderes y del objeto activo: esos cuadros se
-    // esconden y su estado (tipo, recarga, carga) lo enseñan los propios botones 1-4 y «Activo» (paintSlot/paintActive)
+    // En táctil las ranuras de poder se ven y se tocan como en PC (tocar = lanzar al enemigo más cercano); el cuadro
+    // del objeto activo lo tapa su botón pixel «Activo», así que no recibe toques
     if (this.touch) {
-      [...slotZones, activeBtn].forEach((z) => z.disableInteractive());
+      activeBtn.disableInteractive();
       this.slotShown = this.slotShown.map(() => '');
       if (this.activeHud) this.activeHud.shown = '';
     }
+    void slotZones;
     this.hurtFlash = hud(this.add.rectangle(GAME_VIEW.x + GAME_VIEW.w / 2, GAME_VIEW.y + GAME_VIEW.h / 2, GAME_VIEW.w, GAME_VIEW.h, 0xff2a2a, 0));
     // Avisos (T37): tarjetas en la franja derecha, bajo el minimapa
     this.toasts?.clear();
@@ -5436,7 +5442,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const x = GAME_VIEW.x;
     const h = 56;
     const y = H - h - 2;
-    const box = drawBox(this.add.graphics(), x, y, w, h, { radius: 12 }).setAlpha(0.96);
+    const box = drawBox(this.add.graphics(), x, y, w, h, { radius: 12 }).setAlpha(0.96).setData('top', y);
     const title = this.add.text(x + 20, y + h / 2, `Consejo · ${TIPS[id].title}`, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(0, 0.5);
     const touch = !!this.touch || currentInput() === 'touch';
     // El de las formas de poder, con las teclas y botones dibujados (glifos pixel) del dispositivo que usas
@@ -6323,6 +6329,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     h.shown = key;
     const g = h.g.clear();
     const ready = left <= 0;
+    if (this.touch) return void this.touch.setDashReady(ready);
     g.fillStyle(0x101828, 1).fillRoundedRect(h.x, h.y, h.w, h.h, 8);
     g.fillStyle(ready ? 0x3f8fd0 : 0x3a4560, 1).fillRoundedRect(h.x + 3, h.y + 3, h.w - 6, h.h - 6, 6);
     // Icono pixel: tres rayas de velocidad y una flecha
@@ -6338,7 +6345,6 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const name = device === 'gamepad' ? 'pad:dpad-down' : `key:${keyLabel(loadKeys().dash)}`;
       h.glyph = this.hudGlyph(h.x + 26, h.y + h.h / 2, name, 24, 44).setAlpha(ready ? 1 : 0.5);
     }
-    this.touch?.setDashReady(ready);
   }
 
   // --- T56: salas con reglas especiales (level/roomRules.ts) ---
@@ -10705,10 +10711,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.updateDashFx();
     const padA = hasPad && pad!.A && !this.padPrev[0];
     const usedA = this.updateInteract(Phaser.Input.Keyboard.JustDown(this.enterKey) || !!this.touch?.consume('use'), padA);
+    // «Usar» táctil: solo se ve cuando hay algo con lo que interactuar (el mismo aviso de abajo)
+    this.touch?.setUseVisible(this.prompt.hasText);
 
     // Poderes: teclas 1-4 o botones A, B, X, Y
     this.abilityKeys.forEach((k, i) => {
-      if (Phaser.Input.Keyboard.JustDown(k) || this.touch?.consume(`power${i + 1}` as TouchButton)) this.castSlot(i, time);
+      if (Phaser.Input.Keyboard.JustDown(k)) this.castSlot(i, time);
     });
     if (hasPad) {
       [pad!.A, pad!.B, pad!.X, pad!.Y].forEach((down, i) => {
@@ -10825,6 +10833,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.keysHud.setText(String(this.keys));
     this.bombsHud.setText(String(this.bombs));
     this.potionsHud?.setText(String(this.potions));
+    this.touch?.setCount('bomb', this.bombs);
+    this.touch?.setCount('potion', this.potions);
     this.paintBall(time);
     this.paintMega();
     this.paintPowerSel();
@@ -11079,7 +11089,28 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Poder activo: el movimiento de la ranura sale hacia donde miras. */
-  private castSlot(i: number, time: number) {
+  /** Dirección de un poder tocado en móvil: enemigo más cercano (o jefe), si no el joystick de apuntar, si no la última. */
+  private touchCastDir(): Phaser.Math.Vector2 {
+    const p = this.player;
+    const foes = (this.enemies?.getChildren() ?? []) as Sprite[];
+    const targets = foes.map((e) => ({ x: e.x, y: e.y, ok: e.active && e.visible && !e.getData('capturing') && !e.getData('runaway') }));
+    const a = this.touch?.aim;
+    const d = touchAimDir({ x: p.x, y: p.y }, targets, a && a.lengthSq() > 0 ? { x: a.x, y: a.y } : null, this.aim);
+    return new Phaser.Math.Vector2(d.x, d.y);
+  }
+
+  /** Zonas donde un dedo no hace nacer un joystick: ranuras de poder, pausa y la barra del consejo. */
+  private touchBlocked(): PadRect[] {
+    const out: PadRect[] = [
+      { x: HUD.right.x, y: this.slotY(0) - 8, w: HUD.right.w, h: H - this.slotY(0) + 8 },
+      { x: 0, y: 0, w: HUD.pad + HL.pause.x + HL.pause.w + 12, h: HL.pause.y + HL.pause.h + 12 },
+    ];
+    const box = this.tipObjects[0] as Phaser.GameObjects.Graphics | undefined;
+    if (box?.active) out.push({ x: GAME_VIEW.x, y: (box.getData('top') as number | undefined) ?? H - 60, w: GAME_VIEW.w, h: H });
+    return out;
+  }
+
+  private castSlot(i: number, time: number, aimDir?: Phaser.Math.Vector2) {
     const m = this.slots[i];
     if (!m || time < this.slotReady[i]) return;
     // Cada movimiento sale con su estilo (catálogo de ataques): chorro, rayo, onda, lluvia, bumerán…
@@ -11091,6 +11122,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else sfx(shotSfx(m.type));
     this.lastShotAt = time;
 
+    // En táctil el poder lleva su propia dirección (auto-apuntado) y pasa a ser la última de disparo
+    if (aimDir) this.aim.copy(aimDir);
     const dir = this.aim.clone().normalize();
     if (this.fxBudget.take(this.time.now)) muzzle(this, this.player.x, this.player.y, dir.x, dir.y, typeColor(m.type));
     // At. Esp. del Pokémon y, encima, lo que suban el daño los objetos
@@ -12353,7 +12386,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     badge.setVisible(false);
     this.slotGlyphs[i]?.destroy();
     this.slotGlyphs[i] = undefined;
-    if (device === 'touch') textX = x + 14;
+    if (device === 'touch' || this.touch) textX = x + 14;
     else {
       const name = device === 'gamepad' ? `pad:${'ABXY'[i]}` : `key:${keyLabel(loadKeys()[`power${i + 1}` as 'power1'])}`;
       const gl = this.hudGlyph(bx, by, name, 28, 80).setAlpha(m && !ready ? 0.5 : 1);
@@ -12362,14 +12395,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     const text = this.hud[i].setX(textX);
     if (!m) text.setText('—').setAlpha(0.6);
-    else text.setText(shorten(pretty(m.name), 13)).setAlpha(ready ? 1 : 0.4);
+    else text.setText(shorten(pretty(m.name), this.touch ? 10 : 13)).setAlpha(ready ? 1 : 0.4);
     g.setAlpha(m ? 1 : 0.6);
-    const hide = !!this.touch;
-    g.setVisible(!hide);
-    text.setVisible(!hide);
-    this.slotTypes[i].setVisible(!hide);
-    this.slotGlyphs[i]?.setVisible(!hide);
-    this.touch?.setPower(i, m ? typeColor(m.type) : null, ready);
+    // La ficha del tipo no se sale de su hueco (en móvil la letra es más grande)
+    const chip = this.slotTypes[i].setScale(1);
+    if (chip.width > 84) chip.setScale(84 / chip.width);
   }
 
   /** Glifo de tecla o botón en el HUD, centrado en (x, y) y encogido si pasa de `maxW`. */

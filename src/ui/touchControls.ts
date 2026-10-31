@@ -1,23 +1,41 @@
-// Controles táctiles de la partida (T35): solo en móvil o tableta (ver data/controls.ts `touchOnlyDevice`).
-// Joystick a la izquierda (moverse), joystick a la derecha (disparar hacia donde lo empujes) y botones de poderes
-// 1-4, objeto activo, bomba, poción (T49) y "Usar". La pausa es el botón ❚❚ del HUD (tocar = clic). Coordenadas reales de
-// pantalla (las del HUD), con varios dedos a la vez.
+// Controles táctiles de la partida (T35, rehechos para móvil): solo en móvil o tableta (data/controls.ts
+// `touchOnlyDevice`). Coordenadas reales de pantalla (las del HUD) y varios dedos a la vez.
+//  - Joysticks flotantes: el de moverse nace donde toques en la mitad izquierda y el de apuntar/disparar en la
+//    mitad derecha (fuera de las ranuras de poder y de los botones). La base se dibuja donde empieza el dedo, el
+//    pomo lo sigue y al soltar se esconde; queda una pista tenue de dónde tocar.
+//  - Los poderes se lanzan tocando sus ranuras del HUD (las mismas que en PC; GameScene apunta solo al enemigo más
+//    cercano, ver data/touchAim.ts). Aquí solo quedan los botones pixel art: Parry y Esquiva a la derecha, encima
+//    de las ranuras; Activo, Bomba, Poción y Usar (solo cuando hay algo con lo que interactuar) a la izquierda.
+// La parte pura (vector del joystick, zonas, colocación y toque) está en data/touchPad.ts con sus pruebas.
 import Phaser from 'phaser';
-import { H, HUD, W } from './layout';
+import { GAME_VIEW, H, HUD, W } from './layout';
+import { hitPadButton, padButtons, stickVector, stickZone, STICK_KNOB, STICK_R, type PadButton, type PadRect } from '../data/touchPad';
+import { bakeTouchButtons, touchBtnKey, TOUCH_FRAME } from './art/touchButtons';
+import { lowFx } from './theme';
 
-export type TouchButton = 'power1' | 'power2' | 'power3' | 'power4' | 'active' | 'bomb' | 'potion' | 'use' | 'parry' | 'dash';
+export type TouchButton = PadButton;
 
-const R = 86; // radio del joystick
-const KNOB = 38;
-const BTN = 30; // radio de los botones
-/** Zona alrededor del joystick que lo coge al tocar. */
-const GRAB = R * 1.7;
+/** Dónde se dibuja la pista tenue de cada joystick cuando no se toca (centro, px de lienzo). */
+const HINT = {
+  move: { x: GAME_VIEW.x + 190, y: H - 250 },
+  aim: { x: GAME_VIEW.x + GAME_VIEW.w - 190, y: H - 250 },
+};
+/** Opacidad de la pista (y de la base y el pomo mientras se usa). */
+const HINT_ALPHA = 0.16;
+const BASE_ALPHA = 0.32;
+const KNOB_ALPHA = 0.6;
+/** Cuánto dura el estado «pulsado» de un botón al tocarlo (ms). */
+const PRESS_MS = 120;
+/** Zona de toque mínima de un botón (px CSS de radio): 22 = 44 px de diámetro. */
+const MIN_HIT_CSS = 22;
 
 interface Stick {
-  cx: number;
-  cy: number;
+  side: 'move' | 'aim';
+  color: number;
   base: Phaser.GameObjects.Arc;
   knob: Phaser.GameObjects.Arc;
+  hint: Phaser.GameObjects.Arc;
+  origin: { x: number; y: number };
   pointer: number | null;
   vec: Phaser.Math.Vector2;
 }
@@ -26,10 +44,12 @@ interface Btn {
   id: TouchButton;
   x: number;
   y: number;
-  circle: Phaser.GameObjects.Arc;
-  color: number;
-  /** Apagado (recargando, vacío o sin carga). */
+  size: number;
+  img: Phaser.GameObjects.Image;
+  visible: boolean;
+  /** Apagado (recargando, vacío o sin carga): se puede tocar igual (el juego avisa si no hay). */
   dim: boolean;
+  downUntil: number;
 }
 
 export class TouchControls {
@@ -37,104 +57,97 @@ export class TouchControls {
   private buttons: Btn[] = [];
   private pressed = new Set<TouchButton>();
   private objects: Phaser.GameObjects.GameObject[] = [];
-  /** Radio de toque de los botones (mínimo 44 px CSS de diámetro). */
-  private hitR = BTN + 10;
+  /** Px de lienzo por px CSS (para la zona de toque mínima). */
+  private disp: number;
 
   constructor(
     private scene: Phaser.Scene,
     /** Mete cada objeto en la capa del HUD (cámara sin zoom). */
     add: (o: Phaser.GameObjects.GameObject) => void,
+    /** y de arriba de la primera ranura de poder (Parry y Esquiva van encima). */
+    slotsTop: number,
+    /** Zonas donde un dedo no hace nacer un joystick (ranuras de poder, pausa, consejo…); se piden en cada toque. */
+    private blocked: () => PadRect[] = () => [],
   ) {
-    // Hasta 4 dedos: dos joysticks y un botón a la vez
-    scene.input.addPointer(3);
+    // Hasta 5 dedos: dos joysticks y botones a la vez
+    scene.input.addPointer(4);
+    bakeTouchButtons(scene);
     const keep = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
       add(o);
       this.objects.push(o);
       return o;
     };
-    const stick = (cx: number, cy: number, color: number): Stick => ({
-      cx,
-      cy,
-      base: keep(scene.add.circle(cx, cy, R, 0x000000, 0.28).setStrokeStyle(4, color, 0.6)),
-      knob: keep(scene.add.circle(cx, cy, KNOB, color, 0.55)),
-      pointer: null,
-      vec: new Phaser.Math.Vector2(),
-    });
-    const bottom = H - HUD.pad - R - 10;
-    this.sticks = {
-      move: stick(HUD.left.w / 2, bottom, 0x8fd3ff),
-      aim: stick(W - HUD.right.w / 2, bottom, 0xff9a7a),
+    this.disp = Math.max(0.1, scene.scale.displaySize.width / W);
+    const stick = (side: 'move' | 'aim', color: number): Stick => {
+      const h = HINT[side];
+      return {
+        side,
+        color,
+        hint: keep(scene.add.circle(h.x, h.y, STICK_R, 0xffffff, 0).setStrokeStyle(4, color, HINT_ALPHA)),
+        base: keep(scene.add.circle(h.x, h.y, STICK_R, 0x000000, BASE_ALPHA * 0.6).setStrokeStyle(5, color, BASE_ALPHA * 2).setVisible(false)),
+        knob: keep(scene.add.circle(h.x, h.y, STICK_KNOB, color, KNOB_ALPHA).setStrokeStyle(3, 0xffffff, 0.7).setVisible(false)),
+        origin: { ...h },
+        pointer: null,
+        vec: new Phaser.Math.Vector2(),
+      };
     };
-    // Tamaño de los botones según lo que mide de verdad la pantalla: al menos 44 px CSS de zona de toque (en un
-    // móvil el lienzo de 1920×1080 se ve a ~0,36, y con radio 30 los botones medían 22 px)
-    const disp = Math.max(0.1, scene.scale.displaySize.width / W);
-    const r = Math.round(Math.min(58, Math.max(BTN, 21 / disp)));
-    this.hitR = Math.max(r + 8, 22 / disp);
-    const btn = (id: TouchButton, x: number, y: number, label: string, color: number) => {
-      const circle = keep(scene.add.circle(x, y, r, color, 0.55).setStrokeStyle(3, 0xffffff, 0.75));
-      const size = Math.round(r * (label.length > 2 ? 0.46 : 0.8));
-      keep(scene.add.text(x, y, label, { fontFamily: 'sans-serif', fontSize: `${size}px`, fontStyle: 'bold', color: '#ffffff' }).setOrigin(0.5).setStroke('#101828', 3));
-      this.buttons.push({ id, x, y, circle, color, dim: false });
-    };
-    // Dos columnas dentro de cada franja lateral, encima de su joystick (no tapan la sala ni se pisan)
-    const col = Math.min(62, HUD.right.w / 2 - r - 2);
-    const row1 = bottom - R - r - 14;
-    const row2 = row1 - 2 * r - 14;
-    const row3 = row2 - 2 * r - 14;
-    const ax = this.sticks.aim.cx;
-    btn('power1', ax - col, row2, '1', 0x3b6fd6);
-    btn('power2', ax + col, row2, '2', 0x3b6fd6);
-    btn('power3', ax - col, row1, '3', 0x3b6fd6);
-    btn('power4', ax + col, row1, '4', 0x3b6fd6);
-    // T53: parry encima de los poderes, a mano del pulgar derecho (el que apunta)
-    btn('parry', ax + col, row3, 'Parry', 0xd4a017);
-    // Esquiva al lado del parry: las dos defensas bajo el mismo pulgar
-    btn('dash', ax - col, row3, 'Esquiva', 0x3f8fd0);
-    const lx = this.sticks.move.cx;
-    btn('active', lx - col, row2, 'Activo', 0x8e44ad);
-    btn('bomb', lx + col, row2, 'Bomba', 0x555555);
-    btn('use', lx - col, row1, 'Usar', 0x2e9e5b);
-    btn('potion', lx + col, row1, 'Poción', 0x9b59d0);
+    this.sticks = { move: stick('move', 0x8fd3ff), aim: stick('aim', 0xff9a7a) };
+
+    const layout = padButtons(HUD.left, HUD.right, H, HUD.pad, slotsTop);
+    for (const id of Object.keys(layout) as TouchButton[]) {
+      const b = layout[id];
+      const img = keep(scene.add.image(b.x, b.y, touchBtnKey(id, 'up')).setScale(b.size / TOUCH_FRAME));
+      this.buttons.push({ id, ...b, img, visible: true, dim: false, downUntil: 0 });
+    }
+    // «Usar» solo aparece cerca de algo con lo que interactuar (GameScene llama a setUseVisible)
+    this.setUseVisible(false);
 
     scene.input.on('pointerdown', this.onDown, this);
     scene.input.on('pointermove', this.onMove, this);
     scene.input.on('pointerup', this.onUp, this);
     scene.input.on('pointerupoutside', this.onUp, this);
+    scene.events.on(Phaser.Scenes.Events.UPDATE, this.tick, this);
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
   }
 
-  /**
-   * Botón de poder `i` (0-3) con el color del tipo del poder que tiene (gris si la ranura está vacía) y apagado
-   * mientras recarga: en táctil las ranuras del HUD se esconden (las tapaban estos botones) y esto las sustituye.
-   */
-  setPower(i: number, color: number | null, ready: boolean): void {
-    const b = this.buttons.find((x) => x.id === `power${i + 1}`);
+  /** Radio de toque de un botón: un poco más que el dibujo y nunca menos de 44 px CSS de diámetro. */
+  private hitR = (size: number) => Math.max(size / 2 + 10, MIN_HIT_CSS / this.disp);
+
+  private paint(b: Btn) {
+    if (!b.img.active) return;
+    const down = this.scene.time.now < b.downUntil;
+    b.img.setTexture(touchBtnKey(b.id, down ? 'down' : b.dim ? 'off' : 'up')).setVisible(b.visible).setAlpha(b.dim && !down ? 0.75 : 1);
+  }
+
+  private set(id: TouchButton, o: { dim?: boolean; visible?: boolean }) {
+    const b = this.buttons.find((x) => x.id === id);
     if (!b) return;
-    b.color = color ?? 0x4a5468;
-    b.dim = color === null || !ready;
+    const dim = o.dim ?? b.dim;
+    const visible = o.visible ?? b.visible;
+    if (dim === b.dim && visible === b.visible) return;
+    b.dim = dim;
+    b.visible = visible;
     this.paint(b);
   }
 
-  /** Botón «Activo»: gris sin objeto, apagado mientras se carga y encendido cuando está listo. */
+  /** Botón «Activo»: apagado sin objeto o mientras se carga, encendido cuando está listo. */
   setActiveReady(has: boolean, ready: boolean): void {
-    const b = this.buttons.find((x) => x.id === 'active');
-    if (!b) return;
-    b.color = has ? 0x8e44ad : 0x4a5468;
-    b.dim = !ready;
-    this.paint(b);
+    this.set('active', { dim: !has || !ready });
   }
 
   /** Botón «Esquiva»: apagado mientras recarga. */
   setDashReady(ready: boolean): void {
-    const b = this.buttons.find((x) => x.id === 'dash');
-    if (!b || b.dim === !ready) return;
-    b.dim = !ready;
-    this.paint(b);
+    this.set('dash', { dim: !ready });
   }
 
-  private paint(b: Btn) {
-    if (!b.circle.active) return;
-    b.circle.setFillStyle(b.color, b.dim ? 0.28 : 0.6).setStrokeStyle(3, 0xffffff, b.dim ? 0.35 : 0.85);
+  /** Bomba y Poción: apagadas si no te queda ninguna. */
+  setCount(id: 'bomb' | 'potion', n: number): void {
+    this.set(id, { dim: n <= 0 });
+  }
+
+  /** «Usar»: solo se ve (y se puede tocar) cerca de algo interactuable. */
+  setUseVisible(v: boolean): void {
+    this.set('use', { visible: v });
   }
 
   /** Dirección de movimiento (largo 0 a 1). */
@@ -158,28 +171,38 @@ export class TouchControls {
   }
 
   private hitButton(p: Phaser.Input.Pointer): Btn | null {
-    return this.buttons.find((b) => Phaser.Math.Distance.Between(p.x, p.y, b.x, b.y) <= this.hitR) ?? null;
+    return hitPadButton(p.x, p.y, this.buttons, this.hitR);
   }
 
   private onDown(p: Phaser.Input.Pointer) {
     const b = this.hitButton(p);
     if (b) {
       this.pressed.add(b.id);
-      b.circle.setFillStyle(b.circle.fillColor, 0.9);
-      this.scene.time.delayedCall(120, () => b.circle.active && this.paint(b));
+      b.downUntil = this.scene.time.now + PRESS_MS;
+      this.paint(b);
       return;
     }
-    for (const s of [this.sticks.move, this.sticks.aim]) {
-      if (s.pointer === null && Phaser.Math.Distance.Between(p.x, p.y, s.cx, s.cy) <= GRAB) {
-        s.pointer = p.id;
-        this.follow(s, p);
-        return;
-      }
-    }
+    const side = stickZone(p.x, p.y, W, this.blocked());
+    if (!side) return;
+    const s = this.sticks[side];
+    if (s.pointer !== null) return;
+    s.pointer = p.id;
+    s.origin = { x: p.x, y: p.y };
+    s.base.setPosition(p.x, p.y).setVisible(true);
+    s.knob.setPosition(p.x, p.y).setVisible(true);
+    s.hint.setVisible(false);
+    s.vec.set(0, 0);
   }
 
   private onMove(p: Phaser.Input.Pointer) {
-    for (const s of [this.sticks.move, this.sticks.aim]) if (s.pointer === p.id) this.follow(s, p);
+    for (const s of [this.sticks.move, this.sticks.aim]) {
+      if (s.pointer !== p.id) continue;
+      const v = stickVector(s.origin, { x: p.x, y: p.y });
+      s.origin = { x: v.baseX, y: v.baseY };
+      s.vec.set(v.x, v.y);
+      s.base.setPosition(v.baseX, v.baseY);
+      s.knob.setPosition(v.knobX, v.knobY);
+    }
   }
 
   private onUp(p: Phaser.Input.Pointer) {
@@ -187,17 +210,25 @@ export class TouchControls {
       if (s.pointer !== p.id) continue;
       s.pointer = null;
       s.vec.set(0, 0);
-      s.knob.setPosition(s.cx, s.cy);
+      s.base.setVisible(false);
+      s.knob.setVisible(false);
+      s.hint.setVisible(true);
     }
   }
 
-  private follow(s: Stick, p: Phaser.Input.Pointer) {
-    const v = new Phaser.Math.Vector2(p.x - s.cx, p.y - s.cy);
-    const len = Math.min(v.length(), R);
-    // Zona muerta pequeña en el centro
-    if (len < R * 0.15) s.vec.set(0, 0);
-    else s.vec.copy(v.normalize().scale(len / R));
-    s.knob.setPosition(s.cx + s.vec.x * R, s.cy + s.vec.y * R);
+  /** Vuelve a pintar los botones cuyo «pulsado» ha terminado; con efectos bajos la pista no parpadea. */
+  private tick() {
+    const now = this.scene.time.now;
+    for (const b of this.buttons) {
+      if (b.downUntil > 0 && now >= b.downUntil) {
+        b.downUntil = 0;
+        this.paint(b);
+      }
+    }
+    if (lowFx()) return;
+    // Pista: respira muy suave para que se vea que ahí se toca
+    const a = HINT_ALPHA * (0.75 + 0.25 * Math.sin(now / 600));
+    for (const s of [this.sticks.move, this.sticks.aim]) if (s.pointer === null) s.hint.setStrokeStyle(4, s.color, a);
   }
 
   destroy() {
@@ -205,6 +236,7 @@ export class TouchControls {
     this.scene.input.off('pointermove', this.onMove, this);
     this.scene.input.off('pointerup', this.onUp, this);
     this.scene.input.off('pointerupoutside', this.onUp, this);
+    this.scene.events.off(Phaser.Scenes.Events.UPDATE, this.tick, this);
     this.objects.forEach((o) => o.destroy());
     this.objects = [];
   }

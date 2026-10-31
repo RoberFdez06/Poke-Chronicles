@@ -167,6 +167,11 @@ export class PromptPanel {
     return this;
   }
 
+  /** ¿Está enseñando algo? (en táctil, el botón «Usar» solo aparece entonces) */
+  get hasText(): boolean {
+    return this.shown !== '' && !this.shown.endsWith('|');
+  }
+
   /** Antes lo ponía encima del objeto; ahora el panel no se mueve. */
   setPosition(_x?: number, _y?: number): this {
     return this;
