@@ -377,6 +377,8 @@ const POWER_SLOT = 40;
 /** Radio máximo del cuerpo del jugador (px): menos de media casilla, para caber por pasillos de una casilla. */
 const PLAYER_BODY_R = 16;
 const DOOR = 120;
+/** Hueco libre alrededor de la trampilla (radio en px), de más a menos: se usa el primero que quepa. */
+const TRAPDOOR_CLEARANCE = [120, 96, 72, 56] as const;
 const SLOT_COUNT = 4;
 /** Separación en radianes entre los proyectiles de un abanico. */
 const SPREAD = 0.2;
@@ -6765,6 +6767,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return clearOfRects({ x, y }, r, rects);
   }
 
+  /** ¿Libre también en diagonal? spotClear solo mira la cruz; con radios grandes una esquina (el pilar) se colaba. */
+  private ringFree(x: number, y: number, r: number): boolean {
+    for (const f of [0.45, 0.8]) {
+      for (let k = 0; k < 8; k++) {
+        const a = (k * Math.PI) / 4;
+        if (!this.freeAt(x + Math.cos(a) * r * f, y + Math.sin(a) * r * f)) return false;
+      }
+    }
+    return true;
+  }
+
   /** El sitio libre más cercano a (x, y) (para enemigos, objetos y la trampilla); si no hay, el de freeSpot. */
   private clearSpotNear(x: number, y: number, r = 26, extra?: (p: { x: number; y: number }) => boolean, a?: { x0: number; y0: number; x1: number; y1: number }) {
     const rects = this.wallRects();
@@ -9683,6 +9696,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const [tx, ty] = this.tileOf(q.x, q.y, room);
       return Number.isFinite(dist[ty]?.[tx] ?? Infinity);
     };
+    // Con margen amplio: pegada al pilar del centro (2x2), a una roca o a la pared se veía fatal y no dejaba sitio a
+    // la animación. Se prueba primero con mucho hueco y se va bajando; el último recurso es el de siempre.
+    const rects = this.wallRects();
+    for (const r of TRAPDOOR_CLEARANCE) {
+      const p = nearestClearPoint({ x: g.cx, y: g.cy }, (q) => this.spotClear(q.x, q.y, r, rects, g) && this.ringFree(q.x, q.y, r) && reach(q), TILE / 2, 24);
+      if (p) return p;
+    }
     return this.clearSpotNear(g.cx, g.cy, 40, reach, g);
   }
 
