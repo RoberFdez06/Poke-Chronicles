@@ -1763,3 +1763,29 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   Test `powerPress.test.ts`.
 - **Sin verificar a ojo**: no se ha probado en el navegador (localhost sirve `main`); revisar el aspecto del pilar en
   cada bioma, el selector de abajo con los controles táctiles y el tinte de noche con zoom.
+
+## Puertas, vida de los jefes, arena del jefe, casilla del jefe y parry en admin (rama `jefevida`, 2026-10-31)
+
+- **Puertas que no se abrían**: la sala solo se daba por limpia al caer un enemigo por `killEnemy → checkClear`; si el
+  último se iba de otra forma (atascado fuera de la sala, sin cuerpo, recolocado…) o la sala quedaba en `cleared` con
+  puertas cerradas, te quedabas encerrado. Nuevo vigilante `watchRoomClear` (cada 200 ms, lógica en
+  `src/data/roomClear.ts`): sin ningún hostil activo durante `CLEAR_CONFIRM_MS` y con puertas cerradas → `checkClear`;
+  sala ya limpia con puertas cerradas → se abren; enemigo fuera de la arena más de `FOE_STUCK_MS` → vuelve dentro.
+  `clearHoldUntil` evita adelantarse a las oleadas del rival/desafío y a los spawns al entrar.
+- **Jefe «a mitad de vida»**: varias protecciones de fase (aviso de megaevolución al 50 %, derrumbe de la arena,
+  pausa de fase del reto final) restauran la vida del jefe cada fotograma y se descartaba el daño en silencio. Ahora:
+  anillo azul que late mientras está protegido y aviso «Protegido» al pegarle; el daño recibido se guarda y se aplica
+  al acabar (tope `BOSS_HELD_CAP`, nunca mata); y vigilante (`tickBossGuard` en `bossSafety.ts`): si la protección
+  dura más de `BOSS_PROTECT_MAX_MS` (4 s) o le pegas `BOSS_STALL_MS` (3 s) sin que baje, se corta todo
+  (`releaseBossProtection`) y se le baja la vida.
+- **Arena 3x3 dividida con un jefe por casilla**: `reserveSanctuaryRoom` (santuario de la Mega Piedra) deshacía la sala
+  grande «más aislada», que solía ser la arena del jefe: sus casillas quedaban sueltas (con paredes) y cada una, al ser
+  de tipo `boss`, sacaba su propio jefe. Ahora solo deshace salas grandes de combate, y `repairBossArena` (floorGen)
+  reune siempre todas las casillas `boss` en un grupo. Test con 400 semillas (fallaba con el código anterior).
+- **Jefe/minijefe en la casilla del jugador**: `bossSpot`/`bossCell` (orden de `bossCellOrder`): en una sala grande
+  sale en la casilla más lejana que no sea la del jugador y con sitio libre (nunca dentro de estructuras); sirve para
+  `spawnBoss` (y así admin `spawnBoss`/`bossHere`), el reto final y los minijefes/guardianes.
+- **Parry en modo admin**: `hurtPlayer` salía nada más empezar con el modo dios, antes de mirar el parry. Ahora el modo
+  dios corta después del parry (sigue siendo invulnerable y el ladrón no roba).
+- **Sin verificar a ojo**: no probado en el navegador (localhost sirve `main`). Revisar el anillo de «Protegido», la
+  aparición del jefe en arenas 2x2/3x3 y que las puertas se abran en salas de evento (rival, sala del tiempo).
