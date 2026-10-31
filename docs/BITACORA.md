@@ -1807,3 +1807,18 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   los minijefes/élite, el tirador y el orbital (sin visión se acercan rodeando en vez de orbitar).
 - **Sin verificar a ojo**: no probado en el navegador (localhost sirve `main`). Revisar en el piso 5 detrás del pilar,
   jefes grandes en esquinas estrechas y que las intros/megaevolución/derrumbe no se vean empujadas.
+
+## Oscuros en todos los modos, sin salir al principio (rama `oscuros2`)
+
+- `darkProgress(modo, progreso)` (pura, `darkMon.ts`) da el «piso oscuro» equivalente de cada modo (menos de 2 = sin
+  oscuros) y `darkSpawnChance` acepta valores fraccionarios para subir suave hasta los topes de siempre:
+  - Normal, Infinito y **desafío diario** (antes excluido): piso 1 nunca; en cada piso, nada en las 3 primeras salas
+    (contando la inicial; arenas incluidas); minijefe y jefe desde el piso 2.
+  - Torre: nada en los pisos 1-3; desde el 4, +0,15 por piso (tope hacia el piso ~70-100).
+  - Oleadas: nada en las oleadas 1-3; +0,5 por oleada. Rush de jefes: nada en los jefes 1-2.
+  - **Defensa de torres** (`towerDefense/engine.ts`): nada en las oleadas 1-4; +0,4 por oleada. Tirada con su propia
+    semilla (no cambia el resto de la partida), tope por mapa como el de sala, jefe → «boss», jefe de oleada →
+    «miniboss». Oscuro: vida/escudo ×1,4, velocidad ×1,12, dinero ×2 (`TD_DARK_MUL`); en la escena, aura, ojos rojos,
+    estallido y aviso.
+- El forzado del panel admin sigue mandando en cualquier modo y momento (también en Defensa de torres).
+- Test `tests/darkModes.test.ts`. **Sin verificar a ojo**: los ojos sobre los sprites pequeños de la Defensa de torres.

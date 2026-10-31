@@ -89,8 +89,8 @@ export const DARK_SPAWN: Readonly<Record<'enemy' | 'miniboss' | 'boss', { min: n
 export const DARK_DIFF_MUL: Readonly<Record<DarkDifficulty, number>> = { easy: 0.7, normal: 1, hard: 1.25 };
 
 export function darkSpawnChance(who: 'enemy' | 'miniboss' | 'boss', floor: number, diff: DarkDifficulty = 'normal'): number {
-  const f = Math.floor(Number.isFinite(floor) ? floor : 1);
-  if (f <= 1) return 0;
+  const f = Number.isFinite(floor) ? floor : 1;
+  if (f < 2) return 0;
   const o = DARK_SPAWN[who];
   const m = DARK_DIFF_MUL[diff] ?? 1;
   return Math.min(o.max * m, (o.min + o.perFloor * (f - 2)) * m);
@@ -147,3 +147,47 @@ export function eyeFacing(o: { pmdRow?: number; facing?: string; backTexture?: b
   if (o.backTexture || o.facing === 'up') return { face: 0, back: true };
   return { face: o.facing === 'right' || (o.facing === undefined && o.flipX) ? 1 : o.facing === 'left' ? -1 : 0, back: false };
 }
+
+// --- Progresión de los oscuros en cada modo de juego ---
+
+export type DarkMode = 'normal' | 'endless' | 'daily' | 'waves' | 'bossrush' | 'tower' | 'towerdef';
+
+/**
+ * «Piso oscuro» equivalente (lo que se pasa a darkSpawnChance y darkRoomCap) según el modo y su progreso propio.
+ * Menos de 2 = sin oscuros: el tramo inicial de cada modo. Luego crece suave hasta los topes.
+ * - normal / infinito / diario: el piso; en cada piso, nada en las primeras 3 salas (contando la inicial) salvo
+ *   minijefe y jefe, que llegan más tarde.
+ * - Torre (100 pisos): nada en los pisos 1-3; desde el 4 sube 0,15 por piso.
+ * - Oleadas: nada en las oleadas 1-3; desde la 4 sube 0,5 por oleada.
+ * - Rush de jefes: nada en los jefes 1-2; desde el 3, el número de jefe.
+ * - Defensa de torres: nada en las oleadas 1-4; desde la 5 sube 0,4 por oleada.
+ */
+export function darkProgress(mode: DarkMode, p: { floor?: number; roomsCleared?: number; wave?: number; boss?: boolean }): number {
+  const n = (v: number | undefined) => (Number.isFinite(v) ? (v as number) : 1);
+  switch (mode) {
+    case 'tower': {
+      const f = n(p.floor);
+      return f <= 3 ? 1 : 2 + (f - 4) * 0.15;
+    }
+    case 'waves': {
+      const w = n(p.wave ?? p.floor);
+      return w <= 3 ? 1 : 2 + (w - 4) * 0.5;
+    }
+    case 'bossrush': {
+      const b = n(p.floor);
+      return b <= 2 ? 1 : b;
+    }
+    case 'towerdef': {
+      const w = n(p.wave);
+      return w <= 4 ? 1 : 2 + (w - 5) * 0.4;
+    }
+    default: {
+      const f = n(p.floor);
+      if (!p.boss && (p.roomsCleared ?? 0) < 3) return 1;
+      return f;
+    }
+  }
+}
+
+/** Defensa de torres: un oscuro tiene más vida/escudo y velocidad (moderada: se cuela) y da el doble de dinero. */
+export const TD_DARK_MUL = { hp: 1.4, speed: 1.12, bounty: 2 } as const;

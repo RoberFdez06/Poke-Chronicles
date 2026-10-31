@@ -175,7 +175,7 @@ import { armMuzzle, drawBossLaser, drawShockRing, hazardBlast, hazardWarn, laser
 import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
 import { dynamaxBurst, teraBurst, zImpactFx, zMoveFx, zStarFx } from '../ui/art/formsFx';
 import { darkAura, darkBurst } from '../ui/art/darkFx';
-import { darkBossEnrages, darkCooldown, darkEnemyStats, darkName, darkOdds, darkPlayerStats, darkTickets, darkWarning, decideDark, DARK_BOSS_RAGE, DARK_COLORS, DARK_ITEM_CHANCE, DARK_REWARD, rollDark, type DarkWho } from '../data/darkMon';
+import { darkBossEnrages, darkCooldown, darkEnemyStats, darkName, darkOdds, darkPlayerStats, darkTickets, darkWarning, darkProgress, decideDark, DARK_BOSS_RAGE, DARK_COLORS, DARK_ITEM_CHANCE, DARK_REWARD, rollDark, type DarkWho } from '../data/darkMon';
 import { guardianKindLabel, MEGA_GUARDIAN, pickGuardian } from '../data/guardians';
 import { drawMegaCine, drawMegaStoneHud, drawPowerMeterFill, drawPowerSelHud, megaCineBurst, playerFormAura } from '../ui/art/megaFx';
 import { megaCamRestore, megaCineFrame, megaCinePlan, megaTypeStyle, type MegaCamHome } from './megaCinematic';
@@ -6894,8 +6894,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     e.setData('hp', hp).setData('maxHp', hp).setData('speed', st.speed).setData('dmg', st.damage);
     // Pokémon oscuro (darkMon.ts): rareza baja que sube con el piso; más vida, daño, velocidad y cadencia
     // Tope por sala (darkMon.ts: 1, y 2 desde el piso 6); el panel admin puede forzar el siguiente
-    const rolled = darkAs === undefined && !helper && !this.daily;
-    const dark = darkAs ?? (rolled && decideDark({ who: 'enemy', floor: this.level(), diff: this.diff, inRoom: this.darkFoesInRoom(), forced: takeAdminNextDark(), rng: Math.random }));
+    const rolled = darkAs === undefined && !helper;
+    const dark = darkAs ?? (rolled && decideDark({ who: 'enemy', floor: this.darkFloor(false), diff: this.diff, inRoom: this.darkFoesInRoom(), forced: takeAdminNextDark(), rng: Math.random }));
     if (shiny) {
       sparkle(this, x, y);
       this.popup(x, y - 40, '¡Shiny!', 0xffd34d);
@@ -6933,6 +6933,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * Convierte a un enemigo (o jefe) en Pokémon oscuro: estadísticas mejores, ataques más seguidos, aura morada y negra,
    * nombre «Oscuro» y marca para el premio, la captura y la Pokédex. `quiet`: sin el aviso pequeño (lo da su intro).
    */
+  /** Progreso oscuro del modo (darkMon.ts darkProgress): menos de 2 = aún no salen. `boss`: minijefe o jefe. */
+  private darkFloor(boss: boolean): number {
+    const mode = this.daily ? 'daily' : this.mode === 'towerdef' ? 'normal' : this.mode;
+    return darkProgress(mode, { floor: this.floorNum, wave: this.floorNum, roomsCleared: this.cleared.size, boss });
+  }
+
   /** Oscuros normales vivos en la sala (sin contar minijefes ni jefes), para el tope de darkRoomCap. */
   private darkFoesInRoom(): number {
     return (this.enemies.getChildren() as Sprite[]).filter((o) => o.active && o.getData('dark') && !o.getData('miniboss') && !(o.getData('ai') as EnemyAI | undefined)?.boss).length;
@@ -6988,7 +6994,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const loaded = pref && this.textures.exists(`${pref.key}-front`) ? pref : undefined;
     if (!loaded && this.foeKinds.length === 0) return undefined;
     const kind = loaded ?? [...this.foeKinds].sort((a, b) => b.bst - a.bst)[0];
-    const dark = !this.daily && decideDark({ who: 'miniboss', floor: this.level(), diff: this.diff, forced: takeAdminNextDark(), rng: Math.random });
+    const dark = decideDark({ who: 'miniboss', floor: this.darkFloor(true), diff: this.diff, forced: takeAdminNextDark(), rng: Math.random });
     const e = this.spawnEnemy(kind, kind.behavior, undefined, false);
     const id = Number(kind.key.replace('foe-', ''));
     const size = guardian ? MEGA_GUARDIAN.size : 112;
@@ -7140,7 +7146,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // T63: el legendario también cuenta en el registro de combate al vencerlo
     b.setData('speciesId', this.bossId);
     // Jefe oscuro (darkMon.ts): más raro al principio, más probable cuanto más hondo; nunca en el desafío diario
-    const dark = !this.daily && decideDark({ who: 'boss', floor: this.floorNum, diff: this.diff, forced: takeAdminNextDark(), rng: Math.random });
+    const dark = decideDark({ who: 'boss', floor: this.darkFloor(true), diff: this.diff, forced: takeAdminNextDark(), rng: Math.random });
     const cap = (n: string) => n.charAt(0).toUpperCase() + n.slice(1);
     this.buildBossBar(b, dark ? darkName(cap(this.bossName)) : this.bossName);
     // El jefe también se comporta según su tipo
