@@ -97,15 +97,15 @@ export const disableTips = (s: TutorialState): TutorialState => ({ ...s, off: tr
 
 /** Texto en móvil o tableta (sin teclas ni botones del mando): solo los que hablan de controles. */
 export const TOUCH_TIPS: Readonly<Partial<Record<TipId, string>>> = {
-  move: 'Arrastra el joystick de la izquierda hacia donde quieras ir.',
-  shoot: 'Arrastra el joystick de la derecha hacia donde quieras disparar. Limpia la sala para abrir las puertas.',
+  move: 'Pon el dedo en la mitad izquierda de la pantalla y arrástralo hacia donde quieras ir: el joystick sale donde toques.',
+  shoot: 'Pon el dedo en la mitad derecha y arrástralo hacia donde quieras disparar. Toca una ranura de poder (abajo a la derecha) y sale sola hacia el enemigo más cercano. Limpia la sala para abrir las puertas.',
   pause: 'Toca el botón ❚❚ de arriba a la izquierda. La partida se guarda sola.',
-  powers: 'Los ataques de tu tipo van a los botones 1-4 de la derecha (del color de su tipo; apagados mientras recargan).',
-  active: 'Se carga limpiando salas. Úsalo con el botón «Activo» de la izquierda (se ilumina cuando está listo).',
-  center: 'Te cura la mitad de los PS una vez por piso: toca «Usar» cerca del mostrador o písalo.',
-  shop: 'Gasta las monedas de la partida: toca «Usar» cerca de un artículo o písalo.',
+  powers: 'Los ataques de tu tipo van a las ranuras 1-4 de abajo a la derecha (apagadas mientras recargan). Toca una y el poder sale solo hacia el enemigo más cercano, sin soltar el joystick.',
+  active: 'Se carga limpiando salas. Úsalo con el botón de la estrella, abajo a la izquierda (se ilumina cuando está listo).',
+  center: 'Te cura la mitad de los PS una vez por piso: toca el botón de la mano (sale al acercarte) o pisa el mostrador.',
+  shop: 'Gasta las monedas de la partida: acércate a un artículo y toca el botón de la mano, o písalo.',
   chest: 'Los cofres se abren con una llave. Las bombas (botón «Bomba») rompen rocas y abren paredes.',
-  defend: 'Toca «Parry» justo antes del golpe (cuando la marca ! se pone blanca): lo anula y lo devuelve. «Esquiva» da un impulso corto invulnerable hacia donde te mueves.',
+  defend: 'Toca el botón del escudo justo antes del golpe (cuando la marca ! se pone blanca): lo anula y lo devuelve. El de la flecha esquiva: un impulso corto invulnerable hacia donde te mueves.',
   forms: 'Abajo tienes el selector de formas: toca una casilla (Mega, Dinamax, Teracristal o Movimiento Z) para elegirla. Luego toca el icono junto a la Poké Ball para usar solo la elegida (mantenerlo pulsado también cambia). Se llenan con el medidor de poder.',
 };
 
