@@ -2,6 +2,7 @@
 // ondas, lluvias, bombas en parábola, órbitas, olas, cadenas, erupciones, trampas, embestidas y remolinos — para el
 // jugador y para enemigos y jefes. La partida (GameScene) le da un `AttackHost` con lo que necesita: crear
 // proyectiles, hacer daño y saber dónde está cada uno.
+import { clipSegmentToRects, segmentBlocked, type Box } from '../data/projectileRules';
 import Phaser from 'phaser';
 import type { Anim, Motion, Pattern } from '../data/movePatterns';
 import { typeColor } from '../data/types';
@@ -50,6 +51,12 @@ export interface AttackHost {
   /** El jugador se lanza (embestida): mueve, protege y deja que el motor golpee. */
   dash(dir: Phaser.Math.Vector2, speed: number, ms: number): void;
   alive(): boolean;
+  /**
+   * Estructuras sólidas de la sala (paredes, rocas, bloques, muros interiores de las salas grandes). Los rayos se
+   * cortan en la primera y las cadenas no saltan a través de ellas (data/projectileRules.ts). Los proyectiles con
+   * cuerpo ya chocan por la física; lo que vuela y cae (lob, rain, quake, eruption, mine, vortex) no las mira.
+   */
+  blockers(): readonly Box[];
 }
 
 const now = (h: AttackHost) => h.scene.time.now;
@@ -233,7 +240,8 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
         let a = Math.atan2(d.y, d.x);
         if (p.sweep && t > t0) a += (((t - t0) / p.ms) - 0.5) * p.sweep;
         // El haz se corta en el borde de la arena: ni se dibuja ni golpea fuera del mapa
-        const len = clipBeamToBounds(src.x, src.y, a, p.length, h.room());
+        // …y en la primera estructura (roca, pared, muro interior): los rayos no atraviesan nada
+        const len = clipSegmentToRects(src.x, src.y, a, clipBeamToBounds(src.x, src.y, a, p.length, h.room()), h.blockers());
         const x2 = src.x + Math.cos(a) * len;
         const y2 = src.y + Math.sin(a) * len;
         g.clear();
@@ -572,7 +580,8 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
       const jump = (k: number) => {
         if (k >= p.jumps || !h.alive()) return;
         const e = nearestTarget(h, side, from.x, from.y, hit, k === 0 ? p.range * 1.5 : p.range);
-        if (!e) return;
+        // La descarga no salta a través de paredes ni rocas
+        if (!e || segmentBlocked(from.x, from.y, e.x, e.y, h.blockers())) return;
         hit.add(e);
         pixBolt(sc, from.x, from.y, e.x, e.y, color);
         hitSpark(sc, e.x, e.y, color, 6, 1);

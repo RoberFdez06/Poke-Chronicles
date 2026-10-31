@@ -1,5 +1,5 @@
 // Caminos para enemigos y jefes (lógica pura, sin Phaser): rejilla de navegación de toda la zona de juego (salas
-// grandes incluidas, con el pilar central de las 2x2 y cualquier bloque sólido), campo de distancias desde el jugador,
+// grandes incluidas, rocas y cualquier bloque sólido; la esquina central de las 2x2 es suelo abierto), campo de distancias desde el jugador,
 // línea de visión contra rectángulos y qué ataques de jefe tienen sentido sin visión o fuera de alcance.
 // Con extensión .ts para que los tests (node --test) puedan importarlo sin bundler.
 

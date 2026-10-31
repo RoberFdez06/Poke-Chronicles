@@ -1916,3 +1916,40 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   dios corta después del parry (sigue siendo invulnerable y el ladrón no roba).
 - **Sin verificar a ojo**: no probado en el navegador (localhost sirve `main`). Revisar el anillo de «Protegido», la
   aparición del jefe en arenas 2x2/3x3 y que las puertas se abran en salas de evento (rival, sala del tiempo).
+
+## Sin pilar en las 2x2, ataques que no atraviesan estructuras y zoom fiable al jefe (rama `ajustes`, 2026-10-31)
+
+- **Fuera el pilar del centro**: en las salas grandes 2x2 la esquina central vuelve a ser suelo abierto. `joinWalls`
+  (`src/level/joinCorner.ts`) ya no devuelve `pillar` sino `cornerFloor`: no hay muros interiores hacia la esquina y se
+  pinta suelo en ella (`cornerRect`), que es lo que faltaba en el antiguo «bloque hueco» (asomaba el fondo). Quitados
+  `buildPillar`, su colisión, `pillars`, `pillarRect`/`pushOutOfRect` y el empuje de `keepInside`. La rejilla de
+  navegación (`bossPath.ts`), `spotClear`, la trampilla y los spawns salen de `wallRects()`, así que esa zona queda
+  libre sin más cambios. Tests de `joinCorner` y comentarios de `bossPath` al día.
+- **Ataques y estructuras** (`src/data/projectileRules.ts`): tabla `PASSES_OVER` con TODOS los tipos de ataque
+  (patrones del motor, disparo básico, ataques de jefe, ráfagas, final y megaataque) y `passesOverStructures(kind)`.
+  Chocan: disparos, chorros, orbes, bumeranes, teledirigidos, olas de proyectiles, rayos, láseres, cadenas eléctricas,
+  ondas. Pasan por encima: `lob`, `rain`/lluvia del jefe, meteoros, `quake`, `eruption`, minas, `vortex`, zonas de
+  peligro, miasma y juicio. Cómo se aplica:
+  - Proyectiles con cuerpo (`shots`, `foeShots`, también los de jefe por `fireFoeShot`/`host.shoot`): ya tenían
+    collider con `walls` (rocas, bloques y muros interiores de salas grandes están en ese grupo) y `doorBlocks`; los
+    que rebotan rebotan (`onShotWall`). Sin colliders nuevos.
+  - Rayos que se dibujan (rayo del motor, láser del jefe, megaataque, brazos de las minas en cruz, rejilla de rayos):
+    se cortan en la primera estructura con `clipSegmentToRects` (segmento contra rectángulos); dibujo y golpe usan
+    el largo cortado. Rejilla: cada rayo sale de su borde y se corta.
+  - Cadenas: no saltan a un objetivo con una estructura en medio (`segmentBlocked`). Ondas de choque (jefe y nova del
+    final) y la ola-muro (`wallGap`): una estructura entre el origen y tú te tapa. Orbes que rebotan (`bounce`):
+    rebotan también en rocas y muros (`bounceOffRects`).
+  - `structRects()` (paredes + puertas cerradas) se calcula una vez por fotograma; el motor lo recibe como
+    `AttackHost.blockers()`.
+- **Marshadow sin zoom en el piso 1**: causa principal, la cámara. Al entrar en la sala del jefe, `spawnBoss` se llama
+  desde el final del `cam.pan` de la transición de puerta; la intro lanzaba otro `cam.pan` dentro de ese callback y
+  Phaser, al cerrar el primero, apagaba el nuevo: había zoom pero sin ir al jefe (muy visible en arenas grandes con el
+  jefe en la casilla lejana). En pisos con puzzle de gimnasio no pasaba porque el jefe sale después. Ahora
+  `bossCinematic` mueve la cámara con su propio tween (`centerOn` + `setZoom`), y con «pocos efectos» también encuadra
+  (de golpe) en vez de no hacer nada. Además la clave de «ya vista» (`src/data/bossCine.ts`): `bossCineKey` lleva
+  partida, modo, piso, semilla del piso y arena (primera casilla del grupo, no la casilla en la que estás) y
+  `shouldShowBossCine` solo la salta al reanudar una partida guardada dentro de esa arena. Tests en
+  `tests/bossCine.test.ts`.
+- **Sin verificar a ojo**: no probado en el navegador (localhost sirve `main`). Revisar la esquina de una 2x2, los
+  rayos cortados por rocas (rejilla y minas en cruz sobre todo) y la intro de Marshadow en el piso 1 y de un jefe en
+  piso con gimnasio.
