@@ -2018,3 +2018,24 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   la letra nueva, el texto de progreso (no se ha agrandado: su hueco es fijo en `hudLayout`), el consejo alto
   tapando un poco el fondo de la sala, el multitoque real (joystick + ranura a la vez) y la pasada por Partidas,
   Iniciales, Gacha y Ajustes (solo se miró el código; no se vio nada evidente salvo la Pokédex).
+
+## Pantalla completa en móvil y app instalable
+
+- **Pantalla completa automática** (`src/ui/screenFit.ts`, decisión pura en `src/data/autoFullscreen.ts`, pruebas en
+  `tests/autoFullscreen.test.ts`): solo con `touchOnlyDevice()`. En el primer toque (pointerup/touchend, que es lo que
+  el navegador acepta como gesto) pide `requestFullscreen({ navigationUI: 'hide' })` y bloquea la orientación en
+  horizontal. Si el jugador sale, se vuelve a pedir una sola vez en el siguiente toque. La fila «Pantalla completa» de
+  Ajustes guarda `pokeisaac.autofs` (`off` al quitarla a mano: no se fuerza más; `on` al ponerla). iPhone Safari no
+  soporta la API: ahí no hace nada (la solución es la app instalada). En escritorio no se instala nada de esto.
+- **Reajuste del lienzo**: `resize`, `orientationchange`, `visualViewport.resize`, `visibilitychange`, `focus`,
+  `pageshow` y `fullscreenchange` llaman a `scale.refresh()` a los 150 y 600 ms. `#game` usa `100dvh` (con
+  `@supports`) en vez de `bottom` para no medir la altura «grande» con la barra del navegador. Pensado para el
+  lienzo enorme al volver de la ventana de Google (`signInWithPopup` se mantiene).
+- **PWA**: `public/manifest.webmanifest` (`display: fullscreen`, horizontal, rutas `./`), iconos pixel art propios
+  generados con `node scripts/makeIcons.mjs` (192, 512 y 180 apple) y metaetiquetas en `index.html`. `public/sw.js`
+  solo intercepta PokeAPI y GitHub raw, así que no toca el manifest ni los iconos.
+- **A probar en un móvil real**: Android Chrome (primer toque entra en pantalla completa y en horizontal; salir y
+  tocar vuelve a entrar una vez; quitarla en Ajustes no se fuerza; iniciar sesión con Google y volver deja el juego
+  del tamaño correcto; «Instalar app» abre sin barras). iPhone Safari: Compartir, «Añadir a pantalla de inicio»,
+  abrir desde el icono (sin barras, horizontal, notch bien) y comprobar que el icono se ve bien.
+  No se pudo ver nada en la VM: solo `tsc` y `npm test`.
