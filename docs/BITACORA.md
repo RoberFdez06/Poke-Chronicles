@@ -2039,3 +2039,22 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   del tamaño correcto; «Instalar app» abre sin barras). iPhone Safari: Compartir, «Añadir a pantalla de inicio»,
   abrir desde el icono (sin barras, horizontal, notch bien) y comprobar que el icono se ve bien.
   No se pudo ver nada en la VM: solo `tsc` y `npm test`.
+
+## Controles táctiles en las bandas laterales y ajustes de vista en móvil (rama `barras`, 2026-11-01)
+
+- **Qué**: en un móvil o tableta solo táctil con pantalla más ancha que 16:9, si las bandas que deja Scale.FIT miden
+  al menos 88 px CSS cada una, joystick y botones van en una capa DOM (`#touch-bands`) en esas bandas, fuera del
+  lienzo: izquierda mover + Activo/Bomba/Poción/Usar, derecha apuntar + Parry/Esquiva (mismas texturas pixel art,
+  pasadas a data URL). Pointer Events con captura por dedo (multitouch). Si no caben, el diseño de siempre dentro del
+  lienzo. Se recalcula al girar o cambiar el tamaño y la capa se esconde con la escena en pausa. Los poderes se
+  siguen lanzando tocando sus ranuras (auto-apuntado igual); teclado, ratón y mando no cambian.
+- **Ajustes (solo móvil)**: «Zoom de la sala» y «Tamaño de la interfaz», 100/125/150 % (`pokeisaac.mobileView`). Con
+  zoom > 100 % la cámara de la sala se acerca y sigue al jugador con límites en la sala (como en las salas grandes);
+  la interfaz agranda letras del HUD (`hudFont`) y botones táctiles (sin salirse de sus franjas). Se aplican al
+  empezar la partida o el piso.
+- **Archivos**: `src/data/touchLayout.ts` y `src/data/mobileView.ts` (nuevos, puros, con pruebas),
+  `src/data/touchPad.ts`, `src/ui/touchControls.ts`, `src/ui/uiScale.ts`, `src/scenes/GameScene.ts`,
+  `src/scenes/SettingsScene.ts`, `tests/touchLayout.test.ts`, `tests/mobileView.test.ts`, `tests/touchPad.test.ts`,
+  `tests/uiScale.test.ts`.
+- **A probar en un móvil real**: tamaño de los botones en las bandas, que el zoom 150 % no deje fuera de vista
+  enemigos importantes y cómo quedan los textos del HUD al 150 %. En la VM solo `tsc` y `npm test`.
