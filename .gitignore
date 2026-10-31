@@ -13,3 +13,6 @@ playwright-report/
 _wt/
 _sim/
 .bench/
+
+# Notas internas de trabajo
+docs/TAREAS.md

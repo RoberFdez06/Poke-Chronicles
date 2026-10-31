@@ -1,11 +1,39 @@
+<div align="center">
+
 # Poké Chronicles
 
-Roguelike cenital en el navegador, al estilo de *The Binding of Isaac*, pero con Pokémon.
+**Un roguelike de Pokémon en el navegador, al estilo de *The Binding of Isaac*.**
+
+[![Jugar ahora](https://img.shields.io/badge/%E2%96%B6%20JUGAR%20AHORA-roberfdez06.github.io-e53935?style=for-the-badge)](https://roberfdez06.github.io/Poke-Chronicles/)
+
+![Fan game gratuito](https://img.shields.io/badge/fan%20game-gratuito-2e7d32)
+![Phaser 3](https://img.shields.io/badge/Phaser-3.90-8e24aa)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
+![Teclado, ratón y mando](https://img.shields.io/badge/controles-teclado%20%C2%B7%20rat%C3%B3n%20%C2%B7%20mando-455a64)
+
+<img src="docs/capturas/01-titulo.jpg" alt="Pantalla de título de Poké Chronicles" width="720">
+
+</div>
+
 Recorres pisos llenos de salas, limpias a los enemigos, coges objetos y poderes, y te enfrentas a jefes legendarios.
 Es un **fan game gratuito y sin ánimo de lucro** (nunca se cobra dinero real por nada).
 
 > Hecho con Phaser 3, Vite y TypeScript. Se juega en cualquier navegador moderno, con **teclado, ratón o mando**
 > (cada uno por sí solo) y también con controles táctiles en móvil.
+> **No hace falta instalar nada:** [juégalo aquí](https://roberfdez06.github.io/Poke-Chronicles/). Como invitado se
+> puede jugar al instante; con una cuenta (correo o Google) el progreso se guarda en la nube.
+
+## Capturas
+
+| Modos de juego | Elige tu inicial |
+|:---:|:---:|
+| <img src="docs/capturas/03-modos.jpg" alt="Selección de modo de juego" width="420"> | <img src="docs/capturas/05-iniciales.jpg" alt="Iniciales de Kanto" width="420"> |
+| **Una sala del bosque** | **Combate con combo** |
+| <img src="docs/capturas/06-sala.jpg" alt="Sala con enemigos en el bosque" width="420"> | <img src="docs/capturas/07-combate.jpg" alt="Combate con combo y daño en pantalla" width="420"> |
+| **Pokédex (1059 Pokémon)** | **Gacha con tickets** |
+| <img src="docs/capturas/08-pokedex.jpg" alt="Pokédex con filtros" width="420"> | <img src="docs/capturas/09-gacha.jpg" alt="Máquina de gacha" width="420"> |
+| **Menú principal** | **Controles** |
+| <img src="docs/capturas/02-menu.jpg" alt="Menú principal" width="420"> | <img src="docs/capturas/10-controles.jpg" alt="Pantalla de controles de teclado" width="420"> |
 
 ## Cómo se juega
 
@@ -51,7 +79,10 @@ Es un **fan game gratuito y sin ánimo de lucro** (nunca se cobra dinero real po
 | **Oleadas** | Una sola sala, rondas con más enemigos. |
 | **Infinito** | Como Normal, pero sin final. |
 | **Rush de jefes** | Solo jefes legendarios, uno tras otro. |
+| **Torre** | 100 pisos de una sola sala: minijefe cada 5, jefe y descanso cada 10. |
+| **Defensa de torres** | Colocas y mejoras los Pokémon de tu colección como torres para frenar oleadas en 16 mapas. |
 | **Desafío diario** | La misma partida para todos ese día, con racha. |
+| **Partida con código** | Escribes el código de otra partida y juegas exactamente la misma. |
 
 Tres dificultades (Fácil, Normal, Difícil), cada una con sus récords.
 
@@ -78,6 +109,14 @@ Tres dificultades (Fácil, Normal, Difícil), cada una con sus récords.
 
 Las teclas se pueden cambiar en **Ajustes > Controles y teclas**. En el juego, **Controles** enseña solo los del
 dispositivo que estés usando.
+
+## Publicación (GitHub Pages)
+
+Cada `git push` a `main` ejecuta el workflow [`deploy.yml`](.github/workflows/deploy.yml): instala, pasa las pruebas,
+compila y publica en GitHub Pages. La configuración web de Firebase (que es pública por diseño) se guarda como
+*variables* del repositorio y el modo administrador **no** se incluye en la web pública. Las reglas de seguridad de los
+datos están en [`firestore.rules`](firestore.rules): cada jugador solo puede leer y escribir lo suyo. Más en
+[`SECURITY.md`](SECURITY.md).
 
 ## Probarlo en tu ordenador
 
