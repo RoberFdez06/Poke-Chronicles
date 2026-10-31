@@ -336,6 +336,25 @@ export function cyclePowerSel(opts: readonly PowerSel[], cur: PowerSel | null, d
   return opts[(i + dir + opts.length) % opts.length];
 }
 
+/**
+ * La forma que usa el botón: la elegida si sigue disponible; si no hay elegida y solo hay UNA disponible, esa. Con
+ * varias y ninguna elegida, null: el botón no escoge solo (antes, con la mega en recarga, salía el Teracristal).
+ */
+export function effectivePowerSel(opts: readonly PowerSel[], cur: PowerSel | null): PowerSel | null {
+  return validPowerSel(opts, cur) ?? (opts.length === 1 ? opts[0] : null);
+}
+
+/** Qué hace pulsar el botón de poder: usar exactamente la elegida, pedir que se elija una, o nada. Nunca otra. */
+export type PowerPress = { kind: 'fire'; form: PowerSel } | { kind: 'choose'; opts: PowerSel[] } | { kind: 'none' };
+export function powerPress(opts: readonly PowerSel[], cur: PowerSel | null): PowerPress {
+  if (opts.length === 0) return { kind: 'none' };
+  const form = effectivePowerSel(opts, cur);
+  return form ? { kind: 'fire', form } : { kind: 'choose', opts: [...opts] };
+}
+
+/** Lo guardado (RunSave.powerSel, opcional): si no es una forma conocida, ninguna. */
+export const powerSelFromSave = (v: unknown): PowerSel | null => (typeof v === 'string' && (POWER_SEL_ORDER as readonly string[]).includes(v) ? (v as PowerSel) : null);
+
 /** Gasta el piso con el ataque Z (no deja forma activa: es un golpe al momento). */
 export function useZMove(s: PowerFormState): PowerFormState {
   return { ...s, usedThisFloor: true };

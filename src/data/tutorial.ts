@@ -44,7 +44,7 @@ export const TIPS: Readonly<Record<TipId, { title: string; text: string }>> = {
   },
   forms: {
     title: 'Formas de poder',
-    text: 'M, cruceta arriba o clic en el icono junto a la Poké Ball: usa la forma elegida. X, cruceta izquierda/derecha, clic derecho o rueda sobre el icono: cambia entre Mega, Dinamax, Teracristal y Movimiento Z. Se llenan con el medidor de poder.',
+    text: 'Abajo tienes el selector con las formas que puedes usar (Mega, Dinamax, Teracristal, Movimiento Z) y cuál está elegida. Elige con X, la cruceta izquierda/derecha, la rueda o clic en su casilla; M, cruceta arriba o clic en el icono junto a la Poké Ball usa SOLO la elegida. Se llenan con el medidor de poder.',
   },
   // Defensa de torres (salen en TowerDefenseScene la primera vez que toca)
   td_place: {
@@ -106,7 +106,7 @@ export const TOUCH_TIPS: Readonly<Partial<Record<TipId, string>>> = {
   shop: 'Gasta las monedas de la partida: toca «Usar» cerca de un artículo o písalo.',
   chest: 'Los cofres se abren con una llave. Las bombas (botón «Bomba») rompen rocas y abren paredes.',
   defend: 'Toca «Parry» justo antes del golpe (cuando la marca ! se pone blanca): lo anula y lo devuelve. «Esquiva» da un impulso corto invulnerable hacia donde te mueves.',
-  forms: 'Toca el icono junto a la Poké Ball para usar la forma elegida; mantenlo pulsado para cambiar entre Mega, Dinamax, Teracristal y Movimiento Z. Se llenan con el medidor de poder.',
+  forms: 'Abajo tienes el selector de formas: toca una casilla (Mega, Dinamax, Teracristal o Movimiento Z) para elegirla. Luego toca el icono junto a la Poké Ball para usar solo la elegida (mantenerlo pulsado también cambia). Se llenan con el medidor de poder.',
 };
 
 /** Texto del consejo según el dispositivo (en táctil, sin «W A S D» ni botones del mando). */

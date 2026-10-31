@@ -1,6 +1,7 @@
 // Arte de las arenas de jefe (supervisor): casillas de aviso, grietas con brillo, charcos que ondulan, escombros que caen,
 // lava que burbujea, placas de hielo con destello, suelo que se hunde y el fondo de cada arena. Todo en píxel gordo sobre
 // casillas de TILE (40 px) y sin lógica: GameScene decide qué casilla es qué. Con pocos efectos no hay animación suelta.
+import { fixedViewRect } from '../camView';
 import Phaser from 'phaser';
 import { lowFx } from '../theme';
 import { darkOf, lightOf, mixColor } from './pixelFx';
@@ -391,15 +392,18 @@ export function arenaChasm(scene: Phaser.Scene, x0: number, y0: number, w: numbe
 }
 
 /** Bandas de cine arriba y abajo (fijas a la cámara) que entran en `inMs`, esperan y salen. Se destruyen solas. */
-export function arenaLetterbox(scene: Phaser.Scene, viewW: number, viewH: number, inMs: number, holdMs: number, outMs: number, depth = 70) {
-  const bar = Math.round(viewH * 0.1);
-  const top = scene.add.rectangle(viewW / 2, -bar / 2, viewW, bar, 0x000000, 1).setScrollFactor(0).setDepth(depth);
-  const bot = scene.add.rectangle(viewW / 2, viewH + bar / 2, viewW, bar, 0x000000, 1).setScrollFactor(0).setDepth(depth);
-  scene.tweens.add({ targets: top, y: bar / 2, duration: inMs, ease: 'Cubic.easeOut' });
-  scene.tweens.add({ targets: bot, y: viewH - bar / 2, duration: inMs, ease: 'Cubic.easeOut' });
+export function arenaLetterbox(scene: Phaser.Scene, _viewW: number, _viewH: number, inMs: number, holdMs: number, outMs: number, depth = 70) {
+  // Con zoom, lo fijo a la cámara se escala alrededor del centro del visor: se mide lo que ve de verdad (camView.ts)
+  const v = fixedViewRect(scene.cameras.main, 24);
+  const bar = Math.round(v.h * 0.1);
+  const cx = v.x + v.w / 2;
+  const top = scene.add.rectangle(cx, v.y - bar / 2, v.w, bar, 0x000000, 1).setScrollFactor(0).setDepth(depth);
+  const bot = scene.add.rectangle(cx, v.y + v.h + bar / 2, v.w, bar, 0x000000, 1).setScrollFactor(0).setDepth(depth);
+  scene.tweens.add({ targets: top, y: v.y + bar / 2, duration: inMs, ease: 'Cubic.easeOut' });
+  scene.tweens.add({ targets: bot, y: v.y + v.h - bar / 2, duration: inMs, ease: 'Cubic.easeOut' });
   scene.time.delayedCall(inMs + holdMs, () => {
-    scene.tweens.add({ targets: top, y: -bar / 2, duration: outMs, ease: 'Cubic.easeIn', onComplete: () => top.destroy() });
-    scene.tweens.add({ targets: bot, y: viewH + bar / 2, duration: outMs, ease: 'Cubic.easeIn', onComplete: () => bot.destroy() });
+    scene.tweens.add({ targets: top, y: v.y - bar / 2, duration: outMs, ease: 'Cubic.easeIn', onComplete: () => top.destroy() });
+    scene.tweens.add({ targets: bot, y: v.y + v.h + bar / 2, duration: outMs, ease: 'Cubic.easeIn', onComplete: () => bot.destroy() });
   });
 }
 

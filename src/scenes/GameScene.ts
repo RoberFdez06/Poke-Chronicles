@@ -12,7 +12,7 @@ import { encodeSeed, newSeed, type SeedRun } from '../data/seedCode';
 import { damageMul, effectOf, EFFECT_COLOR, EFFECT_LABEL, rawEffectiveness } from '../data/typeChart';
 import { weatherChip, weatherFor, weatherHurts, weatherPowerMul, WEATHER_DESC, WEATHER_LABEL, WEATHER_TICK_MS, type Weather } from '../data/weather';
 import { WeatherFx } from '../ui/weatherFx';
-import { joinWalls } from '../level/joinCorner';
+import { joinWalls, pillarRect, pushOutOfRect, type Rect as PillarRect } from '../level/joinCorner';
 import { phaseAtSeconds, phasePowerMul, pickByPhase, PHASE_DESC, PHASE_NOTICE, type Phase } from '../data/dayNight';
 import { TouchControls, type TouchButton } from '../ui/touchControls';
 import { touchOnlyDevice } from '../data/controls';
@@ -345,7 +345,7 @@ import { openConfirm } from './ConfirmScene';
 import { onFocusLost } from '../ui/focusPause';
 import { confirmText } from '../data/confirm';
 import { adrenalineActive, adrenalineDamageMul, adrenalineFill, adrenalineFull, adrenalineSpeedMul, fillAdrenaline, gainAdrenaline, spendAdrenaline, newAdrenaline, tickAdrenaline, touchAdrenaline, type AdrenalineSource, type AdrenalineState } from '../data/adrenaline';
-import { MEGA_STONE_ID, MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState, absorbWithShield, gmaxFormName, pickPower, pickTeraType, resolveTeraType, TERA_TYPES, TERA_GEM_ID, POWER_BLOCK_TEXT, powerCost, powerFormSizeMul, powerFormTeraType, useZMove, Z_MOVE_DAMAGE_MUL, type PowerChoice, type PowerContext, powerBlock, powerOptions, validPowerSel, cyclePowerSel, POWER_SEL_LABEL, type PowerSel, DYNAMAX_BAND_ID, Z_CRYSTAL_ID } from '../data/powerForm';
+import { MEGA_STONE_ID, MEGA_BLOCK_TEXT, megaBlock, megaDisplayName, megaFormName, megaOffered, newPowerFormState, POWER_FORMS, powerFormActive, powerFormDamageMul, powerFormFill, powerFormFromSave, powerFormMaxHpBonus, powerFormSpeedMul, powerFormToSave, startPowerForm, tickPowerForm, type PowerFormState, absorbWithShield, gmaxFormName, pickPower, pickTeraType, resolveTeraType, TERA_TYPES, TERA_GEM_ID, POWER_BLOCK_TEXT, powerCost, powerFormSizeMul, powerFormTeraType, useZMove, Z_MOVE_DAMAGE_MUL, type PowerChoice, type PowerContext, powerBlock, powerOptions, validPowerSel, cyclePowerSel, POWER_SEL_LABEL, type PowerSel, effectivePowerSel, powerPress, powerSelFromSave, POWER_SEL_ORDER, DYNAMAX_BAND_ID, Z_CRYSTAL_ID } from '../data/powerForm';
 import { meterOnDamage, meterOnParry, newPowerMeter, powerMeterFill, spendPowerMeter, tickPowerMeter, type PowerMeterState } from '../data/powerMeter';
 import {
   canCaptureLegend, CLUE_NAMES, clueOnFloor, finishLair, HUNT, huntText, lairOnFloor, leaveFloor, legendCaptureChance, legendPhase,
@@ -372,6 +372,8 @@ const TOWER_ALTAR_DONE = 200000;
 /** Suministros de la Torre ya elegidos en este piso. */
 const TOWER_SUPPLY_DONE = 200005;
 const WALL = 40;
+/** Casilla de cada forma en el selector de formas de poder (franja de abajo del HUD). */
+const POWER_SLOT = 40;
 /** Radio máximo del cuerpo del jugador (px): menos de media casilla, para caber por pasillos de una casilla. */
 const PLAYER_BODY_R = 16;
 const DOOR = 120;
@@ -431,7 +433,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ');
 export type FloorCarry = Pick<
   RunSave,
   'floor' | 'bossHistory' | 'hp' | 'passives' | 'slots' | 'nextSlotReplace' | 'movePool' | 'earned' | 'coins' | 'formId' | 'keys' | 'bombs' | 'active' | 'healed' | 'counters' | 'hpSacrificed' | 'eggLeft' | 'allyId' | 'tiredRooms' | 'potions' | 'secondChance' | 'bossesBeaten' | 'powerMeter' | 'zUsed' | 'reactionsFound' | 'storiesSeen' | 'route' | 'routesTaken' | 'gardenBerries' | 'legendHunt'
-> & Partial<Pick<RunSave, 'itemLevels' | 'teraPick' | 'dark' | 'fusionFloor'>>;
+> & Partial<Pick<RunSave, 'itemLevels' | 'teraPick' | 'dark' | 'fusionFloor' | 'powerSel'>>;
 
 /** Secuencias de azar del desafío diario (ver GameScene.rng). */
 const RNG = { rooms: 0, boss: 1, items: 2, chest: 3, shop: 4, clear: 5 } as const;
@@ -548,6 +550,8 @@ export class GameScene extends Phaser.Scene {
   private tiles!: ReturnType<typeof bakeBiomeTiles>;
   private pickups!: Phaser.Physics.Arcade.Group;
   private walls!: Phaser.Physics.Arcade.StaticGroup;
+  /** Pilares macizos del centro de las salas 2x2 (joinCorner.ts): nada puede quedar dentro de ellos. */
+  private pillars: PillarRect[] = [];
   /** Obstáculos: hierba alta (se rompe a disparos) y agujeros (los disparos pasan por encima). */
   private bushes!: Phaser.Physics.Arcade.StaticGroup;
   private holes!: Phaser.Physics.Arcade.StaticGroup;
@@ -732,6 +736,8 @@ export class GameScene extends Phaser.Scene {
   private dpadSidePrev = 0;
   /** Icono del objeto de la forma elegida encima del botón del HUD (Banda Dinamax, Teragema o Cristal Z). */
   private powerSelIcon?: Phaser.GameObjects.Image;
+  /** Selector de forma de poder (franja de abajo): una casilla por forma disponible, la elegida marcada, y su estado. */
+  private powerSelHud?: { g: Phaser.GameObjects.Graphics; icons: Phaser.GameObjects.Image[]; zones: Phaser.GameObjects.Zone[]; title: Phaser.GameObjects.Text; label: Phaser.GameObjects.Text; shown: string; flashUntil: number };
   /** Inicial oscuro (darkMon.ts): más fuerte en todo y con aura oscura. */
   private dark = false;
   /** Piso (o ronda) en que se usó la fusión de poderes (data/fusion.ts); 0 = ninguna. */
@@ -1231,6 +1237,8 @@ export class GameScene extends Phaser.Scene {
     // T75: el medidor y el Z son de toda la partida (pasan de piso)
     this.powerMeter = newPowerMeter(r?.powerMeter ?? this.carry?.powerMeter ?? 0);
     this.zUsed = r?.zUsed ?? this.carry?.zUsed ?? false;
+    // Forma elegida en el selector: se recuerda en toda la partida (guardado y paso de piso); partida nueva, ninguna
+    this.powerSel = powerSelFromSave(r ? r.powerSel : this.carry?.powerSel);
     // T76: las reacciones descubiertas son de toda la partida (se guardan y pasan de piso)
     this.reactionsFound = [...(r?.reactionsFound ?? this.carry?.reactionsFound ?? [])];
     this.storiesSeen = [...(r?.storiesSeen ?? this.carry?.storiesSeen ?? [])];
@@ -1246,6 +1254,7 @@ export class GameScene extends Phaser.Scene {
     this.megaHud = undefined;
     this.megaZone = undefined;
     this.powerSelIcon = undefined;
+    this.powerSelHud = undefined;
     this.dpadSidePrev = 0;
     this.darkAuraStop = undefined;
     this.minibossKind = undefined;
@@ -2872,6 +2881,7 @@ export class GameScene extends Phaser.Scene {
     for (const k of Object.values(this.tiles)) if (typeof k === 'string' && this.textures.exists(k)) this.textures.get(k).setFilter(Phaser.Textures.FilterMode.NEAREST);
     if (this.textures.exists(`outside-${this.biome.id}`)) this.textures.get(`outside-${this.biome.id}`).setFilter(Phaser.Textures.FilterMode.NEAREST);
     this.walls = this.physics.add.staticGroup();
+    this.pillars = [];
     this.bushes = this.physics.add.staticGroup();
     this.holes = this.physics.add.staticGroup();
     this.grids.clear();
@@ -3173,6 +3183,31 @@ export class GameScene extends Phaser.Scene {
     this.megaZone = megaZone;
     this.powerSelIcon = hud(this.add.image(LX + HL.mega.x, HL.mega.y, itemIconKey(TERA_GEM_ID)).setScale(1.4).setVisible(false));
     badge(LX + HL.mega.x, HL.mega.badgeY, '↑', 'mega', HUD_BADGE_MAX_W.mega);
+    // Selector de forma de poder, siempre a la vista en la franja de abajo mientras haya alguna: clic/toque en una
+    // casilla la elige (y se recuerda); el botón de poder usa solo la elegida
+    {
+      const sy = HUD.bottom.y + HUD.bottom.h / 2;
+      const icons: Phaser.GameObjects.Image[] = [];
+      const zones: Phaser.GameObjects.Zone[] = [];
+      for (let k = 0; k < POWER_SEL_ORDER.length; k++) {
+        icons.push(hud(this.add.image(0, sy, itemIconKey(TERA_GEM_ID)).setScale(1.2).setVisible(false)));
+        const z = over(hud(this.add.zone(0, sy, POWER_SLOT, POWER_SLOT).setInteractive({ useHandCursor: true }))) as Phaser.GameObjects.Zone;
+        z.on('pointerdown', () => {
+          const c = z.getData('form') as PowerSel | undefined;
+          if (c) this.choosePower(c);
+        });
+        zones.push(z.setVisible(false));
+      }
+      this.powerSelHud = {
+        g: hud(this.add.graphics()),
+        icons,
+        zones,
+        title: txt(0, sy, 15, '#ffe9a8', true).setOrigin(1, 0.5),
+        label: txt(0, sy, 14, '#f8f8f8', true).setOrigin(0, 0.5),
+        shown: '',
+        flashUntil: 0,
+      };
+    }
     activeBtn.on('pointerdown', () => this.useActive());
     // Poderes: cuatro cuadros abajo a la derecha (clic para lanzar)
     const slotZones: (Phaser.GameObjects.Zone | Phaser.GameObjects.Text)[] = [];
@@ -3666,10 +3701,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return megaOffered(this.megaContext()) || pickPower(this.powerForm, this.powerContext()) !== null;
   }
 
-  /** Formas que se pueden elegir ahora y la elegida (si ya no vale, ninguna: la automática). */
+  /** Formas que se pueden elegir ahora y la que usa el botón (la elegida; o la única si solo hay una; si no, ninguna). */
   private powerChoices(): { opts: PowerSel[]; sel: PowerSel | null } {
     const opts = powerOptions(megaOffered(this.megaContext()), this.powerContext());
-    return { opts, sel: validPowerSel(opts, this.powerSel) };
+    return { opts, sel: effectivePowerSel(opts, this.powerSel) };
   }
 
   /** Cambia la forma elegida (tecla, cruceta izquierda/derecha, clic derecho o rueda sobre el icono, o mantener en táctil). */
@@ -3677,19 +3712,31 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.ended || !this.player?.active || this.scene.isPaused()) return;
     const { opts, sel } = this.powerChoices();
     if (opts.length === 0) return;
-    this.powerSel = cyclePowerSel(opts, sel ?? this.autoPowerSel(), dir);
-    if (this.megaHud) this.megaHud.shown = '';
-    sfx('select');
-    const c = this.powerSel!;
-    const cost = c === 'mega' ? 'con la Mega Piedra' : `${powerCost(c, this.passives)} % del medidor`;
-    this.notify(`Forma elegida: ${POWER_SEL_LABEL[c]}\n${cost}`, { kind: 'info', icon: 'pokeball' });
+    this.choosePower(cyclePowerSel(opts, sel, dir)!);
   }
 
-  /** La que soltaría el botón sin elegir nada (para empezar a ciclar desde ella). */
-  private autoPowerSel(): PowerSel | null {
-    const mctx = this.megaContext();
-    if (megaOffered(mctx) && megaBlock(this.powerForm, mctx) === null) return 'mega';
-    return pickPower(this.powerForm, this.powerContext())?.choice ?? (megaOffered(mctx) ? 'mega' : null);
+  /** Elige una forma concreta (selector del HUD o ciclar) y la recuerda para toda la partida. */
+  private choosePower(c: PowerSel) {
+    if (this.ended || !this.player?.active || this.scene.isPaused()) return;
+    if (!this.powerChoices().opts.includes(c)) return;
+    this.powerSel = c;
+    if (this.megaHud) this.megaHud.shown = '';
+    if (this.powerSelHud) this.powerSelHud.shown = '';
+    sfx('select');
+    const why = this.powerWhy(c);
+    const cost = c === 'mega' ? 'con la Mega Piedra' : `${powerCost(c, this.passives)} % del medidor`;
+    this.notify(`Forma elegida: ${POWER_SEL_LABEL[c]}\n${why ?? `Lista (${cost})`}`, { kind: 'info', icon: 'pokeball' });
+    this.saveNow();
+  }
+
+  /** Por qué no se puede usar ahora esa forma (null = lista). */
+  private powerWhy(c: PowerSel): string | null {
+    if (c === 'mega') {
+      const b = megaBlock(this.powerForm, this.megaContext());
+      return b ? MEGA_BLOCK_TEXT[b] : null;
+    }
+    const b = powerBlock(this.powerForm, c, this.powerContext());
+    return b ? POWER_BLOCK_TEXT[b] : null;
   }
 
   /** Tipo de los disparos: el Tera mientras dura, si no el de siempre. */
@@ -3703,20 +3750,22 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    */
   private powerButton() {
     if (this.ended || this.transitioning || this.falling || !this.player?.active || this.scene.isPaused()) return;
-    // Forma elegida con el selector: esa y no otra (con su aviso si aún no se puede)
-    const { sel } = this.powerChoices();
-    if (sel === 'mega') return this.megaEvolve();
-    if (sel) {
-      const why = powerBlock(this.powerForm, sel, this.powerContext());
-      if (why) return this.notify(POWER_BLOCK_TEXT[why], { kind: 'warning', icon: 'pokeball' });
-      return this.startPower(sel);
+    // Solo la forma elegida (o la única que hay), nunca otra: con varias y ninguna elegida, se pide elegir
+    const { opts } = this.powerChoices();
+    const press = powerPress(opts, this.powerSel);
+    if (press.kind === 'none') return this.megaEvolve(); // sin formas: el aviso de siempre (te falta la piedra…)
+    if (press.kind === 'choose') {
+      sfx('select');
+      if (this.powerSelHud) (this.powerSelHud.flashUntil = this.time.now + 1600), (this.powerSelHud.shown = '');
+      const dev = this.touch ? 'touch' : currentInput();
+      const how = dev === 'touch' ? 'toca una en el selector de abajo' : dev === 'gamepad' ? 'cámbiala con la cruceta izquierda/derecha' : `pulsa ${keyLabel(loadKeys().powerNext)}, o clic en el selector de abajo`;
+      return this.notify(`Elige qué forma usar: ${press.opts.map((o) => POWER_SEL_LABEL[o]).join(', ')}\n(${how})`, { kind: 'warning', icon: 'pokeball' });
     }
-    const mctx = this.megaContext();
-    const megaOk = megaOffered(mctx) && megaBlock(this.powerForm, mctx) === null;
-    const pick = pickPower(this.powerForm, this.powerContext());
-    if (megaOk || !pick) return this.megaEvolve();
-    if (pick.block) return this.notify(POWER_BLOCK_TEXT[pick.block], { kind: 'warning', icon: 'pokeball' });
-    this.startPower(pick.choice);
+    const sel = press.form;
+    if (sel === 'mega') return this.megaEvolve();
+    const why = powerBlock(this.powerForm, sel, this.powerContext());
+    if (why) return this.notify(POWER_BLOCK_TEXT[why], { kind: 'warning', icon: 'pokeball' });
+    this.startPower(sel);
   }
 
   private startPower(choice: PowerChoice) {
@@ -3879,7 +3928,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const offered = this.powerButtonOffered();
     const on = powerFormActive(this.powerForm);
     const pick = pickPower(this.powerForm, this.powerContext());
-    const ready = (megaOffered(ctx) && megaBlock(this.powerForm, ctx) === null) || (!!pick && pick.block === null);
+    void pick;
+    void ctx;
+    // Brilla solo si la forma ELEGIDA se puede usar (no si se puede otra)
+    const curSel = this.powerChoices().sel;
+    const ready = !!curSel && this.powerWhy(curSel) === null;
     const fill = on ? powerFormFill(this.powerForm) : 0;
     const key = `${offered}:${ready}:${on}:${Math.round(fill * 20)}:${this.powerForm.usedThisFloor}:${this.powerSel}:${(ready || on) && !lowFx() ? Math.floor(this.game.loop.time / 80) : 0}`;
     if (h.shown === key) return;
@@ -3897,8 +3950,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Si la forma elegida (o la automática) no es la mega, el dibujo de su objeto con el aro de estado
     const used = this.powerForm.usedThisFloor && !on;
     const st = used ? 'used' : on ? 'on' : ready ? 'ready' : 'idle';
-    const shownSel: PowerSel | null = on ? (this.powerForm.active === 'mega' ? 'mega' : this.powerForm.active) : (this.powerChoices().sel ?? this.autoPowerSel());
-    if (!shownSel || shownSel === 'mega') {
+    const shownSel: PowerSel | null = on ? (this.powerForm.active === 'mega' ? 'mega' : this.powerForm.active) : this.powerChoices().sel;
+    if (!shownSel) {
+      // Varias formas y ninguna elegida: botón apagado (pulsarlo pide elegir en el selector de abajo)
+      this.powerSelIcon?.setVisible(false);
+      drawPowerSelHud(h.g, h.x, h.y, 'idle', 0, this.game.loop.time, 0x8a94a8);
+    } else if (shownSel === 'mega') {
       this.powerSelIcon?.setVisible(false);
       drawMegaStoneHud(h.g, h.x, h.y, st, fill, this.game.loop.time);
     } else {
@@ -3910,6 +3967,68 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.powerSelIcon.setVisible(true).setAlpha(used ? 0.45 : 1);
       }
     }
+  }
+
+  /**
+   * Selector de formas de poder: una casilla con el icono pixel art de su objeto (Mega Piedra, Banda Dinamax,
+   * Teragema, Cristal Z) por cada forma disponible; la elegida con marco dorado; apagada si no se puede ahora; a la
+   * derecha, el nombre de la elegida y su estado (lista, activa o por qué no). Sin elegida (y varias), lo pide.
+   */
+  private paintPowerSel() {
+    const h = this.powerSelHud;
+    if (!h) return;
+    const { opts, sel } = this.powerChoices();
+    const on = powerFormActive(this.powerForm);
+    const flash = this.time.now < h.flashUntil ? Math.floor(this.time.now / 160) % 2 : -1;
+    const whys = opts.map((o) => this.powerWhy(o));
+    const key = `${opts.join(',')}|${sel}|${whys.join('|')}|${on}|${flash}|${!!this.touch}`;
+    if (h.shown === key) return;
+    h.shown = key;
+    h.g.clear();
+    const show = opts.length > 0;
+    h.title.setVisible(show);
+    h.label.setVisible(show);
+    h.icons.forEach((i) => i.setVisible(false));
+    h.zones.forEach((z) => z.setVisible(false).disableInteractive());
+    if (!show) return;
+    const sy = HUD.bottom.y + HUD.bottom.h / 2;
+    const gap = 8;
+    const total = opts.length * POWER_SLOT + (opts.length - 1) * gap;
+    const x0 = CX - total / 2 - 60;
+    h.title.setPosition(x0 - 12, sy).setText('Forma:');
+    opts.forEach((o, k) => {
+      const cx = x0 + POWER_SLOT / 2 + k * (POWER_SLOT + gap);
+      const chosen = o === sel;
+      const ready = whys[k] === null;
+      const half = POWER_SLOT / 2;
+      // Marco GBA: borde oscuro, fondo y, la elegida, aro dorado (parpadea si el botón pide elegir)
+      h.g.fillStyle(0x101828, 1).fillRect(cx - half - 2, sy - half - 2, POWER_SLOT + 4, POWER_SLOT + 4);
+      h.g.fillStyle(chosen ? 0x3a3060 : 0x1d2440, 1).fillRect(cx - half, sy - half, POWER_SLOT, POWER_SLOT);
+      if (chosen) {
+        h.g.lineStyle(3, 0xffd34d, 1).strokeRect(cx - half + 1.5, sy - half + 1.5, POWER_SLOT - 3, POWER_SLOT - 3);
+      } else if (flash === 1) {
+        h.g.lineStyle(2, 0xffffff, 0.9).strokeRect(cx - half + 1, sy - half + 1, POWER_SLOT - 2, POWER_SLOT - 2);
+      }
+      // Estado: punto verde (lista) o rojo (bloqueada / en recarga) en la esquina
+      h.g.fillStyle(0x101828, 1).fillRect(cx + half - 11, sy - half + 3, 8, 8);
+      h.g.fillStyle(ready ? 0x66bb6a : 0xe53935, 1).fillRect(cx + half - 10, sy - half + 4, 6, 6);
+      const item = o === 'mega' ? MEGA_STONE_ID : o === 'tera' ? TERA_GEM_ID : o === 'z' ? Z_CRYSTAL_ID : DYNAMAX_BAND_ID;
+      const icon = h.icons[k];
+      if (this.textures.exists(itemIconKey(item))) icon.setTexture(itemIconKey(item));
+      icon.setPosition(cx, sy).setVisible(true).setAlpha(ready || chosen ? 1 : 0.4);
+      const z = h.zones[k];
+      z.setPosition(cx, sy).setData('form', o).setVisible(true).setInteractive({ useHandCursor: true });
+    });
+    const lx = x0 + total + 14;
+    if (!sel) {
+      const how = this.touch || currentInput() === 'touch' ? 'toca una' : currentInput() === 'gamepad' ? 'cruceta ←/→' : `${keyLabel(loadKeys().powerNext)} o clic`;
+      h.label.setPosition(lx, sy).setColor('#ffcc80').setText(`Elige una forma (${how})`);
+      return;
+    }
+    const i = opts.indexOf(sel);
+    const active = on && (this.powerForm.active === sel || (sel === 'mega' && this.powerForm.active === 'mega'));
+    const st = active ? 'activa' : whys[i] === null ? 'lista' : (whys[i] ?? '');
+    h.label.setPosition(lx, sy).setColor(active || whys[i] === null ? '#a5d6a7' : '#ef9a9a').setText(`${POWER_SEL_LABEL[sel]}: ${st}`);
   }
 
   // --- Guardado (como en Isaac: solo, en el hueco elegido) ---
@@ -4019,6 +4138,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       powerForm: powerFormToSave(this.powerForm),
       powerMeter: Math.round(this.powerMeter.value * 10) / 10,
       zUsed: this.zUsed,
+      powerSel: this.powerSel,
       reactionsFound: [...this.reactionsFound],
       storiesSeen: [...this.storiesSeen],
       route: this.route ? { ...this.route } : null,
@@ -4358,12 +4478,46 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (!leftOpen) wallTile(a.x0 - WALL, a.y1, WALL, b.y0 - a.y1);
       if (jw.downRight) wallTile(a.x1, a.y1, WALL, b.y0 - a.y1);
     }
-    if (jw.cornerFloor && rightRoom && downRoom) {
-      const bx = this.interior(rightRoom).x0;
-      const by = this.interior(downRoom).y0;
-      this.add.tileSprite(a.x1, a.y1, bx - a.x1, by - a.y1, this.tiles.floor).setOrigin(0).setTileScale(ts).setTilePosition(a.x1 / ts, a.y1 / ts).setDepth(0.02);
-    }
+    if (jw.pillar && rightRoom && downRoom) this.buildPillar(pillarRect(a.x1, a.y1, this.interior(rightRoom).x0, this.interior(downRoom).y0));
   }
+
+  /**
+   * Pilar macizo del centro de una sala 2x2: relleno entero de la pared del bioma (sin huecos ni fondo), cara frontal
+   * en sombra, tapa con canto claro y contorno, y sombra en el suelo. Cuerpo físico en todo el cuadrado (jugador,
+   * enemigos, disparos) y keepInside saca de él a voladores y jefes que se teletransporten o embistan.
+   */
+  private buildPillar(p: PillarRect) {
+    const ts = TILE / ART_TILE;
+    const wc = this.biome.colors.wall;
+    const K = 0x0a0d14;
+    const front = Math.round(p.h * 0.3);
+    // Sombra en el suelo (abajo y a la derecha), bajo el pilar
+    const sh = this.add.graphics().setDepth(0.2);
+    sh.fillStyle(0x000000, 0.28).fillRect(p.x + 8, p.y + 8, p.w, p.h);
+    sh.fillStyle(0x000000, 0.16).fillRect(p.x + 4, p.y + p.h, p.w + 8, 10);
+    // Relleno completo con la textura de pared del bioma
+    this.add.tileSprite(p.x, p.y, p.w, p.h, this.tiles.wall).setOrigin(0).setTileScale(ts).setTilePosition(p.x / ts, p.y / ts).setDepth(0.26);
+    const g = this.add.graphics().setDepth(0.33);
+    // Tapa (más clara) y cara frontal (en sombra), como un bloque que sobresale del suelo
+    g.fillStyle(shade(wc, 0.18), 0.45).fillRect(p.x, p.y, p.w, p.h - front);
+    g.fillStyle(shade(wc, -0.45), 0.6).fillRect(p.x, p.y + p.h - front, p.w, front);
+    // Canto superior claro, filo entre tapa y cara, y contorno oscuro
+    g.fillStyle(shade(wc, 0.5), 1).fillRect(p.x + 4, p.y + 4, p.w - 8, 4);
+    g.fillStyle(shade(wc, 0.3), 1).fillRect(p.x + 4, p.y + 4, 4, p.h - front - 8);
+    g.fillStyle(K, 1).fillRect(p.x, p.y + p.h - front - 3, p.w, 3);
+    g.fillStyle(shade(wc, 0.25), 1).fillRect(p.x + 3, p.y + p.h - front, p.w - 6, 2);
+    // Piedras angulares en la tapa (relieve)
+    const s = 14;
+    for (const [cx, cy] of [[p.x + 10, p.y + 10], [p.x + p.w - 10 - s, p.y + 10]]) {
+      g.fillStyle(K, 0.7).fillRect(cx, cy, s, s);
+      g.fillStyle(shade(wc, 0.1), 1).fillRect(cx + 2, cy + 2, s - 4, s - 4);
+      g.fillStyle(shade(wc, 0.45), 1).fillRect(cx + 2, cy + 2, s - 4, 2);
+    }
+    g.lineStyle(3, K, 1).strokeRect(p.x + 1.5, p.y + 1.5, p.w - 3, p.h - 3);
+    this.addWall(p.x, p.y, p.w, p.h);
+    this.pillars.push(p);
+  }
+
 
   /** Suelo de la sala (el del bioma en las normales, el suyo en las especiales). */
   private floorColorOf(room: Room): number {
@@ -9649,6 +9803,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       bossesBeaten: this.bossesBeaten,
       powerMeter: this.powerMeter.value,
       zUsed: this.zUsed,
+      powerSel: this.powerSel,
       reactionsFound: [...this.reactionsFound],
       storiesSeen: [...this.storiesSeen],
       route,
@@ -9745,11 +9900,26 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         body.setVelocity(v.vx, v.vy);
       }
     };
+    // Pilar de las salas 2x2: nadie (ni voladores ni jefes que embisten o se teletransportan) queda dentro
+    const unPillar = (o: Sprite, r: number) => {
+      const body = o.body as Body | null;
+      if (!o.active || !body) return;
+      for (const p of this.pillars) {
+        const q = pushOutOfRect(o.x, o.y, r, p);
+        if (q) body.reset(q.x, q.y);
+      }
+    };
     for (const c of this.enemies.getChildren()) {
       const e = c as Sprite;
       const body = e.body as Body | null;
       if (!body) continue;
-      fix(e, Math.min(60, Math.max(14, Math.min(body.width, body.height) / 2)));
+      const m = Math.min(60, Math.max(14, Math.min(body.width, body.height) / 2));
+      if (this.pillars.length) unPillar(e, m * 0.8);
+      fix(e, m);
+    }
+    if (this.pillars.length) {
+      const pb = this.player.body as Body | null;
+      if (pb) unPillar(this.player, Math.max(10, Math.min(pb.width, pb.height) / 2) * 0.8);
     }
     if (this.roomLocked() || this.mode === 'waves' || this.mode === 'bossrush') {
       const pb = this.player.body as Body | null;
@@ -10061,6 +10231,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.potionsHud?.setText(String(this.potions));
     this.paintBall(time);
     this.paintMega();
+    this.paintPowerSel();
     this.paintPowerMeter();
     this.slots.forEach((m, i) => this.paintSlot(i, m, !m || time >= this.slotReady[i]));
 

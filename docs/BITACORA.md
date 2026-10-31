@@ -1735,3 +1735,31 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
 - **Bug**: el guardado escribía `roomCount: this.floor.rooms.length` (salas totales, con Centro/tienda/secreta/desafío/grandes/arena ya añadidas) y al reanudar se pasaba ese número como base a `generateFloor`, que volvía a añadir las especiales encima: salía otro piso y `visited` apuntaba a salas distintas (más visible con la recarga en caliente del dev server, que reanuda desde el guardado). Ahora se guarda `roomBase` (el número base real, campo opcional, sin subir RUN_VERSION); los guardados viejos lo recuperan con `recoverRoomBase` (busca la base que da exactamente esas salas totales). `restoreRun` descarta ids de `visited`/`cleared` que no existen y marca enteras las salas grandes; `drawMinimap` también filtra ids inexistentes. Al entrar en una sala grande se marcan todas sus casillas. Test: tests/floorResume.test.ts.
 - **Minimapa**: marco con el acento del bioma y motivos en las esquinas, niebla de guerra con halos en lo explorado, baldosas con bisel y textura, pasillos distintos (del jefe con borde rojo, oculto abierto como grieta morada, barrotes rojos mientras la sala está en pelea), salas vistas sin limpiar con esquina roja, candado en cofres cerrados, trazo del camino, jefe que respira, tesoro que brilla y Poké Ball que bota (capa aparte redibujada ~8 veces/s; fija con lowFx). Expone `minimapRoomAt`/`ROOM_LABEL` para una leyenda (aún no conectada).
 - **Laterales temáticos**: src/ui/art/hudTheme.ts (tema por bioma, contraste WCAG probado en tests/hudTheme.test.ts), src/ui/art/hudBackdrop.ts (fondo con textura, motivos pixel art, columna alrededor de la sala y motas animadas sin lowFx); `setHudPalette` tiñe los marcos del HUD; el fondo de la página toma el color del bioma durante la partida.
+
+## Pilar de la sala 2x2, tintes alineados con el zoom y elegir forma de poder (rama `forma`, 2026-10-31)
+
+- **Pilar 2x2** (corrige el arreglo anterior que lo quitaba): en el centro de las salas 2x2 vuelve el pilar, ahora
+  macizo: relleno entero con la pared del bioma, tapa más clara con canto y piedras angulares, cara frontal en sombra,
+  contorno y sombra en el suelo (sin huecos ni fondo). Un único cuerpo físico en todo el cuadrado (jugador, enemigos,
+  disparos) y `keepInside` saca de él a cualquier enemigo/jefe (voladores, embestidas, teletransportes) y al jugador,
+  para que nada quede dibujado dentro. Va por debajo de los sprites (profundidad 0,26-0,33). Spawns, trampilla y
+  objetos lo evitan solos (`wallRects`/`spotClear`, radio de margen). `src/level/joinCorner.ts` (`pillar`,
+  `pillarRect`, `pushOutOfRect`), `buildPillar` en `GameScene`, test `joinCorner.test.ts`.
+- **Filtro desalineado**: revisados clima (`weatherFx`, en coordenadas de mundo con `worldView` y margen: bien),
+  ambiente del jefe (`bossAmbience`, sobre `arena()`: bien), oscuridad (sigue al jugador, rectángulos de 4000 px:
+  bien), destello de daño (cámara del HUD, exacto a `GAME_VIEW`: bien). Fallo encontrado: los objetos con
+  `scrollFactor 0` de la cámara principal se pintaban de 0 a `scale.width`, pero Phaser los escala con el zoom (1,5)
+  alrededor del centro del visor: el **tinte de noche** (`dayNightLayer`) salía con sus bandas corridas respecto a
+  paredes y suelo y las **bandas de cine** de la caída de la arena (`arenaLetterbox`) quedaban fuera de la vista.
+  Nuevo `src/ui/camView.ts` (`fixedViewRect`) que da exactamente lo que ve el visor (más margen para el temblor);
+  test `camView.test.ts`.
+- **Forma de poder elegida, nunca al azar**: el botón ya no escoge solo (antes, sin elegida, con la mega en recarga
+  saltaba el Teracristal). `powerPress`/`effectivePowerSel` (puras, `powerForm.ts`): usa exactamente la elegida; si
+  solo hay una disponible, esa; con varias y ninguna elegida, avisa y hace parpadear el selector. Selector nuevo
+  siempre visible en la franja de abajo con una casilla por forma (icono pixel art de su objeto), la elegida con marco
+  dorado, punto verde/rojo de estado y el texto «Forma: lista / activa / motivo». Elegir: X (tecla configurable),
+  cruceta izquierda/derecha, rueda o clic derecho sobre el botón, clic o toque en la casilla. Se recuerda en toda la
+  partida (`RunSave.powerSel` opcional; pasa de piso). Tutorial `forms` (teclado y táctil sin teclas) actualizado.
+  Test `powerPress.test.ts`.
+- **Sin verificar a ojo**: no se ha probado en el navegador (localhost sirve `main`); revisar el aspecto del pilar en
+  cada bioma, el selector de abajo con los controles táctiles y el tinte de noche con zoom.

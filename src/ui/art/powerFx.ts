@@ -1,5 +1,6 @@
 // Efectos pixel art de la tanda 9 (supervisor): captura con Poké Ball, megaevolución de jefes, noche y día.
 // Mismo estilo que combatFx: píxel gordo (PX), redibujado a saltos. Solo dibujo; la lógica vive en src/data y GameScene.
+import { fixedViewRect } from '../camView';
 import Phaser from 'phaser';
 import { lowFx } from '../theme';
 import { starBurst } from './combatFx';
@@ -148,20 +149,22 @@ export function dayNightLayer(scene: Phaser.Scene, depth = 40) {
   const g = scene.add.graphics().setDepth(depth).setScrollFactor(0);
   let level = 0;
   let target = 0;
-  const w = scene.scale.width;
-  const h = scene.scale.height;
-  const stars = Array.from({ length: 26 }, (_, i) => ({ x: (i * 211) % w, y: (i * 97) % (h * 0.8), p: i * 0.7 }));
+  // Estrellas en posiciones relativas (0-1) a lo que ve la cámara
+  const stars = Array.from({ length: 26 }, (_, i) => ({ x: ((i * 211) % 960) / 960, y: (((i * 97) % 512) / 512) * 0.8, p: i * 0.7 }));
   const draw = () => {
     g.clear();
     if (level <= 0.01) return;
+    // Fijo a la cámara pero con zoom: se pinta justo lo que ve el visor (camView.ts), con margen para el temblor;
+    // antes iba de 0 a scale.width y, con el zoom 1,5 y el visor desplazado, las bandas salían corridas
+    const v = fixedViewRect(scene.cameras.main, 48);
     // tinte azul-violeta en bandas gruesas (como un degradado a saltos)
     const bands = 6;
     for (let b = 0; b < bands; b++) {
-      g.fillStyle(0x0d1b4a, level * (0.1 + b * 0.04)).fillRect(0, (h / bands) * b, w, h / bands + 1);
+      g.fillStyle(0x0d1b4a, level * (0.1 + b * 0.04)).fillRect(v.x, v.y + (v.h / bands) * b, v.w, v.h / bands + 1);
     }
     if (!lowFx() && level > 0.5) {
       const t = scene.time.now;
-      for (const s of stars) if (Math.sin(t * 0.004 + s.p) > -0.3) px(g, s.x, s.y, 0xffffff, 0.7 * level, PX / 2 + 1);
+      for (const s of stars) if (Math.sin(t * 0.004 + s.p) > -0.3) px(g, v.x + s.x * v.w, v.y + s.y * v.h, 0xffffff, 0.7 * level, PX / 2 + 1);
     }
   };
   const ev = scene.time.addEvent({

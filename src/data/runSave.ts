@@ -160,6 +160,8 @@ export interface RunSave {
   /** T75: medidor de poder (0..100) y si ya se ha usado el Cristal Z en la partida. */
   powerMeter: number;
   zUsed: boolean;
+  /** Forma de poder elegida en el selector (se recuerda toda la partida). Opcional: los guardados viejos no la tienen. */
+  powerSel?: string | null;
   /** T79: ids de las historias con decisiones ya vistas (ver level/choiceEvents.ts). */
   storiesSeen: string[];
   /** T76: reacciones de tipo descubiertas en la partida (en el orden de la tabla, sin repetir). */
