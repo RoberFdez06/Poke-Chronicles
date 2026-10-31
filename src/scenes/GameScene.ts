@@ -12,6 +12,7 @@ import { encodeSeed, newSeed, type SeedRun } from '../data/seedCode';
 import { damageMul, effectOf, EFFECT_COLOR, EFFECT_LABEL, rawEffectiveness } from '../data/typeChart';
 import { weatherChip, weatherFor, weatherHurts, weatherPowerMul, WEATHER_DESC, WEATHER_LABEL, WEATHER_TICK_MS, type Weather } from '../data/weather';
 import { WeatherFx } from '../ui/weatherFx';
+import { joinWalls } from '../level/joinCorner';
 import { phaseAtSeconds, phasePowerMul, pickByPhase, PHASE_DESC, PHASE_NOTICE, type Phase } from '../data/dayNight';
 import { TouchControls, type TouchButton } from '../ui/touchControls';
 import { touchOnlyDevice } from '../data/controls';
@@ -349,7 +350,7 @@ import {
 } from '../data/legendHunt';
 import { submitComboBest, unlockPokemon } from '../data/save';
 import { canCapture, canThrow, CAPTURE_RANGE, CAPTURE_RETRY_MS, newCaptureState, nextFloorCapture, resolveThrow, rollCapture, type CaptureState } from '../data/capture';
-import { DARK_ALPHA, DARK_RADIUS, darkEdge, quantizeDarkAlpha, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, ruleDamageMul, ruleNotice, shouldMultiply, speedRoomBonus, MULTIPLY_HP, MULTIPLY_SIZE, SPEED_ROOM_MUL, type RoomRule } from '../level/roomRules';
+import { DARK_ALPHA, DARK_RADIUS, darkEdge, darkHoleAlpha, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, ruleDamageMul, ruleNotice, shouldMultiply, speedRoomBonus, MULTIPLY_HP, MULTIPLY_SIZE, SPEED_ROOM_MUL, type RoomRule } from '../level/roomRules';
 import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data/secondChance';
 import type { SecondChanceChoice } from './SecondChanceScene';
 import { accountInfo } from '../net/cloud';
@@ -4308,17 +4309,37 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.add.tileSprite(x, y, w, h, this.tiles.wall).setOrigin(0).setTileScale(ts).setDepth(0.25);
       this.addWall(x, y, w, h);
     };
-    if (this.mergedSide(room, 'right')) {
-      const b = this.interior(this.floor.rooms[room.doors.right!]);
+    // Sala 2x2: la esquina central entre las cuatro casillas es suelo, sin muros (antes salía un bloque de
+    // ladrillo hueco en mitad de la arena; ver joinCorner.ts)
+    const rightRoom = this.mergedSide(room, 'right') ? this.floor.rooms[room.doors.right!] : undefined;
+    const downRoom = this.mergedSide(room, 'down') ? this.floor.rooms[room.doors.down!] : undefined;
+    const jw = joinWalls({
+      right: !!rightRoom,
+      down: !!downRoom,
+      rightThenDown: !!rightRoom && this.mergedSide(rightRoom, 'down'),
+      downThenRight: !!downRoom && this.mergedSide(downRoom, 'right'),
+    });
+    if (rightRoom) {
+      const b = this.interior(rightRoom);
       this.add.tileSprite(a.x1, a.y0, b.x0 - a.x1, a.y1 - a.y0, this.tiles.floor).setOrigin(0).setTileScale(ts).setTilePosition(a.x1 / ts, a.y0 / ts).setDepth(0.02);
-      wallTile(a.x1 + WALL, a.y0 - WALL, b.x0 - a.x1 - WALL * 2, WALL);
-      wallTile(a.x1 + WALL, a.y1, b.x0 - a.x1 - WALL * 2, WALL);
+      // Muro de arriba de la unión: también sobra si por encima hay otra fila de la misma sala 2x2
+      const upRoom = this.mergedSide(room, 'up') ? this.floor.rooms[room.doors.up!] : undefined;
+      const topOpen = !!upRoom && this.mergedSide(rightRoom, 'up') && this.mergedSide(upRoom, 'right');
+      if (!topOpen) wallTile(a.x1 + WALL, a.y0 - WALL, b.x0 - a.x1 - WALL * 2, WALL);
+      if (jw.rightBottom) wallTile(a.x1 + WALL, a.y1, b.x0 - a.x1 - WALL * 2, WALL);
     }
-    if (this.mergedSide(room, 'down')) {
-      const b = this.interior(this.floor.rooms[room.doors.down!]);
+    if (downRoom) {
+      const b = this.interior(downRoom);
       this.add.tileSprite(a.x0, a.y1, a.x1 - a.x0, b.y0 - a.y1, this.tiles.floor).setOrigin(0).setTileScale(ts).setTilePosition(a.x0 / ts, a.y1 / ts).setDepth(0.02);
-      wallTile(a.x0 - WALL, a.y1, WALL, b.y0 - a.y1);
-      wallTile(a.x1, a.y1, WALL, b.y0 - a.y1);
+      const leftRoom = this.mergedSide(room, 'left') ? this.floor.rooms[room.doors.left!] : undefined;
+      const leftOpen = !!leftRoom && this.mergedSide(downRoom, 'left') && this.mergedSide(leftRoom, 'down');
+      if (!leftOpen) wallTile(a.x0 - WALL, a.y1, WALL, b.y0 - a.y1);
+      if (jw.downRight) wallTile(a.x1, a.y1, WALL, b.y0 - a.y1);
+    }
+    if (jw.cornerFloor && rightRoom && downRoom) {
+      const bx = this.interior(rightRoom).x0;
+      const by = this.interior(downRoom).y0;
+      this.add.tileSprite(a.x1, a.y1, bx - a.x1, by - a.y1, this.tiles.floor).setOrigin(0).setTileScale(ts).setTilePosition(a.x1 / ts, a.y1 / ts).setDepth(0.02);
     }
   }
 
@@ -5948,7 +5969,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /**
    * Sala a oscuras: una capa negra con un agujero alrededor del jugador (un círculo de textura y cuatro rectángulos
-   * que tapan el resto). Con efectos bajos el borde es duro: la textura no lleva degradado (ver darkEdge).
+   * que tapan el resto). Borde con degradado suave siempre (darkHoleAlpha; con efectos bajos, más estrecho).
    */
   private makeDarkness() {
     this.clearDarkness();
@@ -5959,25 +5980,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const tex = this.textures.createCanvas(key, R * 2, R * 2);
       if (!tex) return;
       const ctx = tex.getContext();
-      if (edge > 0) {
-        const grad = ctx.createRadialGradient(R, R, R - edge, R, R, R);
-        grad.addColorStop(0, 'rgba(0,0,0,0)');
-        grad.addColorStop(1, `rgba(0,0,0,${DARK_ALPHA})`);
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, R * 2, R * 2);
-        // Escalones: el borde de la luz se ve a bandas, como un sprite, no como un degradado de foto
-        const img = ctx.getImageData(0, 0, R * 2, R * 2);
-        for (let i = 3; i < img.data.length; i += 4) img.data[i] = quantizeDarkAlpha(img.data[i]);
-        ctx.putImageData(img, 0, 0);
-      } else {
-        ctx.fillStyle = `rgba(0,0,0,${DARK_ALPHA})`;
-        ctx.fillRect(0, 0, R * 2, R * 2);
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.beginPath();
-        ctx.arc(R, R, R, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalCompositeOperation = 'source-over';
+      // Degradado suave píxel a píxel (darkHoleAlpha): sin bandas ni borde duro
+      const img = ctx.createImageData(R * 2, R * 2);
+      for (let py = 0; py < R * 2; py++) for (let px = 0; px < R * 2; px++) {
+        const a = darkHoleAlpha(Math.hypot(px + 0.5 - R, py + 0.5 - R), R, edge);
+        img.data[(py * R * 2 + px) * 4 + 3] = Math.round(a * 255);
       }
+      ctx.putImageData(img, 0, 0);
       tex.refresh();
     }
     // Por encima de enemigos, disparos y botín; el HUD va en su propia cámara y no se tapa
@@ -5998,7 +6007,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!d || !this.player) return;
     const { x, y } = this.player;
     const R = DARK_RADIUS;
-    const px = Math.round(x), py = Math.round(y), o = R - 2; // solape bajo la textura: sin costuras con zoom/temblor
+    const px = Math.round(x), py = Math.round(y), o = R - 1; // 1 px de solape: sin costura y sin la franja doble que se veía como un marco
     d.hole.setPosition(px, py);
     d.sides[0].setPosition(px - o, py);
     d.sides[1].setPosition(px + o, py);
