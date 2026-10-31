@@ -175,6 +175,14 @@ export function dayNightLayer(scene: Phaser.Scene, depth = 40) {
       draw();
     },
   });
+  // Mientras la cámara hace zoom (intro del jefe) el visor cambia cada fotograma: repintar solo cada 80 ms dejaba
+  // una franja sin tinte en un borde, como un filtro a medias. Con noche (o en transición) se repinta cada fotograma.
+  const onFrame = () => {
+    if (!g.active) return void scene.events.off('postupdate', onFrame);
+    if (level > 0.01) draw();
+  };
+  scene.events.on('postupdate', onFrame);
+  scene.events.once('shutdown', () => scene.events.off('postupdate', onFrame));
   return {
     /** Cambia a noche (true) o día (false); la transición es suave. */
     setNight(night: boolean) {
@@ -182,6 +190,7 @@ export function dayNightLayer(scene: Phaser.Scene, depth = 40) {
     },
     destroy() {
       ev.remove();
+      scene.events.off('postupdate', onFrame);
       g.destroy();
     },
   };

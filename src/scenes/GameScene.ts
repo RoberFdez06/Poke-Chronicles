@@ -597,6 +597,8 @@ export class GameScene extends Phaser.Scene {
   private finale?: Finale;
   /** Presentación de los jefes (bossArena/bossDeath): ambiente de la sala, fase 2 ya mostrada y fin de la muerte del final. */
   private bossFx?: ReturnType<typeof bossAmbience>;
+  /** Hasta cuándo la cámara está en la intro de cine del jefe (no sigue al jugador). */
+  private cineUntil = 0;
   private bossHot = false;
   private finaleDeathUntil = 0;
   private finaleMembers: { id: number; name: string; types: string[]; stats: BaseStats; key: string }[] = [];
@@ -1127,6 +1129,7 @@ export class GameScene extends Phaser.Scene {
     this.finaleSinceNova = 0;
     this.finaleBigUntil = 0;
     this.bossFx = undefined;
+    this.cineUntil = 0;
     this.bossHot = false;
     this.finaleDeathUntil = 0;
     // Por si se salió en mitad de la intro de cine o de la muerte del final (física parada o a cámara lenta)
@@ -7220,12 +7223,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Los límites de la sala grande impedían centrar al jefe (el zoom acababa en otro sitio): se quitan mientras dura y se ponen al acabar
     const camHome = { x: this.cameras.main.scrollX, y: this.cameras.main.scrollY };
     this.cameras.main.removeBounds();
+    this.cineUntil = Number.POSITIVE_INFINITY;
     bossCinematic(this, {
       boss: b, others: bosses.filter((e) => e !== b), name: name.charAt(0).toUpperCase() + name.slice(1), title, color: typeColor(types[0] ?? 'normal'),
       final, low: lowFx(), hud: (o) => this.toHud(o), zoom: BOSS_CAM_ZOOM, follow: this.player, roar: () => sfx('roar'),
       onDone: () => {
         for (const [e, hp] of hps) if (e.active) e.setData('hp', Math.max(e.getData('hp') as number, hp));
         this.thawWorld();
+        // La cámara vuelve al jugador en ~300 ms
+        this.cineUntil = this.time.now + 350;
         this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 600);
         this.time.delayedCall(700, () => {
           this.setRoomCamera(this.current);
@@ -9995,7 +10001,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       updateShots(this.host, this.shots, time, delta);
       updateShots(this.host, this.foeShots, time, delta);
     }
-    this.weatherFx?.update(delta, this.player);
+    // Durante la intro del jefe la cámara no mira al jugador: la niebla se centra en la vista (ver WeatherFx)
+    this.weatherFx?.update(delta, this.time.now < this.cineUntil ? undefined : this.player);
     if (!this.ended) this.counters.seconds += delta / 1000;
     if (!frozen) {
       this.weatherTick(time);
