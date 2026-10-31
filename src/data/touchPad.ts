@@ -74,6 +74,7 @@ export const PAD_BTN_BIG = 96;
 export const PAD_BTN_SMALL = 72;
 /** Hueco entre botones. */
 export const PAD_GAP = 8;
+const PAD_GAP_BASE = PAD_GAP;
 
 /**
  * Dónde va cada botón (centro y lado). `left`/`right` son las franjas laterales del HUD; `slotsTop` es la y de
@@ -87,9 +88,16 @@ export function padButtons(
   screenH: number,
   pad: number,
   slotsTop: number,
+  /** Tamaño de la interfaz (1 = 100 %): agranda botones y huecos. */
+  k = 1,
 ): Record<PadButton, { x: number; y: number; size: number }> {
-  const B = PAD_BTN_BIG;
-  const S = PAD_BTN_SMALL;
+  // Sin salirse de las franjas: el aumento se queda en lo que quepa
+  const fitL = (left.w - pad * 2) / (PAD_BTN_BIG + PAD_GAP_BASE + PAD_BTN_SMALL);
+  const fitR = (right.w - pad * 2) / (PAD_BTN_BIG * 2 + PAD_GAP_BASE);
+  k = Math.max(1, Math.min(k, fitL, fitR));
+  const B = PAD_BTN_BIG * k;
+  const S = PAD_BTN_SMALL * k;
+  const PAD_GAP = PAD_GAP_BASE * k;
   const rx = right.x + pad;
   const ry = slotsTop - PAD_GAP * 2 - B / 2;
   const lx = left.x + pad;

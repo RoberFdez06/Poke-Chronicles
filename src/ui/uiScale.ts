@@ -65,11 +65,20 @@ export const HUD_MIN_CSS = 9.5;
 export const HUD_MAX_BOOST = 2;
 
 /** Tamaño de letra de un texto del HUD: igual en escritorio; en móvil, al menos HUD_MIN_CSS (con tope y `max`). */
-export function hudFontSize(size: number, cssPerPx: number, mobile: boolean, max = Infinity): number {
+export function hudFontSize(size: number, cssPerPx: number, mobile: boolean, max = Infinity, ui = 1): number {
   if (!mobile) return size;
-  const s = Math.round(size * textBoost(size, cssPerPx, 1, HUD_MIN_CSS, HUD_MAX_BOOST));
-  return Math.max(size, Math.min(s, max));
+  // «Tamaño de la interfaz» (Ajustes, solo móvil): agranda también el tope
+  const k = ui > 0 ? ui : 1;
+  const s = Math.round(size * textBoost(size, cssPerPx, 1, HUD_MIN_CSS, HUD_MAX_BOOST) * k);
+  return Math.max(size, Math.min(s, Math.round(max * k)));
 }
 
+let hudUi = 1;
+/** Factor de «Tamaño de la interfaz» (1, 1,25 o 1,5); lo fija la partida al empezar. Fuera de móvil no cambia nada. */
+export function setHudUiScale(k: number) {
+  hudUi = k > 0 ? k : 1;
+}
+export const hudUiScale = (): number => (mobile ? hudUi : 1);
+
 /** Atajo para las escenas: tamaño del HUD con la ventana actual y el modo móvil fijado al arrancar. */
-export const hudFont = (size: number, max = Infinity): number => hudFontSize(size, viewportCssPerPx(), mobile, max);
+export const hudFont = (size: number, max = Infinity): number => hudFontSize(size, viewportCssPerPx(), mobile, max, hudUi);

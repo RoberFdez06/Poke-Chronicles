@@ -17,7 +17,8 @@ import { BOSS_CINE_STORE, bossCineKey, shouldShowBossCine } from '../data/bossCi
 import { bounceOffRects, clipSegmentToRects, segmentBlocked } from '../data/projectileRules';
 import { phaseAtSeconds, phasePowerMul, pickByPhase, PHASE_DESC, PHASE_NOTICE, type Phase } from '../data/dayNight';
 import { TouchControls } from '../ui/touchControls';
-import { hudFont } from '../ui/uiScale';
+import { hudFont, hudUiScale, setHudUiScale } from '../ui/uiScale';
+import { loadMobileView, viewFactor } from '../data/mobileView';
 import { touchAimDir } from '../data/touchAim';
 import type { PadRect } from '../data/touchPad';
 import { touchOnlyDevice } from '../data/controls';
@@ -159,7 +160,6 @@ import { bossAmbience } from '../ui/art/bossArena';
 import { bossDeathFlourish, finalBossDeath, finalDeathMs, finaleVictoryBanner } from '../ui/art/bossDeath';
 import { ARENA_AT, fallTheme } from '../level/arenaPhase';
 import { BOSS_PHASE2_AT, BOSS_ATTACK_LABEL as PATTERN_LABEL, isPatternAttack, patternMs, patternWarnAngles, patternWaves, type PatternAttack } from '../data/bossPatterns';
-import { GAME_ZOOM as BOSS_CAM_ZOOM } from '../ui/layout';
 import { shotSfx } from '../data/sounds';
 import { trackForBiome, trackForMood, TRACKS } from '../data/music';
 import { forceMood, initialMood, stepMood, type MoodState, type MusicMood } from '../audio/musicState';
@@ -1029,6 +1029,8 @@ export class GameScene extends Phaser.Scene {
   /** HUD (T30/N8): capa en coordenadas reales, con su propia cámara sin zoom, en las franjas de alrededor de la sala. */
   private hudLayer!: Phaser.GameObjects.Container;
   private hudCam?: Phaser.Cameras.Scene2D.Camera;
+  /** Zoom de la cámara de la sala: GAME_ZOOM, o más en móvil con «Zoom de la sala» (y entonces sigue al jugador). */
+  private camZoom = GAME_ZOOM;
 
   constructor() {
     super('Game');
@@ -1216,7 +1218,12 @@ export class GameScene extends Phaser.Scene {
     // La sala ocupa el centro de la pantalla; alrededor quedan las franjas del HUD
     for (const c of [...this.cameras.cameras]) if (c !== this.cameras.main) this.cameras.remove(c);
     this.hudCam = undefined;
-    this.cameras.main.setViewport(GAME_VIEW.x, GAME_VIEW.y, GAME_VIEW.w, GAME_VIEW.h).setZoom(GAME_ZOOM).centerOn(DCX, DCY);
+    // Ajustes de vista en móvil: zoom de la sala y tamaño de la interfaz (en escritorio, factor 1)
+    const view = loadMobileView();
+    const mobileView = touchOnlyDevice();
+    this.camZoom = GAME_ZOOM * viewFactor(view.roomZoom, mobileView);
+    setHudUiScale(viewFactor(view.uiSize, mobileView));
+    this.cameras.main.setViewport(GAME_VIEW.x, GAME_VIEW.y, GAME_VIEW.w, GAME_VIEW.h).setZoom(this.camZoom).centerOn(DCX, DCY);
     // Efectos bajos (T41): sin partículas decorativas ni temblores de cámara
     const fx = loadFx();
     this.fxBudget = new FxBudget(fx.low);
@@ -3262,7 +3269,7 @@ export class GameScene extends Phaser.Scene {
     }
     activeBtn.on('pointerdown', () => this.useActive());
     // Controles táctiles (T35), solo en móvil o tableta (en PC nunca): joysticks flotantes y botones pixel
-    this.touch = touchOnlyDevice() ? new TouchControls(this, (o) => void hud(o), this.slotY(0), () => this.touchBlocked()) : undefined;
+    this.touch = touchOnlyDevice() ? new TouchControls(this, (o) => void hud(o), this.slotY(0), () => this.touchBlocked(), hudUiScale()) : undefined;
     // Poderes: cuatro cuadros abajo a la derecha (clic para lanzar)
     const slotZones: (Phaser.GameObjects.Zone | Phaser.GameObjects.Text)[] = [];
     for (let i = 0; i < SLOT_COUNT; i++) {
@@ -3587,7 +3594,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const color = typeColor(this.tearType);
     const style = megaTypeStyle(this.tearType);
     const roomId = this.current.id;
-    const home: MegaCamHome = { zoom: GAME_ZOOM, scrollX: cam.scrollX, scrollY: cam.scrollY, follows: this.current.group !== undefined };
+    const home: MegaCamHome = { zoom: this.camZoom, scrollX: cam.scrollX, scrollY: cam.scrollY, follows: this.camFollows(this.current) };
     const mid0 = { x: cam.midPoint.x, y: cam.midPoint.y };
     const frozeWorld = this.frozenSince === undefined;
     this.freezeWorld();
@@ -3628,7 +3635,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (this.transitioning || this.falling) return;
       cam.setZoom(r.zoom);
       this.setRoomCamera(this.current);
-      if (r.scroll && this.current.group === undefined) cam.setScroll(r.scroll.x, r.scroll.y);
+      if (r.scroll && !this.camFollows(this.current)) cam.setScroll(r.scroll.x, r.scroll.y);
       if (r.thaw) this.thawWorld();
       this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 400);
     };
@@ -3990,7 +3997,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const plan = formCinePlan(kind, low);
     const sizeMul = kind === 'max' ? POWER_FORMS[this.powerForm.active === 'gigamax' ? 'gigamax' : 'dynamax'].sizeMul : 1;
     const roomId = this.current.id;
-    const home: MegaCamHome = { zoom: GAME_ZOOM, scrollX: cam.scrollX, scrollY: cam.scrollY, follows: this.current.group !== undefined };
+    const home: MegaCamHome = { zoom: this.camZoom, scrollX: cam.scrollX, scrollY: cam.scrollY, follows: this.camFollows(this.current) };
     const mid0 = { x: cam.midPoint.x, y: cam.midPoint.y };
     const frozeWorld = this.frozenSince === undefined;
     this.freezeWorld();
@@ -4023,7 +4030,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (this.transitioning || this.falling) return;
       cam.setZoom(r.zoom);
       this.setRoomCamera(this.current);
-      if (r.scroll && this.current.group === undefined) cam.setScroll(r.scroll.x, r.scroll.y);
+      if (r.scroll && !this.camFollows(this.current)) cam.setScroll(r.scroll.x, r.scroll.y);
       if (r.thaw) this.thawWorld();
       this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 400);
       if (completed && !this.ended && this.current.id === roomId) onDone?.();
@@ -4535,12 +4542,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Cámara: fija en la sala, o siguiendo al jugador dentro de los límites de la sala grande. */
   private setRoomCamera(room: Room) {
     const cam = this.cameras.main;
-    if (room.group === undefined) {
+    if (!this.camFollows(room)) {
       cam.stopFollow();
       cam.removeBounds();
       return;
     }
-    const cells = this.groupIds(room).map((id) => this.floor.rooms[id]);
+    // Sala grande, o sala normal con «Zoom de la sala» > 100 % (móvil): se sigue al jugador sin salir de la sala
+    const cells = room.group === undefined ? [room] : this.groupIds(room).map((id) => this.floor.rooms[id]);
     const x0 = Math.min(...cells.map((r) => r.gx)) * VIEW.w;
     const y0 = Math.min(...cells.map((r) => r.gy)) * VIEW.h;
     const x1 = (Math.max(...cells.map((r) => r.gx)) + 1) * VIEW.w;
@@ -4548,6 +4556,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     cam.setBounds(x0, y0, x1 - x0, y1 - y0);
     cam.setRoundPixels(true);
     cam.startFollow(this.player, true, 0.12, 0.12);
+  }
+
+  /** ¿La cámara sigue al jugador en esta sala? En las grandes siempre; en las normales, solo con zoom de móvil. */
+  private camFollows(room: Room): boolean {
+    return room.group !== undefined || this.camZoom > GAME_ZOOM + 1e-6;
   }
 
   /** Cierra o abre las puertas de toda la sala grande. */
@@ -7741,7 +7754,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.cineUntil = Number.POSITIVE_INFINITY;
     bossCinematic(this, {
       boss: b, others: bosses.filter((e) => e !== b), name: name.charAt(0).toUpperCase() + name.slice(1), title, color: typeColor(types[0] ?? 'normal'),
-      final, low: lowFx(), hud: (o) => this.toHud(o), zoom: BOSS_CAM_ZOOM, follow: this.player, roar: () => sfx('roar'),
+      final, low: lowFx(), hud: (o) => this.toHud(o), zoom: this.camZoom, follow: this.player, roar: () => sfx('roar'),
       onDone: () => {
         for (const [e, hp] of hps) if (e.active) e.setData('hp', Math.max(e.getData('hp') as number, hp));
         this.thawWorld();
@@ -7750,7 +7763,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 600);
         this.time.delayedCall(700, () => {
           this.setRoomCamera(this.current);
-          if (this.current.group === undefined) this.cameras.main.setScroll(camHome.x, camHome.y); // sala normal: cámara fija como antes
+          if (!this.camFollows(this.current)) this.cameras.main.setScroll(camHome.x, camHome.y); // sala normal: cámara fija como antes
         });
         then();
       },
@@ -10446,7 +10459,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         dustBurst(this, door.x, door.y + 10, 1.2, 10);
         const ring = this.add.circle(door.x, door.y, 30).setStrokeStyle(6, 0x101828, 0.8).setDepth(1.5);
         this.tweens.add({ targets: ring, radius: 4, alpha: 0, duration: 700, ease: 'Quad.easeIn', onComplete: () => ring.destroy() });
-        cam.zoomTo(GAME_ZOOM * 1.18, 700, 'Sine.easeInOut', true);
+        cam.zoomTo(this.camZoom * 1.18, 700, 'Sine.easeInOut', true);
         cam.pan(door.x, door.y, 700, 'Sine.easeInOut', true);
         this.tweens.add({
           targets: p, angle: 720, scaleX: p.scaleX * 0.08, scaleY: p.scaleY * 0.08, y: door.y + 8, alpha: 0.3,
@@ -11594,7 +11607,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // Reto final: muerte épica (el cartel de victoria espera a que acabe, ver finaleOutro)
       this.finaleDeathUntil = this.time.now + finalDeathMs(lowFx());
       this.invulnUntil = Math.max(this.invulnUntil, this.finaleDeathUntil + 600);
-      finalBossDeath(this, enemy, { color: ecolor, zoom: BOSS_CAM_ZOOM, follow: this.player, low: lowFx(), onDone: () => undefined });
+      finalBossDeath(this, enemy, { color: ecolor, zoom: this.camZoom, follow: this.player, low: lowFx(), onDone: () => undefined });
     } else if (boss || mini) {
       faintBoss(this, enemy, feetY, ecolor, (x, y) => typeImpact(this, x, y, etypes[0] ?? this.bossType, 1.4, 12));
       if (boss && others.length === 0) bossDeathFlourish(this, enemy.x, enemy.y, enemy.displayWidth, ecolor, lowFx());
@@ -12648,7 +12661,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const pb = this.player?.body as Body | null;
     if (this.player?.active) {
       if (won) cheerPlayer(this, this.player);
-      else (sfx('faint'), faintPlayer(this, this.player, pb ? pb.bottom : this.player.y + 30, GAME_ZOOM));
+      else (sfx('faint'), faintPlayer(this, this.player, pb ? pb.bottom : this.player.y + 30, this.camZoom));
     }
     this.setBanner(message);
     // Se apunta en el historial (T28) y luego se ve el resumen

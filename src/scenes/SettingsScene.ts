@@ -15,6 +15,8 @@ import { accountInfo } from '../net/cloud';
 import { adminAllowed } from '../data/admin';
 import { openAdmin } from './AdminScene';
 import { currentRunAdminRows, generalAdminRows } from '../ui/adminPanel';
+import { touchOnlyDevice } from '../data/controls';
+import { loadMobileView, saveMobileView, stepPct } from '../data/mobileView';
 
 export interface SettingsData {
   /**
@@ -26,12 +28,14 @@ export interface SettingsData {
   onReset?: () => void;
 }
 
-type Row = 'music' | 'sfx' | 'fullscreen' | 'effects' | 'fps' | 'texts' | 'controls' | 'account' | 'credits' | 'reset' | 'admin' | 'back';
+type Row = 'music' | 'sfx' | 'fullscreen' | 'effects' | 'fps' | 'texts' | 'roomZoom' | 'uiSize' | 'controls' | 'account' | 'credits' | 'reset' | 'admin' | 'back';
 const ROWS: Row[] = ['music', 'sfx', 'fullscreen', 'effects', 'fps', 'texts', 'controls', 'account', 'credits', 'reset', 'back'];
 const ROW = { w: 520, h: 40, gap: 4, top: 124 };
 /** Con «Panel admin» (solo dev o cuenta admin) hay una fila más: van más juntas. */
 const ROW_ADMIN = { ...ROW, h: 36, gap: 3 };
 const ROWS_GEO = ROW;
+/** Móvil: dos filas más (zoom de la sala y tamaño de la interfaz), más juntas. */
+const ROW_MOBILE = { ...ROW, h: 32, gap: 2 };
 
 /** Créditos (T31): de dónde salen los datos, los sprites y la fuente. */
 const CREDITS: [string, string][] = [
@@ -69,8 +73,9 @@ export class SettingsScene extends Phaser.Scene {
     this.dialog = undefined;
     this.closing = false;
     this.selected = 0;
-    this.list = adminAllowed() ? [...ROWS.slice(0, -1), 'admin', 'back'] : ROWS;
-    this.geo = adminAllowed() ? ROW_ADMIN : ROWS_GEO;
+    const base: Row[] = touchOnlyDevice() ? [...ROWS.slice(0, 6), 'roomZoom', 'uiSize', ...ROWS.slice(6)] : ROWS;
+    this.list = adminAllowed() ? [...base.slice(0, -1), 'admin', 'back'] : base;
+    this.geo = base !== ROWS ? ROW_MOBILE : adminAllowed() ? ROW_ADMIN : ROWS_GEO;
     this.nav = new NavInput(this);
     fitDesign(this);
     if (this.args.overlay) {
@@ -100,6 +105,7 @@ export class SettingsScene extends Phaser.Scene {
         if (this.dialog) return;
         this.select(i);
         if (row === 'music' || row === 'sfx') this.adjust(row, p.worldX < 480 ? -1 : 1);
+        else if (row === 'roomZoom' || row === 'uiSize') this.stepView(row, p.worldX < 480 ? -1 : 1);
         else this.activate();
       });
       this.rows.push({ bg, text, arrow, y });
@@ -131,6 +137,10 @@ export class SettingsScene extends Phaser.Scene {
         return `Mostrar FPS: ${loadFx().showFps ? 'Sí' : 'No'}`;
       case 'texts':
         return `Textos en pantalla   ◀ ${TEXTS_LABEL[loadFx().texts]} ▶`;
+      case 'roomZoom':
+        return `Zoom de la sala   ◀ ${loadMobileView().roomZoom} % ▶`;
+      case 'uiSize':
+        return `Tamaño de la interfaz   ◀ ${loadMobileView().uiSize} % ▶`;
       case 'account': {
         const a = accountInfo();
         if (this.args.overlay) return 'Cuenta (desde el menú)';
@@ -177,6 +187,15 @@ export class SettingsScene extends Phaser.Scene {
     this.refresh();
   }
 
+  /** Zoom de la sala y tamaño de la interfaz (solo móvil): se aplican al empezar la siguiente partida o piso. */
+  private stepView(row: 'roomZoom' | 'uiSize', d: number) {
+    const v = loadMobileView();
+    v[row] = stepPct(v[row], d);
+    saveMobileView(v);
+    sfx('select');
+    this.refresh();
+  }
+
   private adjust(row: 'music' | 'sfx', d: number) {
     const a = getAudioSettings();
     a[row] = stepVolume(a[row], d);
@@ -189,6 +208,7 @@ export class SettingsScene extends Phaser.Scene {
     const row = this.list[this.selected];
     sfx('select');
     if (row === 'music' || row === 'sfx') this.adjust(row, 1);
+    else if (row === 'roomZoom' || row === 'uiSize') this.stepView(row, 1);
     else if (row === 'effects' || row === 'fps' || row === 'texts') this.toggleFx(row);
     else if (row === 'fullscreen') {
       // El navegador solo lo permite tras un gesto (Enter, A o clic lo son)
@@ -314,6 +334,7 @@ export class SettingsScene extends Phaser.Scene {
     if (s.dx && (row === 'music' || row === 'sfx')) this.adjust(row, Math.sign(s.dx));
     if (s.dx && (row === 'effects' || row === 'fps')) this.toggleFx(row);
     if (s.dx && row === 'texts') this.toggleFx(row, Math.sign(s.dx));
+    if (s.dx && (row === 'roomZoom' || row === 'uiSize')) this.stepView(row, Math.sign(s.dx));
     if (s.ok) this.activate();
   }
 }
