@@ -117,3 +117,22 @@ export function stepValue(v: number, d: number, min: number, max: number): numbe
   const span = max - min + 1;
   return ((((v - min + d) % span) + span) % span) + min;
 }
+
+// --- Siguiente enemigo / jefe oscuro (panel) ---
+
+let nextDark = false;
+
+/** Fuerza que el próximo enemigo, minijefe o jefe que aparezca sea oscuro (también en el piso 1). */
+export function setAdminNextDark(on: boolean) {
+  if (on) cheatRun = true;
+  nextDark = on;
+}
+
+export const adminNextDarkPending = (): boolean => nextDark;
+
+/** Se consume una vez: true si estaba pedido. */
+export function takeAdminNextDark(): boolean {
+  const v = nextDark;
+  nextDark = false;
+  return v;
+}
