@@ -8,6 +8,7 @@ import { PX, animate, darkOf, lightOf, mixColor, pixDebris, pixRing } from './pi
 import { POWER_FORMS, Z_MOVE_COST } from '../../data/powerForm';
 import { POWER_METER_MAX } from '../../data/powerMeter';
 import type { MegaCineFrame, MegaFxStyle } from '../../scenes/megaCinematic';
+import { drawMaxAura, type WorldBox } from './formCineFx';
 
 const OUT = 0x18202c;
 /** Los tres colores de la hélice del símbolo mega. */
@@ -155,7 +156,7 @@ const auras = new WeakMap<Phaser.GameObjects.Sprite, AuraState>();
  * quitarla. `big`: la forma no tiene sprite propio y el aura dibuja además una silueta de luz más grande detrás.
  * Con pocos efectos no hay aura. Se redibuja ~12 veces por segundo y con pocos píxeles (la mega dura 30 s).
  */
-export function playerFormAura(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, kind: 'mega' | 'max' | 'tera' | null, color: number, feetY: number, big: boolean) {
+export function playerFormAura(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, kind: 'mega' | 'max' | 'tera' | null, color: number, feetY: number, big: boolean, box?: WorldBox) {
   let st = auras.get(s);
   if (!kind || lowFx() || !s.active) {
     if (st) {
@@ -185,16 +186,16 @@ export function playerFormAura(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite
     disc(g, s.x, cy, half * 1.12 * pulse, lightOf(main), 0.3, PX, (hgt / (half * 2)) * 0.95);
   }
   if (kind === 'max') {
-    // Dinamax: resplandor rojo suave detrás (capas que se apagan hacia fuera, sin silueta dura)
-    const pulse = 1 + 0.06 * Math.sin(t / 200);
-    for (let k = 0; k < 3; k++) disc(g, s.x, cy, half * (1.35 - k * 0.18) * pulse, k === 2 ? lightOf(main) : main, 0.1 + k * 0.05, PX, (hgt / (half * 2)) * 0.9);
+    // Dinamax (rediseño): nubes rojas de píxel opacas pegadas a lo que mide el dibujo, por detrás (formCineFx.ts).
+    // Antes eran óvalos rojos translúcidos del tamaño de la textura entera (con su aire), que emborronaban al Pokémon.
+    return drawMaxAura(g, box ?? { left: s.x - half * 0.6, right: s.x + half * 0.6, top: feetY - hgt * 0.7, bottom: feetY }, t);
   }
   if (kind === 'tera') return drawTeraAura(g, s.x, feetY, half, hgt, color, t);
   // aro a los pies (perspectiva): en la mega de tres colores que giran, en el Dinamax rojo y blanco
   const n = 18;
   for (let i = 0; i < n; i++) {
     const ang = (i / n) * 6.283 + t * 0.0016;
-    const col = kind === 'mega' ? MEGA_COLS[i % 3] : i % 3 ? main : 0xffd0d8;
+    const col = MEGA_COLS[i % 3];
     if ((i + Math.floor(t / 160)) % 6 === 0) continue;
     px(g, s.x + Math.cos(ang) * half * 1.15, feetY + Math.sin(ang) * half * 0.38, col, 0.75);
   }
@@ -208,22 +209,6 @@ export function playerFormAura(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite
     // símbolo mega pequeño que asoma sobre la cabeza de vez en cuando
     const cyc = (t % 3000) / 3000;
     if (cyc < 0.3) drawMegaSymbol(g, s.x, feetY - hgt - 14 - cyc * 20, 10, t, Math.sin((cyc / 0.3) * Math.PI) * 0.9, 4);
-  } else {
-    // nubes rojas que suben del suelo y se deshacen
-    for (let i = 0; i < 10; i++) {
-      const ph = ((t * 0.0006 + i * 0.137) % 1);
-      const sx = s.x + ((i % 5) - 2) * half * 0.5 + Math.sin(t / 400 + i) * 5;
-      const sz = PX * (1 + Math.round(ph * 2));
-      px(g, sx, feetY - 6 - ph * hgt * 0.9, mixColor(0x5a0f1c, main, ph), 0.75 * (1 - ph), sz);
-    }
-    // corona de nubes rojas sobre la cabeza
-    for (let i = 0; i < 7; i++) {
-      const ox = (i - 3) * PX * 2.4;
-      const oy = -Math.abs(i - 3) * -PX * 0.6 + Math.sin(t / 300 + i) * 3;
-      px(g, s.x + ox, feetY - hgt - PX * 2 + oy, darkOf(main), 0.85, PX * 3);
-      px(g, s.x + ox - 2, feetY - hgt - PX * 2.5 + oy, main, 0.9, PX * 2);
-      if (i % 2) px(g, s.x + ox - 4, feetY - hgt - PX * 3 + oy, lightOf(main), 0.9, PX);
-    }
   }
 }
 

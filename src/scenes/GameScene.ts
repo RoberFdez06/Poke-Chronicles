@@ -170,15 +170,19 @@ import { loadSpeciesIndex as loadSpeciesFacts } from '../data/speciesIndex';
 import { MODE_LABEL as ADMIN_MODE_LABEL, RUN_MODES, TOWER_FLOORS } from '../data/modes';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
 import { fallConceptFx, sacredFlame } from '../ui/art/fallArt';
-import { pixBlast, pixRing } from '../ui/art/pixelFx';
+import { pixBlast, pixDebris, pixRing } from '../ui/art/pixelFx';
 import { armMuzzle, drawBossLaser, drawShockRing, hazardBlast, hazardWarn, laserWarn, patternMuzzle, patternWarn, ringWarn, shockLaunch, shockWarn, shotTrails, spiralEndBurst, spiralWarn, vortexCharge } from '../ui/art/bossPatternFx';
 import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
-import { dynamaxBurst, teraBurst, zImpactFx, zMoveFx, zStarFx } from '../ui/art/formsFx';
+import { zImpactFx, zMoveFx } from '../ui/art/formsFx';
 import { darkAura, darkBurst } from '../ui/art/darkFx';
 import { darkCooldown, darkEnemyStats, darkName, darkOdds, darkPlayerStats, darkTickets, DARK_COLORS, DARK_REWARD, rollDark, type DarkWho } from '../data/darkMon';
 import { guardianKindLabel, MEGA_GUARDIAN, pickGuardian } from '../data/guardians';
 import { drawMegaCine, drawMegaStoneHud, drawPowerMeterFill, drawPowerSelHud, megaCineBurst, playerFormAura } from '../ui/art/megaFx';
 import { megaCamRestore, megaCineFrame, megaCinePlan, megaTypeStyle, type MegaCamHome } from './megaCinematic';
+import { formCineFrame, formCinePlan, formCineSwapAt, type FormCineKind } from './formCinematic';
+import { drawFormCineBack, drawFormCineFront, type WorldBox } from '../ui/art/formCineFx';
+import { heavyPose, MAX_GAIT, maxFitSize, maxFitSizePmd, stomped } from '../data/maxLook';
+import { alphaBox } from '../data/procLoco';
 import { exhaustedFx, finaleShiftFx, judgmentRects, judgmentStrike, judgmentWarn, drawNovaWave, novaWarn } from '../ui/art/finaleFx';
 import { clampFinaleHp, FINALE_AFTER_BEAT_MS, FINALE_ATTACK_LABEL, FINALE_BEAT_MS, finaleAttacks, finaleHpFloor, finaleIntervalMul, finalePhaseText, judgmentHits, judgmentPlan, judgmentSpec, NOVA, nextFinalePhase, novaDurationMs, novaGapAt, pickFinaleAttack, type FinaleAttack, type FinalePhase } from '../data/finalePhases';
 import { chargedShotFx, chargeGlow } from '../ui/art/shotFx';
@@ -188,7 +192,7 @@ import { buildClue, buildNpc, drawBallIcon } from '../ui/art/worldArt';
 import { buildShopArt, type ShopArt } from '../ui/art/shopArt';
 import { buildForgeArt, buildLagoonArt, buildSlotArt } from '../ui/art/eventArt';
 import { ballEscape, ballShake, ballSuccess, ballThrow, dayNightLayer, megaAura, megaEvolveFx } from '../ui/art/powerFx';
-import { adrenalineTrail, lootFlash, reviveBurst, bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
+import { adrenalineTrail, lootFlash, reviveBurst, bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, starBurst, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
 import { bakeBiomeTiles, bushKeyAt, shade, TILE as ART_TILE } from '../ui/art/tiles';
@@ -216,6 +220,7 @@ import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
 import { pmdAvailable, pmdMega, pmdShiny } from '../data/pmdForms';
 import { applyPose, dressLoose, liftSprite, poseFor, procAnimate, resetLift } from '../ui/locoAnim';
+import { locomotionOf } from '../data/locomotion';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, W } from '../ui/layout';
 import { hudLayout, itemGrid, nameFontSize, HUD_BADGE_MAX_W, HUD_ITEM_R, HUD_PROGRESS_FONT } from '../data/hudLayout';
 import {
@@ -1600,9 +1605,24 @@ export class GameScene extends Phaser.Scene {
       // SpriteCollab, ciclo de pasos, aleteo, ondulación…; con hoja, solo balanceo y, si vuela, que vaya por el aire
       const types = (s.getData('types') as string[] | undefined) ?? (s.getData('btypes') as string[] | undefined) ?? (s === this.player ? this.playerTypes : [(s.getData('ai') as EnemyAI | undefined)?.type ?? 'normal']);
       const species = s === this.player ? this.formId : (s.getData('speciesId') as number | undefined);
+      // Dinamax/Gigamax del jugador: andar de gigante (pasos más lentos y altos, poco balanceo; maxLook.ts)
+      const giant = s === this.player && this.maxFormActive();
+      const lt = giant ? time * MAX_GAIT.timeMul : time;
       // Sin hoja: fotogramas de locomoción hechos por código (pies, alas, onda…) además de la pose
-      if (!pmd) procAnimate(s, types, species, time, moving);
-      const pose = poseFor(s, types, species, time, moving, pmd);
+      if (!pmd) procAnimate(s, types, species, lt, moving);
+      let pose = poseFor(s, types, species, lt, moving, pmd);
+      if (giant) {
+        const loco = locomotionOf(types, species);
+        const grounded = loco !== 'fly' && loco !== 'float';
+        pose = heavyPose(pose, POWER_FORMS[this.powerForm.active!].sizeMul, grounded);
+        // Cada pisotón levanta polvo (y la cámara tiembla un pelín) si anda por el suelo
+        const prev = (s.getData('giantLift') as number | undefined) ?? 0;
+        s.setData('giantLift', pose.lift);
+        if (grounded && moving && !pmd && stomped(prev, pose.lift) && !lowFx() && !this.megaCine) {
+          dustBurst(this, s.x, body.bottom, 0.8, 4, 2);
+          this.cameras.main.shake(60, 0.0015);
+        }
+      }
       // Quitar la pose antes de medir los pies (si no, la sombra subiría con el dibujo)
       liftSprite(s, 0, 0);
       // Pegada a los pies (Roberto: con la sombra más abajo parecía que volaba). En las hojas de SpriteCollab los
@@ -3624,6 +3644,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Vuelve a la forma normal: sprite de antes, sin PS extra (sin matarte) y aviso. */
   private endPowerForm() {
+    if (this.player) this.player.anims.timeScale = 1;
     this.stats = this.calcStats();
     this.hp = Math.max(1, Math.min(this.hp, this.stats.maxHp));
     this.hpMark = this.hp;
@@ -3648,7 +3669,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const formNow = powerFormActive(this.powerForm) ? this.powerForm.active : null;
     // Dinamax (y Gigamax sin sprite propio): aura roja suave con nubes; Teracristal: corona y facetas del tipo Tera
     const auraKind = formNow === 'mega' ? 'mega' : formNow === 'tera' ? 'tera' : (formNow === 'dynamax' || formNow === 'gigamax') && this.megaKey === this.playerKey ? 'max' : null;
-    if (this.player) playerFormAura(this, this.player, auraKind, typeColor(auraKind === 'tera' ? this.shotType() : this.tearType), (this.player.body as Body | null)?.bottom ?? this.player.y + 30, auraKind === 'mega' && !this.megaKey);
+    if (this.player) playerFormAura(this, this.player, auraKind, typeColor(auraKind === 'tera' ? this.shotType() : this.tearType), (this.player.body as Body | null)?.bottom ?? this.player.y + 30, auraKind === 'mega' && !this.megaKey, auraKind === 'max' ? this.contentBox(this.player) ?? undefined : undefined);
     if (!powerFormActive(this.powerForm)) return;
     if (tickPowerForm(this.powerForm, dt)) return this.endPowerForm();
     // Sin sprite mega: el normal con el brillo de evolución de vez en cuando (con efectos bajos, nada)
@@ -3781,17 +3802,26 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const secs = Math.round(POWER_FORMS[choice].durationMs / 1000);
     const name = this.niceName();
     if (choice === 'tera') {
-      teraBurst(this, this.player.x, this.player.y, typeColor(tera!));
-      if (!lowFx()) {
-        evolveGlow(this, this.player, 900);
-        this.cameras.main.flash(220, 200, 240, 255);
-      }
-      // El cambio de tipo se ve: cartel con el tipo nuevo sobre la cabeza (y los disparos salen de ese color y tipo)
-      this.popup(this.player.x, this.player.y - 70, `Tipo ${typeNameEs(tera!)}`, typeColor(tera!));
+      // Cinemática (formCinematic.ts): el cristal del tipo Tera lo encierra, brilla, estalla y le deja la corona
+      const tc = typeColor(tera!);
+      this.playFormCinematic('tera', tc, () => {
+        if (!lowFx()) this.cameras.main.flash(200, 200, 240, 255);
+        starBurst(this, this.player.x, this.player.y - 6, tc, 10, 1.4, 13);
+        pixDebris(this, this.player.x, this.player.y - 6, tc, 14, 1.4, 13);
+        // El cambio de tipo se ve: cartel con el tipo nuevo sobre la cabeza (y los disparos salen de ese color y tipo)
+        this.popup(this.player.x, this.player.y - 70, `Tipo ${typeNameEs(tera!)}`, tc);
+      });
       this.notify(`¡${name} se teracristaliza!\nTus ataques son de tipo ${typeNameEs(tera!)} durante ${secs} s`, { kind: 'item', icon: 'pokeball' });
     } else {
-      dynamaxBurst(this, this.player.x, this.player.y, this.player.y + this.player.displayHeight / 2);
-      if (!lowFx()) this.cameras.main.flash(250, 232, 56, 79);
+      // Cinemática: la nube roja sube y el Pokémon crece a golpes hasta el gigante (el sprite grande lo pone applyMaxLook)
+      this.playFormCinematic('max', 0xe0304c, () => {
+        const b = (this.player.body as Body | null)?.bottom ?? this.player.y + 30;
+        pixRing(this, this.player.x, b, 220, 0xe0304c, 520, 12);
+        if (!lowFx()) {
+          this.cameras.main.flash(220, 232, 56, 79);
+          dustBurst(this, this.player.x, b, 1.6, 14, 11);
+        }
+      });
       const label = choice === 'gigamax' ? `${name} Gigamax` : `${name} Dinamax`;
       this.notify(`¡${label}!\nGigante, con escudo y ataques más grandes durante ${secs} s`, { kind: 'item', icon: 'pokeball' });
       void this.applyMaxLook(choice);
@@ -3829,6 +3859,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           }
           this.megaKey = key;
           this.setStaticLook(key, size);
+          this.fitMaxLook(key, null, choice);
           return;
         }
       }
@@ -3837,9 +3868,162 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Aspecto aprobado del Dinamax: el sprite de siempre (animado si hay hoja de SpriteCollab), más grande, con el aura
     // roja y las nubes de playerFormAura. megaKey = playerKey marca «forma sin sprite propio» para endPowerForm.
     this.megaKey = this.playerKey;
-    if (this.shiny || !this.applyPmd(this.player, this.formId, size, true)) this.setStaticLook(this.playerKey, size);
-    this.player.setData('size', size);
+    const pmd = !this.shiny && this.applyPmd(this.player, this.formId, size, true);
+    if (!pmd) this.setStaticLook(this.playerKey, size);
+    this.fitMaxLook(this.playerKey, pmd ? this.formId : null, choice);
     this.face(this.player, this.aim);
+  }
+
+  /** ¿Dinamax o Gigamax activo? */
+  private maxFormActive(): boolean {
+    return powerFormActive(this.powerForm) && (this.powerForm.active === 'dynamax' || this.powerForm.active === 'gigamax');
+  }
+
+  /**
+   * Tamaño final del gigante (maxLook.ts): píxeles enteros en pantalla (nítido, sin píxeles de dos anchos) y un tope
+   * según lo que mide de verdad el dibujo, para que con mucho aire en la textura no salga enorme ni con poco se
+   * quede corto. La hoja de SpriteCollab anda más despacio (paso de gigante). El cuerpo físico es el de siempre.
+   */
+  private fitMaxLook(sheet: string, pmdId: number | null, choice: 'dynamax' | 'gigamax') {
+    const p = this.player;
+    if (!p?.active) return;
+    const mul = POWER_FORMS[choice].sizeMul;
+    const box = this.contentBox(p);
+    // alto visible en px de la textura (la caja es del mundo: se deshace la escala)
+    const contentH = box ? (box.bottom - box.top) / Math.max(0.01, Math.abs(p.scaleY)) : null;
+    const maxContentH = choice === 'gigamax' ? 150 : 124;
+    if (pmdId !== null) {
+      const size = maxFitSizePmd({ baseSize: 84, sizeMul: mul, zoom: GAME_ZOOM, contentH, maxContentH });
+      this.applyPmd(p, pmdId, size, true);
+      p.setData('size', size);
+    } else {
+      const tex = this.textures.get(`${sheet}-front`).getSourceImage() as { width?: number };
+      const texSize = tex?.width || 96;
+      const size = maxFitSize({ texSize, baseSize: 84, sizeMul: mul, zoom: GAME_ZOOM, contentH, maxContentH });
+      this.setStaticLook(sheet, size);
+    }
+    p.anims.timeScale = MAX_GAIT.sheetRate;
+  }
+
+  /** Caja de los píxeles visibles del fotograma actual en el mundo (cacheada por fotograma), o null. */
+  private boxCache = new Map<string, { left: number; right: number; top: number; bottom: number } | null>();
+  private contentBox(s: Sprite): WorldBox | null {
+    const f = s.frame;
+    if (!f || !f.source?.image) return null;
+    const key = `${f.texture.key}|${f.name}`;
+    let b = this.boxCache.get(key);
+    if (b === undefined) {
+      b = null;
+      try {
+        const w = Math.max(1, f.cutWidth), h = Math.max(1, f.cutHeight);
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        const cx = c.getContext('2d', { willReadFrequently: true });
+        if (cx) {
+          cx.drawImage(f.source.image as CanvasImageSource, f.cutX, f.cutY, w, h, 0, 0, w, h);
+          b = alphaBox(cx.getImageData(0, 0, w, h).data, w, h);
+          if (b) b = { left: b.left, right: b.right + 1, top: b.top, bottom: b.bottom + 1 };
+        }
+      } catch {
+        b = null;
+      }
+      this.boxCache.set(key, b);
+    }
+    if (!b) return null;
+    const ox = s.originX * f.width, oy = s.originY * f.height;
+    const sx = Math.abs(s.scaleX), sy = Math.abs(s.scaleY);
+    const l = s.flipX ? f.width - b.right : b.left;
+    const r = s.flipX ? f.width - b.left : b.right;
+    return { left: s.x + (l - ox) * sx, right: s.x + (r - ox) * sx, top: s.y + (b.top - oy) * sy, bottom: s.y + (b.bottom - oy) * sy };
+  }
+
+  /**
+   * Cinemáticas de Tera, Dinamax/Gigamax y Z (formCinematic.ts + formCineFx.ts), con el mismo armazón que la de la
+   * mega: mundo congelado, jugador invulnerable, zoom y temblor hacia el Pokémon, silueta blanca en el destello y la
+   * cámara a su sitio al acabar (megaCamRestore). `onSwap` al entrar en la fase del cambio (estallido/rugido/golpe);
+   * `onDone` al acabar entera, ya con el mundo en marcha (el Z dispara entonces). Si se corta (muerte, sala…), no.
+   * El Dinamax encoge el sprite al principio y lo hace crecer a golpes hasta el tamaño que deje applyMaxLook.
+   */
+  private playFormCinematic(kind: FormCineKind, color: number, onSwap: () => void, onDone?: () => void) {
+    this.megaCine?.stop();
+    const p = this.player;
+    const cam = this.cameras.main;
+    const low = lowFx();
+    const plan = formCinePlan(kind, low);
+    const sizeMul = kind === 'max' ? POWER_FORMS[this.powerForm.active === 'gigamax' ? 'gigamax' : 'dynamax'].sizeMul : 1;
+    const roomId = this.current.id;
+    const home: MegaCamHome = { zoom: GAME_ZOOM, scrollX: cam.scrollX, scrollY: cam.scrollY, follows: this.current.group !== undefined };
+    const mid0 = { x: cam.midPoint.x, y: cam.midPoint.y };
+    const frozeWorld = this.frozenSince === undefined;
+    this.freezeWorld();
+    this.invulnUntil = Math.max(this.invulnUntil, this.time.now + plan.total + 500);
+    cam.stopFollow();
+    cam.removeBounds();
+    const back = this.add.graphics().setDepth(p.depth - 0.1);
+    const front = this.add.graphics().setDepth(p.depth + 0.1);
+    const ghost = this.add.image(p.x, p.y, p.texture.key, p.frame.name).setDepth(p.depth + 0.05).setTintFill(0xffffff).setAlpha(0);
+    // Escala «de verdad» del sprite (la que pone applyMaxLook o face); la cinemática la multiplica y la devuelve
+    let target = { sx: p.scaleX, sy: p.scaleY };
+    let applied = { sx: p.scaleX, sy: p.scaleY };
+    const t0 = this.time.now;
+    let swapped = false;
+    let done = false;
+    const stop = (completed = false) => {
+      if (done) return;
+      done = true;
+      ev.remove();
+      back.destroy();
+      front.destroy();
+      ghost.destroy();
+      this.megaCine = undefined;
+      if (p.active) {
+        p.setAlpha(1);
+        if (p.scaleX === applied.sx && p.scaleY === applied.sy) p.setScale(target.sx, target.sy);
+      }
+      const r = megaCamRestore(home, { frozeWorld, roomChanged: this.current.id !== roomId, ended: this.ended });
+      cam.shakeEffect.reset();
+      if (this.transitioning || this.falling) return;
+      cam.setZoom(r.zoom);
+      this.setRoomCamera(this.current);
+      if (r.scroll && this.current.group === undefined) cam.setScroll(r.scroll.x, r.scroll.y);
+      if (r.thaw) this.thawWorld();
+      this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 400);
+      if (completed && !this.ended && this.current.id === roomId) onDone?.();
+    };
+    const tick = () => {
+      if (done) return;
+      if (this.ended || this.transitioning || this.falling || !p.active || this.current.id !== roomId) return stop();
+      const ms = this.time.now - t0;
+      const f = formCineFrame(plan, ms, sizeMul);
+      if (f.phase === 'done') return stop(true);
+      // Alguien ha cambiado la escala (applyMaxLook puso el gigante, face giró el dibujo): esa es la nueva de verdad
+      if (Math.abs(p.scaleX - applied.sx) > 1e-6 || Math.abs(p.scaleY - applied.sy) > 1e-6) target = { sx: p.scaleX, sy: p.scaleY };
+      // En el Dinamax, mientras no llega el sprite gigante, la escala de verdad sigue siendo la normal: no se encoge
+      const grow = kind === 'max' && this.megaKey === null ? 1 : f.grow;
+      applied = { sx: target.sx * grow, sy: target.sy * grow * f.squash };
+      p.setScale(applied.sx, applied.sy);
+      const focus = plan.zoomPeak > 1 ? (f.zoom - 1) / (plan.zoomPeak - 1) : 0;
+      cam.setZoom(home.zoom * f.zoom);
+      cam.centerOn(Phaser.Math.Linear(mid0.x, p.x, focus), Phaser.Math.Linear(mid0.y, p.y - 10, focus));
+      if (f.shake > 0.0005) cam.shake(80, f.shake, true);
+      if (!swapped && ms >= formCineSwapAt(plan)) {
+        swapped = true;
+        onSwap();
+        void cry(this.formId);
+      }
+      ghost.setTexture(p.texture.key, p.frame.name).setFlipX(p.flipX).setOrigin(p.originX, p.originY).setPosition(p.x, p.y).setScale(p.scaleX, p.scaleY).setAngle(p.angle).setAlpha(f.white * 0.9);
+      p.setAlpha(1 - f.white * 0.5);
+      const box = this.contentBox(p) ?? { left: p.x - 24, right: p.x + 24, top: p.y - 40, bottom: (p.body as Body | null)?.bottom ?? p.y + 30 };
+      const args = { x: p.x, y: p.y, box, color, t: ms, low };
+      back.clear().setDepth(p.depth - 0.1);
+      front.clear().setDepth(p.depth + 0.1);
+      drawFormCineBack(back, kind, f, args);
+      drawFormCineFront(front, kind, f, args);
+    };
+    const ev = this.time.addEvent({ delay: 33, loop: true, callback: tick });
+    this.megaCine = { stop: () => stop() };
+    tick();
   }
 
   /**
@@ -3853,14 +4037,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const type = this.shotType();
     // Pose Z: el jugador se queda quieto un instante (invulnerable), estrella Z de su tipo a los pies y, al acabar,
     // una columna de luz y una onda que golpea a todos los enemigos cerca
-    const p = this.player;
-    const feet = (p.body as Body | null)?.bottom ?? p.y + 30;
-    const poseMs = lowFx() ? 300 : 800;
-    this.invulnUntil = Math.max(this.invulnUntil, this.time.now + poseMs + 300);
-    p.setVelocity(0, 0);
-    zStarFx(this, p.x, feet, typeColor(type), poseMs);
-    if (!lowFx()) this.tweens.add({ targets: p, scaleY: p.scaleY * 1.12, duration: poseMs / 4, yoyo: true, repeat: 1, ease: 'Sine.easeInOut' });
-    this.time.delayedCall(poseMs, () => this.zImpact(type));
+    // (ahora es la cinemática de formCinematic.ts: el ataque sale al acabar, con el mundo ya en marcha)
+    this.player.setVelocity(0, 0);
     const basic = basicShotFor(type);
     const opts = {
       damage: s.damage * Z_MOVE_DAMAGE_MUL * this.dmgMul(),
@@ -3875,12 +4053,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       anim: basic.anim,
     };
     sfx('evolve');
-    zMoveFx(this, this.player.x, this.player.y, typeColor(type));
-    if (!lowFx()) this.cameras.main.flash(300, 255, 230, 120);
-    for (let k = 0; k < 16; k++) {
-      const a = (k / 16) * Math.PI * 2;
-      this.spawnShot(new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), 0, opts);
-    }
+    this.playFormCinematic('z', typeColor(type), () => undefined, () => {
+      if (this.ended || !this.player?.active) return;
+      zMoveFx(this, this.player.x, this.player.y, typeColor(type));
+      if (!lowFx()) this.cameras.main.flash(300, 255, 230, 120);
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2;
+        this.spawnShot(new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), 0, opts);
+      }
+      this.zImpact(type);
+    });
     const again = this.passives.includes(Z_CRYSTAL_ID) ? 'Con el Cristal Z, otra vez en el próximo piso' : 'Solo una vez por partida (con un Cristal Z, una por piso)';
     this.notify(`¡Movimiento Z de ${this.niceName()}!\n${again}`, { kind: 'item', icon: 'star' });
     this.saveNow();
