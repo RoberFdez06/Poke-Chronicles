@@ -127,13 +127,32 @@ export function bossCinematic(sc: Phaser.Scene, o: BossCinematic) {
   // Cámara: deja de seguir al jugador, se acerca al jefe y vuelve
   const t0 = sc.time.now;
   const reveal = low ? 0 : final ? 900 : 600;
+  // El acercamiento va SIEMPRE (también con pocos efectos, de golpe) y con un tween propio, no con cam.pan: al entrar
+  // en la sala del jefe esto se lanza desde el final del pan de la transición de puerta y Phaser, al cerrar ese pan,
+  // apagaba el nuevo (la cámara hacía zoom pero se quedaba en el jugador, sobre todo con el jefe en otra casilla).
+  const focus = o.others && o.others.length ? [o.boss, ...o.others] : [o.boss];
+  const fx = focus.reduce((a, s) => a + s.x, 0) / focus.length;
+  const fy = focus.reduce((a, s) => a + s.y, 0) / focus.length;
+  const zTo = o.zoom * (final ? 1.3 : 1.22);
+  cam.stopFollow();
+  cam.panEffect.reset();
+  cam.zoomEffect.reset();
+  if (low) {
+    cam.setZoom(zTo);
+    cam.centerOn(fx, fy);
+  } else {
+    const c0 = { x: cam.midPoint.x, y: cam.midPoint.y, z: cam.zoom };
+    const k = { v: 0 };
+    sc.tweens.add({
+      targets: k, v: 1, duration: reveal, ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        if (done) return;
+        cam.setZoom(c0.z + (zTo - c0.z) * k.v);
+        cam.centerOn(c0.x + (fx - c0.x) * k.v, c0.y + (fy - c0.y) * k.v);
+      },
+    });
+  }
   if (!low) {
-    cam.stopFollow();
-    const focus = o.others && o.others.length ? [o.boss, ...o.others] : [o.boss];
-    const fx = focus.reduce((a, s) => a + s.x, 0) / focus.length;
-    const fy = focus.reduce((a, s) => a + s.y, 0) / focus.length;
-    cam.pan(fx, fy, reveal, 'Sine.easeInOut', true);
-    cam.zoomTo(o.zoom * (final ? 1.3 : 1.22), reveal, 'Sine.easeInOut', true);
     sc.time.delayedCall(reveal, () => {
       if (done) return;
       o.roar();
@@ -177,11 +196,15 @@ export function bossCinematic(sc: Phaser.Scene, o: BossCinematic) {
     done = true;
     ticker.remove();
     off();
+    const f = o.follow as unknown as { x: number; y: number };
     if (!low) {
-      const f = o.follow as unknown as { x: number; y: number };
       cam.pan(f.x, f.y, 300, 'Sine.easeInOut', true);
       cam.zoomTo(o.zoom, 300, 'Sine.easeInOut', true);
       sc.time.delayedCall(320, () => cam.startFollow(o.follow, true, 0.12, 0.12));
+    } else {
+      cam.setZoom(o.zoom);
+      cam.centerOn(f.x, f.y);
+      cam.startFollow(o.follow, true, 0.12, 0.12);
     }
     sc.tweens.add({ targets: top, y: V.y - bar / 2, duration: 260, ease: 'Cubic.easeIn' });
     sc.tweens.add({ targets: bot, y: V.y + V.h + bar / 2, duration: 260, ease: 'Cubic.easeIn' });

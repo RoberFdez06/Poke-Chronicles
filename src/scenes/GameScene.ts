@@ -12,7 +12,9 @@ import { encodeSeed, newSeed, type SeedRun } from '../data/seedCode';
 import { damageMul, effectOf, EFFECT_COLOR, EFFECT_LABEL, rawEffectiveness } from '../data/typeChart';
 import { weatherChip, weatherFor, weatherHurts, weatherPowerMul, WEATHER_DESC, WEATHER_LABEL, WEATHER_TICK_MS, type Weather } from '../data/weather';
 import { WeatherFx } from '../ui/weatherFx';
-import { joinWalls, pillarRect, pushOutOfRect, type Rect as PillarRect } from '../level/joinCorner';
+import { cornerRect, joinWalls } from '../level/joinCorner';
+import { BOSS_CINE_STORE, bossCineKey, shouldShowBossCine } from '../data/bossCine';
+import { bounceOffRects, clipSegmentToRects, segmentBlocked } from '../data/projectileRules';
 import { phaseAtSeconds, phasePowerMul, pickByPhase, PHASE_DESC, PHASE_NOTICE, type Phase } from '../data/dayNight';
 import { TouchControls, type TouchButton } from '../ui/touchControls';
 import { touchOnlyDevice } from '../data/controls';
@@ -364,7 +366,7 @@ import { DARK_ALPHA, DARK_RADIUS, darkEdge, darkHoleAlpha, oneTypeFor, pickRoomR
 import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data/secondChance';
 import type { SecondChanceChoice } from './SecondChanceScene';
 import { accountInfo } from '../net/cloud';
-import { blitzAttacksFor, bounceAngles, bounceSpec, bounceStep, crossArms, crossHits, crossMinePlaces, crossSpec, dashEnd, dashSpec, gridBeams, gridHits, gridSpec, helixAngles, helixSpec, isBlitzAttack, meteorSpec, meteorSpots, miasmaSpec, wallHits, wallPlan, wallPos, wallSpec, wallTravelMs, BLITZ_MIN_WARN, type BlitzAttack, type Orb } from '../data/bossBlitz';
+import { blitzAttacksFor, bounceAngles, bounceSpec, bounceStep, crossArms, crossMinePlaces, crossSpec, dashEnd, dashSpec, gridBeams, gridHits, gridSpec, helixAngles, helixSpec, isBlitzAttack, meteorSpec, meteorSpots, miasmaSpec, wallHits, wallPlan, wallPos, wallSpec, wallTravelMs, BLITZ_MIN_WARN, type BlitzAttack, type Orb } from '../data/bossBlitz';
 import { bounceWarn, dashWarn, drawBounceOrb, drawCrossBlast, drawGridBeam, drawMiasma, drawWallBar, gridWarn, meteorImpact, meteorWarn, miasmaWarn, mineWarn, wallWarn } from '../ui/art/blitzFx';
 import { BOSS_RETRY_MS, NAV_R_BIG, NAV_R_SMALL, aimUsable, buildNav, cellOf, navField, pathDir, segmentClear, usableAttacks, type Box, type Nav } from '../data/bossPath';
 import { AI_ATTACK_SLOWDOWN, AMBUSH_MAX_HIDE_MS, ARCHETYPE, flankDir, newMemo, rangedDir, separation, shouldFlinch, steer, tickIdle, tickRetreat, tickStuck, unstickDir, type AIMemo } from '../data/enemyAI';
@@ -567,7 +569,6 @@ export class GameScene extends Phaser.Scene {
   private pickups!: Phaser.Physics.Arcade.Group;
   private walls!: Phaser.Physics.Arcade.StaticGroup;
   /** Pilares macizos del centro de las salas 2x2 (joinCorner.ts): nada puede quedar dentro de ellos. */
-  private pillars: PillarRect[] = [];
   /** Obstáculos: hierba alta (se rompe a disparos) y agujeros (los disparos pasan por encima). */
   private bushes!: Phaser.Physics.Arcade.StaticGroup;
   private holes!: Phaser.Physics.Arcade.StaticGroup;
@@ -2928,7 +2929,6 @@ export class GameScene extends Phaser.Scene {
     for (const k of Object.values(this.tiles)) if (typeof k === 'string' && this.textures.exists(k)) this.textures.get(k).setFilter(Phaser.Textures.FilterMode.NEAREST);
     if (this.textures.exists(`outside-${this.biome.id}`)) this.textures.get(`outside-${this.biome.id}`).setFilter(Phaser.Textures.FilterMode.NEAREST);
     this.walls = this.physics.add.staticGroup();
-    this.pillars = [];
     this.bushes = this.physics.add.staticGroup();
     this.holes = this.physics.add.staticGroup();
     this.grids.clear();
@@ -4682,44 +4682,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (!leftOpen) wallTile(a.x0 - WALL, a.y1, WALL, b.y0 - a.y1);
       if (jw.downRight) wallTile(a.x1, a.y1, WALL, b.y0 - a.y1);
     }
-    if (jw.pillar && rightRoom && downRoom) this.buildPillar(pillarRect(a.x1, a.y1, this.interior(rightRoom).x0, this.interior(downRoom).y0));
-  }
-
-  /**
-   * Pilar macizo del centro de una sala 2x2: relleno entero de la pared del bioma (sin huecos ni fondo), cara frontal
-   * en sombra, tapa con canto claro y contorno, y sombra en el suelo. Cuerpo físico en todo el cuadrado (jugador,
-   * enemigos, disparos) y keepInside saca de él a voladores y jefes que se teletransporten o embistan.
-   */
-  private buildPillar(p: PillarRect) {
-    const ts = TILE / ART_TILE;
-    const wc = this.biome.colors.wall;
-    const K = 0x0a0d14;
-    const front = Math.round(p.h * 0.3);
-    // Sombra en el suelo (abajo y a la derecha), bajo el pilar
-    const sh = this.add.graphics().setDepth(0.2);
-    sh.fillStyle(0x000000, 0.28).fillRect(p.x + 8, p.y + 8, p.w, p.h);
-    sh.fillStyle(0x000000, 0.16).fillRect(p.x + 4, p.y + p.h, p.w + 8, 10);
-    // Relleno completo con la textura de pared del bioma
-    this.add.tileSprite(p.x, p.y, p.w, p.h, this.tiles.wall).setOrigin(0).setTileScale(ts).setTilePosition(p.x / ts, p.y / ts).setDepth(0.26);
-    const g = this.add.graphics().setDepth(0.33);
-    // Tapa (más clara) y cara frontal (en sombra), como un bloque que sobresale del suelo
-    g.fillStyle(shade(wc, 0.18), 0.45).fillRect(p.x, p.y, p.w, p.h - front);
-    g.fillStyle(shade(wc, -0.45), 0.6).fillRect(p.x, p.y + p.h - front, p.w, front);
-    // Canto superior claro, filo entre tapa y cara, y contorno oscuro
-    g.fillStyle(shade(wc, 0.5), 1).fillRect(p.x + 4, p.y + 4, p.w - 8, 4);
-    g.fillStyle(shade(wc, 0.3), 1).fillRect(p.x + 4, p.y + 4, 4, p.h - front - 8);
-    g.fillStyle(K, 1).fillRect(p.x, p.y + p.h - front - 3, p.w, 3);
-    g.fillStyle(shade(wc, 0.25), 1).fillRect(p.x + 3, p.y + p.h - front, p.w - 6, 2);
-    // Piedras angulares en la tapa (relieve)
-    const s = 14;
-    for (const [cx, cy] of [[p.x + 10, p.y + 10], [p.x + p.w - 10 - s, p.y + 10]]) {
-      g.fillStyle(K, 0.7).fillRect(cx, cy, s, s);
-      g.fillStyle(shade(wc, 0.1), 1).fillRect(cx + 2, cy + 2, s - 4, s - 4);
-      g.fillStyle(shade(wc, 0.45), 1).fillRect(cx + 2, cy + 2, s - 4, 2);
+    // Esquina central de la 2x2: suelo abierto (sin pilar ni muros; sin este trozo asomaba el fondo)
+    if (jw.cornerFloor && rightRoom && downRoom) {
+      const c = cornerRect(a.x1, a.y1, this.interior(rightRoom).x0, this.interior(downRoom).y0);
+      this.add.tileSprite(c.x, c.y, c.w, c.h, this.tiles.floor).setOrigin(0).setTileScale(ts).setTilePosition(c.x / ts, c.y / ts).setDepth(0.02);
     }
-    g.lineStyle(3, K, 1).strokeRect(p.x + 1.5, p.y + 1.5, p.w - 3, p.h - 3);
-    this.addWall(p.x, p.y, p.w, p.h);
-    this.pillars.push(p);
   }
 
 
@@ -6938,10 +6905,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /**
-   * Rejilla de navegación de toda la zona de juego (bossPath.ts): paredes y uniones de las salas grandes, el pilar de
-   * las 2x2, rocas y huecos de la cuadrícula de cada casilla, y lo que queda fuera de las salas en L. Una para
+   * Rejilla de navegación de toda la zona de juego (bossPath.ts): paredes y uniones de las salas grandes, rocas
+   * y huecos de la cuadrícula de cada casilla, y lo que queda fuera de las salas en L. Una para
    * enemigos normales y otra con más holgura para los grandes; se rehace al cambiar de sala o cada segundo (rocas
-   * rotas, puertas que se abren). `los`: lo que tapa la visión (paredes, pilar, rocas; no los huecos ni el agua).
+   * rotas, puertas que se abren). `los`: lo que tapa la visión (paredes, rocas; no los huecos ni el agua).
    */
   private nav?: { key: string; at: number; checked: number; rects: Box[]; los: Box[]; small: Nav; big: Nav; fields: Map<string, Float32Array> };
 
@@ -7001,7 +6968,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /**
    * Dirección para acercarse al jugador: recta si el camino está libre para su cuerpo; si hay un bloque en medio
-   * (pilar, rocas, uniones de una sala grande), rodeándolo por la rejilla de navegación. Vale para jefes y minijefes.
+   * (rocas, uniones de una sala grande), rodeándolo por la rejilla de navegación. Vale para jefes y minijefes.
    */
   private flowDir(e: Sprite, toPlayer: Phaser.Math.Vector2): Phaser.Math.Vector2 {
     const nav = this.navData();
@@ -7083,6 +7050,35 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return out;
   }
 
+  private structCache?: { at: number; rects: SafeRect[] };
+  /**
+   * Estructuras que paran los ataques que no vuelan (data/projectileRules.ts): paredes, rocas, bloques, muros
+   * interiores de las salas grandes y puertas cerradas. Se calcula una vez por fotograma (rayos que se redibujan).
+   */
+  private structRects(): SafeRect[] {
+    const now = this.time.now;
+    if (this.structCache && this.structCache.at === now) return this.structCache.rects;
+    const rects = this.wallRects();
+    for (const c of this.doorBlocks?.getChildren() ?? []) {
+      const r = c as Phaser.GameObjects.Rectangle;
+      const body = r.body as Phaser.Physics.Arcade.StaticBody | null;
+      if (!r.active || !body?.enable) continue;
+      rects.push({ x: r.x - r.width / 2, y: r.y - r.height / 2, w: r.width, h: r.height });
+    }
+    this.structCache = { at: now, rects };
+    return rects;
+  }
+
+  /** Largo real de un rayo/láser: se corta en el borde de la arena y en la primera estructura. */
+  private beamLen(x: number, y: number, a: number, len: number, b: { x0: number; y0: number; x1: number; y1: number } = this.arena()): number {
+    return clipSegmentToRects(x, y, a, clipBeamToBounds(x, y, a, len, b), this.structRects());
+  }
+
+  /** ¿Te tapa una estructura de algo que sale de (x, y)? (ondas que se abren en anillo) */
+  private shielded(x: number, y: number): boolean {
+    return segmentBlocked(x, y, this.player.x, this.player.y, this.structRects());
+  }
+
   /** ¿Cabe algo de radio `r` en (x, y)? Dentro de la arena, sin obstáculo en la casilla ni pared alrededor. */
   private spotClear(x: number, y: number, r = 26, rects = this.wallRects(), a: { x0: number; y0: number; x1: number; y1: number } = this.arena()): boolean {
     if (x < a.x0 + r || x > a.x1 - r || y < a.y0 + r || y > a.y1 - r) return false;
@@ -7091,7 +7087,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return clearOfRects({ x, y }, r, rects);
   }
 
-  /** ¿Libre también en diagonal? spotClear solo mira la cruz; con radios grandes una esquina (el pilar) se colaba. */
+  /** ¿Libre también en diagonal? spotClear solo mira la cruz; con radios grandes una esquina se colaba. */
   private ringFree(x: number, y: number, r: number): boolean {
     for (const f of [0.45, 0.8]) {
       for (let k = 0; k < 8; k++) {
@@ -7703,15 +7699,19 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.bossFx?.destroy();
     this.bossHot = false;
     this.bossFx = bossAmbience(this, { x0: i.x0, y0: i.y0, w: i.x1 - i.x0, h: i.y1 - i.y0, glow: FALL_GLOW[theme], tint: FALL_TINT[theme], final, low: lowFx(), theme, seed: (this.floorSeed ^ Math.imul(this.current.id + 3, 0x85ebca6b)) >>> 0 });
-    const key = `${this.floorSeed}:${this.current.id}`;
-    let seen = false;
+    // ¿Intro de cine? (data/bossCine.ts) La primera vez en la arena del jefe de cada piso y partida, siempre; solo se
+    // salta al reanudar dentro de esa misma arena si ya se había visto
+    const arenaIds = this.groupIds(this.current);
+    const key = bossCineKey({ mode: this.mode, floorNum: this.floorNum, floorSeed: this.floorSeed, runSeed: this.seeded?.seed ?? null, arenaIds });
+    let stored: string | null = null;
     try {
-      seen = !!this.resume && localStorage.getItem('pokeisaac.bossCine') === key;
-      localStorage.setItem('pokeisaac.bossCine', key);
+      stored = localStorage.getItem(BOSS_CINE_STORE);
+      localStorage.setItem(BOSS_CINE_STORE, key);
     } catch {
       // sin almacenamiento: se ve siempre
     }
-    if (seen) return false;
+    const savedInArena = !!this.resume && arenaIds.includes(this.resume.roomId);
+    if (!shouldShowBossCine({ key, stored, resumed: !!this.resume, savedInArena })) return false;
     // Todo quieto e invulnerable mientras dura (la vida del jefe se restaura al acabar)
     const hps = bosses.map((e) => [e, e.getData('hp')] as const);
     this.freezeWorld();
@@ -7811,7 +7811,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.ended) return;
     // Legendarios agresivos (20/10): ráfagas cortas hacia ti entre ataque y ataque…
     const ph = ai.phase ?? 1;
-    // Alcance real: los ataques apuntados solo si te ve (sin pilar ni rocas en medio) y estás a tiro
+    // Alcance real: los ataques apuntados solo si te ve (sin muros ni rocas en medio) y estás a tiro
     const reachDist = Phaser.Math.Distance.Between(b.x, b.y, this.player.x, this.player.y);
     const reachLos = this.foeHasLos(b);
     if (aimUsable(reachLos, reachDist) && time >= ((b.getData('volleyAt') as number | undefined) ?? time + 1200) && time < (ai.nextAttack ?? 0) - 500) {
@@ -8083,7 +8083,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           onUpdate: () => {
             g.clear();
             drawNovaWave(g, cx, cy, st.r, gapAt, spec.gap, color, this.time.now);
-            if (b.active && !this.ended && shockwaveHits(cx, cy, st.r, gapAt, spec.gap, this.player.x, this.player.y)) this.hurtPlayer(b, true);
+            if (b.active && !this.ended && shockwaveHits(cx, cy, st.r, gapAt, spec.gap, this.player.x, this.player.y) && !this.shielded(cx, cy)) this.hurtPlayer(b, true);
           },
           onComplete: () => g.destroy(),
         });
@@ -8790,7 +8790,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         b.setVelocity(0, 0);
         const g = this.add.graphics().setDepth(4);
         const arenaB = this.arena();
-        const lenOf = (a: number) => clipBeamToBounds(cx, cy, a, spec.length, arenaB);
+        // Cortados en el borde y en la primera estructura (rocas, muros): los rayos no atraviesan nada
+        const lenOf = (a: number) => this.beamLen(cx, cy, a, spec.length, arenaB);
         for (const a of angles) {
           g.lineStyle(MEGA_BLAST_WIDTH * 2, color, 0.18).lineBetween(cx, cy, cx + Math.cos(a) * lenOf(a), cy + Math.sin(a) * lenOf(a));
           g.lineStyle(2, color, 0.9).lineBetween(cx, cy, cx + Math.cos(a) * lenOf(a), cy + Math.sin(a) * lenOf(a));
@@ -9031,7 +9032,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
                 g.lineStyle(16, color, 0.85).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
                 g.lineStyle(4, 0xffffff, 0.7).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
               } else drawShockRing(g, cx, cy, st.r, gapAt, sw.gap, ai.type, color, this.time.now);
-              if (b.active && !this.ended && shockwaveHits(cx, cy, st.r, gapAt, sw.gap, this.player.x, this.player.y)) this.hurtPlayer(b, true);
+              if (b.active && !this.ended && shockwaveHits(cx, cy, st.r, gapAt, sw.gap, this.player.x, this.player.y) && !this.shielded(cx, cy)) this.hurtPlayer(b, true);
             },
             onComplete: () => g.destroy(),
           });
@@ -9047,7 +9048,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // Aviso: líneas finas donde saldrán los rayos; el jefe se queda quieto mientras dispara
       const low = lowFx();
       // Los rayos se cortan en el borde de la arena (dibujo y hitbox)
-      const lenAt = (a: number) => clipBeamToBounds(b.x, b.y, a, ls.length, this.arena());
+      const lenAt = (a: number) => this.beamLen(b.x, b.y, a, ls.length);
       if (low) {
         const warn = this.add.graphics().setDepth(4);
         for (const a of angles(0)) warn.lineStyle(3, color, 0.6).lineBetween(b.x, b.y, b.x + Math.cos(a) * lenAt(a), b.y + Math.sin(a) * lenAt(a));
@@ -9225,6 +9226,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
     if (attack === 'wallGap') {
       const sp = wallSpec(lvl, phase);
+      const wallShield = (plan: { axis: 'x' | 'y'; dir: number }) => {
+        const px = this.player.x;
+        const py = this.player.y;
+        const sx = plan.axis === 'x' ? (plan.dir === 1 ? A.x0 : A.x1) : px;
+        const sy = plan.axis === 'y' ? (plan.dir === 1 ? A.y0 : A.y1) : py;
+        return segmentBlocked(sx, sy, px, py, this.structRects());
+      };
       let total = 0;
       for (let w = 0; w < sp.walls; w++) {
         const plan = wallPlan(A, sp, Math.random);
@@ -9241,7 +9249,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             const pos = wallPos(A, plan, sp.speed, t / 1000);
             if (pos === null) return false;
             drawWallBar(g, A, plan, pos, sp.thick, color, this.time.now);
-            if (wallHits(plan, pos, sp.thick, this.player.x, this.player.y)) hurt();
+            // Una roca o un muro entre el borde de salida y tú te tapa de la ola
+            if (wallHits(plan, pos, sp.thick, this.player.x, this.player.y) && !wallShield(plan)) hurt();
             return true;
           }));
         });
@@ -9254,7 +9263,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const mines = crossMinePlaces(A, sp.mines, Math.random);
       // Una cerca de ti (en tu fila o columna, para que haya que moverse)
       mines[0] = { x: Phaser.Math.Clamp(this.player.x + Phaser.Math.Between(-120, 120), A.x0 + 60, A.x1 - 60), y: Phaser.Math.Clamp(this.player.y, A.y0 + 60, A.y1 - 60) };
-      const arms = mines.map((m) => crossArms(m, sp.length, A));
+      // Brazos cortados en el borde y en la primera estructura
+      const arms = mines.map((m) => crossArms(m, sp.length, A).map(([a, l]) => [a, clipSegmentToRects(m.x, m.y, a, l, this.structRects())] as [number, number]));
       mines.forEach((m, k) => {
         if (low) {
           lowCircle(m.x, m.y, 16, sp.fuseMs);
@@ -9270,7 +9280,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           mines.forEach((m, k) => {
             if (low) for (const [a, l] of arms[k]) g.lineStyle(sp.width, color, 0.8).lineBetween(m.x, m.y, m.x + Math.cos(a) * l, m.y + Math.sin(a) * l);
             else drawCrossBlast(g, m, arms[k], sp.width, color, this.time.now);
-            if (crossHits(m, sp.length, sp.width, A, this.player.x, this.player.y)) hurt();
+            if (arms[k].some(([a, l]) => laserHits(m.x, m.y, a, l, this.player.x, this.player.y, sp.width / 2))) hurt();
           });
           return t < 380;
         }, 6);
@@ -9287,23 +9297,31 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         after(s * every, () => {
           const axis: 'x' | 'y' = s % 2 === 0 ? first : first === 'x' ? 'y' : 'x';
           const beams = gridBeams(A, sp, axis, Math.random);
+          // Cada rayo sale de su borde (arriba o izquierda) y se corta en la primera estructura
+          const cut = beams.map((bm) => {
+            if (bm.axis === 'x') return { ...A, y1: A.y0 + clipSegmentToRects(bm.at, A.y0, Math.PI / 2, A.y1 - A.y0, this.structRects()) };
+            return { ...A, x1: A.x0 + clipSegmentToRects(A.x0, bm.at, 0, A.x1 - A.x0, this.structRects()) };
+          });
           if (low) {
             const g = this.add.graphics().setDepth(4);
-            for (const bm of beams) {
-              if (bm.axis === 'x') g.lineStyle(3, 0xff3d00, 0.8).lineBetween(bm.at, A.y0, bm.at, A.y1);
-              else g.lineStyle(3, 0xff3d00, 0.8).lineBetween(A.x0, bm.at, A.x1, bm.at);
-            }
+            beams.forEach((bm, k) => {
+              const C = cut[k];
+              if (bm.axis === 'x') g.lineStyle(3, 0xff3d00, 0.8).lineBetween(bm.at, C.y0, bm.at, C.y1);
+              else g.lineStyle(3, 0xff3d00, 0.8).lineBetween(C.x0, bm.at, C.x1, bm.at);
+            });
             this.tweens.add({ targets: g, alpha: 0.2, yoyo: true, repeat: 2, duration: sp.warnMs / 6, onComplete: () => g.destroy() });
-          } else gridWarn(this, A, beams, sp.width, color, sp.warnMs);
+          } else beams.forEach((bm, k) => gridWarn(this, cut[k], [bm], sp.width, color, sp.warnMs));
           after(sp.warnMs, () => loop((g, _dt, t) => {
-            for (const bm of beams) {
+            beams.forEach((bm, k) => {
+              const C = cut[k];
               if (low) {
                 g.fillStyle(color, 0.7);
-                if (bm.axis === 'x') g.fillRect(bm.at - sp.width / 2, A.y0, sp.width, A.y1 - A.y0);
-                else g.fillRect(A.x0, bm.at - sp.width / 2, A.x1 - A.x0, sp.width);
-              } else drawGridBeam(g, A, bm, sp.width, color, this.time.now);
-              if (gridHits(bm, sp.width, this.player.x, this.player.y)) hurt();
-            }
+                if (bm.axis === 'x') g.fillRect(bm.at - sp.width / 2, C.y0, sp.width, C.y1 - C.y0);
+                else g.fillRect(C.x0, bm.at - sp.width / 2, C.x1 - C.x0, sp.width);
+              } else drawGridBeam(g, C, bm, sp.width, color, this.time.now);
+              const inside = bm.axis === 'x' ? this.player.y <= C.y1 : this.player.x <= C.x1;
+              if (inside && gridHits(bm, sp.width, this.player.x, this.player.y)) hurt();
+            });
             return t < sp.onMs;
           }));
         });
@@ -9324,7 +9342,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         const sy = Phaser.Math.Clamp(b.y, A.y0 + sp.radius, A.y1 - sp.radius);
         let orbs: Orb[] = angles.map((a) => ({ x: sx, y: sy, vx: Math.cos(a) * sp.speed, vy: Math.sin(a) * sp.speed, left: sp.bounces }));
         loop((g, dt, t) => {
-          orbs = orbs.map((o) => bounceStep(o, dt, A, sp.radius)).filter((o) => o.left >= 0);
+          // Rebotan también en rocas y muros (no los atraviesan)
+          const rr = this.structRects();
+          orbs = orbs.map((o) => bounceOffRects(bounceStep(o, dt, A, sp.radius), sp.radius, rr)).filter((o) => o.left >= 0);
           for (const o of orbs) {
             if (low) g.fillStyle(color, 0.9).fillCircle(o.x, o.y, sp.radius).lineStyle(3, 0xffffff, 0.9).strokeCircle(o.x, o.y, sp.radius);
             else drawBounceOrb(g, o.x, o.y, sp.radius, color, this.time.now);
@@ -9849,7 +9869,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
   }
 
-  /** ¿Ve el enemigo al jugador? Paredes, el pilar de las 2x2 y las rocas tapan; huecos y agua no. */
+  /** ¿Ve el enemigo al jugador? Paredes y rocas tapan; huecos y agua no. */
   private foeHasLos(e: Sprite): boolean {
     const nav = this.navData();
     return !nav || segmentClear(e, this.player, nav.los, 4);
@@ -10237,7 +10257,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const [tx, ty] = this.tileOf(q.x, q.y, room);
       return Number.isFinite(dist[ty]?.[tx] ?? Infinity);
     };
-    // Con margen amplio: pegada al pilar del centro (2x2), a una roca o a la pared se veía fatal y no dejaba sitio a
+    // Con margen amplio: pegada a una roca o a la pared se veía fatal y no dejaba sitio a
     // la animación. Se prueba primero con mucho hueco y se va bajando; el último recurso es el de siempre.
     const rects = this.wallRects();
     for (const r of TRAPDOOR_CLEARANCE) {
@@ -10477,26 +10497,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         body.setVelocity(v.vx, v.vy);
       }
     };
-    // Pilar de las salas 2x2: nadie (ni voladores ni jefes que embisten o se teletransportan) queda dentro
-    const unPillar = (o: Sprite, r: number) => {
-      const body = o.body as Body | null;
-      if (!o.active || !body) return;
-      for (const p of this.pillars) {
-        const q = pushOutOfRect(o.x, o.y, r, p);
-        if (q) body.reset(q.x, q.y);
-      }
-    };
     for (const c of this.enemies.getChildren()) {
       const e = c as Sprite;
       const body = e.body as Body | null;
       if (!body) continue;
       const m = Math.min(60, Math.max(14, Math.min(body.width, body.height) / 2));
-      if (this.pillars.length) unPillar(e, m * 0.8);
       fix(e, m);
-    }
-    if (this.pillars.length) {
-      const pb = this.player.body as Body | null;
-      if (pb) unPillar(this.player, Math.max(10, Math.min(pb.width, pb.height) / 2) * 0.8);
     }
     if (this.roomLocked() || this.mode === 'waves' || this.mode === 'bossrush') {
       const pb = this.player.body as Body | null;
@@ -11018,6 +11024,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       player: () => this.player,
       aim: () => this.aim.clone().normalize(),
       room: () => this.arena(),
+      blockers: () => this.structRects(),
       dash: (dir, speed, ms) => {
         this.player.setVelocity(dir.x * speed, dir.y * speed);
         this.playerKnockUntil = this.time.now + ms;

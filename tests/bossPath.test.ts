@@ -7,7 +7,7 @@ import {
 } from '../src/data/bossPath.ts';
 import { newMemo, tickStuck, unstickDir } from '../src/data/enemyAI.ts';
 
-// Sala 2x2 de juguete con pilar macizo en el centro
+// Sala de juguete con un bloque macizo grande en el centro (roca gorda, pared interior...)
 const AREA = { x0: 0, y0: 0, x1: 1600, y1: 1000 };
 const PILLAR: Box = { x: 700, y: 400, w: 200, h: 200 };
 
@@ -37,7 +37,7 @@ function run(start: P, player: P, r: number, rects: Box[], smart: boolean, ms = 
   return { reached: false, t: ms, p };
 }
 
-test('el jefe rodea el pilar 2x2 cuando el jugador se esconde detrás (antes se quedaba empujando)', () => {
+test('el jefe rodea un bloque macizo grande cuando el jugador se esconde detrás (antes se quedaba empujando)', () => {
   const player = { x: 1000, y: 500 };
   const boss = { x: 560, y: 500 };
   assert.equal(run(boss, player, NAV_R_BIG, [PILLAR], false).reached, false, 'yendo recto se atasca');
@@ -46,14 +46,14 @@ test('el jefe rodea el pilar 2x2 cuando el jugador se esconde detrás (antes se 
   assert.ok(smart.t < 5000);
 });
 
-test('enemigos normales también rodean el pilar y bloques sueltos', () => {
+test('enemigos normales también rodean bloques grandes y sueltos', () => {
   const rocks: Box[] = [PILLAR, { x: 300, y: 200, w: 48, h: 400 }];
   for (const [s, pl] of [[{ x: 150, y: 400 }, { x: 1000, y: 500 }], [{ x: 800, y: 150 }, { x: 800, y: 850 }]] as [P, P][]) {
     assert.ok(run(s, pl, NAV_R_SMALL, rocks, true).reached);
   }
 });
 
-test('con camino directo libre va recto; bloqueado, el paso no apunta al pilar', () => {
+test('con camino directo libre va recto; bloqueado, el paso no apunta al bloque', () => {
   const nav = buildNav(AREA, [PILLAR], NAV_R_BIG);
   const dist = navField(nav, { x: 1000, y: 500 });
   const free = pathDir({ x: 200, y: 100 }, { x: 600, y: 100 }, [PILLAR], NAV_R_BIG, nav, dist);
@@ -77,7 +77,7 @@ test('salas en L: el hueco de fuera cuenta como bloqueado', () => {
   assert.ok(dist[Math.floor(800 / 32) * nav.cols + Math.floor(200 / 32)] < Infinity);
 });
 
-test('segmentClear detecta el pilar en medio', () => {
+test('segmentClear detecta un bloque en medio', () => {
   assert.equal(segmentClear({ x: 560, y: 500 }, { x: 1000, y: 500 }, [PILLAR]), false);
   assert.equal(segmentClear({ x: 560, y: 100 }, { x: 1000, y: 100 }, [PILLAR]), true);
   assert.equal(segmentClear({ x: 560, y: 380 }, { x: 1000, y: 380 }, [PILLAR], 30), false);
