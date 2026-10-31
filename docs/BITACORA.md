@@ -1695,3 +1695,28 @@ Auditoría (tests/locomotionAudit.test.ts) sobre las 1059 especies y formas del 
 Pendiente / no verificado:
 - Sin probar en el navegador (localhost:5173 sirve main, no la rama): falta ver el aspecto real de los fotogramas en
   sprites de PokeAPI (sobre todo andar en Pokémon de frente con patas muy juntas) y que no haya parpadeos al girarse.
+## IA de enemigos más lista: nadie se queda inerte (rama `ia`, 31/10)
+Queja: «si me quedo quieto muchas veces ni avanzan ni nada». Causas encontradas en `updateEnemy` (GameScene):
+- **Emboscador**: se quedaba invisible y quieto hasta 9 s si no te acercabas a 180 px.
+- **Atascos**: el campo de flujo solo existe en la sala actual con obstáculos; en salas grandes (otra celda) o con el
+  enemigo en una casilla no transitable iba en línea recta contra la roca, y nada detectaba que no avanzaba.
+- **Apilados**: con `collider(enemies, enemies)` los de detrás empujaban contra el de delante y se quedaban quietos.
+- **Tiradores**: se ponían en su franja tras una roca y disparaban a la piedra sin recolocarse.
+Cambios (`src/data/enemyAI.ts`, puro y testeado; GameScene lo aplica a todos los no jefes, también en Oleadas, Torre
+y Tower Defense, que usan el mismo `updateEnemy`):
+- Arquetipos por comportamiento (acosador, flanqueador, francotirador, embestidor, enjambre, apoyo).
+- Separación entre enemigos (radio 56 px) mezclada con la dirección deseada en `walk`.
+- Detector de atascos: si en 700 ms avanza < 10 px queriendo moverse, rodea de lado 650 ms (alterna lado).
+- Vigilante: más de 1,2 s casi quieto en estado normal, lejos de ti y sin telegrafiar → se le empuja hacia ti.
+- Perseguidores sin obstáculos buscan su hueco alrededor de ti (`flankDir`) en vez de hacer cola.
+- Tiradores y curanderos: distancia óptima con strafe y corrección radial (`rangedDir`); sin línea de visión
+  (`lineOfSight` en la rejilla) se recolocan por el camino.
+- Emboscador: escondido como mucho 2,6 s y se arrastra hacia ti mientras tanto.
+- Poca vida (<25 %, no embestidores/enjambre/jefes): se retira 0,9 s, como mucho una vez cada 5 s. Tras tu esquiva o
+  parry a < 150 px los cuerpo a cuerpo dudan 0,38 s.
+- Equilibrio: daño sin tocar; pausas entre ataques ×1,12 (mordisco, embestida, supervisor, disparo) para compensar
+  la presión extra. Telegrafías (tintes, parpadeos) iguales.
+- Tests: `tests/enemyAI.test.ts` (10), con mini simulación: jugador quieto 10 s tras un muro → todos llegan y nadie
+  está parado > 1 s; cinco apilados se reparten. 741 en total.
+Pendiente / no verificado: solo `tsc` y `npm test`; sin probar en el navegador (localhost:5173 sirve main). Falta ver a
+ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que la retirada no resulte rara.
