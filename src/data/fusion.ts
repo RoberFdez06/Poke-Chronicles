@@ -452,3 +452,61 @@ export function isFusionTag(t: unknown): t is FusionTag {
     Array.isArray(o.types) && o.types.length === 2 && o.types.every((x) => typeof x === 'string' && x in TYPE_COLORS) &&
     Array.isArray(o.from) && o.from.length === 2 && o.from.every((x) => typeof x === 'string');
 }
+
+// --- Fusión al recoger un 5.º poder (no desde la pausa) ---
+// Solo con las 4 ranuras llenas y un poder nuevo en la mano. Sigue saliendo el cambio normal (elegir qué ranura
+// reemplazar) y, además, «Fusionar» si entre las ranuras y el nuevo hay al menos dos poderes sin fusionar.
+// Candidatos: las 4 ranuras (0-3) y el nuevo (4). Lo ya fusionado no se vuelve a fusionar.
+// - Dos de las ranuras: el resultado ocupa la del primero y el nuevo entra en la que queda libre.
+// - Una ranura + el nuevo: el resultado sustituye a esa ranura (el nuevo se gasta en la fusión).
+// - Reemplazar una ranura con fusión: aviso «¡Vas a perder la fusión si continúas!» y solo recibes el ataque nuevo.
+
+/** Índice del poder nuevo entre los candidatos. */
+export const NEW_POWER_INDEX = 4;
+
+export const LOSE_FUSION_WARNING = '¡Vas a perder la fusión si continúas!';
+
+/** ¿Se ofrece fusionar al recoger este poder? (4 ranuras llenas y dos sin fusionar entre ranuras + nuevo). */
+export function canFuseOnPickup(slots: readonly (MovePower | null)[], incoming: MovePower | null | undefined): boolean {
+  if (!incoming || slots.length < 4 || slots.slice(0, 4).some((m) => !m)) return false;
+  return pickupCandidates(slots, incoming).filter((m) => m && !m.fusion).length >= 2;
+}
+
+/** Los cinco candidatos (ranuras + el nuevo al final). */
+export const pickupCandidates = (slots: readonly (MovePower | null)[], incoming: MovePower): (MovePower | null)[] => [...slots.slice(0, 4), incoming];
+
+/** ¿Reemplazar esa ranura hace perder una fusión? (hay que avisar y confirmar). */
+export const replaceLosesFusion = (slots: readonly (MovePower | null)[], slot: number): boolean => !!slots[slot]?.fusion;
+
+/** Por qué no se pueden fusionar los candidatos i y j al recoger (null = se puede). */
+export function pickupFusionBlock(slots: readonly (MovePower | null)[], incoming: MovePower, i: number, j: number): string | null {
+  if (!canFuseOnPickup(slots, incoming)) return 'Hacen falta dos poderes sin fusionar.';
+  if (i === j) return 'Elige dos poderes distintos.';
+  if (i < 0 || j < 0 || i > NEW_POWER_INDEX || j > NEW_POWER_INDEX) return 'Esa ranura no existe.';
+  const c = pickupCandidates(slots, incoming);
+  if (!c[i] || !c[j]) return 'Esa ranura está vacía.';
+  if (c[i]!.fusion || c[j]!.fusion) return 'Un poder fusionado no se puede volver a fusionar.';
+  return null;
+}
+
+/** Aplica la fusión al recoger: 4 ranuras nuevas, resultado, dónde quedó y dónde entró el nuevo (-1 = se gastó). */
+export function applyPickupFusion(
+  slots: readonly (MovePower | null)[],
+  incoming: MovePower,
+  i: number,
+  j: number,
+): { slots: (MovePower | null)[]; result: MovePower; at: number; newAt: number } | null {
+  if (pickupFusionBlock(slots, incoming, i, j)) return null;
+  const c = pickupCandidates(slots, incoming);
+  const result = fusePowers(c[i] as MovePower, c[j] as MovePower);
+  const out = slots.slice(0, 4);
+  const fromSlots = [i, j].filter((k) => k !== NEW_POWER_INDEX);
+  const at = fromSlots[0];
+  out[at] = result;
+  let newAt = -1;
+  if (fromSlots.length === 2) {
+    newAt = fromSlots[1];
+    out[newAt] = incoming;
+  }
+  return { slots: out, result, at, newAt };
+}

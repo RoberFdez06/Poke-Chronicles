@@ -160,3 +160,50 @@ export function dashTrail(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, col
   const sp = scene.add.rectangle(snap(s.x + Phaser.Math.Between(-14, 14)), snap(s.y + Phaser.Math.Between(4, 22)), 6, 6, 0xffffff).setDepth(depth);
   scene.tweens.add({ targets: sp, alpha: 0, scale: 0.4, duration: 200, onComplete: () => sp.destroy() });
 }
+
+/**
+ * Arranque de la esquiva: rayas de velocidad pixel a los lados del cuerpo, apuntando hacia atrás, y un destello
+ * blanco que se estira en la dirección del impulso. Con lowFx, solo dos rayas.
+ */
+export function dashBurst(scene: Phaser.Scene, x: number, y: number, dx: number, dy: number, color: number, depth = 6) {
+  const g = scene.add.graphics().setDepth(depth);
+  const t0 = scene.time.now;
+  const nx = -dy;
+  const ny = dx;
+  const offs = lowFx() ? [-14, 14] : [-22, -10, 2, 14, 26];
+  const light = lightOf(color);
+  const ev = scene.time.addEvent({
+    delay: 30,
+    loop: true,
+    callback: () => {
+      const k = Math.min(1, (scene.time.now - t0) / 260);
+      g.clear();
+      offs.forEach((o, i) => {
+        const len = 34 + (i % 2) * 18;
+        const back = 10 + k * 46;
+        for (let s = 0; s < len; s += PX * 2) {
+          const d = back + s;
+          px(g, x + nx * o - dx * d, y + 8 + ny * o - dy * d, s < 10 ? 0xffffff : light, (1 - k) * (1 - s / (len + 8)), PX);
+        }
+      });
+      if (!lowFx() && k < 0.5) for (let s = 0; s < 4; s++) px(g, x + dx * (12 + s * 7), y + 8 + dy * (12 + s * 7), 0xffffff, 1 - k * 2, PX + 2);
+      if (k >= 1) {
+        ev.remove();
+        g.destroy();
+      }
+    },
+  });
+}
+
+/** Chispas pixel que salen hacia atrás mientras dura la esquiva. */
+export function dashSparks(scene: Phaser.Scene, x: number, y: number, dx: number, dy: number, color: number, depth = 5) {
+  const light = lightOf(color);
+  for (let i = 0; i < 2; i++) {
+    const a = Math.atan2(dy, dx) + (Math.random() - 0.5) * 1.1;
+    const v = 18 + Math.random() * 22;
+    const sp = scene.add
+      .rectangle(snap(x + Phaser.Math.Between(-10, 10)), snap(y + Phaser.Math.Between(-4, 20)), 4, 4, i ? light : 0xffffff)
+      .setDepth(depth);
+    scene.tweens.add({ targets: sp, x: sp.x + Math.cos(a) * v, y: sp.y + Math.sin(a) * v, alpha: 0, duration: 240, onComplete: () => sp.destroy() });
+  }
+}

@@ -24,6 +24,7 @@ export class WeatherFx {
   private g: Phaser.GameObjects.Graphics;
   private tint: Phaser.GameObjects.Rectangle;
   private fog?: Phaser.GameObjects.Image;
+  private fogAt?: { x: number; y: number };
   private drops: Drop[] = [];
   private t = 0;
 
@@ -97,7 +98,14 @@ export class WeatherFx {
       }
     }
     if (this.fog) {
-      const c = focus ?? { x: view.centerX, y: view.centerY };
+      // Sin foco (intro del jefe: la cámara se va al jefe y hace zoom) la niebla se centra en lo que se ve. Antes
+      // seguía en el jugador y su borde oscuro tapaba media pantalla. El cambio de centro va suave, no de golpe.
+      const want = focus ?? { x: view.centerX, y: view.centerY };
+      if (!this.fogAt) this.fogAt = { x: want.x, y: want.y };
+      const k = 1 - Math.exp(-dt * 10);
+      this.fogAt.x += (want.x - this.fogAt.x) * k;
+      this.fogAt.y += (want.y - this.fogAt.y) * k;
+      const c = this.fogAt;
       // Cubre de sobra lo que ve la cámara aunque el jugador esté en una esquina
       const size = Math.max(view.width, view.height) * 2.2;
       this.fog.setPosition(c.x, c.y).setDisplaySize(size, size);

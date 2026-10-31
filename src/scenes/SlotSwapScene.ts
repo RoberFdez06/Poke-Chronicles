@@ -8,13 +8,18 @@ import { addPixelText } from '../ui/art/pixel';
 import { sfx } from '../ui/audio';
 import { typeColor, typeNameEs } from '../data/types';
 import type { MovePower } from '../data/items';
+import { canFuseOnPickup, LOSE_FUSION_WARNING, replaceLosesFusion } from '../data/fusion';
+import { openConfirm } from './ConfirmScene';
+
+/** onChoice: el jugador quiere fusionar (se abre FusionScene con las ranuras y el nuevo). */
+export const SLOT_SWAP_FUSE = -2;
 
 export interface SlotSwapData {
   /** El poder nuevo. */
   move: MovePower;
   /** Lo que llevas ahora en cada ranura (todas llenas). */
   slots: (MovePower | null)[];
-  /** Ranura elegida (0 a 3) o -1 si prefieres quedarte como estás. */
+  /** Ranura elegida (0 a 3), -1 si prefieres quedarte como estás o SLOT_SWAP_FUSE para fusionar. */
   onChoice: (slot: number) => void;
 }
 
@@ -29,6 +34,8 @@ export class SlotSwapScene extends Phaser.Scene {
   private nav!: NavInput;
   private menu!: MenuList;
   private done = false;
+  private busy = false;
+  private fuseAt = -1;
 
   constructor() {
     super('SlotSwap');
@@ -37,6 +44,7 @@ export class SlotSwapScene extends Phaser.Scene {
   init(data: SlotSwapData) {
     this.args = data;
     this.done = false;
+    this.busy = false;
     this.sys.settings.data = {};
   }
 
@@ -52,24 +60,44 @@ export class SlotSwapScene extends Phaser.Scene {
       .text(270, 178, `Nuevo: ${pretty(m.name)} · ${typeNameEs(m.type)} · ${MOVE_RARITY_LABEL[moveRarity(m.power)]} · potencia ${m.power}`, { fontFamily: FONT, fontSize: '19px', color: HEX.text })
       .setOrigin(0, 0.5);
     this.add.text(480, 216, '¿Cuál quieres sustituir?', { fontFamily: FONT, fontSize: '16px', color: HEX.textSoft }).setOrigin(0.5);
-    const labels = this.args.slots.map((s, i) => (s ? `${i + 1} · ${pretty(s.name)} (${typeNameEs(s.type)}, pot. ${s.power})` : `${i + 1} · vacío`));
+    const labels = this.args.slots.map((s, i) => (s ? `${i + 1} · ${pretty(s.name)} (${s.fusion ? s.fusion.types.map(typeNameEs).join('/') + ' · fusión' : typeNameEs(s.type)}, pot. ${s.power})` : `${i + 1} · vacío`));
+    this.fuseAt = canFuseOnPickup(this.args.slots, m) ? labels.length : -1;
+    if (this.fuseAt >= 0) labels.push('Fusionar dos poderes (F)');
     labels.push('Dejarlo como está');
-    this.menu = new MenuList(this, 480, 250, labels, (i) => this.pick(i), { w: 500, h: 46, gap: 8, fontSize: 18 });
+    this.menu = new MenuList(this, 480, 236, labels, (i) => this.pick(i), { w: 540, h: 42, gap: 6, fontSize: 17 });
+    this.input.keyboard?.on('keydown-F', () => this.fuseAt >= 0 && this.pick(this.fuseAt));
     addHelpBar(this, 480, 542, 'Flechas o ratón · Enter o clic · 1-4 elige · Esc: dejarlo', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0.5);
     (['ONE', 'TWO', 'THREE', 'FOUR'] as const).forEach((k, i) => this.input.keyboard?.on(`keydown-${k}`, () => this.pick(i)));
     sfx('select');
   }
 
   private pick(i: number) {
-    if (this.done) return;
+    if (this.done || this.busy) return;
+    if (i === this.fuseAt) return this.finish(SLOT_SWAP_FUSE);
+    if (i < this.args.slots.length && replaceLosesFusion(this.args.slots, i)) {
+      // Reemplazar una fusión: alerta con confirmación (solo recibes el ataque nuevo; la fusión se pierde)
+      this.busy = true;
+      const old = this.args.slots[i]!;
+      const ok = openConfirm(this, `${LOSE_FUSION_WARNING}\n${pretty(old.name)} desaparece y solo recibes ${pretty(this.args.move.name)}.`, (yes) => {
+        this.nav = new NavInput(this);
+        this.busy = false;
+        if (yes) this.finish(i);
+      }, '¡ALERTA!');
+      if (!ok) this.busy = false;
+      return;
+    }
+    this.finish(i >= this.args.slots.length ? -1 : i);
+  }
+
+  private finish(choice: number) {
     this.done = true;
-    this.args.onChoice(i >= this.args.slots.length ? -1 : i);
+    this.args.onChoice(choice);
   }
 
   update() {
-    if (this.done) return;
+    if (this.done || this.busy) return;
     const s = this.nav.read();
-    if (s.back) return this.pick(this.args.slots.length);
+    if (s.back) return this.finish(-1);
     this.menu.move(s.dy || s.dx);
     if (s.ok) this.menu.activate();
   }

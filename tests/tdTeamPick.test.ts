@@ -5,6 +5,9 @@ import {
   clampCursor, clampPanel, cursorOf, cycle, filterLabel, filterOptions, filterPicks, indexOf, itemsOnPage, jumpPage,
   moveCursor, movePanel, pageCount, sortPicks, turnPage, CLASS_COLOR, CLASS_ORDER, START_FOCUS, TRIAL_FOCUS, type PickLike,
 } from '../src/data/towerDefense/teamPick.ts';
+import {
+  barBack, barFromColumn, classFilterOptions, filterPicksBy, nextBar, typeFilterOptions, BAR_CLASS, BAR_RESET, BAR_SORT, BAR_TYPE, NO_FILTERS,
+} from '../src/data/towerDefense/teamPick.ts';
 import { STYLE_LABEL, towerStyle } from '../src/data/towerDefense/towers.ts';
 
 const G = { cols: 6, rows: 4 };
@@ -116,4 +119,30 @@ test('panel del equipo: huecos, ¡A jugar! y vuelta a la rejilla', () => {
   assert.equal(movePanel(2, 1, 0, 3), 2);
   assert.equal(clampPanel(5, 3), 2);
   assert.equal(clampPanel(0, 0), START_FOCUS);
+});
+
+test('filtro separado en Clase y Tipo: listas cortas, se combinan y «Todos» de golpe', () => {
+  const cls = classFilterOptions(list);
+  const tipos = typeFilterOptions(list);
+  assert.equal(cls[0], 'todos');
+  assert.equal(tipos[0], 'todos');
+  assert.ok(cls.every((f) => !f.startsWith('tipo:')));
+  assert.ok(tipos.slice(1).every((f) => f.startsWith('tipo:')));
+  assert.equal(cls.length + tipos.length - 1, filterOptions(list).length);
+  // Volver al principio: una sola vuelta hacia atrás desde la primera opción, o B
+  assert.equal(cycle(tipos, cycle(tipos, 'todos', 1), -1), 'todos');
+  const team = new Set<number>();
+  assert.deepEqual(filterPicksBy(list, { cls: 'aereo', tipo: 'tipo:flying' }, team).map((p) => p.name), ['Butterfree']);
+  assert.deepEqual(filterPicksBy(list, { cls: 'todos', tipo: 'tipo:fire' }, team).map((p) => p.name), ['Arcanine']);
+  assert.equal(filterPicksBy(list, NO_FILTERS, team).length, list.length);
+  assert.deepEqual(barBack({ cls: 'aereo', tipo: 'tipo:fire' }, BAR_TYPE), { f: { cls: 'aereo', tipo: 'todos' }, consumed: true });
+  assert.deepEqual(barBack({ cls: 'aereo', tipo: 'tipo:fire' }, BAR_CLASS).f, { cls: 'todos', tipo: 'tipo:fire' });
+  assert.deepEqual(barBack({ cls: 'aereo', tipo: 'tipo:fire' }, BAR_RESET).f, NO_FILTERS);
+  assert.equal(barBack(NO_FILTERS, BAR_CLASS).consumed, false);
+  assert.equal(barFromColumn(0, 6), BAR_CLASS);
+  assert.equal(barFromColumn(2, 6), BAR_TYPE);
+  assert.equal(barFromColumn(5, 6), BAR_SORT);
+  assert.equal(nextBar(BAR_RESET, 1), BAR_CLASS);
+  assert.equal(nextBar(BAR_CLASS, -1), BAR_RESET);
+  assert.equal(nextBar(BAR_TYPE, 1), BAR_SORT);
 });

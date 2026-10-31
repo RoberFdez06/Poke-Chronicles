@@ -53,6 +53,9 @@ const LEAF: Decal = { rows: LEAF_ROWS, pal: { k: 0x6a2e12, O: 0xe08a3a, v: 0xb05
 const LEAF_Y: Decal = { rows: LEAF_ROWS, pal: { k: 0x6a4a12, O: 0xe0b848, v: 0xb08a28 } };
 const RUNE: Decal = { rows: ['..PPPP..', '.P....P.', 'P..PP..P', 'P.P..P.P', 'P.P..P.P', 'P..PP..P', '.P....P.', '..PPPP..'], pal: { P: 0x8a6fc8 } };
 
+/** Detalles que a tamaño entero parecen un obstáculo (y no lo son): ver decorateRoom. */
+const SOLID_LOOKING: ReadonlySet<Decal> = new Set([PEBBLE, PEBBLE_ICE, PEBBLE_BASALT, PEBBLE_LILAC, CRYSTAL, SNOWPILE]);
+
 const DECALS: Record<string, Decal[]> = {
   bosque: [FLOWER_R, FLOWER_Y, TUFT, TUFT, TUFT, PEBBLE],
   pantano: [MUSHROOM, LILY, TUFT, TUFT, PEBBLE],
@@ -921,7 +924,11 @@ export function decorateRoom(
     }
     const x = grouped ? Math.max(room.x0 + 12, Math.min(room.x1 - 12, gx + (r() - 0.5) * 70)) : gx;
     const y = grouped ? Math.max(room.y0 + 20, Math.min(room.y1 - 12, gy + (r() - 0.5) * 40)) : gy;
-    const img = scene.add.image(x, y, `decal-${b.id}-${k}`).setScale(scale).setDepth(0.1);
+    // Piedrecitas, cristales y montoncitos de nieve a tamaño entero (~30-48 px) parecían rocas de verdad, pero no
+    // chocan: se pintan a la mitad y algo apagados, como gravilla del suelo (las rocas sólidas son las de la rejilla)
+    const solidLook = SOLID_LOOKING.has(set[k]);
+    const img = scene.add.image(x, y, `decal-${b.id}-${k}`).setScale(solidLook ? scale * 0.5 : scale).setDepth(0.1);
+    if (solidLook) img.setAlpha(0.8);
     if (set[k] === CRACK) img.setAlpha(0.25);
     if (r() < 0.5) img.setFlipX(true);
     if (set[k] === CRYSTAL || set[k] === SHELL || set[k] === EMBER || set[k] === RUNE) shiny.push([x, y]);

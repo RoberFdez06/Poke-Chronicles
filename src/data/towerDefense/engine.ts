@@ -17,6 +17,8 @@ import {
 import { TOWER_PERKS, addRelic, draftPerks, freshRelics, interestOf, perkValue, type Perk, type Relics } from './perks.ts';
 import { isBuildable, pathCells, pathPoints, pointAt, polyLength, roadSet, type TdMap } from './maps.ts';
 import { MAP_FOES, type TdMon } from './species.ts';
+import { decideDark, darkProgress, TD_DARK_MUL } from '../darkMon.ts';
+import { takeAdminNextDark } from '../admin.ts';
 import {
   BRANCH_LEVEL, MAX_TOWER_LEVEL, MEGA_LEVEL, bestTypeMul, megaCostFor, megaSpeciesOf, sellValue, towerCost, towerStats, upgradeCostFor, type Branch, type TowerStats,
 } from './towers.ts';
@@ -108,6 +110,8 @@ export interface TdEnemy {
   skillIdx: number;
   warn: ChiefWarn | null;
   rush: number;
+  /** Pokémon oscuro (darkMon.ts): más vida, escudo, velocidad y recompensa. */
+  dark?: boolean;
 }
 
 /** Rayo de la tormenta avisado en una casilla. */
@@ -220,6 +224,8 @@ export class TdGame {
   private nextId = 1;
   private events: TdEvent[] = [];
   private rng: () => number;
+  /** Tiradas de los oscuros aparte, para no cambiar el resto de la partida con semilla. */
+  private darkRng: () => number;
   private road: Set<string>;
   private groundPts: { x: number; y: number }[][];
 
@@ -231,6 +237,7 @@ export class TdGame {
     this.money = o.map.startMoney;
     this.prepLeft = prepTime(1);
     this.rng = mulberry(o.seed ?? 12345);
+    this.darkRng = mulberry(((o.seed ?? 12345) ^ 0x5d4c) >>> 0);
     this.road = roadSet(o.map);
     this.groundPts = o.map.paths.map((p) => pathPoints(p));
   }
@@ -429,6 +436,12 @@ export class TdGame {
   private spawn(s: Spawn, distOffset = 0, kindOverride?: EnemyDef) {
     let def = kindOverride ?? enemyDef(s.kind, s.species, this.wave, stagePower(this.stage));
     if (s.hpMul && s.hpMul !== 1) def = { ...def, maxHp: Math.max(1, Math.round(def.maxHp * s.hpMul)), shield: Math.round(def.shield * s.hpMul) };
+    const who = def.kind === 'boss' ? 'boss' : def.kind === 'chief' ? 'miniboss' : 'enemy';
+    const inRoom = this.enemies.filter((o) => o.dark && o.def.kind !== 'boss' && o.def.kind !== 'chief').length;
+    const dark = decideDark({ who, floor: darkProgress('towerdef', { wave: this.wave }), inRoom, forced: takeAdminNextDark(), rng: this.darkRng });
+    if (dark) {
+      def = { ...def, maxHp: Math.max(1, Math.round(def.maxHp * TD_DARK_MUL.hp)), shield: Math.round(def.shield * TD_DARK_MUL.hp), speed: def.speed * TD_DARK_MUL.speed, bounty: Math.round(def.bounty * TD_DARK_MUL.bounty) };
+    }
     const path = Math.min(s.path, this.map.paths.length - 1);
     // Los voladores siguen el mismo camino (solo los alcanzan las torres con alcance aéreo)
     const pts = this.groundPts[path];
@@ -437,7 +450,7 @@ export class TdGame {
     const e: TdEnemy = {
       id: this.nextId++, def, hp: def.maxHp, shield: def.shield, maxShield: def.shield, pts, len, dist: distOffset,
       x: p.x, y: p.y, dx: p.dx, dy: p.dy, slowMul: 1, slowLeft: 0, frozen: 0, haste: 0, healCd: HEAL_EVERY, phase: 1,
-      skills: [], skillCd: CHIEF_FIRST, skillIdx: 0, warn: null, rush: 0,
+      skills: [], skillCd: CHIEF_FIRST, skillIdx: 0, warn: null, rush: 0, dark,
     };
     this.enemies.push(e);
     this.events.push({ t: 'spawn', id: e.id });

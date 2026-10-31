@@ -4,8 +4,16 @@
 // Lógica pura, sin Phaser. Todo con el reloj de la escena (ms).
 import { clampDash, type Bounds } from '../level/bounds.ts';
 
-/** Distancia que recorre (px de la sala) y cuánto tarda (ms). */
+/** Distancia base que recorre (px de la sala, con la velocidad normal) y cuánto tarda (ms). */
 export const DASH_DISTANCE = 57;
+/** Velocidad de movimiento normal (stats.speed de partida). */
+export const DASH_BASE_MOVE = 240;
+/** Tope de distancia con velocidades muy altas. */
+export const DASH_MAX_DISTANCE = 95;
+/** Px de dash extra por cada px/s de velocidad por encima de la normal. */
+export const DASH_DIST_PER_SPEED = 0.2;
+/** El impulso nunca va a menos de este múltiplo de tu velocidad de movimiento (así siempre se nota). */
+export const DASH_MIN_SPEED_MUL = 1.6;
 export const DASH_MS = 100;
 /** Invulnerabilidad desde que empieza (ms). */
 export const DASH_INVULN_MS = 250;
@@ -42,8 +50,18 @@ export const dashInvulnerable = (s: DashState, now: number): boolean => now < s.
 export const dashCooldownLeft = (s: DashState, now: number): number =>
   Math.max(0, Math.min(1, (s.readyAt - now) / DASH_COOLDOWN_MS));
 
-/** Velocidad del impulso (px/s) para recorrer DASH_DISTANCE en DASH_MS. */
-export const dashSpeed = (): number => DASH_DISTANCE / (DASH_MS / 1000);
+/**
+ * Velocidad del impulso (px/s). Con la velocidad normal recorre DASH_DISTANCE en DASH_MS; si te mueves más rápido,
+ * recorre más (hasta DASH_MAX_DISTANCE) y nunca va a menos de DASH_MIN_SPEED_MUL × tu velocidad.
+ */
+export function dashSpeed(moveSpeed = DASH_BASE_MOVE): number {
+  const ms = Number.isFinite(moveSpeed) ? Math.max(0, moveSpeed) : DASH_BASE_MOVE;
+  const dist = Math.min(DASH_MAX_DISTANCE, DASH_DISTANCE + Math.max(0, ms - DASH_BASE_MOVE) * DASH_DIST_PER_SPEED);
+  return Math.max(dist / (DASH_MS / 1000), ms * DASH_MIN_SPEED_MUL);
+}
+
+/** Distancia que recorre la esquiva con esa velocidad de movimiento. */
+export const dashDistance = (moveSpeed = DASH_BASE_MOVE): number => dashSpeed(moveSpeed) * (DASH_MS / 1000);
 
 /** Dirección de la esquiva: la del movimiento si se mueve; si no, hacia donde mira. Siempre de largo 1. */
 export function dashDirection(move: Vec, facing: Vec): Vec {
@@ -58,7 +76,7 @@ export function dashDirection(move: Vec, facing: Vec): Vec {
  * Empieza la esquiva si está lista: devuelve la velocidad que hay que dar al jugador o null si está en recarga.
  * Las paredes y las puertas cerradas las para la física (colisiones); el borde de la sala, dashEnd/keepInside.
  */
-export function startDash(s: DashState, now: number, move: Vec, facing: Vec): Vec | null {
+export function startDash(s: DashState, now: number, move: Vec, facing: Vec, moveSpeed = DASH_BASE_MOVE): Vec | null {
   if (!canDash(s, now)) return null;
   const d = dashDirection(move, facing);
   s.dir = d;
@@ -66,11 +84,12 @@ export function startDash(s: DashState, now: number, move: Vec, facing: Vec): Ve
   s.invulnUntil = now + DASH_INVULN_MS;
   s.readyAt = now + DASH_COOLDOWN_MS;
   s.uses++;
-  const v = dashSpeed();
+  const v = dashSpeed(moveSpeed);
   return { x: d.x * v, y: d.y * v };
 }
 
 /** Dónde acabaría la esquiva desde (x, y) sin salir de la sala (`margin` = medio cuerpo). */
-export function dashEnd(x: number, y: number, dir: Vec, b: Bounds, margin = 0): Vec {
-  return clampDash(x, y, x + dir.x * DASH_DISTANCE, y + dir.y * DASH_DISTANCE, b, margin);
+export function dashEnd(x: number, y: number, dir: Vec, b: Bounds, margin = 0, moveSpeed = DASH_BASE_MOVE): Vec {
+  const d = dashDistance(moveSpeed);
+  return clampDash(x, y, x + dir.x * d, y + dir.y * d, b, margin);
 }

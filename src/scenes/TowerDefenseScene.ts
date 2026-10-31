@@ -28,6 +28,8 @@ import { levelsFor } from '../data/upgrades';
 import { typeColor, typeNameEs } from '../data/types';
 import { bakeBiomeTiles } from '../ui/art/tiles';
 import { bakeProjectiles, bakeTypeFx, projKey, projRotation, typeImpact, typeTrail } from '../ui/art/typeFx';
+import { darkAura, darkBurst } from '../ui/art/darkFx';
+import { darkWarning } from '../data/darkMon';
 import { bakeCombatFx, bossAura, damageNumber, evolveBurst, evolveGlow, hitSpark, phaseShock, starBurst } from '../ui/art/combatFx';
 import { pixBlast, pixBolt, pixDebris, pixFlash, pixRing } from '../ui/art/pixelFx';
 import {
@@ -1281,6 +1283,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       const row = dir8Row(e.dx, e.dy, v.row);
       if (row !== v.row && v.pmd) {
         v.row = row;
+        v.spr.setData('row', row);
         v.spr.anims.play(pmdAnimKey(e.def.species, 'walk', row), true);
       }
       if (!v.pmd) v.spr.setFlipX(e.dx > 0);
@@ -1323,6 +1326,13 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (boss) {
       bossAura(this, spr, typeColor(e.def.types[0]), () => OY + e.y * CELL + 8, 3);
       phaseShock(this, OX + e.x * CELL, OY + e.y * CELL, typeColor(e.def.types[0]), 1.2, 30);
+    }
+    spr.setData('pmd', !!sheet).setData('row', row);
+    if (e.dark) {
+      // Oscuro: aura morada y negra con ojos rojos, estallido y aviso
+      darkAura(this, spr, () => OY + e.y * CELL + 8);
+      darkBurst(this, OX + e.x * CELL, OY + e.y * CELL);
+      this.toast(darkWarning(boss ? (e.def.kind === 'boss' ? 'boss' : 'miniboss') : 'enemy').split('\n')[0], 'danger');
     }
     return { spr, shadow, row, pmd: !!sheet, bob: Math.random() * 6 };
   }
@@ -1367,6 +1377,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       const row = dir8Row(Math.cos(t.facing), Math.sin(t.facing), v.row);
       if (row !== v.row) {
         v.row = row;
+        v.spr.setData('row', row);
         if (v.pmd) {
           const sheet = this.sheets.get(v.id)!;
           v.spr.anims.play(pmdAnimKey(v.id, sheet.hasIdle ? 'idle' : 'walk', row), true);
