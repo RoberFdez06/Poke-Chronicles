@@ -81,7 +81,7 @@ import {
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
-import { acceptNpcMission, gainSeed, takeGardenBerries, updateGarden, addRunHistory, loadKeys, loadMissions, loadShinies, loadDarks, addDark, loadTutorial, loadUpgrades, recordMissionEvent, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
+import { acceptNpcMission, gainSeed, takeGardenBerries, updateGarden, addRunHistory, loadKeys, loadMissions, loadShinies, loadDarks, addDark, addDarkSeen, loadTutorial, loadUpgrades, recordMissionEvent, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
 import { disableTips, markTipSeen, shouldShowTip, tipButtons, tipText, TIPS, type TipId } from '../data/tutorial';
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
 import { closeFloor, emptyCounters, floorTimes, noteCombo, noteDash, noteParry, notePerfectParry, notePickup, noteRoomTime, openFloor, type RunCounters, type RunRecord } from '../data/runHistory';
@@ -161,7 +161,7 @@ import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuf
 import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_GLOW, FALL_HAZARD, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve, legendMegaAtPhase } from '../data/megaBoss';
 import { rollTemperament, tempoCooldown, tempoShot, type Temperament } from '../data/temperament';
-import { adminAllowed, godStats, isCheatRun, isGodMode, markCheatRun, setAdminFloorPick, setGodMode, stepValue, takeAdminFloorPick, type AdminFloorPick } from '../data/admin';
+import { adminAllowed, godStats, isCheatRun, isGodMode, markCheatRun, setAdminFloorPick, setAdminNextDark, adminNextDarkPending, takeAdminNextDark, setGodMode, stepValue, takeAdminFloorPick, type AdminFloorPick } from '../data/admin';
 import { openAdmin, type AdminRow } from './AdminScene';
 import { generalAdminRows, setRunAdminRows } from '../ui/adminPanel';
 import { drawAdminPlate } from '../ui/art/adminArt';
@@ -175,7 +175,7 @@ import { armMuzzle, drawBossLaser, drawShockRing, hazardBlast, hazardWarn, laser
 import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
 import { dynamaxBurst, teraBurst, zImpactFx, zMoveFx, zStarFx } from '../ui/art/formsFx';
 import { darkAura, darkBurst } from '../ui/art/darkFx';
-import { darkCooldown, darkEnemyStats, darkName, darkOdds, darkPlayerStats, darkTickets, DARK_COLORS, DARK_REWARD, rollDark, type DarkWho } from '../data/darkMon';
+import { darkBossEnrages, darkCooldown, darkEnemyStats, darkName, darkOdds, darkPlayerStats, darkTickets, darkWarning, decideDark, DARK_BOSS_RAGE, DARK_COLORS, DARK_ITEM_CHANCE, DARK_REWARD, rollDark, type DarkWho } from '../data/darkMon';
 import { guardianKindLabel, MEGA_GUARDIAN, pickGuardian } from '../data/guardians';
 import { drawMegaCine, drawMegaStoneHud, drawPowerMeterFill, drawPowerSelHud, megaCineBurst, playerFormAura } from '../ui/art/megaFx';
 import { megaCamRestore, megaCineFrame, megaCinePlan, megaTypeStyle, type MegaCamHome } from './megaCinematic';
@@ -6828,7 +6828,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     e.setData('helper', !!helper);
     e.setData('hp', hp).setData('maxHp', hp).setData('speed', st.speed).setData('dmg', st.damage);
     // Pokémon oscuro (darkMon.ts): rareza baja que sube con el piso; más vida, daño, velocidad y cadencia
-    const dark = darkAs ?? (!helper && !this.daily && rollDark(Math.random, darkOdds('enemy', this.level())));
+    // Tope por sala (darkMon.ts: 1, y 2 desde el piso 6); el panel admin puede forzar el siguiente
+    const rolled = darkAs === undefined && !helper && !this.daily;
+    const dark = darkAs ?? (rolled && decideDark({ who: 'enemy', floor: this.level(), diff: this.diff, inRoom: this.darkFoesInRoom(), forced: takeAdminNextDark(), rng: Math.random }));
     if (shiny) {
       sparkle(this, x, y);
       this.popup(x, y - 40, '¡Shiny!', 0xffd34d);
@@ -6839,7 +6841,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     ai.tempo = rollTemperament(Math.random);
     if (ai.tempo.sizeMul !== 1) e.setDisplaySize(60 * ai.tempo.sizeMul, 60 * ai.tempo.sizeMul);
     e.setData('ai', ai).setData('types', kind.types).setData('speciesId', Number(kind.key.replace('foe-', '')));
-    if (dark) this.makeDark(e, ai, !!darkAs);
+    if (dark) {
+      this.makeDark(e, ai, !!darkAs);
+      if (rolled) this.notify(darkWarning('enemy'), { kind: 'danger', icon: 'star' });
+    }
     // Élites: cada piso salen más. Más vida, algo más rápidos, brillo de su tipo y un ataque extra de su tipo
     if (!helper && Math.random() < eliteChance(this.level())) {
       const light = (TYPE_STYLES[kind.type] ?? TYPE_STYLES.normal).filter((st) => !['dash', 'chain', 'orbit', 'mine'].includes(st.pattern.k));
@@ -6863,6 +6868,31 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * Convierte a un enemigo (o jefe) en Pokémon oscuro: estadísticas mejores, ataques más seguidos, aura morada y negra,
    * nombre «Oscuro» y marca para el premio, la captura y la Pokédex. `quiet`: sin el aviso pequeño (lo da su intro).
    */
+  /** Oscuros normales vivos en la sala (sin contar minijefes ni jefes), para el tope de darkRoomCap. */
+  private darkFoesInRoom(): number {
+    return (this.enemies.getChildren() as Sprite[]).filter((o) => o.active && o.getData('dark') && !o.getData('miniboss') && !(o.getData('ai') as EnemyAI | undefined)?.boss).length;
+  }
+
+  /** Jefe o minijefe oscuro: un movimiento siniestro de más y, a media vida, se enfurece una vez (más rápido y seguido). */
+  private darkBossExtras(e: Sprite, ai: EnemyAI, id: number) {
+    const extra = bossStyles(['dark'], id + 7).find((m) => !(ai.moves ?? []).some((o) => o.id === m.id));
+    if (extra) ai.moves = [...(ai.moves ?? []), extra];
+    const ev = this.time.addEvent({
+      delay: 250,
+      loop: true,
+      callback: () => {
+        if (!e.active) return ev.remove();
+        if (!darkBossEnrages(e.getData('hp') as number, e.getData('maxHp') as number, !!e.getData('darkRage'))) return;
+        e.setData('darkRage', true).setData('speed', (e.getData('speed') as number) * DARK_BOSS_RAGE.speed);
+        ai.tempo = { ...(ai.tempo ?? rollTemperament(() => 0.5)), cooldownMul: (ai.tempo?.cooldownMul ?? 1) * DARK_BOSS_RAGE.cooldownMul };
+        darkBurst(this, e.x, e.y);
+        this.popup(e.x, e.y - 70, '¡Enfurecido!', 0xff3a48);
+        this.notify('¡El oscuro se enfurece!\nMás rápido y ataca más seguido', { kind: 'danger', icon: 'star' });
+        ev.remove();
+      },
+    });
+  }
+
   private makeDark(e: Sprite, ai: EnemyAI, quiet = false) {
     if (e.getData('dark')) return;
     const d = darkEnemyStats({ hp: e.getData('maxHp') as number, damage: e.getData('dmg') as number, speed: e.getData('speed') as number });
@@ -6893,7 +6923,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const loaded = pref && this.textures.exists(`${pref.key}-front`) ? pref : undefined;
     if (!loaded && this.foeKinds.length === 0) return undefined;
     const kind = loaded ?? [...this.foeKinds].sort((a, b) => b.bst - a.bst)[0];
-    const dark = !this.daily && rollDark(Math.random, darkOdds('miniboss', this.level()));
+    const dark = !this.daily && decideDark({ who: 'miniboss', floor: this.level(), diff: this.diff, forced: takeAdminNextDark(), rng: Math.random });
     const e = this.spawnEnemy(kind, kind.behavior, undefined, false);
     const id = Number(kind.key.replace('foe-', ''));
     const size = guardian ? MEGA_GUARDIAN.size : 112;
@@ -6917,7 +6947,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Aura: dorada el minijefe; la del guardián, del color de la Mega Piedra
     this.glowAura(e, guardian ? 0x8fd3ff : 0xffd34d);
     const base = kind.name ? kind.name.charAt(0).toUpperCase() + kind.name.slice(1) : 'Pokémon';
-    if (dark) this.makeDark(e, ai, true);
+    if (dark) {
+      this.makeDark(e, ai, true);
+      this.darkBossExtras(e, ai, id);
+      this.time.delayedCall(900, () => !this.ended && this.notify(darkWarning('miniboss'), { kind: 'danger', icon: 'star' }));
+    }
     const name = dark ? darkName(base) : base;
     const what = loaded ? guardianKindLabel(id) : 'Minijefe';
     this.notify(guardian ? `¡${name} custodia la Mega Piedra!\nVéncelo para conseguirla` : `¡Minijefe: ${name}!`, { kind: 'danger', icon: 'star' });
@@ -7041,7 +7075,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // T63: el legendario también cuenta en el registro de combate al vencerlo
     b.setData('speciesId', this.bossId);
     // Jefe oscuro (darkMon.ts): más raro al principio, más probable cuanto más hondo; nunca en el desafío diario
-    const dark = !this.daily && rollDark(Math.random, darkOdds('boss', this.floorNum));
+    const dark = !this.daily && decideDark({ who: 'boss', floor: this.floorNum, diff: this.diff, forced: takeAdminNextDark(), rng: Math.random });
     const cap = (n: string) => n.charAt(0).toUpperCase() + n.slice(1);
     this.buildBossBar(b, dark ? darkName(cap(this.bossName)) : this.bossName);
     // El jefe también se comporta según su tipo
@@ -7055,8 +7089,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     ai.phase = 1;
     b.setData('ai', ai);
     this.bossGrace(b);
-    if (dark) this.makeDark(b, ai, true);
-    this.notify(dark ? `¡${darkName(cap(this.bossName))}, jefe legendario oscuro!\nMás fuerte en todo y con más premio` : `¡${this.bossName}, jefe legendario!`, { kind: 'danger', icon: 'pokeball' });
+    if (dark) {
+      this.makeDark(b, ai, true);
+      this.darkBossExtras(b, ai, this.bossId);
+    }
+    this.notify(dark ? `¡${darkName(cap(this.bossName))}, jefe legendario oscuro!\nMás fuerte en todo, con un ataque de más y se enfurece a media vida` : `¡${this.bossName}, jefe legendario!`, { kind: 'danger', icon: 'pokeball' });
     void cry(this.bossId);
     playTrack(TRACKS.jefe);
     this.musicMood = 'boss';
@@ -7797,6 +7834,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       { label: () => 'Megaevolucionar al jefe de la sala', run: () => (window as unknown as { __POKEISAAC_DEBUG__?: { forceMega: () => string } }).__POKEISAAC_DEBUG__?.forceMega() ?? 'Sin consola de depuración.' },
       { label: () => 'Llenar el medidor de poder', run: () => (this.adminCheat(), (this.powerMeter.value = POWER_METER_MAX), this.powerMeterHud && (this.powerMeterHud.shown = ''), 'Medidor lleno.') },
       { label: () => `Jugar con el inicial oscuro: ${this.dark ? 'Sí' : 'No'}`, run: () => this.adminDark() },
+      { label: () => `Siguiente enemigo / minijefe / jefe oscuro: ${adminNextDarkPending() ? 'Sí' : 'No'}`, run: () => (setAdminNextDark(!adminNextDarkPending()), adminNextDarkPending() ? 'El próximo que aparezca será oscuro.' : 'Sin forzar oscuro.') },
       { label: () => `Forma de poder ◀ ${ADMIN_FORMS[u.form][1]} ▶  (Enter: activar)`, adjust: (d) => (u.form = stepValue(u.form, d, 0, ADMIN_FORMS.length - 1)), run: () => this.adminPower(ADMIN_FORMS[u.form][0]) },
       { label: () => 'Fusionar poderes (abrir pantalla)', run: () => (this.time.delayedCall(80, () => this.openFusion(true)), 'Se abre al cerrar el panel (marca la partida).') },
       { label: () => `Dar poder de tipo ◀ ${typeNameEs(FUSION_TYPES[u.ptype])} ▶  (Enter: dar)`, adjust: (d) => (u.ptype = stepValue(u.ptype, d, 0, FUSION_TYPES.length - 1)), run: () => this.adminGivePower(FUSION_TYPES[u.ptype]) },
@@ -10900,7 +10938,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       sparkle(this, enemy.x, enemy.y);
     }
     // Un oscuro también: monedas de 5 de más
-    if (enemy.getData('dark') && !enemy.getData('helper')) for (let k = 0; k < DARK_REWARD.extraCoins; k++) loot.push({ kind: 'coin', value: 5 });
+    if (enemy.getData('dark') && !enemy.getData('helper')) {
+      for (let k = 0; k < DARK_REWARD.extraCoins; k++) loot.push({ kind: 'coin', value: 5 });
+      if (!boss && Math.random() < DARK_ITEM_CHANCE) loot.push(Math.random() < 0.5 ? { kind: 'potion' } : { kind: 'key' });
+      const sid = enemy.getData('speciesId') as number | undefined;
+      if (sid && !this.codeRun && addDarkSeen(sid)) this.popup(enemy.x, enemy.y - 72, 'Oscuro descubierto', DARK_COLORS.glow);
+    }
     // Sinergias: Día de Pago (botín extra) y Gigadrenado / Fuego Sagrado (cada baja cura)
     if (!enemy.getData('helper') && this.synFx.extraDrop > 0 && Math.random() < this.synFx.extraDrop) loot.push(...rollEnemyLoot(Math.random, false));
     if (this.synFx.healOnKill > 0 && this.hp > 0 && this.hp < this.stats.maxHp) {
