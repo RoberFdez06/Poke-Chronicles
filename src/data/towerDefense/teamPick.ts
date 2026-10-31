@@ -85,6 +85,57 @@ export function filterLabel(f: FilterKey): string {
   return `Tipo ${typeNameEs(f.slice(5))}`;
 }
 
+// --- Filtros separados: «Clase» (grupo) y «Tipo», que se combinan, y el orden aparte ---
+
+/** Opciones del selector «Clase»: Todos, Mi equipo, las clases que haya y Aéreo. */
+export function classFilterOptions(list: readonly PickLike[]): FilterKey[] {
+  return filterOptions(list).filter((f) => !f.startsWith('tipo:'));
+}
+
+/** Opciones del selector «Tipo»: Todos y los tipos que haya (por nombre en español). */
+export function typeFilterOptions(list: readonly PickLike[]): FilterKey[] {
+  return ['todos', ...filterOptions(list).filter((f) => f.startsWith('tipo:'))];
+}
+
+export interface PickFilters {
+  cls: FilterKey;
+  tipo: FilterKey;
+}
+
+export const NO_FILTERS: Readonly<PickFilters> = { cls: 'todos', tipo: 'todos' };
+
+/** Aplica los dos selectores a la vez (los dos tienen que cumplirse). */
+export function filterPicksBy<T extends PickLike>(list: readonly T[], f: PickFilters, teamIds: ReadonlySet<number>): T[] {
+  return list.filter((p) => matchesFilter(p, f.cls, teamIds) && matchesFilter(p, f.tipo, teamIds));
+}
+
+/** Barra de arriba: 0 Clase, 1 Tipo, 2 Orden, 3 botón «Todos» (quita los dos filtros). */
+export const BAR_CLASS = 0;
+export const BAR_TYPE = 1;
+export const BAR_SORT = 2;
+export const BAR_RESET = 3;
+export const BAR_COUNT = 4;
+
+/** Al subir desde la rejilla: el selector que queda encima de esa columna (la barra se reparte en tramos). */
+export function barFromColumn(col: number, cols: number): number {
+  const k = Math.max(0, Math.min(cols - 1, Math.floor(col))) / Math.max(1, cols);
+  return k < 1 / 3 ? BAR_CLASS : k < 2 / 3 ? BAR_TYPE : BAR_SORT;
+}
+
+/** Pasa al selector siguiente/anterior de la barra (con vuelta). */
+export const nextBar = (sel: number, d: number): number => (((sel + Math.sign(d || 1)) % BAR_COUNT) + BAR_COUNT) % BAR_COUNT;
+
+/**
+ * «Volver» (B/Esc) en la barra: si el selector enfocado tiene filtro, lo pone en Todos; en «Todos», los quita los dos.
+ * `consumed` false = no había nada que quitar (entonces B hace lo de siempre: salir).
+ */
+export function barBack(f: PickFilters, sel: number): { f: PickFilters; consumed: boolean } {
+  if (sel === BAR_CLASS && f.cls !== 'todos') return { f: { ...f, cls: 'todos' }, consumed: true };
+  if (sel === BAR_TYPE && f.tipo !== 'todos') return { f: { ...f, tipo: 'todos' }, consumed: true };
+  if ((sel === BAR_RESET || sel === BAR_SORT) && (f.cls !== 'todos' || f.tipo !== 'todos')) return { f: { ...NO_FILTERS }, consumed: true };
+  return { f, consumed: false };
+}
+
 /** Siguiente opción de una lista circular (si la actual ya no está, vuelve a la primera). */
 export function cycle<T>(opts: readonly T[], cur: T, d: number): T {
   if (!opts.length) return cur;

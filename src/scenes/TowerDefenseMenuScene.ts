@@ -12,8 +12,9 @@ import { ToastStack } from '../ui/toast';
 import { bakeTdArt, drawMapThumb, tdIcon, tdIconKey } from '../ui/art/tdArt';
 import { bakeClassIcons, classIconKey } from '../ui/art/tdClassIcons';
 import {
-  canHitAir, clampCursor, clampPanel, cycle, filterLabel, filterOptions, filterPicks, indexOf, jumpPage, moveCursor, movePanel, pageCount,
-  sortPicks, turnPage, CLASS_COLOR, CLASS_TRAITS, SORT_KEYS, SORT_LABEL, START_FOCUS, TRIAL_FOCUS, type FilterKey, type GridCursor, type SortKey,
+  barBack, barFromColumn, classFilterOptions, filterPicksBy, typeFilterOptions, BAR_CLASS, BAR_RESET, BAR_SORT, BAR_TYPE, NO_FILTERS, type PickFilters,
+  canHitAir, clampCursor, clampPanel, cycle, filterLabel, indexOf, jumpPage, moveCursor, movePanel, pageCount,
+  sortPicks, turnPage, CLASS_COLOR, CLASS_TRAITS, SORT_KEYS, SORT_LABEL, START_FOCUS, TRIAL_FOCUS, type GridCursor, type SortKey,
 } from '../data/towerDefense/teamPick';
 import { TD_MAPS } from '../data/towerDefense/maps';
 import { TD_GUIDE } from '../data/towerDefense/guide';
@@ -84,13 +85,13 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
   private barSel = 0;
   /** Panel: 0-5 huecos, START_FOCUS «¡A jugar!», TRIAL_FOCUS equipo de prueba. */
   private panelSel = START_FOCUS;
-  private filter: FilterKey = 'todos';
+  private filters: PickFilters = { ...NO_FILTERS };
   private sort: SortKey = 'poder';
   private hold = { dir: 0, next: 0 };
   private trial = false;
   private loading = false;
   private redraw: (grid?: boolean) => void = () => {};
-  private keys!: Record<'Q' | 'E' | 'H' | 'F' | 'O' | 'PGUP' | 'PGDN', Phaser.Input.Keyboard.Key>;
+  private keys!: Record<'Q' | 'E' | 'H' | 'F' | 'T' | 'O' | 'R' | 'PGUP' | 'PGDN', Phaser.Input.Keyboard.Key>;
   /** Pantalla «Cómo se juega» abierta (y su página). */
   private help: { box: Phaser.GameObjects.Container; page: number; draw: () => void } | null = null;
 
@@ -112,7 +113,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     this.nav = new NavInput(this);
     this.pad = new PadButtons(this);
     const kb = this.input.keyboard!;
-    this.keys = { Q: kb.addKey('Q', false), E: kb.addKey('E', false), H: kb.addKey('H', false), F: kb.addKey('F', false), O: kb.addKey('O', false), PGUP: kb.addKey('PAGE_UP', false), PGDN: kb.addKey('PAGE_DOWN', false) };
+    this.keys = { Q: kb.addKey('Q', false), E: kb.addKey('E', false), H: kb.addKey('H', false), F: kb.addKey('F', false), O: kb.addKey('O', false), T: kb.addKey('T', false), R: kb.addKey('R', false), PGUP: kb.addKey('PAGE_UP', false), PGDN: kb.addKey('PAGE_DOWN', false) };
     this.toasts = new ToastStack(this, 20, 92, 300, (c) => c.setDepth(50));
     this.progress = loadTdProgress();
     addBackButton(this, () => this.goBack());
@@ -360,7 +361,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     this.zone = 'grid';
     this.teamSel = 0;
     this.page = 0;
-    this.filter = 'todos';
+    this.filters = { ...NO_FILTERS };
     const loadingText = this.add.text(300, 300, 'Cargando tu colección…', { fontFamily: UI.FONT, fontSize: '20px', color: '#ffffff' }).setOrigin(0.5).setStroke('#18202c', 4);
     this.layer.add(loadingText);
     this.loading = true;
@@ -421,7 +422,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
   /** Lista que se ve en la rejilla: filtrada y ordenada (o el equipo de prueba). */
   private viewList(): TdPick[] {
     if (this.trial) return this.trialPicks();
-    return sortPicks(filterPicks(this.owned, this.filter, new Set(this.team.map((t) => t.id))), this.sort);
+    return sortPicks(filterPicksBy(this.owned, this.filters, new Set(this.team.map((t) => t.id))), this.sort);
   }
 
   private cursor(): GridCursor {
@@ -438,8 +439,10 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
 
   private cycleBar(which: number, d: number) {
     if (this.trial) return;
-    if (which === 0) this.filter = cycle(filterOptions(this.owned), this.filter, d);
-    else this.sort = cycle(SORT_KEYS, this.sort, d);
+    if (which === BAR_CLASS) this.filters = { ...this.filters, cls: cycle(classFilterOptions(this.owned), this.filters.cls, d) };
+    else if (which === BAR_TYPE) this.filters = { ...this.filters, tipo: cycle(typeFilterOptions(this.owned), this.filters.tipo, d) };
+    else if (which === BAR_SORT) this.sort = cycle(SORT_KEYS, this.sort, d);
+    else this.filters = { ...NO_FILTERS };
     this.setCursor({ page: 0, idx: 0 });
     this.redraw();
   }
@@ -457,9 +460,13 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     // Barra de filtro y orden (arriba de la rejilla)
     const barG = this.add.graphics();
     this.layer.add(barG);
+    // Clase · Tipo · Orden · «Todos» (quita los filtros de golpe)
+    const barW = inner + cell * 5;
     const bars = [
-      { x: x0, y: 98, w: 228, h: 24 },
-      { x: x0 + 236, y: 98, w: inner + cell * 5 - 236, h: 24 },
+      { x: x0, y: 98, w: 150, h: 24 },
+      { x: x0 + 156, y: 98, w: 150, h: 24 },
+      { x: x0 + 312, y: 98, w: 92, h: 24 },
+      { x: x0 + 410, y: 98, w: barW - 410, h: 24 },
     ];
     const barTexts = bars.map((b, i) => {
       const t = this.add.text(b.x + b.w / 2, b.y + b.h / 2, '', { fontFamily: UI.FONT, fontSize: '14px', color: NAVY, fontStyle: 'bold' }).setOrigin(0.5);
@@ -580,8 +587,11 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
       // Barra de filtro y orden
       barG.clear();
       bars.forEach((b, i) => drawBox(barG, b.x, b.y, b.w, b.h, { radius: 6, selected: this.zone === 'bar' && this.barSel === i, fill: this.trial ? 0xc8ccd4 : undefined }));
-      barTexts[0].setText(`Filtro: ${filterLabel(this.filter)}`);
-      barTexts[1].setText(`Orden: ${SORT_LABEL[this.sort]}`);
+      const short = (t: string) => (t.length > 13 ? `${t.slice(0, 12)}.` : t);
+      barTexts[BAR_CLASS].setText(`Clase: ${short(filterLabel(this.filters.cls))}`);
+      barTexts[BAR_TYPE].setText(this.filters.tipo === 'todos' ? 'Tipo: Todos' : short(filterLabel(this.filters.tipo)));
+      barTexts[BAR_SORT].setText(SORT_LABEL[this.sort]);
+      barTexts[BAR_RESET].setText('Todos').setAlpha(this.filters.cls === 'todos' && this.filters.tipo === 'todos' ? 0.5 : 1);
       const ring = (x: number, y: number, w: number, h: number) => {
         sel.lineStyle(3, 0x18202c, 1).strokeRect(x - 3, y - 3, w + 6, h + 6);
         sel.lineStyle(2, 0xffd34d, 1).strokeRect(x - 1, y - 1, w + 2, h + 2);
@@ -643,7 +653,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     this.redraw();
     const guest = accountInfo().mode === 'guest';
     this.hint(
-      `Flechas/cruceta: moverse (los bordes cambian de página) · Enter/A: añadir o quitar · Q/E, LB/RB: página · AvPág/RePág: ±5 · F: filtro · O: orden · P: ¡A jugar!${guest ? ' · Invitado: no se guarda al cerrar' : ''}`,
+      `Flechas/cruceta: moverse (los bordes cambian de página) · Enter/A: añadir o quitar · Q/E, LB/RB: página · AvPág/RePág: ±5 · F: clase · T: tipo · O: orden · R/X: quitar filtros · En la barra: ◀▶ o LB/RB cambian, ▲ siguiente, B quita · P: ¡A jugar!${guest ? ' · Invitado: no se guarda al cerrar' : ''}`,
     );
   }
 
@@ -727,6 +737,15 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
       return;
     }
     if (J(this.keys.H) || pb.has('Y')) return this.openHelp();
+    if (s.back && this.stage === 'team' && this.zone === 'bar' && !this.loading) {
+      // B/Esc en la barra: primero quita el filtro (Todos de golpe); si no hay ninguno, sale como siempre
+      const r = barBack(this.filters, this.barSel);
+      if (r.consumed) {
+        this.filters = r.f;
+        this.setCursor({ page: 0, idx: 0 });
+        return this.redraw();
+      }
+    }
     if (s.back) return this.goBack();
     if (this.stage === 'maps') {
       if (s.dx || s.dy) {
@@ -754,12 +773,20 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
   private updateTeam(s: ReturnType<NavInput['read']>, pb: Set<PadButton>) {
     const J = Phaser.Input.Keyboard.JustDown;
     const rep = this.padRepeat();
-    if (J(this.keys.Q) || pb.has('LB') || rep < 0) return this.turnPage(-1);
-    if (J(this.keys.E) || pb.has('RB') || rep > 0) return this.turnPage(1);
+    if (this.zone === 'bar' && !this.trial) {
+      // En la barra, LB/RB (y Q/E) cambian el valor del selector enfocado en los dos sentidos
+      const d = J(this.keys.Q) || pb.has('LB') ? -1 : J(this.keys.E) || pb.has('RB') ? 1 : 0;
+      if (d) return this.cycleBar(this.barSel === BAR_RESET ? BAR_RESET : this.barSel, d);
+    } else {
+      if (J(this.keys.Q) || pb.has('LB') || rep < 0) return this.turnPage(-1);
+      if (J(this.keys.E) || pb.has('RB') || rep > 0) return this.turnPage(1);
+    }
     if (J(this.keys.PGUP) || pb.has('LT')) return this.jumpPages(-5);
     if (J(this.keys.PGDN) || pb.has('RT')) return this.jumpPages(5);
-    if (J(this.keys.F) || pb.has('X')) return this.cycleBar(0, 1);
-    if (J(this.keys.O)) return this.cycleBar(1, 1);
+    if (J(this.keys.F)) return this.cycleBar(BAR_CLASS, 1);
+    if (J(this.keys.T)) return this.cycleBar(BAR_TYPE, 1);
+    if (J(this.keys.O)) return this.cycleBar(BAR_SORT, 1);
+    if (J(this.keys.R) || pb.has('X')) return this.cycleBar(BAR_RESET, 1);
     if (s.pause) {
       this.zone = 'panel';
       this.panelSel = START_FOCUS;
@@ -780,17 +807,20 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
         else if (!this.trial && this.team[this.panelSel]) this.togglePick(this.team[this.panelSel]);
       }
     } else if (this.zone === 'bar') {
-      if (s.dx > 0 && this.barSel === 1) { this.zone = 'panel'; this.panelSel = START_FOCUS; }
-      else if (s.dx) this.barSel = s.dx > 0 ? 1 : 0;
-      if (s.dy > 0 && lst.length) this.zone = 'grid';
-      if (s.dx || s.dy) this.redraw(false);
+      // ◀▶ cambian el valor del selector; ▲ pasa al siguiente selector; ▼ vuelve a la rejilla.
+      // En «Todos», ◀▶ pasan de selector y A quita los filtros; más allá de «Todos» (▶) se va al panel del equipo.
+      if (s.dx && this.barSel !== BAR_RESET) this.cycleBar(this.barSel, s.dx);
+      else if (s.dx > 0) { this.zone = 'panel'; this.panelSel = START_FOCUS; this.redraw(false); }
+      else if (s.dx < 0) { this.barSel = BAR_SORT; this.redraw(false); }
+      if (s.dy < 0) { this.barSel = (this.barSel + 1) % 4; this.redraw(false); }
+      if (s.dy > 0 && lst.length) { this.zone = 'grid'; this.redraw(false); }
       if (s.ok) this.cycleBar(this.barSel, 1);
     } else {
       if (s.dx || s.dy) {
         const before = this.cursor();
         const r = moveCursor(before, s.dx, s.dy, lst.length, GRID);
         if (r.exit === 'right') { this.zone = 'panel'; this.panelSel = clampPanel(0, (this.trial ? this.trialPicks() : this.team).length); }
-        else if (r.exit === 'up') { this.zone = 'bar'; this.barSel = (before.idx % COLS) < COLS / 2 ? 0 : 1; }
+        else if (r.exit === 'up') { this.zone = 'bar'; this.barSel = barFromColumn(before.idx % COLS, COLS); }
         this.setCursor(r.cur);
         this.redraw(r.cur.page !== before.page);
       }
