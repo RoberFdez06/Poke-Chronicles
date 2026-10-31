@@ -360,7 +360,8 @@ import { accountInfo } from '../net/cloud';
 import { blitzAttacksFor, bounceAngles, bounceSpec, bounceStep, crossArms, crossHits, crossMinePlaces, crossSpec, dashEnd, dashSpec, gridBeams, gridHits, gridSpec, helixAngles, helixSpec, isBlitzAttack, meteorSpec, meteorSpots, miasmaSpec, wallHits, wallPlan, wallPos, wallSpec, wallTravelMs, BLITZ_MIN_WARN, type BlitzAttack, type Orb } from '../data/bossBlitz';
 import { bounceWarn, dashWarn, drawBounceOrb, drawCrossBlast, drawGridBeam, drawMiasma, drawWallBar, gridWarn, meteorImpact, meteorWarn, miasmaWarn, mineWarn, wallWarn } from '../ui/art/blitzFx';
 import { AI_ATTACK_SLOWDOWN, AMBUSH_MAX_HIDE_MS, ARCHETYPE, flankDir, lineOfSight, newMemo, rangedDir, separation, shouldFlinch, steer, tickIdle, tickRetreat, tickStuck, unstickDir, type AIMemo } from '../data/enemyAI';
-import { BOSS_SAFE_TELEPORT_DIST, BOSS_TELEPORT_GRACE_MS, PHASE_INVULN_MAX_MS, SPAWN_SAFE_DIST, clearOfRects, extendGrace, nearestClearPoint, phaseShieldStuck, pickSafeSpot, shiftTimers, type Rect as SafeRect } from '../data/bossSafety';
+import { BOSS_SAFE_TELEPORT_DIST, BOSS_TELEPORT_GRACE_MS, PHASE_INVULN_MAX_MS, SPAWN_SAFE_DIST, bossCellOrder, clearOfRects, extendGrace, nearestClearPoint, newBossGuard, noteBossHit, phaseShieldStuck, pickSafeSpot, shiftTimers, tickBossGuard, type BossGuard, type Rect as SafeRect } from '../data/bossSafety';
+import { roomWatch, stuckFoe } from '../data/roomClear';
 
 const FALL_LOOK_MS = 500; // pausa tras aterrizar en la arena nueva (nadie se mueve ni recibe daño)
 
@@ -801,6 +802,12 @@ export class GameScene extends Phaser.Scene {
   /** Intro en marcha (cinemática o ficha): todo quieto. Momento (reloj del juego) en que empezó. */
   private frozenSince: number | undefined;
   private unstickAt = 0;
+  /** Vigilante de la limpieza de la sala (data/roomClear.ts): no decidir antes de esto, desde cuándo está vacía y próxima mirada. */
+  private clearHoldUntil = 0;
+  private clearZeroSince: number | undefined;
+  private clearWatchAt = 0;
+  /** Último aviso de «Protegido» al pegar a un jefe protegido (para no llenar la pantalla). */
+  private protPopAt = 0;
   /** Asaltos de jefe en marcha (para cortarlos en una intro, un derrumbe o al acabar). */
   private blitzLive = new Set<() => void>();
   /** Dibujos de la arena (fase 1 y 2) y obstáculos de cada sala, para poder quitarlos al caer a la arena nueva. */
@@ -1297,6 +1304,9 @@ export class GameScene extends Phaser.Scene {
     this.arenaTickAt = 0;
     this.bossBusyUntil = undefined;
     this.arenaFallAt = undefined;
+    this.clearHoldUntil = 0;
+    this.clearZeroSince = undefined;
+    this.clearWatchAt = 0;
     // La escena se reutiliza: nada de intro congelada ni asaltos de la partida anterior
     this.frozenSince = undefined;
     this.unstickAt = 0;
@@ -6342,6 +6352,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.cancelCharges();
     this.current = room;
     this.roomStartSec = this.counters.seconds;
+    // Que el vigilante no dé la sala por limpia antes de que salgan sus enemigos
+    this.clearHoldUntil = this.time.now + 1500;
+    this.clearZeroSince = undefined;
     // T56: la oscuridad es de la sala de la que vienes
     this.clearDarkness();
     this.showRooms([room.id]);
@@ -6371,6 +6384,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.setDoorsLocked(room, true, true);
       sfx('door');
       this.notify(`¡Sala de desafío!\nOleada 1/${CHALLENGE_WAVES}`, { kind: 'danger', icon: 'heart' });
+      this.clearHoldUntil = this.time.now + 900 + 1500;
       this.time.delayedCall(900, () => this.spawnChallengeWave(room.id));
     } else if (this.megaRoomId === room.id && !this.eventsDone.has(megaStoneDoneKey(room.id))) {
       // Guarida del guardián: un pseudolegendario o ultraente custodia la Mega Piedra y la suelta al caer. Si no se
@@ -6774,6 +6788,133 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
   }
 
+  /**
+   * Vigilante de la sala (data/roomClear.ts), cada 200 ms: si ya no queda ningún enemigo hostil vivo y la sala sigue
+   * cerrada, se da por limpia aunque el último no cayera por killEnemy; si ya estaba limpia con puertas cerradas, se
+   * abren; y quien lleve rato fuera de la sala (atascado tras una pared o un empujón) vuelve dentro.
+   */
+  private watchRoomClear() {
+    const now = this.time.now;
+    if (now < this.clearWatchAt) return;
+    this.clearWatchAt = now + 200;
+    if (this.ended || this.transitioning || this.falling || this.frozenSince !== undefined || this.hp <= 0 || this.mode === 'waves' || !this.current || !this.floor) return;
+    if (this.scene.isPaused()) return;
+    const room = this.current;
+    const ids = this.groupIds(room);
+    const doorsLocked = ids.some((id) => DIRS.some((d) => {
+      const b = this.doorMap.get(doorKey(id, d));
+      return !!b && !!b.body && (b.body as Phaser.Physics.Arcade.StaticBody).enable;
+    }));
+    const a = this.arena();
+    let hostile = 0;
+    for (const c of this.enemies.getChildren()) {
+      const e = c as Sprite;
+      if (!e.active) continue;
+      hostile++;
+      if (e.getData('capturing')) continue;
+      const out = e.x < a.x0 || e.x > a.x1 || e.y < a.y0 || e.y > a.y1;
+      const st = stuckFoe(out, e.getData('outSince') as number | undefined, now);
+      e.setData('outSince', st.since);
+      if (st.relocate) {
+        const p = this.clearSpotNear(Phaser.Math.Clamp(e.x, a.x0 + 48, a.x1 - 48), Phaser.Math.Clamp(e.y, a.y0 + 48, a.y1 - 48), 24);
+        const body = e.body as Body | null;
+        if (body) body.reset(p.x, p.y);
+        else e.setPosition(p.x, p.y);
+      }
+    }
+    const r = roomWatch({ cleared: this.cleared.has(room.id), doorsLocked, hostile, now, holdUntil: this.clearHoldUntil, zeroSince: this.clearZeroSince });
+    this.clearZeroSince = r.zeroSince;
+    if (r.action === 'clear') this.checkClear();
+    else if (r.action === 'unlock') this.setGroupDoorsLocked(room, false, true);
+  }
+
+  /** ¿El jefe está ahora en una protección de fase (derrumbe, aviso de megaevolución, pausa de fase del reto final)? */
+  private bossProtected(b: Sprite): boolean {
+    const loop = this.game.loop.time;
+    return this.arenaFallAt !== undefined || megaInvulnerable(b.getData('megaAt') as number | undefined, loop) || (!!b.getData('finale') && loop < this.finaleBeatUntil);
+  }
+
+  private bossGuardOf(b: Sprite): BossGuard {
+    let g = b.getData('hpGuard') as BossGuard | undefined;
+    if (!g) {
+      g = newBossGuard();
+      b.setData('hpGuard', g);
+    }
+    return g;
+  }
+
+  /**
+   * Vigilante de la vida del jefe (data/bossSafety.ts): con indicador visible mientras está protegido; si la protección
+   * dura más de BOSS_PROTECT_MAX_MS o le pegas BOSS_STALL_MS sin que baje, se corta todo y se aplica el daño guardado.
+   */
+  private watchBossHp(b: Sprite) {
+    if (b.getData('helper') || this.frozenSince !== undefined) return;
+    const prot = this.bossProtected(b);
+    const maxHp = b.getData('maxHp') as number;
+    const t = tickBossGuard(this.bossGuardOf(b), this.time.now, b.getData('hp') as number, prot, maxHp);
+    if (t.release) this.releaseBossProtection(b);
+    if (t.hpAtMost !== undefined) b.setData('hp', Math.min(b.getData('hp') as number, t.hpAtMost));
+    // Indicador: anillo azul que late mientras no se le puede bajar la vida
+    let g = b.getData('protFx') as Phaser.GameObjects.Graphics | undefined;
+    if (prot && !t.release) {
+      if (!g) {
+        g = this.add.graphics().setDepth(b.depth + 0.1);
+        b.setData('protFx', g);
+        const gg = g;
+        b.once(Phaser.GameObjects.Events.DESTROY, () => gg.destroy());
+      }
+      const pulse = 0.45 + 0.3 * Math.sin(this.time.now / 90);
+      g.clear().lineStyle(4, 0x8fd3ff, pulse).strokeCircle(b.x, b.y, b.displayWidth * 0.55);
+    } else if (g) {
+      g.destroy();
+      b.setData('protFx', undefined);
+    }
+  }
+
+  /** Corta cualquier protección del jefe (seguro del vigilante): derrumbe, aviso de megaevolución y pausa de fase. */
+  private releaseBossProtection(b: Sprite) {
+    const loop = this.game.loop.time;
+    if (this.arenaFallAt !== undefined) this.releaseArenaHold();
+    const megaAt = b.getData('megaAt') as number | undefined;
+    if (megaInvulnerable(megaAt, loop)) b.setData('megaAt', loop - MEGA_WARN_MS);
+    if (b.getData('finale') && loop < this.finaleBeatUntil) this.finaleBeatUntil = 0;
+    b.setData('fallHp', undefined);
+  }
+
+  /** Casilla de la sala grande donde sale un jefe o minijefe: nunca la del jugador, la más lejana que tenga sitio. */
+  private bossCellOrderNow(): number[] {
+    const ids = this.groupIds(this.current);
+    if (ids.length <= 1) return ids;
+    const here = this.cellRoom(this.player.x, this.player.y).id;
+    const cells = ids.map((id) => {
+      const i = this.interior(this.floor.rooms[id]);
+      return { id, x: i.cx, y: i.cy };
+    });
+    return bossCellOrder(cells, here, this.player);
+  }
+
+  private bossCell(): Room {
+    return this.floor.rooms[this.bossCellOrderNow()[0]] ?? this.current;
+  }
+
+  /** Sitio libre para un jefe (radio `r`) en otra casilla que la del jugador; en una sala de una casilla, lejos de él. */
+  private bossSpot(margin: number, r: number): { x: number; y: number } {
+    const order = this.bossCellOrderNow();
+    const rects = this.wallRects();
+    if (this.groupIds(this.current).length > 1) {
+      for (const id of order) {
+        const i = this.interior(this.floor.rooms[id]);
+        const cands = [{ x: i.cx, y: i.cy }, ...Array.from({ length: 24 }, () => ({ x: Phaser.Math.Between(i.x0 + margin, i.x1 - margin), y: Phaser.Math.Between(i.y0 + margin, i.y1 - margin) }))];
+        const p = pickSafeSpot(cands, this.player, SPAWN_SAFE_DIST, (q) => this.spotClear(q.x, q.y, r, rects, i));
+        if (p) return p;
+        const near = nearestClearPoint({ x: i.cx, y: i.cy }, (q) => this.spotClear(q.x, q.y, r, rects, i), TILE / 2, 10);
+        if (near) return near;
+      }
+    }
+    const sp = this.randomSpotInRoom(margin);
+    return this.spotClear(sp.x, sp.y, r, rects) ? sp : this.clearSpotNear(sp.x, sp.y, r);
+  }
+
   /** Sitio al azar de la sala libre de obstáculos y lejos del jugador (lo más lejos posible si no cabe). */
   private randomSpotInRoom(margin: number) {
     const cells = this.groupIds(this.current);
@@ -6897,6 +7038,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const kind = loaded ?? [...this.foeKinds].sort((a, b) => b.bst - a.bst)[0];
     const dark = !this.daily && rollDark(Math.random, darkOdds('miniboss', this.level()));
     const e = this.spawnEnemy(kind, kind.behavior, undefined, false);
+    {
+      // Como el jefe: nunca en la casilla del jugador ni dentro de una estructura
+      const sp = this.bossSpot(90, 50);
+      const body = e.body as Body | null;
+      if (body) body.reset(sp.x, sp.y);
+      else e.setPosition(sp.x, sp.y);
+    }
     const id = Number(kind.key.replace('foe-', ''));
     const size = guardian ? MEGA_GUARDIAN.size : 112;
     e.setDisplaySize(size, size).setData('size', size).setData('sheet', kind.key);
@@ -6943,7 +7091,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const f = this.finale!;
     const trio = f.kind === 'trio';
     const st = bossStats(this.bossBase, this.difficulty);
-    const room = this.interior(this.current);
+    // En la casilla de la arena más lejana al jugador (nunca en la suya)
+    const room = this.interior(this.bossCell());
     const group: Sprite[] = [];
     this.finalePh = 1;
     this.finaleMaxSum = 0;
@@ -7031,8 +7180,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   private spawnBoss() {
     if (this.finale && this.finaleMembers.length > 0) return this.spawnFinale();
-    const sp = this.randomSpotInRoom(110);
-    const { x, y } = this.spotClear(sp.x, sp.y, 60) ? sp : this.clearSpotNear(sp.x, sp.y, 60);
+    // Nunca en la casilla del jugador ni dentro de una estructura (en una sala grande, en la casilla más lejana)
+    const { x, y } = this.bossSpot(110, 60);
     const b = this.enemies.create(x, y, `${this.bossKey}-front`) as Sprite;
     b.setDisplaySize(150, 150).setData('sheet', this.bossKey).setData('size', 150);
     this.applyPmd(b, this.bossId, 150);
@@ -10145,8 +10294,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // T51: la mina puede estallar (y desaparecer) en su propio turno
       if (!e.active) return;
       const eai = e.getData('ai') as EnemyAI | undefined;
-      if (eai?.boss) this.updateBossAttacks(e, time);
-      else if (eai?.eliteMove && time >= (eai.eliteAt ?? 0)) {
+      if (eai?.boss) {
+        this.updateBossAttacks(e, time);
+        if (e.active) this.watchBossHp(e);
+      } else if (eai?.eliteMove && time >= (eai.eliteAt ?? 0)) {
         // Minijefe: alterna sus movimientos (con nombre y algo más de aviso); élite: su ataque extra
         const mini = !!e.getData('miniboss');
         // T50: el minijefe a veces usa uno de los ataques extra del bioma (más corto: fase 1)
@@ -10173,6 +10324,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     });
 
     this.unstickTick(time);
+    this.watchRoomClear();
     this.updateRunaway(time);
     this.updateThief();
     this.updateTimeTrial(time);
@@ -10757,6 +10909,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       } else if (this.fxBudget.take(this.time.now)) this.popup(enemy.x, enemy.y - 44, '¡Escudo!', 0x8ecbff);
     }
     this.countDamage(enemy, dmg, shieldLeft !== undefined && shieldLeft > 0 && shAi?.behavior === 'shielded');
+    // Vigilante del jefe: apunta el golpe (si está protegido, el daño se guarda y se aplica al acabar, con tope)
+    if (shAi?.boss && !enemy.getData('helper')) {
+      const prot = this.bossProtected(enemy);
+      noteBossHit(this.bossGuardOf(enemy), this.time.now, enemy.getData('hp') as number, dmg, prot, enemy.getData('maxHp') as number);
+      if (prot && this.time.now >= this.protPopAt) {
+        this.protPopAt = this.time.now + 700;
+        this.popup(enemy.x, enemy.y - (enemy.getData('size') as number) * 0.6, 'Protegido', 0x8fd3ff);
+      }
+    }
     let hp = (enemy.getData('hp') as number) - dmg;
     sfx('hit');
     if (status && this.fxBudget.take(this.time.now)) typeImpact(this, enemy.x, enemy.y, status, 0.8, 7);
@@ -11572,12 +11733,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.rivalWave++;
       const w = this.rivalWave;
       this.notify(`${this.rivalName} saca otro Pokémon\n${w}/${this.rivalTeam}`, { kind: 'danger', icon: 'sword' });
+      this.clearHoldUntil = this.time.now + 900 + 1500;
       this.time.delayedCall(900, () => !this.ended && this.current.id === room.id && this.spawnRivalMember(w));
       return;
     }
     if (room.kind === 'challenge' && this.challengeWave > 0 && this.challengeWave < CHALLENGE_WAVES) {
       this.challengeWave++;
       this.notify(`Oleada ${this.challengeWave}/${CHALLENGE_WAVES}`, { kind: 'danger', icon: 'heart' });
+      this.clearHoldUntil = this.time.now + 1000 + 1500;
       this.time.delayedCall(1000, () => this.spawnChallengeWave(room.id));
       return;
     }
