@@ -4,6 +4,7 @@
 import Phaser from 'phaser';
 import { GlyphText } from './art/keyGlyphs';
 import { currentInput, onInputChange, type InputDevice } from './inputMode';
+import { mobileUi } from './uiScale';
 
 export interface HelpBarStyle {
   [k: string]: unknown;
@@ -14,8 +15,10 @@ export interface HelpBarStyle {
 export function addHelpBar(scene: Phaser.Scene, x: number, y: number, pc: string, style: HelpBarStyle = {}, touch = ''): GlyphText {
   const size = typeof style.fontSize === 'number' ? style.fontSize : parseInt(style.fontSize ?? '14', 10) || 14;
   const t = new GlyphText(scene, x, y, '', { size, color: style.color ?? '#ffffff', bold: false, originX: 0.5, maxWidth: 920 });
-  const paint = (d: InputDevice) => {
+  const paint = (dev: InputDevice) => {
     if (!t.active) return;
+    // Móvil o tableta: aunque el navegador diga «ratón» (algunos dan los toques así), no se enseñan teclas
+    const d: InputDevice = mobileUi() && dev !== 'gamepad' ? 'touch' : dev;
     if (d === 'gamepad') return void t.setVisible(false);
     if (d === 'touch') {
       t.setVisible(!!touch);

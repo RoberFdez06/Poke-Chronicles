@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
 import { addHelpBar } from '../ui/helpBar';
+import { fitTextBox, fitTextLine } from '../ui/fitText';
+import { mobileUi } from '../ui/uiScale';
 import { fitDesign } from '../ui/layout';
 import { emptyRecords, MODES, MODE_LABEL, modeDesc, recordText, Records, type GameMode } from '../data/modes';
 import { loadCandies, loadDaily, loadRecords } from '../data/save';
@@ -125,7 +127,7 @@ export class ModeScene extends Phaser.Scene {
 
     addHelpBar(this, 480, 604, 'Flechas o ratón: elegir · Enter o clic: jugar · Q/E o ◀ ▶: dificultad' + (this.hasRuns ? ' · C: continuar' : '') + ' · Esc: menú', {
         fontFamily: UI.FONT, fontSize: '14px', color: '#ffffff',
-      })
+      }, 'Toca una tarjeta para jugar · ◀ ▶: dificultad')
       .setOrigin(0.5).setAlpha(0.85);
     this.select(Math.min(lastCard, CARDS.length - 1));
     this.paintDiff();
@@ -138,10 +140,17 @@ export class ModeScene extends Phaser.Scene {
     const frame = this.add.graphics();
     const icon = addModeIcon(this, def.id, w / 2, 40).setScale(0.8); // más pequeño y bajado: no toca el borde de la tarjeta
     icon.setPosition(w / 2 - 28 * 0.8, 40 - 28 * 0.8);
-    const name = this.add.text(w / 2, 74, def.name, { fontFamily: UI.FONT, fontSize: '20px', fontStyle: 'bold', color: '#2b3a67', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5);
+    const name = this.add.text(w / 2, 74, def.name, { fontFamily: UI.FONT, fontSize: '20px', fontStyle: 'bold', color: '#2b3a67', align: 'center' }).setOrigin(0.5);
+    // Móvil: la letra crece (main.ts) y antes el nombre saltaba de línea y la descripción pisaba el récord. Cada
+    // texto se encaja en su hueco: nombre en una línea, descripción hasta el récord y récord en una línea.
+    const minPx = mobileUi() ? 15 : 10;
+    fitTextLine(name, w - 16, minPx);
     const desc = this.add.text(w / 2, 92, def.desc, { fontFamily: UI.FONT, fontSize: '12px', color: '#4a5578', align: 'center', wordWrap: { width: w - 20 } }).setOrigin(0.5, 0);
-    const record = this.add.text(w / 2, h - 36, '', { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: '#b8860b', align: 'center', wordWrap: { width: w - 16 } }).setOrigin(0.5);
+    const record = this.add.text(w / 2, h - 36, '', { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: '#b8860b', align: 'center' }).setOrigin(0.5);
     const next = this.add.text(w / 2, h - 14, def.next, { fontFamily: UI.FONT, fontSize: '12px', color: '#7a849e' }).setOrigin(0.5);
+    fitTextLine(next, w - 16, minPx);
+    // Hueco de la descripción: de y = 92 hasta encima del récord (centrado en h − 36), con 4 px de aire
+    fitTextBox(desc, w - 20, h - 36 - record.height / 2 - 4 - 92, minPx);
     const box = this.add.container(cardX(i), cardY(i), [bg, frame, icon, name, desc, record, next]).setSize(w, h);
     box.setInteractive(new Phaser.Geom.Rectangle(0, 0, w, h), Phaser.Geom.Rectangle.Contains);
     box.input!.cursor = 'pointer';
@@ -194,7 +203,11 @@ export class ModeScene extends Phaser.Scene {
     const colors: Record<Difficulty, string> = { easy: '#8fe39a', normal: '#ffffff', hard: '#ff8a7a' };
     this.diffText.setText(DIFFICULTY_LABEL[this.diff]).setColor(colors[this.diff]);
     this.diffDesc.setText(DIFFICULTY_DESC[this.diff]);
-    this.cards.forEach((c, k) => c.record.setText(this.recordFor(CARDS[k].id)));
+    // En una línea: si no cabe se encoge (no salta de línea ni pisa «Luego: …»)
+    this.cards.forEach((c, k) => {
+      c.record.setScale(1).setText(this.recordFor(CARDS[k].id));
+      if (c.record.width > CARD.w - 16) c.record.setScale((CARD.w - 16) / c.record.width);
+    });
   }
 
   private pick(i: number) {
