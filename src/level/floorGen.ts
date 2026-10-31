@@ -426,3 +426,40 @@ export function bossArenaFloor(seed: number): Floor {
     }
   return { seed, cols: w, rows: h, rooms, startId: 0, itemId: 0, bossId: 0, groups: [rooms.map((r) => r.id)] };
 }
+
+/**
+ * Seguro de la arena del jefe: todas las casillas 'boss' del piso son UNA sala grande (un grupo, un jefe). Si algún paso
+ * posterior a la generación las hubiera separado (o el grupo hubiera quedado mal), las vuelve a unir en un grupo nuevo.
+ * Devuelve el mismo piso si ya estaba bien.
+ */
+export function repairBossArena(floor: Floor): Floor {
+  const bosses = floor.rooms.filter((r) => r.kind === 'boss');
+  if (bosses.length <= 1) return floor;
+  const ids = bosses.map((r) => r.id).sort((a, b) => a - b);
+  const g = bosses[0].group;
+  const grp = g !== undefined ? floor.groups?.[g] : undefined;
+  const ok = g !== undefined && bosses.every((r) => r.group === g) && !!grp && grp.length === ids.length && grp.every((id, i) => id === ids[i]);
+  if (ok) return floor;
+  // Se quitan las casillas de jefe de cualquier grupo en el que estuvieran y se crea uno solo con todas
+  const set = new Set(ids);
+  const old = (floor.groups ?? []).map((m) => m.filter((id) => !set.has(id)));
+  const keep: number[] = [];
+  const groups: number[][] = [];
+  old.forEach((m, i) => {
+    keep[i] = m.length > 1 ? groups.length : -1;
+    if (m.length > 1) groups.push(m);
+  });
+  const bossGroup = groups.length;
+  groups.push(ids);
+  const rooms = floor.rooms.map((r) => {
+    if (set.has(r.id)) return { ...r, group: bossGroup };
+    if (r.group === undefined) return r;
+    const ng = keep[r.group];
+    if (ng === undefined || ng < 0) {
+      const { group: _g, ...rest } = r;
+      return rest as Room;
+    }
+    return { ...r, group: ng };
+  });
+  return { ...floor, rooms, groups };
+}

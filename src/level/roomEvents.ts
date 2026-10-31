@@ -224,12 +224,16 @@ export function reserveSanctuaryRoom(floor: Floor): Floor {
     cur = { ...cur, chestRooms: (cur.chestRooms ?? []).filter((x) => x !== id) };
   }
   // 2) Salas grandes: se deshace la más aislada (sus salas vuelven a ser normales y separadas)
-  while (count(cur) < MEGA_STONE_MIN_PLAIN && (cur.groups?.length ?? 0) > 0) {
+  // Nunca la arena del jefe (ni otra sala grande que no sea de combate): deshacerla dejaría varias casillas de jefe
+  // sueltas, cada una con su pared y su propio jefe
+  const combatOnly = (f: Floor, grp: number[]) => grp.every((id) => f.rooms[id]?.kind === 'combat');
+  while (count(cur) < MEGA_STONE_MIN_PLAIN && (cur.groups ?? []).some((g) => combatOnly(cur, g))) {
     const groups = cur.groups!;
-    let best = 0;
+    let best = -1;
     groups.forEach((g, i) => {
+      if (!combatOnly(cur, g)) return;
       const score = (grp: number[]) => Math.min(...grp.map((id) => isolation(cur, id)));
-      if (score(g) < score(groups[best])) best = i;
+      if (best < 0 || score(g) < score(groups[best])) best = i;
     });
     const members = new Set(groups[best]);
     const rooms = cur.rooms.map((r) => {

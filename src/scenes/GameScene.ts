@@ -314,7 +314,7 @@ import {
 import { canAfford, describeEffects, optionLabel, pickStory, resolveChoice, type ChoiceEffects, type ChoiceState, type ChoiceStory } from '../level/choiceEvents';
 import { GARDEN_BERRIES, GARDEN_HEAL, GARDEN_SHIELD, growGarden, rollSeed, SEED_CHANCE, shouldAutoHeal, useCarried, type GardenBerryId } from '../data/berries';
 import { clampToBounds as clampInArena, clampVelocity, clipBeamToBounds, outOfBounds } from '../level/bounds';
-import { generateFloor, recoverRoomBase, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
+import { generateFloor, repairBossArena, recoverRoomBase, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
 import { biomeBossPool, biomeById, biomeEnemyPool, biomeFor, Biome, BIOMES, pickBossWeighted, pickMixedFoes } from '../level/biomes';
 import { forcedEventRng, hasRoutes, ROUTE_EVENT, routeLabel, routeMul, routeOptions, type RouteOption } from '../level/routes';
 import type { RouteSceneData } from './RouteScene';
@@ -1338,6 +1338,8 @@ export class GameScene extends Phaser.Scene {
       // Santuario obligatorio: si el piso no tiene sala normal para él, una sala de cofre pasa a ser normal
       this.floor = reserveSanctuaryRoom(this.floor);
     }
+    // La arena del jefe siempre es UNA sala grande con UN jefe (nunca casillas sueltas con un jefe en cada una)
+    this.floor = repairBossArena(this.floor);
     this.weather =
       (this.mode === 'normal' || this.mode === 'endless') && !isFinalFloor(this.mode, this.floorNum)
         ? weatherFor(this.biome.id, this.floorNum, mulberry32(this.floorSeed ^ 0x3c6ef372))
@@ -11830,19 +11832,23 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    */
   private hurtPlayer(enemy: Sprite, unblockable = false) {
     const now = this.time.now;
-    if (this.ended || this.transitioning || now < this.invulnUntil || isGodMode() || this.frozenSince !== undefined) return;
+    // El modo dios (admin) NO corta aquí: si no, el parry nunca llegaba a mirarse y no funcionaba con el modo dios
+    if (this.ended || this.transitioning || now < this.invulnUntil || this.frozenSince !== undefined) return;
+    const god = isGodMode();
     // Quien salta no hace daño mientras desaparece o recién aparecido
     const ai = enemy.getData('ai') as EnemyAI | undefined;
     if (ai && ai.behavior === 'hop' && ai.state !== 'walk') return;
     // El Pokémon raro solo quiere huir
     if (enemy.getData('runaway')) return;
     // T70: el ladrón no hace daño, solo roba
-    if (enemy.getData('thief')) return this.thiefTouch();
+    if (enemy.getData('thief')) return god ? undefined : this.thiefTouch();
     // Bajo tierra o escondido no hace daño al tocarte
     if (ai && (ai.behavior === 'burrow' || ai.behavior === 'ambush') && (ai.state === 'vanish' || ai.state === 'appear')) return;
     // T53: parry a tiempo. Va antes que la esquiva y el escudo para no gastarlos en un golpe que ya está parado.
     const parried = tryParry(this.parry, this.game.loop.time, now, unblockable);
     if (parried) return this.onParry(parried, enemy);
+    // Modo dios: invulnerable, pero después del parry
+    if (god) return;
     if (this.stats.dodge > 0 && Math.random() < this.stats.dodge) {
       this.invulnUntil = now + 500;
       this.popup(this.player.x, this.player.y - 50, '¡Esquivado!', 0xfff8c0);
