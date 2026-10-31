@@ -135,3 +135,37 @@ function minimalRun(): string {
     itemLevels: { lupa: 2 }, teraPick: 'fire', dark: true,
   });
 }
+
+test('fusión al recoger un 5.º poder: 4 sueltos, 3 fusiones + 1 suelto, reemplazo con aviso y todo fusionado', async () => {
+  const { canFuseOnPickup, applyPickupFusion, pickupFusionBlock, replaceLosesFusion, NEW_POWER_INDEX } = await import('../src/data/fusion.ts');
+  const mv = (id: number, type: string, power = 60) => ({ id, name: `m${id}`, type, power, shape: 'orb', cooldown: 1000 }) as never;
+  const four = [mv(1, 'fire'), mv(2, 'water'), mv(3, 'grass'), mv(4, 'ice')];
+  const nu = mv(5, 'rock');
+  // Con hueco no se ofrece (se recoge sin más)
+  assert.equal(canFuseOnPickup([four[0], null, four[2], four[3]], nu), false);
+  // 4 sueltos + nuevo
+  assert.ok(canFuseOnPickup(four, nu));
+  const a = applyPickupFusion(four, nu, 0, 1)!;
+  assert.ok(a.slots[0]!.fusion);
+  assert.equal(a.newAt, 1);
+  assert.equal((a.slots[1] as { id: number }).id, 5);
+  const b = applyPickupFusion(four, nu, 2, NEW_POWER_INDEX)!;
+  assert.equal(b.at, 2);
+  assert.equal(b.newAt, -1);
+  assert.ok(b.slots[2]!.fusion);
+  // 3 fusiones + 1 suelto + nuevo: se fusiona el suelto con el nuevo; las fusiones no se re-fusionan
+  const f = fusePowers(mv(7, 'dark'), mv(8, 'bug'));
+  const three = [f, f, mv(9, 'fairy'), f];
+  assert.ok(canFuseOnPickup(three, nu));
+  assert.match(pickupFusionBlock(three, nu, 0, NEW_POWER_INDEX)!, /fusionado/);
+  const c = applyPickupFusion(three, nu, 2, NEW_POWER_INDEX)!;
+  assert.equal(c.slots.filter((m) => m?.fusion).length, 4);
+  // Reemplazar una ranura con fusión avisa; una suelta no
+  assert.ok(replaceLosesFusion(three, 0));
+  assert.ok(!replaceLosesFusion(three, 2));
+  // Todo fusionado + nuevo: solo reemplazo (con aviso)
+  const all = [f, f, f, f];
+  assert.equal(canFuseOnPickup(all, nu), false);
+  assert.ok(replaceLosesFusion(all, 3));
+  assert.equal(applyPickupFusion(four, nu, 1, 1), null);
+});

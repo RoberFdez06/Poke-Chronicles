@@ -143,7 +143,8 @@ import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
 import { cry, playMenuMusic, playTrack, sfx } from '../ui/audio';
 import { setMusicTempo, sfxShift } from '../ui/audio';
-import { FUSION_TYPES, fusableSlots, fusionStyleOf, moveHasType, moveTypes, powerTypes, applyFusion } from '../data/fusion';
+import { FUSION_TYPES, fusableSlots, fusionStyleOf, moveHasType, moveTypes, powerTypes, applyFusion, applyPickupFusion } from '../data/fusion';
+import { SLOT_SWAP_FUSE } from './SlotSwapScene';
 import { castFusion } from './fusionCast';
 import { drawFusedSlotFrame, fusionFlash } from '../ui/art/fusionArt';
 import type { FusionData } from './FusionScene';
@@ -835,6 +836,8 @@ export class GameScene extends Phaser.Scene {
   private lastShotAt = -1e9;
   /** Ranura que has elegido en la pantalla de cambio (la usa gainItem una sola vez). */
   private chosenSlot?: number;
+  /** Ranuras ya fusionadas al recoger un 5.º poder (se aplican cuando el poder se recoge o se compra de verdad). */
+  private pendingFusion?: { slots: (MovePower | null)[]; at: number; newAt: number; result: MovePower };
   private swapOpen = false;
   /** T73: jefes vencidos (dan huecos de objeto) y la lista de elegir objeto (huecos llenos o forja) abierta. */
   private bossesBeaten = 0;
@@ -4206,15 +4209,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             this.time.delayedCall(60, () => !this.ended && this.chooseTeraType());
           }
         : undefined,
-      // Fusionar poderes: cierra la pausa y abre la pantalla de fusión (teclado, ratón y mando)
-      onFusion: () => {
-        this.scene.stop('Pause');
-        this.scene.resume();
-        this.input.keyboard?.resetKeys();
-        this.menuPadPrev = true;
-        this.padPrev = [true, true, true, true];
-        this.time.delayedCall(60, () => !this.ended && this.openFusion(false));
-      },
+      // Fusionar poderes ya no sale en la pausa: se ofrece al recoger un 5.º poder (askSlot); en admin, desde el panel
       onRestart: () => {
         clearRun(this.slot);
         this.scene.stop('Pause');
@@ -5047,10 +5042,45 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         // Hora real del juego: el reloj de la escena estaba parado mientras elegías, así que `this.time.now` es la
         // de cuando se abrió la pantalla y el enfriamiento ya habría pasado al volver (se reabría al momento)
         this.swapCooldownUntil = this.game.loop.time + 1200;
-        if (slot >= 0) then(slot);
+        if (slot === SLOT_SWAP_FUSE) {
+          // Fusionar: si se cancela, vuelve a la pantalla de cambio
+          if (!this.openPickupFusion(move, (plan) => { this.pendingFusion = plan; then(SLOT_SWAP_FUSE); }, () => this.time.delayedCall(60, () => !this.ended && this.askSlot(move, then, cancel)))) cancel();
+        } else if (slot >= 0) then(slot);
         else cancel();
       },
     });
+    this.scene.pause();
+    return true;
+  }
+
+  /** FusionScene con las 4 ranuras y el poder nuevo (5.º). `done` recibe las ranuras resultantes. */
+  private openPickupFusion(move: MovePower, done: (plan: NonNullable<GameScene['pendingFusion']>) => void, back: () => void): boolean {
+    if (this.ended || !this.scene.manager.keys['Fusion'] || this.scene.isActive('Fusion')) return false;
+    this.swapOpen = true;
+    this.player?.setVelocity(0, 0);
+    const close = () => {
+      this.scene.stop('Fusion');
+      this.scene.resume();
+      this.input.keyboard?.resetKeys();
+      this.menuPadPrev = true;
+      this.padPrev = [true, true, true, true];
+      this.swapOpen = false;
+      this.swapCooldownUntil = this.game.loop.time + 1200;
+    };
+    const data: FusionData = {
+      slots: [...this.slots],
+      incoming: move,
+      floor: this.floorNum,
+      usedFloor: this.fusionFloor,
+      onClose: () => { close(); back(); },
+      onFuse: (i, j) => {
+        close();
+        const r = applyPickupFusion(this.slots, move, i, j);
+        if (r) done(r);
+      },
+    };
+    this.scene.launch('Fusion', data);
+    this.scene.bringToTop('Fusion');
     this.scene.pause();
     return true;
   }
@@ -5332,12 +5362,28 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (item.item.id === TERA_GEM_ID && this.passives.filter((p) => p === TERA_GEM_ID).length === 1) this.time.delayedCall(400, () => !this.ended && this.chooseTeraType());
     } else {
       const free = this.slots.indexOf(null);
-      const slot = this.chosenSlot ?? (free !== -1 ? free : this.nextSlotReplace++ % SLOT_COUNT);
-      this.chosenSlot = undefined;
-      this.slots[slot] = item.move;
-      this.slotReady[slot] = 0;
-      this.stats = this.calcStats();
-      this.notify(`${pretty(item.move.name)}\nTecla ${slot + 1}`, { kind: 'item', icon: 'disc', tint: typeColor(item.move.type) });
+      const pf = this.chosenSlot === SLOT_SWAP_FUSE ? this.pendingFusion : undefined;
+      this.pendingFusion = undefined;
+      if (pf) {
+        // Recogido fusionándolo (o fusionando dos de las ranuras y metiendo el nuevo en la que queda libre)
+        this.chosenSlot = undefined;
+        this.slots = pf.slots;
+        this.slotReady[pf.at] = 0;
+        if (pf.newAt >= 0) this.slotReady[pf.newAt] = 0;
+        this.fusionFloor = this.floorNum;
+        this.slotShown = this.slotShown.map(() => '');
+        this.stats = this.calcStats();
+        const f = pf.result.fusion!;
+        if (this.player) fusionFlash(this, this.player.x, this.player.y, typeColor(f.types[0]), typeColor(f.types[1]));
+        this.notify(`¡Fusión! ${pf.result.name} (potencia ${pf.result.power})\nTecla ${pf.at + 1}${pf.newAt >= 0 ? ` · ${pretty(item.move.name)}: tecla ${pf.newAt + 1}` : ''}`, { kind: 'info', icon: 'star' });
+      } else {
+        const slot = this.chosenSlot !== undefined && this.chosenSlot >= 0 ? this.chosenSlot : free !== -1 ? free : this.nextSlotReplace++ % SLOT_COUNT;
+        this.chosenSlot = undefined;
+        this.slots[slot] = item.move;
+        this.slotReady[slot] = 0;
+        this.stats = this.calcStats();
+        this.notify(`${pretty(item.move.name)}\nTecla ${slot + 1}`, { kind: 'item', icon: 'disc', tint: typeColor(item.move.type) });
+      }
     }
     // ¡Sinergia! nueva (objeto + objeto o objeto + poder): aviso, destello y, si es la primera vez, al Libro
     this.announceSynergies(before);
