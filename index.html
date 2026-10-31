@@ -4,6 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>Poké Chronicles</title>
+    <!-- App instalable (pantalla completa real al añadirla a la pantalla de inicio) -->
+    <link rel="manifest" href="manifest.webmanifest" />
+    <meta name="theme-color" content="#172036" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Poké Chronicles" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
     <style>
       html, body { margin: 0; height: 100%; background: #172036; overflow: hidden; overscroll-behavior: none; }
       /* Táctil (T35): sin zoom, scroll ni selección al tocar */
@@ -13,6 +22,11 @@
          padding el lienzo podía meterse bajo el notch */
       #game { position: fixed; top: env(safe-area-inset-top, 0px); right: env(safe-area-inset-right, 0px);
         bottom: env(safe-area-inset-bottom, 0px); left: env(safe-area-inset-left, 0px); }
+      /* Altura dinámica: en móvil 100dvh descuenta la barra del navegador mientras está visible (y la recupera al
+         esconderse); donde no existe dvh se queda el cálculo con top/bottom de arriba */
+      @supports (height: 100dvh) {
+        #game { bottom: auto; height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+      }
       /* Móvil en vertical: el juego es apaisado; se pide girar el móvil (dibujo pixel art, sin emojis) */
       #rotate { display: none; position: fixed; inset: 0; z-index: 10; background: #172036; color: #f8f8f0;
         font: bold 20px "Pixelify Sans", system-ui, sans-serif; text-align: center; flex-direction: column;
