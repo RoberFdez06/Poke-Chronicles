@@ -1656,3 +1656,71 @@ Pendiente / no verificado:
 - Solo `tsc` y `npm test`; `npm run build` no arranca en la VM (falta `@rollup/rollup-linux-x64-gnu`). Sin probar en el
   navegador: aspecto de las 14 formas y estelas sobre los proyectiles, la vista previa, el destello, el marco dorado,
   el menú de pausa con 8-9 opciones y el equilibrio real.
+
+## Cinemática de la megaevolución del jugador (rama `mega`)
+- Sustituye el efecto anterior (crisálida + flash) por una cinemática de ~2,1 s (0,9 s con `lowFx()`), con el lenguaje
+  de los cambios de fase de los jefes: `freezeWorld`, zoom de cámara hacia el Pokémon (hasta ×1,45 sobre GAME_ZOOM),
+  temblor creciente, carga de energía (partículas en espiral con forma según el tipo: ascuas, gotas, chispas,
+  cristales, hojas, humo, escamas, rocas o estrellas; anillos que se cierran; viñeta oscura), la Mega Piedra baja con el
+  símbolo mega girando y lanza su rayo, destello blanco con la silueta que late y se funde de la forma base a la mega
+  (el sprite real cambia en mitad del destello: `applyMegaLook` espera a `megaLookGate`), onda expansiva con polvo,
+  escombros, estrellas y último sacudón, y vuelta de la cámara a su sitio con `thawWorld`.
+- Lógica pura en `src/scenes/megaCinematic.ts` (plan de fases, estado por instante, restauración de cámara, estilo por
+  tipo); dibujo en `src/ui/art/megaFx.ts` (`drawMegaCine`, `megaCineBurst`); conducción en
+  `GameScene.playMegaCinematic`. Invulnerable mientras dura. Se corta y restaura (zoom de sala, `setRoomCamera`, scroll
+  fijo en salas normales, deshielo solo si lo heló ella) al acabar la partida, cambiar de sala, caer o perder el
+  sprite; la pausa la detiene con el reloj de la escena. Reglas de la mega sin cambios.
+- Tests: `tests/megaCinematic.test.ts` (6). 737 en total.
+Pendiente / no verificado:
+- Solo `tsc` y `npm test`. Sin ver en el navegador (localhost:5173 sirve main): aspecto real, encuadre del zoom en salas
+  grandes, el fundido de silueta con sprites PMD y PokeAPI, y la carga tardía del sprite mega sin red.
+## Locomoción para todos: fotogramas de andar/volar/flotar hechos por código (rama `anim`, 31/10)
+Auditoría (tests/locomotionAudit.test.ts) sobre las 1059 especies y formas del juego (species-index + formas regionales):
+- 787 no tenían modo de moverse puesto a mano y caían en el de su tipo; de ellas ~85 estaban mal (fantasmas con patas
+  que flotaban, como Gengar, Golurk o Houndstone; capullos, masas, babosas y gusanos que «andaban»; Porygon2, Munna,
+  Vanillite, Carbink, Tapus o Nihilego andando; Seel, Dewgong, Tatsugiri o Veluza andando). Nuevo `SPECIES_LOCOMOTION`
+  (manda sobre listas y tipo) y las formas regionales sin entrada usan la de su especie normal.
+- Todo lo que no tenía hoja Walk de SpriteCollab (66 especies de `PMD_MISSING`, Stunfisk de Galar, megas sin hoja con
+  el dibujo de PokeAPI, Dinamax/Gigamax/Tera sobre el dibujo fijo, shinies o formas cuya hoja no carga) solo tenía la
+  pose: un saltito con balanceo, el dibujo entero rígido. Ahora `data/procLoco.ts` saca 4 fotogramas en pixel art del
+  dibujo fijo: andar levanta y adelanta un pie y luego el otro; volar bate las alas (columnas de los lados); flotar
+  ondula por columnas; reptar/nadar, onda lateral fila a fila; botar/rodar, aplastar y estirar apoyado en el suelo.
+  `ui/locoAnim.ts#procAnimate` crea la hoja `<textura>~loco-<modo>` una vez y pone el fotograma con setFrame (no con
+  anims, para no pisar el giro frente/espalda de `face`); parado vuelve al dibujo original. Se usa en `dressSprites`
+  (jugador, enemigos, minijefes, jefes y finales), en `dressLoose` (aliado) y en el Tower Defense (también los
+  voladores, que antes no se animaban).
+- Tests nuevos: cada modo da 4 fotogramas distintos y no vacíos, andar alterna los pies, volar mueve las alas, el ciclo
+  pasa por todos los fotogramas y para en el 0, todas las especies/formas tienen animación, y las correcciones por
+  especie. `tsc` limpio y `npm test` en verde.
+Pendiente / no verificado:
+- Sin probar en el navegador (localhost:5173 sirve main, no la rama): falta ver el aspecto real de los fotogramas en
+  sprites de PokeAPI (sobre todo andar en Pokémon de frente con patas muy juntas) y que no haya parpadeos al girarse.
+## IA de enemigos más lista: nadie se queda inerte (rama `ia`, 31/10)
+Queja: «si me quedo quieto muchas veces ni avanzan ni nada». Causas encontradas en `updateEnemy` (GameScene):
+- **Emboscador**: se quedaba invisible y quieto hasta 9 s si no te acercabas a 180 px.
+- **Atascos**: el campo de flujo solo existe en la sala actual con obstáculos; en salas grandes (otra celda) o con el
+  enemigo en una casilla no transitable iba en línea recta contra la roca, y nada detectaba que no avanzaba.
+- **Apilados**: con `collider(enemies, enemies)` los de detrás empujaban contra el de delante y se quedaban quietos.
+- **Tiradores**: se ponían en su franja tras una roca y disparaban a la piedra sin recolocarse.
+Cambios (`src/data/enemyAI.ts`, puro y testeado; GameScene lo aplica a todos los no jefes, también en Oleadas, Torre
+y Tower Defense, que usan el mismo `updateEnemy`):
+- Arquetipos por comportamiento (acosador, flanqueador, francotirador, embestidor, enjambre, apoyo).
+- Separación entre enemigos (radio 56 px) mezclada con la dirección deseada en `walk`.
+- Detector de atascos: si en 700 ms avanza < 10 px queriendo moverse, rodea de lado 650 ms (alterna lado).
+- Vigilante: más de 1,2 s casi quieto en estado normal, lejos de ti y sin telegrafiar → se le empuja hacia ti.
+- Perseguidores sin obstáculos buscan su hueco alrededor de ti (`flankDir`) en vez de hacer cola.
+- Tiradores y curanderos: distancia óptima con strafe y corrección radial (`rangedDir`); sin línea de visión
+  (`lineOfSight` en la rejilla) se recolocan por el camino.
+- Emboscador: escondido como mucho 2,6 s y se arrastra hacia ti mientras tanto.
+- Poca vida (<25 %, no embestidores/enjambre/jefes): se retira 0,9 s, como mucho una vez cada 5 s. Tras tu esquiva o
+  parry a < 150 px los cuerpo a cuerpo dudan 0,38 s.
+- Equilibrio: daño sin tocar; pausas entre ataques ×1,12 (mordisco, embestida, supervisor, disparo) para compensar
+  la presión extra. Telegrafías (tintes, parpadeos) iguales.
+- Tests: `tests/enemyAI.test.ts` (10), con mini simulación: jugador quieto 10 s tras un muro → todos llegan y nadie
+  está parado > 1 s; cinco apilados se reparten. 741 en total.
+Pendiente / no verificado: solo `tsc` y `npm test`; sin probar en el navegador (localhost:5173 sirve main). Falta ver a
+ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que la retirada no resulte rara.
+## Fallos visuales en la pelea de jefe (Lunala, desierto) — rama `fallos`
+- **Bloque de ladrillo hueco en mitad de la arena (colisión mala)**: en las salas grandes de 2x2, la unión derecha y la de abajo pintaban cada una su muro hacia la esquina central y nadie ponía suelo allí. Quedaba un pilar de muro con el fondo asomando, con colisión para el jugador; los voladores (Lunala) lo atravesaban. Ahora, si las cuatro casillas forman un bloque 2x2, la esquina es suelo y se quitan esos muros interiores (`src/level/joinCorner.ts`, `buildJoin`). Test: `tests/joinCorner.test.ts`.
+- **Filtro en pantalla**: el tinte del clima seguía a `worldView`, que va un fotograma por detrás de la cámara, y dejaba una franja sin cubrir; ahora lleva 96 px de margen. Los rayos del sol (triángulos de un solo tono) eran más suaves pero se veían como cantos: ahora son más tenues y van en tres capas.
+- **Oscuridad con bordes**: el halo se cuantizaba en 6 escalones (anillos visibles) y los rectángulos de alrededor se solapaban 2 px con la textura (marco más oscuro). Ahora el degradado es suave (`darkHoleAlpha`, smoothstep), con efectos bajos también tiene degradado (más estrecho) y el solape es de 1 px. Test en `tests/darkAlpha.test.ts`.

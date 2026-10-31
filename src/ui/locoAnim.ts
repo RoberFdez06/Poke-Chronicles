@@ -2,7 +2,8 @@
 // si lo tiene, se compensa para que no se mueva), ángulo y, solo en los que no tienen cuerpo físico, aplastar y
 // estirar (en los que sí, cambiar la escala cambiaría su caja de choque).
 import Phaser from 'phaser';
-import { locoPose, locomotionOf, sheetHover, type LocoPose } from '../data/locomotion';
+import { locoPose, locomotionOf, sheetHover, type Locomotion, type LocoPose } from '../data/locomotion';
+import { PROC_FRAMES, procFrameAt, procFrames } from '../data/procLoco';
 
 type Sprite = Phaser.GameObjects.Sprite;
 type Body = Phaser.Physics.Arcade.Body;
@@ -87,7 +88,69 @@ export function poseFor(s: Sprite, types: readonly string[], species: number | u
 
 /** Para sprites sueltos (aliados, ayudantes, vistas del Tower Defense): calcula y pone la pose; devuelve la de la sombra. */
 export function dressLoose(s: Sprite, types: readonly string[], species: number | undefined, t: number, moving: boolean): number {
+  procAnimate(s, types, species, t, moving);
   const pose = poseFor(s, types, species, t, moving, !!s.getData('pmd'));
   applyPose(s, pose);
   return pose.shadow;
+}
+
+/** Sufijo de las hojas de locomoción hechas por código (data/procLoco.ts) a partir de un dibujo fijo. */
+export const PROC_SUFFIX = '~loco-';
+const procFailed = new Set<string>();
+
+/** Textura de origen de un sprite (quitando la hoja procedural si ya la lleva). */
+export const procBaseKey = (key: string): string => (key.includes(PROC_SUFFIX) ? key.slice(0, key.indexOf(PROC_SUFFIX)) : key);
+
+/**
+ * Crea (una vez) la hoja de 4 fotogramas de `loco` a partir del dibujo fijo `base`. Devuelve su clave, o null si no
+ * se puede (textura con varios fotogramas, imagen sin permiso de lectura, vacía…).
+ */
+export function ensureProcSheet(scene: Phaser.Scene, base: string, loco: Locomotion): string | null {
+  const key = `${base}${PROC_SUFFIX}${loco}`;
+  if (scene.textures.exists(key)) return key;
+  if (procFailed.has(key) || !scene.textures.exists(base) || typeof document === 'undefined') return null;
+  try {
+    const tex = scene.textures.get(base);
+    if (tex.frameTotal > 2) throw new Error('hoja con varios fotogramas');
+    const img = tex.getSourceImage() as CanvasImageSource & { width: number; height: number };
+    const w = img.width, h = img.height;
+    if (!w || !h) throw new Error('vacía');
+    const c = document.createElement('canvas');
+    c.width = w * PROC_FRAMES;
+    c.height = h;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('sin 2d');
+    ctx.drawImage(img, 0, 0);
+    const src = ctx.getImageData(0, 0, w, h).data;
+    procFrames(src, w, h, loco).forEach((px, i) => {
+      const d = ctx.createImageData(w, h);
+      d.data.set(px);
+      ctx.putImageData(d, i * w, 0);
+    });
+    scene.textures.addSpriteSheet(key, c as unknown as HTMLImageElement, { frameWidth: w, frameHeight: h });
+    if (!scene.textures.exists(key)) throw new Error('no se creó');
+    scene.textures.get(key).setFilter(tex.source[0]?.scaleMode === Phaser.ScaleModes.NEAREST ? Phaser.Textures.FilterMode.NEAREST : Phaser.Textures.FilterMode.LINEAR);
+    return key;
+  } catch {
+    procFailed.add(key);
+    return null;
+  }
+}
+
+/**
+ * Sprites sin hoja de SpriteCollab (dibujo fijo de PokeAPI, megas, Dinamax, oscuros, formas sin hoja…): pone el
+ * fotograma de locomoción hecho por código (pies que se levantan, alas que baten, onda al reptar…). Parado vuelve
+ * al dibujo original. Devuelve si lo ha podido animar. Si otro código cambia la textura (girarse, mega…), en la
+ * siguiente llamada se rehace a partir de la nueva.
+ */
+export function procAnimate(s: Sprite, types: readonly string[], species: number | undefined, t: number, moving: boolean): boolean {
+  if (s.getData('pmd') || !s.texture) return false;
+  const base = procBaseKey(s.texture.key);
+  if (base === '__MISSING' || base === '__DEFAULT') return false;
+  const loco = locomotionOf(types, species);
+  const sheet = ensureProcSheet(s.scene, base, loco);
+  if (!sheet) return false;
+  const frame = procFrameAt(loco, t, moving, stepSeed(s));
+  if (s.texture.key !== sheet || String(s.frame.name) !== String(frame)) s.setTexture(sheet, frame);
+  return true;
 }

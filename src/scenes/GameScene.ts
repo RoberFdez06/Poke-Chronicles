@@ -12,6 +12,7 @@ import { encodeSeed, newSeed, type SeedRun } from '../data/seedCode';
 import { damageMul, effectOf, EFFECT_COLOR, EFFECT_LABEL, rawEffectiveness } from '../data/typeChart';
 import { weatherChip, weatherFor, weatherHurts, weatherPowerMul, WEATHER_DESC, WEATHER_LABEL, WEATHER_TICK_MS, type Weather } from '../data/weather';
 import { WeatherFx } from '../ui/weatherFx';
+import { joinWalls } from '../level/joinCorner';
 import { phaseAtSeconds, phasePowerMul, pickByPhase, PHASE_DESC, PHASE_NOTICE, type Phase } from '../data/dayNight';
 import { TouchControls, type TouchButton } from '../ui/touchControls';
 import { touchOnlyDevice } from '../data/controls';
@@ -176,7 +177,8 @@ import { dynamaxBurst, teraBurst, zImpactFx, zMoveFx, zStarFx } from '../ui/art/
 import { darkAura, darkBurst } from '../ui/art/darkFx';
 import { darkCooldown, darkEnemyStats, darkName, darkOdds, darkPlayerStats, darkTickets, DARK_COLORS, DARK_REWARD, rollDark, type DarkWho } from '../data/darkMon';
 import { guardianKindLabel, MEGA_GUARDIAN, pickGuardian } from '../data/guardians';
-import { drawMegaStoneHud, drawPowerMeterFill, drawPowerSelHud, playerFormAura, playerMegaFx } from '../ui/art/megaFx';
+import { drawMegaCine, drawMegaStoneHud, drawPowerMeterFill, drawPowerSelHud, megaCineBurst, playerFormAura } from '../ui/art/megaFx';
+import { megaCamRestore, megaCineFrame, megaCinePlan, megaTypeStyle, type MegaCamHome } from './megaCinematic';
 import { exhaustedFx, finaleShiftFx, judgmentRects, judgmentStrike, judgmentWarn, drawNovaWave, novaWarn } from '../ui/art/finaleFx';
 import { clampFinaleHp, FINALE_AFTER_BEAT_MS, FINALE_ATTACK_LABEL, FINALE_BEAT_MS, finaleAttacks, finaleHpFloor, finaleIntervalMul, finalePhaseText, judgmentHits, judgmentPlan, judgmentSpec, NOVA, nextFinalePhase, novaDurationMs, novaGapAt, pickFinaleAttack, type FinaleAttack, type FinalePhase } from '../data/finalePhases';
 import { chargedShotFx, chargeGlow } from '../ui/art/shotFx';
@@ -213,7 +215,7 @@ import { basicShotFor, bossStyles, foeStyleFor, styleForMove, TYPE_STYLES, type 
 import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
 import { pmdAvailable, pmdMega, pmdShiny } from '../data/pmdForms';
-import { applyPose, dressLoose, liftSprite, poseFor, resetLift } from '../ui/locoAnim';
+import { applyPose, dressLoose, liftSprite, poseFor, procAnimate, resetLift } from '../ui/locoAnim';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, W } from '../ui/layout';
 import { hudLayout, itemGrid, nameFontSize, HUD_BADGE_MAX_W, HUD_ITEM_R, HUD_PROGRESS_FONT } from '../data/hudLayout';
 import {
@@ -348,12 +350,13 @@ import {
 } from '../data/legendHunt';
 import { submitComboBest, unlockPokemon } from '../data/save';
 import { canCapture, canThrow, CAPTURE_RANGE, CAPTURE_RETRY_MS, newCaptureState, nextFloorCapture, resolveThrow, rollCapture, type CaptureState } from '../data/capture';
-import { DARK_ALPHA, DARK_RADIUS, darkEdge, quantizeDarkAlpha, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, ruleDamageMul, ruleNotice, shouldMultiply, speedRoomBonus, MULTIPLY_HP, MULTIPLY_SIZE, SPEED_ROOM_MUL, type RoomRule } from '../level/roomRules';
+import { DARK_ALPHA, DARK_RADIUS, darkEdge, darkHoleAlpha, oneTypeFor, pickRoomRules, ROOM_RULE_COLOR, ruleDamageMul, ruleNotice, shouldMultiply, speedRoomBonus, MULTIPLY_HP, MULTIPLY_SIZE, SPEED_ROOM_MUL, type RoomRule } from '../level/roomRules';
 import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data/secondChance';
 import type { SecondChanceChoice } from './SecondChanceScene';
 import { accountInfo } from '../net/cloud';
 import { blitzAttacksFor, bounceAngles, bounceSpec, bounceStep, crossArms, crossHits, crossMinePlaces, crossSpec, dashEnd, dashSpec, gridBeams, gridHits, gridSpec, helixAngles, helixSpec, isBlitzAttack, meteorSpec, meteorSpots, miasmaSpec, wallHits, wallPlan, wallPos, wallSpec, wallTravelMs, BLITZ_MIN_WARN, type BlitzAttack, type Orb } from '../data/bossBlitz';
 import { bounceWarn, dashWarn, drawBounceOrb, drawCrossBlast, drawGridBeam, drawMiasma, drawWallBar, gridWarn, meteorImpact, meteorWarn, miasmaWarn, mineWarn, wallWarn } from '../ui/art/blitzFx';
+import { AI_ATTACK_SLOWDOWN, AMBUSH_MAX_HIDE_MS, ARCHETYPE, flankDir, lineOfSight, newMemo, rangedDir, separation, shouldFlinch, steer, tickIdle, tickRetreat, tickStuck, unstickDir, type AIMemo } from '../data/enemyAI';
 import { BOSS_SAFE_TELEPORT_DIST, BOSS_TELEPORT_GRACE_MS, PHASE_INVULN_MAX_MS, SPAWN_SAFE_DIST, clearOfRects, extendGrace, nearestClearPoint, phaseShieldStuck, pickSafeSpot, shiftTimers, type Rect as SafeRect } from '../data/bossSafety';
 
 const FALL_LOOK_MS = 500; // pausa tras aterrizar en la arena nueva (nadie se mueve ni recibe daño)
@@ -490,6 +493,8 @@ interface EnemyAI {
   tempo?: Temperament;
   /** Respiro tras aparecer, una intro o un cambio de fase: hasta entonces no salta, no se esconde ni embiste. */
   graceUntil?: number;
+  /** IA común (enemyAI.ts): atascos, inactividad, retirada y duda. */
+  memo?: AIMemo;
 }
 
 /** Velocidad de los proyectiles enemigos (px/s) y cuánto duran. */
@@ -696,6 +701,10 @@ export class GameScene extends Phaser.Scene {
   private powerFormLoopAt = 0;
   private megaPulseAt = 0;
   private megaKey: string | null = null;
+  /** Cinemática de megaevolución en marcha (megaCinematic.ts): `stop` la corta y deja cámara y mundo como estaban. */
+  private megaCine?: { stop: () => void };
+  /** Mientras dura la cinemática, applyMegaLook espera a este aviso para cambiar el sprite en mitad del destello. */
+  private megaLookGate: Promise<void> | null = null;
   /** Próximo momento en que un golpe puede sumar adrenalina. */
   private adrHitAt = 0;
   /** T75: medidor de poder (Dinamax, Tera, Z), si ya se usó el Cristal Z y su barra del HUD. */
@@ -1224,6 +1233,8 @@ export class GameScene extends Phaser.Scene {
     this.powerMeterHud = undefined;
     this.megaPulseAt = 0;
     this.megaKey = null;
+    this.megaCine = undefined;
+    this.megaLookGate = null;
     this.megaGlowAt = 0;
     this.dpadUpPrev = false;
     this.megaHud = undefined;
@@ -1574,6 +1585,8 @@ export class GameScene extends Phaser.Scene {
       // SpriteCollab, ciclo de pasos, aleteo, ondulación…; con hoja, solo balanceo y, si vuela, que vaya por el aire
       const types = (s.getData('types') as string[] | undefined) ?? (s.getData('btypes') as string[] | undefined) ?? (s === this.player ? this.playerTypes : [(s.getData('ai') as EnemyAI | undefined)?.type ?? 'normal']);
       const species = s === this.player ? this.formId : (s.getData('speciesId') as number | undefined);
+      // Sin hoja: fotogramas de locomoción hechos por código (pies, alas, onda…) además de la pose
+      if (!pmd) procAnimate(s, types, species, time, moving);
       const pose = poseFor(s, types, species, time, moving, pmd);
       // Quitar la pose antes de medir los pies (si no, la sombra subiría con el dibujo)
       liftSprite(s, 0, 0);
@@ -1587,7 +1600,7 @@ export class GameScene extends Phaser.Scene {
       sh.setPosition(feet ? s.x + ((s.flipX ? s.frame.width - feet.cx : feet.cx) - s.originX * s.frame.width) * s.scaleX : body.center.x, feetY);
       sh.setSize(sw, sw * 0.3);
       // Parpadeo mientras el jugador es invulnerable tras un golpe
-      if (s === this.player && !this.ended && !this.evolving) s.setAlpha(time < this.invulnUntil && Math.floor(time / 70) % 2 ? 0.35 : 1);
+      if (s === this.player && !this.ended && !this.evolving && !this.megaCine) s.setAlpha(time < this.invulnUntil && Math.floor(time / 70) % 2 ? 0.35 : 1);
       sh.setVisible(s.visible).setAlpha(Math.max(0.4, s.alpha));
       // Al disparar se echa un poco hacia atrás; al acabar, el jugador lo anima combatFx (no se toca el ángulo)
       const kick = s === this.player ? Math.max(0, 1 - (time - this.lastShotAt) / 130) * -Math.sign(this.aim.x || 1) * 7 : 0;
@@ -3397,12 +3410,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.hp = Math.min(this.stats.maxHp, this.hp + Math.max(0, this.stats.maxHp - prevMax));
     this.hpMark = this.hp;
     sfx('evolve');
-    const pb = this.player.body as Body | null;
-    // Mega Piedra, crisálida de luz y símbolo mega (con efectos bajos, solo un anillo)
-    playerMegaFx(this, this.player.x, this.player.y, pb ? pb.bottom : this.player.y + 30, typeColor(this.tearType));
-    if (!lowFx()) this.cameras.main.flash(300, 255, 255, 255);
+    // Cinemática: mundo quieto, zoom, temblor, carga de energía y cambio de forma en directo (megaCinematic.ts)
+    this.playMegaCinematic();
     this.notify(`¡${megaDisplayName(this.formId, this.niceName())}!\nMás daño, velocidad y PS durante ${Math.round(POWER_FORMS.mega.durationMs / 1000)} s`, { kind: 'item', icon: 'pokeball' });
-    void cry(this.formId);
     void this.applyMegaLook();
     this.saveNow();
   }
@@ -3419,6 +3429,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const mid = pmdMega(this.formId, this.shiny);
     if (mid !== null) {
       for (const [k, v] of await loadPmd(this, [mid]).catch(() => new Map<number, PmdSheet>())) this.pmd.set(k, v);
+      if (this.megaLookGate) await this.megaLookGate;
       if (this.pmd.has(mid) && powerFormActive(this.powerForm) && this.player?.active && !this.ended && this.applyPmd(this.player, mid, 96, true)) {
         this.megaKey = `pmd-${mid}`;
         return;
@@ -3439,6 +3450,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.load.once(Phaser.Loader.Events.COMPLETE, () => resolve());
       this.load.start();
     });
+    if (this.megaLookGate) await this.megaLookGate;
     if (!this.textures.exists(`${key}-front`) || !powerFormActive(this.powerForm) || !this.player?.active || this.ended) return;
     for (const side of ['front', 'back']) {
       if (this.textures.exists(`${key}-${side}`)) this.textures.get(`${key}-${side}`).setFilter(Phaser.Textures.FilterMode.NEAREST);
@@ -3446,6 +3458,101 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.megaKey = key;
     // Un poco más grande: la forma mega impone más (el cuerpo físico es el de siempre)
     this.setStaticLook(key, 96);
+  }
+
+  /**
+   * Cinemática de la megaevolución del jugador (~2 s; ~0,9 s con efectos bajos), como los cambios de fase de los jefes:
+   * congela el mundo, acerca la cámara al Pokémon con temblor creciente, la Mega Piedra carga energía de su tipo,
+   * destello con la silueta blanca que se funde de la forma base a la mega (applyMegaLook espera a megaLookGate), onda
+   * expansiva con sacudón y la cámara vuelve a su sitio. Invulnerable mientras dura. Si se muere, se cambia de sala o
+   * termina la partida a medias, `stop` lo deja todo como estaba (zoom de la sala, límites, scroll y mundo).
+   */
+  private playMegaCinematic() {
+    this.megaCine?.stop();
+    const p = this.player;
+    const cam = this.cameras.main;
+    const low = lowFx();
+    const plan = megaCinePlan(low);
+    const color = typeColor(this.tearType);
+    const style = megaTypeStyle(this.tearType);
+    const roomId = this.current.id;
+    const home: MegaCamHome = { zoom: GAME_ZOOM, scrollX: cam.scrollX, scrollY: cam.scrollY, follows: this.current.group !== undefined };
+    const mid0 = { x: cam.midPoint.x, y: cam.midPoint.y };
+    const frozeWorld = this.frozenSince === undefined;
+    this.freezeWorld();
+    this.invulnUntil = Math.max(this.invulnUntil, this.time.now + plan.total + 500);
+    cam.stopFollow();
+    cam.removeBounds();
+    let openGate: () => void = () => undefined;
+    this.megaLookGate = new Promise<void>((r) => (openGate = r));
+    // Siluetas blancas: la de la forma base (fija) y la de la forma actual (sigue al sprite; tras el cambio, la mega)
+    const ghost = (key: string, frame: string | number) => this.add.image(p.x, p.y, key, frame).setDepth(p.depth + 0.2).setTintFill(0xffffff).setAlpha(0).setFlipX(p.flipX).setOrigin(p.originX, p.originY);
+    const oldG = ghost(p.texture.key, p.frame.name).setDisplaySize(p.displayWidth, p.displayHeight);
+    const curG = ghost(p.texture.key, p.frame.name);
+    const oldW = p.displayWidth;
+    const oldH = p.displayHeight;
+    const g = this.add.graphics().setDepth(p.depth + 0.1);
+    const t0 = this.time.now;
+    let burst = false;
+    let swapped = false;
+    let done = false;
+    const feet = () => {
+      const b = p.body as Body | null;
+      return b ? b.bottom : p.y + 30;
+    };
+    const stop = () => {
+      if (done) return;
+      done = true;
+      ev.remove();
+      g.destroy();
+      oldG.destroy();
+      curG.destroy();
+      openGate();
+      this.megaLookGate = null;
+      this.megaCine = undefined;
+      if (p.active) p.setAlpha(1);
+      const r = megaCamRestore(home, { frozeWorld, roomChanged: this.current.id !== roomId, ended: this.ended });
+      cam.shakeEffect.reset();
+      // Cruzando una puerta o cayendo por la trampilla, la cámara es de la transición (y la escena se reinicia)
+      if (this.transitioning || this.falling) return;
+      cam.setZoom(r.zoom);
+      this.setRoomCamera(this.current);
+      if (r.scroll && this.current.group === undefined) cam.setScroll(r.scroll.x, r.scroll.y);
+      if (r.thaw) this.thawWorld();
+      this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 400);
+    };
+    const tick = () => {
+      if (done) return;
+      if (this.ended || this.transitioning || this.falling || !p.active || this.current.id !== roomId) return stop();
+      const f = megaCineFrame(plan, this.time.now - t0);
+      if (f.phase === 'done') return stop();
+      // Cámara: zoom y encuadre hacia el Pokémon (mezcla del centro de la sala con su posición) y temblor
+      const focus = plan.zoomPeak > 1 ? (f.zoom - 1) / (plan.zoomPeak - 1) : 0;
+      cam.setZoom(home.zoom * f.zoom);
+      cam.centerOn(Phaser.Math.Linear(mid0.x, p.x, focus), Phaser.Math.Linear(mid0.y, p.y - 10, focus));
+      if (f.shake > 0.0005) cam.shake(80, f.shake, true);
+      if (!swapped && this.time.now - t0 >= plan.swapAt) {
+        swapped = true;
+        openGate(); // applyMegaLook pone ya el sprite mega si está cargado (si no, al llegar)
+        if (!low) cam.flash(180, 255, 255, 255);
+      }
+      if (!burst && f.phase === 'burst') {
+        burst = true;
+        megaCineBurst(this, p.x, p.y, feet(), color, low);
+        void cry(this.formId);
+      }
+      // Sprite: la forma real se apaga bajo la silueta blanca, que late y se funde de base a mega
+      p.setAlpha(1 - f.white * 0.85);
+      curG.setTexture(p.texture.key, p.frame.name).setFlipX(p.flipX).setPosition(p.x, p.y).setDisplaySize(p.displayWidth * f.pulse, p.displayHeight * f.pulse);
+      curG.setAlpha(swapped ? f.white * f.morph : f.white);
+      oldG.setPosition(p.x, p.y).setDisplaySize(oldW * f.pulse, oldH * f.pulse);
+      oldG.setAlpha(swapped ? f.white * (1 - f.morph) : 0);
+      g.clear();
+      drawMegaCine(g, f, p.x, p.y, feet(), color, style, this.time.now - t0, low);
+    };
+    const ev = this.time.addEvent({ delay: 33, loop: true, callback: tick });
+    this.megaCine = { stop };
+    tick();
   }
 
   /** Pone un sprite de PokeAPI (sin hoja animada de SpriteCollab) con su cuerpo redondo de siempre. */
@@ -4204,17 +4311,37 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.add.tileSprite(x, y, w, h, this.tiles.wall).setOrigin(0).setTileScale(ts).setDepth(0.25);
       this.addWall(x, y, w, h);
     };
-    if (this.mergedSide(room, 'right')) {
-      const b = this.interior(this.floor.rooms[room.doors.right!]);
+    // Sala 2x2: la esquina central entre las cuatro casillas es suelo, sin muros (antes salía un bloque de
+    // ladrillo hueco en mitad de la arena; ver joinCorner.ts)
+    const rightRoom = this.mergedSide(room, 'right') ? this.floor.rooms[room.doors.right!] : undefined;
+    const downRoom = this.mergedSide(room, 'down') ? this.floor.rooms[room.doors.down!] : undefined;
+    const jw = joinWalls({
+      right: !!rightRoom,
+      down: !!downRoom,
+      rightThenDown: !!rightRoom && this.mergedSide(rightRoom, 'down'),
+      downThenRight: !!downRoom && this.mergedSide(downRoom, 'right'),
+    });
+    if (rightRoom) {
+      const b = this.interior(rightRoom);
       this.add.tileSprite(a.x1, a.y0, b.x0 - a.x1, a.y1 - a.y0, this.tiles.floor).setOrigin(0).setTileScale(ts).setTilePosition(a.x1 / ts, a.y0 / ts).setDepth(0.02);
-      wallTile(a.x1 + WALL, a.y0 - WALL, b.x0 - a.x1 - WALL * 2, WALL);
-      wallTile(a.x1 + WALL, a.y1, b.x0 - a.x1 - WALL * 2, WALL);
+      // Muro de arriba de la unión: también sobra si por encima hay otra fila de la misma sala 2x2
+      const upRoom = this.mergedSide(room, 'up') ? this.floor.rooms[room.doors.up!] : undefined;
+      const topOpen = !!upRoom && this.mergedSide(rightRoom, 'up') && this.mergedSide(upRoom, 'right');
+      if (!topOpen) wallTile(a.x1 + WALL, a.y0 - WALL, b.x0 - a.x1 - WALL * 2, WALL);
+      if (jw.rightBottom) wallTile(a.x1 + WALL, a.y1, b.x0 - a.x1 - WALL * 2, WALL);
     }
-    if (this.mergedSide(room, 'down')) {
-      const b = this.interior(this.floor.rooms[room.doors.down!]);
+    if (downRoom) {
+      const b = this.interior(downRoom);
       this.add.tileSprite(a.x0, a.y1, a.x1 - a.x0, b.y0 - a.y1, this.tiles.floor).setOrigin(0).setTileScale(ts).setTilePosition(a.x0 / ts, a.y1 / ts).setDepth(0.02);
-      wallTile(a.x0 - WALL, a.y1, WALL, b.y0 - a.y1);
-      wallTile(a.x1, a.y1, WALL, b.y0 - a.y1);
+      const leftRoom = this.mergedSide(room, 'left') ? this.floor.rooms[room.doors.left!] : undefined;
+      const leftOpen = !!leftRoom && this.mergedSide(downRoom, 'left') && this.mergedSide(leftRoom, 'down');
+      if (!leftOpen) wallTile(a.x0 - WALL, a.y1, WALL, b.y0 - a.y1);
+      if (jw.downRight) wallTile(a.x1, a.y1, WALL, b.y0 - a.y1);
+    }
+    if (jw.cornerFloor && rightRoom && downRoom) {
+      const bx = this.interior(rightRoom).x0;
+      const by = this.interior(downRoom).y0;
+      this.add.tileSprite(a.x1, a.y1, bx - a.x1, by - a.y1, this.tiles.floor).setOrigin(0).setTileScale(ts).setTilePosition(a.x1 / ts, a.y1 / ts).setDepth(0.02);
     }
   }
 
@@ -5615,6 +5742,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private doParry() {
     if (this.ended || this.transitioning || this.evolving || !this.player?.active) return;
     if (!pressParry(this.parry, this.game.loop.time)) return;
+    this.playerActionAt = this.time.now;
     sfx('select');
     this.parryShieldFx?.destroy();
     this.parryShieldFx = parryShield(this, this.player, typeColor(this.shotType()), PARRY_WINDOW_MS);
@@ -5745,6 +5873,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.playerKnockUntil = now + DASH_MS;
     this.invulnUntil = Math.max(this.invulnUntil, now + DASH_INVULN_MS);
     noteDash(this.counters);
+    this.playerActionAt = now;
     sfx('select');
     this.face(this.player, this.dash.dir);
     dashPuff(this, this.player.x, this.player.y, -this.dash.dir.x, -this.dash.dir.y, typeColor(this.shotType()));
@@ -5842,7 +5971,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /**
    * Sala a oscuras: una capa negra con un agujero alrededor del jugador (un círculo de textura y cuatro rectángulos
-   * que tapan el resto). Con efectos bajos el borde es duro: la textura no lleva degradado (ver darkEdge).
+   * que tapan el resto). Borde con degradado suave siempre (darkHoleAlpha; con efectos bajos, más estrecho).
    */
   private makeDarkness() {
     this.clearDarkness();
@@ -5853,25 +5982,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const tex = this.textures.createCanvas(key, R * 2, R * 2);
       if (!tex) return;
       const ctx = tex.getContext();
-      if (edge > 0) {
-        const grad = ctx.createRadialGradient(R, R, R - edge, R, R, R);
-        grad.addColorStop(0, 'rgba(0,0,0,0)');
-        grad.addColorStop(1, `rgba(0,0,0,${DARK_ALPHA})`);
-        ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, R * 2, R * 2);
-        // Escalones: el borde de la luz se ve a bandas, como un sprite, no como un degradado de foto
-        const img = ctx.getImageData(0, 0, R * 2, R * 2);
-        for (let i = 3; i < img.data.length; i += 4) img.data[i] = quantizeDarkAlpha(img.data[i]);
-        ctx.putImageData(img, 0, 0);
-      } else {
-        ctx.fillStyle = `rgba(0,0,0,${DARK_ALPHA})`;
-        ctx.fillRect(0, 0, R * 2, R * 2);
-        ctx.globalCompositeOperation = 'destination-out';
-        ctx.beginPath();
-        ctx.arc(R, R, R, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalCompositeOperation = 'source-over';
+      // Degradado suave píxel a píxel (darkHoleAlpha): sin bandas ni borde duro
+      const img = ctx.createImageData(R * 2, R * 2);
+      for (let py = 0; py < R * 2; py++) for (let px = 0; px < R * 2; px++) {
+        const a = darkHoleAlpha(Math.hypot(px + 0.5 - R, py + 0.5 - R), R, edge);
+        img.data[(py * R * 2 + px) * 4 + 3] = Math.round(a * 255);
       }
+      ctx.putImageData(img, 0, 0);
       tex.refresh();
     }
     // Por encima de enemigos, disparos y botín; el HUD va en su propia cámara y no se tapa
@@ -5892,7 +6009,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!d || !this.player) return;
     const { x, y } = this.player;
     const R = DARK_RADIUS;
-    const px = Math.round(x), py = Math.round(y), o = R - 2; // solape bajo la textura: sin costuras con zoom/temblor
+    const px = Math.round(x), py = Math.round(y), o = R - 1; // 1 px de solape: sin costura y sin la franja doble que se veía como un marco
     d.hole.setPosition(px, py);
     d.sides[0].setPosition(px - o, py);
     d.sides[1].setPosition(px + o, py);
@@ -8550,7 +8667,31 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** IA de un enemigo según su comportamiento: perseguir, embestir, disparar o saltar. */
+  /** Último momento en que el jugador esquivó o hizo parry (los cuerpo a cuerpo cercanos dudan). */
+  private playerActionAt = -1e9;
+
+  /**
+   * IA de un enemigo: su comportamiento y, encima, la capa común (enemyAI.ts). Vigilante: si un enemigo normal lleva
+   * más de IDLE_LIMIT_MS casi quieto fuera de una telegrafía y lejos de ti, se le empuja hacia ti (nadie se queda inerte
+   * aunque no te muevas).
+   */
   private updateEnemy(e: Sprite, time: number) {
+    this.updateEnemyCore(e, time);
+    const ai = e.getData('ai') as EnemyAI | undefined;
+    if (!e.active || !ai || ai.boss || !e.body || time < ai.knockUntil) return;
+    const m = (ai.memo ??= newMemo(e.x, e.y, time));
+    const body = e.body as Body;
+    const dist = Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y);
+    const busy = ai.state !== 'walk' || !body.enable || ai.behavior === 'shielded' || ai.behavior === 'mine' && dist < 120;
+    if (tickIdle(m, body.velocity.length(), time, busy, dist)) {
+      const to = new Phaser.Math.Vector2(this.player.x - e.x, this.player.y - e.y).normalize();
+      const v = this.flowDir(e, to);
+      const sp = (e.getData('speed') as number) * speedMultiplier((e.getData('statuses') as ActiveStatus[] | undefined) ?? [], time, false);
+      e.setVelocity(v.x * sp, v.y * sp);
+    }
+  }
+
+  private updateEnemyCore(e: Sprite, time: number) {
     const ai = e.getData('ai') as EnemyAI | undefined;
     if (ai && time < ai.knockUntil) return; // sale despedido: conserva la velocidad del empujón
     const statuses = (e.getData('statuses') as ActiveStatus[] | undefined) ?? [];
@@ -8574,7 +8715,20 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       toPlayer.rotate(wobble);
       toward.rotate(wobble);
     }
-    const walk = (v: Phaser.Math.Vector2) => e.setVelocity(v.x * speed, v.y * speed);
+    // Capa común (enemyAI.ts) para los no jefes: separación (no se apilan) y desatasco (rodean si no avanzan)
+    const memo = ai && !ai.boss ? (ai.memo ??= newMemo(e.x, e.y, time)) : undefined;
+    const walk = (v: Phaser.Math.Vector2) => {
+      if (!memo) return e.setVelocity(v.x * speed, v.y * speed);
+      let d: { x: number; y: number } = v;
+      if (tickStuck(memo, e.x, e.y, time, dist > 70)) d = unstickDir(v, memo.unstickSide);
+      const near: { x: number; y: number }[] = [];
+      for (const c of this.enemies.getChildren()) {
+        const o = c as Sprite;
+        if (o !== e && o.active && Math.abs(o.x - e.x) < 60 && Math.abs(o.y - e.y) < 60) near.push(o);
+      }
+      const s = steer(d, separation(e, near));
+      return e.setVelocity(s.x * speed, s.y * speed);
+    };
     // Asustado (Siniestro): huye de ti y no ataca
     if (isFeared(statuses, time)) {
       walk(toPlayer.clone().negate());
@@ -8582,14 +8736,31 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       return;
     }
 
+    // Poca vida (no jefes, ni enjambre ni embestidores): se retira un momento; tras tu esquiva o parry cerca, duda
+    if (ai && memo && ai.state === 'walk') {
+      const arch = ARCHETYPE[ai.behavior];
+      const hp = (e.getData('hp') as number) / Math.max(1, (e.getData('maxHp') as number | undefined) ?? 1);
+      if (shouldFlinch(arch, this.playerActionAt, time, dist)) memo.flinchUntil = time + 380;
+      if (time < memo.flinchUntil || tickRetreat(memo, arch, hp, time, false)) {
+        walk(toPlayer.clone().negate().rotate(0.5 * ai.side));
+        this.face(e, toPlayer);
+        return;
+      }
+    }
+
     if (!ai || ai.behavior === 'chase') {
-      walk(toward);
+      // Varios a la vez: cada uno busca su hueco alrededor de ti (te rodean en vez de hacer cola)
+      if (ai && !ai.boss && dist > 110 && !this.flow) {
+        const list = this.enemies.getChildren();
+        const f = flankDir(e, this.player, Math.max(0, list.indexOf(e)), Math.min(6, list.length), 90);
+        walk(new Phaser.Math.Vector2(f.x, f.y));
+      } else walk(toward);
       this.face(e, toPlayer);
       // Cerca de ti, de vez en cuando se lanza a morder (pequeño salto hacia delante)
       if (ai && !ai.boss && dist < 95 && time >= ai.until) {
         e.setVelocity(toPlayer.x * speed * 2.8, toPlayer.y * speed * 2.8);
         ai.knockUntil = time + 160;
-        ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(900, 1400));
+        ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(900, 1400)) * (ai.boss ? 1 : AI_ATTACK_SLOWDOWN);
       }
       return;
     }
@@ -8617,23 +8788,24 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           }
         } else if (time >= ai.until) {
           ai.state = 'walk';
-          ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(1200, 2000));
+          ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(1200, 2000)) * (ai.boss ? 1 : AI_ATTACK_SLOWDOWN);
         }
         break;
 
       case 'shoot': {
         // Guarda la distancia: se acerca si estás lejos, se aleja si estás cerca y si no, te rodea
+        // Sin línea de visión (roca en medio) se recoloca por el camino en vez de disparar a la piedra
         const keep = ai.boss ? 260 : 230;
-        if (dist > keep + 90) walk(toward);
-        else if (dist < keep - 50) walk(toPlayer.clone().negate());
-        else walk(new Phaser.Math.Vector2(-toPlayer.y * ai.side, toPlayer.x * ai.side));
+        const los = this.foeHasLos(e);
+        const rd = rangedDir(toPlayer, dist, keep, ai.side, los, toward);
+        walk(new Phaser.Math.Vector2(rd.x, rd.y));
         this.face(e, toPlayer);
         if (time >= ai.until) {
           if (Math.random() < 0.3) ai.side = -ai.side;
           // Su disparo según su tipo (bombas en parábola, ráfagas, ondas, persecución…)
           const weak = enemyDamageMul((e.getData('statuses') as ActiveStatus[] | undefined) ?? [], time);
           castPattern(this.host, 'foe', e, toPlayer.clone().normalize(), foeStyleFor(ai.type), Math.max(1, Math.round((e.getData('dmg') as number) * 0.8 * weak)), ai.type);
-          ai.until = time + (ai.boss ? 1100 : Phaser.Math.Between(1500, 2200));
+          ai.until = time + (ai.boss ? 1100 : Phaser.Math.Between(1500, 2200) * AI_ATTACK_SLOWDOWN);
         }
         break;
       }
@@ -8675,7 +8847,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         if (ai.state === 'dash') {
           if (time >= ai.until) {
             ai.state = 'walk';
-            ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(1800, 2800));
+            ai.until = time + tempoCooldown(ai.tempo, Phaser.Math.Between(1800, 2800)) * (ai.boss ? 1 : AI_ATTACK_SLOWDOWN);
           }
           break;
         }
@@ -8716,10 +8888,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         if (ai.state === 'walk' && time >= ai.until) {
           ai.state = 'vanish';
           e.setAlpha(0.3);
-          ai.until = time + 9000;
+          ai.until = time + AMBUSH_MAX_HIDE_MS;
         }
         if (ai.state === 'vanish') {
-          e.setVelocity(0, 0);
+          // Camuflado se arrastra despacio hacia ti (antes se quedaba quieto 9 s si no te acercabas)
+          if (dist > 200) e.setVelocity(toward.x * speed * 0.4, toward.y * speed * 0.4);
+          else e.setVelocity(0, 0);
           if (dist < 180 || time >= ai.until) {
             ai.state = 'windup';
             ai.until = time + 300;
@@ -8870,9 +9044,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
       case 'healer': {
         // Guarda las distancias y cada poco cura a los enemigos de alrededor (anillo verde)
-        if (dist < 260) walk(toPlayer.clone().negate());
-        else if (dist > 420) walk(toward);
-        else walk(new Phaser.Math.Vector2(-toPlayer.y * ai.side, toPlayer.x * ai.side));
+        const hd = rangedDir(toPlayer, dist, 330, ai.side, true, toward);
+        walk(new Phaser.Math.Vector2(hd.x, hd.y));
         this.face(e, toPlayer);
         if (time >= ai.until) {
           ai.until = time + HEAL_EVERY_MS;
@@ -8917,6 +9090,18 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         break;
       }
     }
+  }
+
+  /** ¿Ve el enemigo al jugador? Solo en salas con obstáculos (rejilla de la sala actual); si no, siempre. */
+  private foeHasLos(e: Sprite): boolean {
+    const grid = this.flow ? this.grids.get(this.current.id) : undefined;
+    if (!grid) return true;
+    const i = this.interior(this.current);
+    const blocked = (tx: number, ty: number) => {
+      const c = grid[ty]?.[tx];
+      return c !== undefined && c !== '.' && c !== 'W' && c !== 'H';
+    };
+    return lineOfSight({ x: e.x - i.x0, y: e.y - i.y0 }, { x: this.player.x - i.x0, y: this.player.y - i.y0 }, TILE, blocked);
   }
 
   /**
