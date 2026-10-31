@@ -81,7 +81,7 @@ import {
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
-import { acceptNpcMission, gainSeed, takeGardenBerries, updateGarden, addRunHistory, loadKeys, loadMissions, loadShinies, loadDarks, addDark, loadTutorial, loadUpgrades, recordMissionEvent, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
+import { acceptNpcMission, gainSeed, takeGardenBerries, updateGarden, addRunHistory, loadKeys, loadMissions, loadShinies, loadDarks, addDark, addDarkSeen, loadTutorial, loadUpgrades, recordMissionEvent, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
 import { disableTips, markTipSeen, shouldShowTip, tipButtons, tipText, TIPS, type TipId } from '../data/tutorial';
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
 import { closeFloor, emptyCounters, floorTimes, noteCombo, noteDash, noteParry, notePerfectParry, notePickup, noteRoomTime, openFloor, type RunCounters, type RunRecord } from '../data/runHistory';
@@ -161,7 +161,7 @@ import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuf
 import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_GLOW, FALL_HAZARD, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve, legendMegaAtPhase } from '../data/megaBoss';
 import { rollTemperament, tempoCooldown, tempoShot, type Temperament } from '../data/temperament';
-import { adminAllowed, godStats, isCheatRun, isGodMode, markCheatRun, setAdminFloorPick, setGodMode, stepValue, takeAdminFloorPick, type AdminFloorPick } from '../data/admin';
+import { adminAllowed, godStats, isCheatRun, isGodMode, markCheatRun, setAdminFloorPick, setAdminNextDark, adminNextDarkPending, takeAdminNextDark, setGodMode, stepValue, takeAdminFloorPick, type AdminFloorPick } from '../data/admin';
 import { openAdmin, type AdminRow } from './AdminScene';
 import { generalAdminRows, setRunAdminRows } from '../ui/adminPanel';
 import { drawAdminPlate } from '../ui/art/adminArt';
@@ -175,7 +175,7 @@ import { armMuzzle, drawBossLaser, drawShockRing, hazardBlast, hazardWarn, laser
 import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
 import { dynamaxBurst, teraBurst, zImpactFx, zMoveFx, zStarFx } from '../ui/art/formsFx';
 import { darkAura, darkBurst } from '../ui/art/darkFx';
-import { darkCooldown, darkEnemyStats, darkName, darkOdds, darkPlayerStats, darkTickets, DARK_COLORS, DARK_REWARD, rollDark, type DarkWho } from '../data/darkMon';
+import { darkBossEnrages, darkCooldown, darkEnemyStats, darkName, darkOdds, darkPlayerStats, darkTickets, darkWarning, decideDark, DARK_BOSS_RAGE, DARK_COLORS, DARK_ITEM_CHANCE, DARK_REWARD, rollDark, type DarkWho } from '../data/darkMon';
 import { guardianKindLabel, MEGA_GUARDIAN, pickGuardian } from '../data/guardians';
 import { drawMegaCine, drawMegaStoneHud, drawPowerMeterFill, drawPowerSelHud, megaCineBurst, playerFormAura } from '../ui/art/megaFx';
 import { megaCamRestore, megaCineFrame, megaCinePlan, megaTypeStyle, type MegaCamHome } from './megaCinematic';
@@ -359,7 +359,8 @@ import type { SecondChanceChoice } from './SecondChanceScene';
 import { accountInfo } from '../net/cloud';
 import { blitzAttacksFor, bounceAngles, bounceSpec, bounceStep, crossArms, crossHits, crossMinePlaces, crossSpec, dashEnd, dashSpec, gridBeams, gridHits, gridSpec, helixAngles, helixSpec, isBlitzAttack, meteorSpec, meteorSpots, miasmaSpec, wallHits, wallPlan, wallPos, wallSpec, wallTravelMs, BLITZ_MIN_WARN, type BlitzAttack, type Orb } from '../data/bossBlitz';
 import { bounceWarn, dashWarn, drawBounceOrb, drawCrossBlast, drawGridBeam, drawMiasma, drawWallBar, gridWarn, meteorImpact, meteorWarn, miasmaWarn, mineWarn, wallWarn } from '../ui/art/blitzFx';
-import { AI_ATTACK_SLOWDOWN, AMBUSH_MAX_HIDE_MS, ARCHETYPE, flankDir, lineOfSight, newMemo, rangedDir, separation, shouldFlinch, steer, tickIdle, tickRetreat, tickStuck, unstickDir, type AIMemo } from '../data/enemyAI';
+import { BOSS_RETRY_MS, NAV_R_BIG, NAV_R_SMALL, aimUsable, buildNav, cellOf, navField, pathDir, segmentClear, usableAttacks, type Box, type Nav } from '../data/bossPath';
+import { AI_ATTACK_SLOWDOWN, AMBUSH_MAX_HIDE_MS, ARCHETYPE, flankDir, newMemo, rangedDir, separation, shouldFlinch, steer, tickIdle, tickRetreat, tickStuck, unstickDir, type AIMemo } from '../data/enemyAI';
 import { BOSS_SAFE_TELEPORT_DIST, BOSS_TELEPORT_GRACE_MS, PHASE_INVULN_MAX_MS, SPAWN_SAFE_DIST, clearOfRects, extendGrace, nearestClearPoint, phaseShieldStuck, pickSafeSpot, shiftTimers, type Rect as SafeRect } from '../data/bossSafety';
 
 const FALL_LOOK_MS = 500; // pausa tras aterrizar en la arena nueva (nadie se mueve ni recibe daño)
@@ -502,6 +503,8 @@ interface EnemyAI {
   graceUntil?: number;
   /** IA común (enemyAI.ts): atascos, inactividad, retirada y duda. */
   memo?: AIMemo;
+  /** Jefe: hasta cuándo dura el ataque que está lanzando (el vigilante de inactividad no le empuja mientras tanto). */
+  castUntil?: number;
 }
 
 /** Velocidad de los proyectiles enemigos (px/s) y cuánto duran. */
@@ -2891,6 +2894,7 @@ export class GameScene extends Phaser.Scene {
     this.holes = this.physics.add.staticGroup();
     this.grids.clear();
     this.flow = undefined;
+    this.nav = undefined;
     this.makeObstacleTextures();
     this.doorBlocks = this.physics.add.staticGroup();
     this.pickups = this.physics.add.group();
@@ -4322,6 +4326,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.visited.add(here.id);
     this.trail.push(here.id);
     this.flow = undefined;
+    this.nav = undefined;
     this.drawMap();
   }
 
@@ -4836,6 +4841,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         }),
       );
       this.flow = undefined;
+      this.nav = undefined;
     }
     // Paredes con grieta: la puerta oculta se abre si la bomba estalla cerca
     for (const d of DIRS) {
@@ -6628,6 +6634,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (grid) grid[ty][tx] = '.';
     bush.destroy();
     this.flow = undefined; // el camino ha cambiado
+    this.nav = undefined;
   }
 
   /** Casilla de la sala actual en (x, y) del mundo. */
@@ -6665,6 +6672,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const grid = this.grids.get(this.current.id);
     if (!grid || grid.every((row) => row.every((c) => c === '.' || c === 'W'))) {
       this.flow = undefined;
+      this.nav = undefined;
       return;
     }
     const [tx, ty] = this.tileOf(this.player.x, this.player.y);
@@ -6673,21 +6681,78 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.flow = { roomId: this.current.id, tx, ty, dist: flowField(grid, tx, ty) };
   }
 
-  /** Dirección para acercarse al jugador rodeando obstáculos; sin campo de flujo, en línea recta. */
+  /**
+   * Rejilla de navegación de toda la zona de juego (bossPath.ts): paredes y uniones de las salas grandes, el pilar de
+   * las 2x2, rocas y huecos de la cuadrícula de cada casilla, y lo que queda fuera de las salas en L. Una para
+   * enemigos normales y otra con más holgura para los grandes; se rehace al cambiar de sala o cada segundo (rocas
+   * rotas, puertas que se abren). `los`: lo que tapa la visión (paredes, pilar, rocas; no los huecos ni el agua).
+   */
+  private nav?: { key: string; at: number; checked: number; rects: Box[]; los: Box[]; small: Nav; big: Nav; fields: Map<string, Float32Array> };
+
+  private navData(): NonNullable<GameScene['nav']> | undefined {
+    if (!this.current || !this.floor) return undefined;
+    const now = this.time.now;
+    // Barato: la misma sala y menos de medio segundo, la de antes; si no, mira si cambiaron las paredes
+    if (this.nav && this.nav.key.startsWith(`${this.current.id}:`) && now - this.nav.checked < 500 && now >= this.nav.checked) return this.nav;
+    const walls = this.wallRects();
+    const key = `${this.current.id}:${walls.length}`;
+    if (this.nav && this.nav.key === key && now - this.nav.at < 2000 && now >= this.nav.at) {
+      this.nav.checked = now;
+      return this.nav;
+    }
+    const rects: Box[] = [...walls];
+    const los: Box[] = [...walls];
+    const ids = this.groupIds(this.current);
+    for (const id of ids) {
+      const grid = this.grids.get(id);
+      if (!grid) continue;
+      const i = this.interior(this.floor.rooms[id]);
+      grid.forEach((row, ty) => row.forEach((c, tx) => {
+        const b = { x: i.x0 + tx * TILE, y: i.y0 + ty * TILE, w: TILE, h: TILE };
+        if (!isWalkable(c)) rects.push(b);
+        if (c !== '.' && c !== 'W' && c !== 'H') los.push(b);
+      }));
+    }
+    const rooms = ids.map((id) => this.floor.rooms[id]);
+    const outside = (x: number, y: number) => !rooms.some((r) => x >= r.gx * VIEW.w && x < (r.gx + 1) * VIEW.w && y >= r.gy * VIEW.h && y < (r.gy + 1) * VIEW.h);
+    const a = this.arena();
+    this.nav = {
+      key,
+      at: now,
+      checked: now,
+      rects,
+      los,
+      small: buildNav(a, rects, NAV_R_SMALL, undefined, outside),
+      big: buildNav(a, rects, NAV_R_BIG, undefined, outside),
+      fields: new Map(),
+    };
+    return this.nav;
+  }
+
+  /** Campo de distancias hasta el jugador (se recalcula solo cuando cambia de casilla de la rejilla). */
+  private navFieldFor(nav: NonNullable<GameScene['nav']>, big: boolean): Float32Array {
+    const g = big ? nav.big : nav.small;
+    const [cx, cy] = cellOf(g, this.player);
+    const k = `${big ? 'b' : 's'}${cx},${cy}`;
+    let f = nav.fields.get(k);
+    if (!f) {
+      for (const old of [...nav.fields.keys()]) if (old[0] === k[0]) nav.fields.delete(old);
+      f = navField(g, this.player);
+      nav.fields.set(k, f);
+    }
+    return f;
+  }
+
+  /**
+   * Dirección para acercarse al jugador: recta si el camino está libre para su cuerpo; si hay un bloque en medio
+   * (pilar, rocas, uniones de una sala grande), rodeándolo por la rejilla de navegación. Vale para jefes y minijefes.
+   */
   private flowDir(e: Sprite, toPlayer: Phaser.Math.Vector2): Phaser.Math.Vector2 {
-    const f = this.flow;
-    if (!f || f.roomId !== this.current.id || this.cellRoom(e.x, e.y).id !== this.current.id) return toPlayer.clone();
-    const [tx, ty] = this.tileOf(e.x, e.y);
-    const here = f.dist[ty]?.[tx];
-    // Cerca del jugador, o fuera del mapa de casillas, va directo
-    if (here === undefined || here <= 1 || here === Infinity) return toPlayer.clone();
-    const step = stepToward(f.dist, tx, ty);
-    if (!step) return toPlayer.clone();
-    const i = this.interior(this.current);
-    const gx = i.x0 + (tx + step[0]) * TILE + TILE / 2;
-    const gy = i.y0 + (ty + step[1]) * TILE + TILE / 2;
-    const v = new Phaser.Math.Vector2(gx - e.x, gy - e.y);
-    return v.length() > 0 ? v.normalize() : toPlayer.clone();
+    const nav = this.navData();
+    if (!nav || nav.rects.length === 0) return toPlayer.clone();
+    const big = this.isBigFoe(e);
+    const d = pathDir(e, this.player, nav.rects, big ? NAV_R_BIG : NAV_R_SMALL, big ? nav.big : nav.small, this.navFieldFor(nav, big));
+    return new Phaser.Math.Vector2(d.x, d.y);
   }
 
   // --- Enemigos ---
@@ -6859,7 +6924,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     e.setData('helper', !!helper);
     e.setData('hp', hp).setData('maxHp', hp).setData('speed', st.speed).setData('dmg', st.damage);
     // Pokémon oscuro (darkMon.ts): rareza baja que sube con el piso; más vida, daño, velocidad y cadencia
-    const dark = darkAs ?? (!helper && !this.daily && rollDark(Math.random, darkOdds('enemy', this.level())));
+    // Tope por sala (darkMon.ts: 1, y 2 desde el piso 6); el panel admin puede forzar el siguiente
+    const rolled = darkAs === undefined && !helper && !this.daily;
+    const dark = darkAs ?? (rolled && decideDark({ who: 'enemy', floor: this.level(), diff: this.diff, inRoom: this.darkFoesInRoom(), forced: takeAdminNextDark(), rng: Math.random }));
     if (shiny) {
       sparkle(this, x, y);
       this.popup(x, y - 40, '¡Shiny!', 0xffd34d);
@@ -6870,7 +6937,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     ai.tempo = rollTemperament(Math.random);
     if (ai.tempo.sizeMul !== 1) e.setDisplaySize(60 * ai.tempo.sizeMul, 60 * ai.tempo.sizeMul);
     e.setData('ai', ai).setData('types', kind.types).setData('speciesId', Number(kind.key.replace('foe-', '')));
-    if (dark) this.makeDark(e, ai, !!darkAs);
+    if (dark) {
+      this.makeDark(e, ai, !!darkAs);
+      if (rolled) this.notify(darkWarning('enemy'), { kind: 'danger', icon: 'star' });
+    }
     // Élites: cada piso salen más. Más vida, algo más rápidos, brillo de su tipo y un ataque extra de su tipo
     if (!helper && Math.random() < eliteChance(this.level())) {
       const light = (TYPE_STYLES[kind.type] ?? TYPE_STYLES.normal).filter((st) => !['dash', 'chain', 'orbit', 'mine'].includes(st.pattern.k));
@@ -6894,6 +6964,31 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * Convierte a un enemigo (o jefe) en Pokémon oscuro: estadísticas mejores, ataques más seguidos, aura morada y negra,
    * nombre «Oscuro» y marca para el premio, la captura y la Pokédex. `quiet`: sin el aviso pequeño (lo da su intro).
    */
+  /** Oscuros normales vivos en la sala (sin contar minijefes ni jefes), para el tope de darkRoomCap. */
+  private darkFoesInRoom(): number {
+    return (this.enemies.getChildren() as Sprite[]).filter((o) => o.active && o.getData('dark') && !o.getData('miniboss') && !(o.getData('ai') as EnemyAI | undefined)?.boss).length;
+  }
+
+  /** Jefe o minijefe oscuro: un movimiento siniestro de más y, a media vida, se enfurece una vez (más rápido y seguido). */
+  private darkBossExtras(e: Sprite, ai: EnemyAI, id: number) {
+    const extra = bossStyles(['dark'], id + 7).find((m) => !(ai.moves ?? []).some((o) => o.id === m.id));
+    if (extra) ai.moves = [...(ai.moves ?? []), extra];
+    const ev = this.time.addEvent({
+      delay: 250,
+      loop: true,
+      callback: () => {
+        if (!e.active) return ev.remove();
+        if (!darkBossEnrages(e.getData('hp') as number, e.getData('maxHp') as number, !!e.getData('darkRage'))) return;
+        e.setData('darkRage', true).setData('speed', (e.getData('speed') as number) * DARK_BOSS_RAGE.speed);
+        ai.tempo = { ...(ai.tempo ?? rollTemperament(() => 0.5)), cooldownMul: (ai.tempo?.cooldownMul ?? 1) * DARK_BOSS_RAGE.cooldownMul };
+        darkBurst(this, e.x, e.y);
+        this.popup(e.x, e.y - 70, '¡Enfurecido!', 0xff3a48);
+        this.notify('¡El oscuro se enfurece!\nMás rápido y ataca más seguido', { kind: 'danger', icon: 'star' });
+        ev.remove();
+      },
+    });
+  }
+
   private makeDark(e: Sprite, ai: EnemyAI, quiet = false) {
     if (e.getData('dark')) return;
     const d = darkEnemyStats({ hp: e.getData('maxHp') as number, damage: e.getData('dmg') as number, speed: e.getData('speed') as number });
@@ -6924,7 +7019,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const loaded = pref && this.textures.exists(`${pref.key}-front`) ? pref : undefined;
     if (!loaded && this.foeKinds.length === 0) return undefined;
     const kind = loaded ?? [...this.foeKinds].sort((a, b) => b.bst - a.bst)[0];
-    const dark = !this.daily && rollDark(Math.random, darkOdds('miniboss', this.level()));
+    const dark = !this.daily && decideDark({ who: 'miniboss', floor: this.level(), diff: this.diff, forced: takeAdminNextDark(), rng: Math.random });
     const e = this.spawnEnemy(kind, kind.behavior, undefined, false);
     const id = Number(kind.key.replace('foe-', ''));
     const size = guardian ? MEGA_GUARDIAN.size : 112;
@@ -6948,7 +7043,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Aura: dorada el minijefe; la del guardián, del color de la Mega Piedra
     this.glowAura(e, guardian ? 0x8fd3ff : 0xffd34d);
     const base = kind.name ? kind.name.charAt(0).toUpperCase() + kind.name.slice(1) : 'Pokémon';
-    if (dark) this.makeDark(e, ai, true);
+    if (dark) {
+      this.makeDark(e, ai, true);
+      this.darkBossExtras(e, ai, id);
+      this.time.delayedCall(900, () => !this.ended && this.notify(darkWarning('miniboss'), { kind: 'danger', icon: 'star' }));
+    }
     const name = dark ? darkName(base) : base;
     const what = loaded ? guardianKindLabel(id) : 'Minijefe';
     this.notify(guardian ? `¡${name} custodia la Mega Piedra!\nVéncelo para conseguirla` : `¡Minijefe: ${name}!`, { kind: 'danger', icon: 'star' });
@@ -7072,7 +7171,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // T63: el legendario también cuenta en el registro de combate al vencerlo
     b.setData('speciesId', this.bossId);
     // Jefe oscuro (darkMon.ts): más raro al principio, más probable cuanto más hondo; nunca en el desafío diario
-    const dark = !this.daily && rollDark(Math.random, darkOdds('boss', this.floorNum));
+    const dark = !this.daily && decideDark({ who: 'boss', floor: this.floorNum, diff: this.diff, forced: takeAdminNextDark(), rng: Math.random });
     const cap = (n: string) => n.charAt(0).toUpperCase() + n.slice(1);
     this.buildBossBar(b, dark ? darkName(cap(this.bossName)) : this.bossName);
     // El jefe también se comporta según su tipo
@@ -7086,8 +7185,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     ai.phase = 1;
     b.setData('ai', ai);
     this.bossGrace(b);
-    if (dark) this.makeDark(b, ai, true);
-    this.notify(dark ? `¡${darkName(cap(this.bossName))}, jefe legendario oscuro!\nMás fuerte en todo y con más premio` : `¡${this.bossName}, jefe legendario!`, { kind: 'danger', icon: 'pokeball' });
+    if (dark) {
+      this.makeDark(b, ai, true);
+      this.darkBossExtras(b, ai, this.bossId);
+    }
+    this.notify(dark ? `¡${darkName(cap(this.bossName))}, jefe legendario oscuro!\nMás fuerte en todo, con un ataque de más y se enfurece a media vida` : `¡${this.bossName}, jefe legendario!`, { kind: 'danger', icon: 'pokeball' });
     void cry(this.bossId);
     playTrack(TRACKS.jefe);
     this.musicMood = 'boss';
@@ -7259,6 +7361,18 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   // --- Ataques de los jefes (bossPatterns.ts): aviso, ataque y fase 2 ---
 
+  /**
+   * Marca hasta cuándo dura el ataque que va a lanzar (lo que queda hasta el siguiente menos la pausa entre ataques):
+   * mientras tanto el vigilante de inactividad no le empuja. Se calcula al final del fotograma, cuando ya se sabe.
+   */
+  private bossCastFrom(b: Sprite, ai: EnemyAI, time: number, rage: boolean) {
+    const gap = attackInterval(ai.phase ?? 1) * (rage ? 0.65 : 1);
+    ai.castUntil = time + TELEGRAPH_MS + 400;
+    this.time.delayedCall(0, () => {
+      if (b.active && (ai.nextAttack ?? 0) > time + BOSS_RETRY_MS) ai.castUntil = Math.max(ai.castUntil ?? 0, (ai.nextAttack ?? 0) - gap);
+    });
+  }
+
   private updateBossAttacks(b: Sprite, time: number) {
     const ai = b.getData('ai') as EnemyAI;
     if (!ai.attacks || !b.active) return;
@@ -7300,7 +7414,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.ended) return;
     // Legendarios agresivos (20/10): ráfagas cortas hacia ti entre ataque y ataque…
     const ph = ai.phase ?? 1;
-    if (time >= ((b.getData('volleyAt') as number | undefined) ?? time + 1200) && time < (ai.nextAttack ?? 0) - 500) {
+    // Alcance real: los ataques apuntados solo si te ve (sin pilar ni rocas en medio) y estás a tiro
+    const reachDist = Phaser.Math.Distance.Between(b.x, b.y, this.player.x, this.player.y);
+    const reachLos = this.foeHasLos(b);
+    if (aimUsable(reachLos, reachDist) && time >= ((b.getData('volleyAt') as number | undefined) ?? time + 1200) && time < (ai.nextAttack ?? 0) - 500) {
       const to = new Phaser.Math.Vector2(this.player.x - b.x, this.player.y - b.y).normalize();
       castPattern(this.host, 'foe', b, to, { k: 'shot', n: volleyShots(ph), spread: 0.55, speed: 300, size: 1.2 }, Math.max(1, Math.round((b.getData('dmg') as number) * 0.45)), ai.type, 0.6);
     }
@@ -7314,10 +7431,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (megaHelpersToSummon(helpersToSummon(ph, 0), MAX_HELPERS, helpers, !!b.getData('mega')) > 0) this.bossSummon(b, ai);
     }
     if (time < (ai.nextAttack ?? 0)) return;
+    const rage = !!b.getData('rage');
+    this.bossCastFrom(b, ai, time, rage);
     // La mitad de las veces, uno de sus movimientos de tipo (sin repetir el último)
     const btypes = (b.getData('btypes') as string[] | undefined) ?? this.bossTypes;
-    const rage = !!b.getData('rage');
-    if (ai.moves?.length && Math.random() < (rage ? 0.7 : 0.5)) {
+    if (ai.moves?.length && aimUsable(reachLos, reachDist) && Math.random() < (rage ? 0.7 : 0.5)) {
       const options = ai.moves.length > 1 ? ai.moves.filter((m) => m.id !== b.getData('lastMove')) : ai.moves;
       const mv = options[Math.floor(Math.random() * options.length)];
       b.setData('lastMove', mv.id);
@@ -7334,8 +7452,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       return;
     }
     b.setData('lastMega', false);
-    if (b.getData('finale')) return this.finaleAttack(b, ai, time);
-    const attack = pickAttack(ai.attacks, Math.random, ai.lastAttack);
+    if (b.getData('finale')) return this.finaleAttack(b, ai, time, reachLos, reachDist);
+    // Sin nada útil desde aquí (todo apuntado y no te ve o no llega): se recoloca rodeando y vuelve a mirar en nada
+    const usable = usableAttacks(ai.attacks, reachLos, reachDist);
+    if (usable.length === 0) {
+      ai.nextAttack = time + BOSS_RETRY_MS;
+      ai.castUntil = 0;
+      return;
+    }
+    const attack = pickAttack(usable, Math.random, ai.lastAttack);
     ai.lastAttack = attack;
     ai.nextAttack = time + attackInterval(ai.phase ?? 1) * (rage ? 0.65 : 1) + TELEGRAPH_MS;
     if (attack === 'ring') this.bossRing(b, ai);
@@ -7464,8 +7589,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Ataque del jefe final según su fase (sin repetir el último); los grandes (juicio y nova) nunca a la vez. */
-  private finaleAttack(b: Sprite, ai: EnemyAI, time: number) {
-    const list = (b.getData('fattacks') as FinaleAttack[] | undefined) ?? finaleAttacks(this.finalePh, ai.attacks ?? []);
+  private finaleAttack(b: Sprite, ai: EnemyAI, time: number, los = true, dist = 0) {
+    const all = (b.getData('fattacks') as FinaleAttack[] | undefined) ?? finaleAttacks(this.finalePh, ai.attacks ?? []);
+    const list = usableAttacks(all, los, dist);
+    if (list.length === 0) {
+      ai.nextAttack = time + BOSS_RETRY_MS;
+      ai.castUntil = 0;
+      return;
+    }
     let attack = pickFinaleAttack(list, Math.random, b.getData('flast') as FinaleAttack | undefined, this.finaleSinceNova);
     const big = attack === 'judgment' || attack === 'nova';
     if (big && time < this.finaleBigUntil) attack = 'ring';
@@ -7831,6 +7962,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       { label: () => 'Megaevolucionar al jefe de la sala', run: () => (window as unknown as { __POKEISAAC_DEBUG__?: { forceMega: () => string } }).__POKEISAAC_DEBUG__?.forceMega() ?? 'Sin consola de depuración.' },
       { label: () => 'Llenar el medidor de poder', run: () => (this.adminCheat(), (this.powerMeter.value = POWER_METER_MAX), this.powerMeterHud && (this.powerMeterHud.shown = ''), 'Medidor lleno.') },
       { label: () => `Jugar con el inicial oscuro: ${this.dark ? 'Sí' : 'No'}`, run: () => this.adminDark() },
+      { label: () => `Siguiente enemigo / minijefe / jefe oscuro: ${adminNextDarkPending() ? 'Sí' : 'No'}`, run: () => (setAdminNextDark(!adminNextDarkPending()), adminNextDarkPending() ? 'El próximo que aparezca será oscuro.' : 'Sin forzar oscuro.') },
       { label: () => `Forma de poder ◀ ${ADMIN_FORMS[u.form][1]} ▶  (Enter: activar)`, adjust: (d) => (u.form = stepValue(u.form, d, 0, ADMIN_FORMS.length - 1)), run: () => this.adminPower(ADMIN_FORMS[u.form][0]) },
       { label: () => 'Fusionar poderes (abrir pantalla)', run: () => (this.time.delayedCall(80, () => this.openFusion(true)), 'Se abre al cerrar el panel (marca la partida).') },
       { label: () => `Dar poder de tipo ◀ ${typeNameEs(FUSION_TYPES[u.ptype])} ▶  (Enter: dar)`, adjust: (d) => (u.ptype = stepValue(u.ptype, d, 0, FUSION_TYPES.length - 1)), run: () => this.adminGivePower(FUSION_TYPES[u.ptype]) },
@@ -8016,6 +8148,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       }
     }
     this.flow = undefined;
+    this.nav = undefined;
     if (rocks) this.unstickAll();
   }
 
@@ -8179,6 +8312,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     this.bossFx?.setTheme(fall.theme, FALL_GLOW[fall.theme]);
     this.flow = undefined;
+    this.nav = undefined;
     this.unstickAll();
     this.cameras.main.shake(200, 0.01);
     this.notify(FALL_LANDING[fall.theme], { kind: 'danger', icon: 'star' });
@@ -8894,12 +9028,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private updateEnemy(e: Sprite, time: number) {
     this.updateEnemyCore(e, time);
     const ai = e.getData('ai') as EnemyAI | undefined;
-    if (!e.active || !ai || ai.boss || !e.body || time < ai.knockUntil) return;
+    if (!e.active || !ai || !e.body || time < ai.knockUntil) return;
     const m = (ai.memo ??= newMemo(e.x, e.y, time));
     const body = e.body as Body;
     const dist = Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y);
-    const busy = ai.state !== 'walk' || !body.enable || ai.behavior === 'shielded' || ai.behavior === 'mine' && dist < 120;
-    if (tickIdle(m, body.velocity.length(), time, busy, dist)) {
+    // Jefes y minijefes también: salvo mientras lanzan un ataque, en una intro o cinemática, o ya pegados a ti
+    const big = this.isBigFoe(e) || ai.boss;
+    const busy = ai.state !== 'walk' || !body.enable || ai.behavior === 'shielded' || ai.behavior === 'mine' && dist < 120
+      || big && (this.frozenSince !== undefined || this.ended || time < (ai.castUntil ?? 0) || (ai.nextAttack ?? 0) === Number.POSITIVE_INFINITY);
+    if (tickIdle(m, body.velocity.length(), time, busy, big ? dist - 80 : dist)) {
       const to = new Phaser.Math.Vector2(this.player.x - e.x, this.player.y - e.y).normalize();
       const v = this.flowDir(e, to);
       const sp = (e.getData('speed') as number) * speedMultiplier((e.getData('statuses') as ActiveStatus[] | undefined) ?? [], time, false);
@@ -8931,12 +9068,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       toPlayer.rotate(wobble);
       toward.rotate(wobble);
     }
-    // Capa común (enemyAI.ts) para los no jefes: separación (no se apilan) y desatasco (rodean si no avanzan)
-    const memo = ai && !ai.boss ? (ai.memo ??= newMemo(e.x, e.y, time)) : undefined;
+    // Capa común (enemyAI.ts): desatasco para todos (también jefes y minijefes: rodean si no avanzan) y separación
+    // (no se apilan) solo para los normales
+    const memo = ai ? (ai.memo ??= newMemo(e.x, e.y, time)) : undefined;
+    const bigFoe = this.isBigFoe(e);
     const walk = (v: Phaser.Math.Vector2) => {
       if (!memo) return e.setVelocity(v.x * speed, v.y * speed);
       let d: { x: number; y: number } = v;
-      if (tickStuck(memo, e.x, e.y, time, dist > 70)) d = unstickDir(v, memo.unstickSide);
+      if (tickStuck(memo, e.x, e.y, time, dist > (bigFoe ? 130 : 70))) d = unstickDir(v, memo.unstickSide);
+      if (bigFoe || ai?.boss) return e.setVelocity(d.x * speed, d.y * speed);
       const near: { x: number; y: number }[] = [];
       for (const c of this.enemies.getChildren()) {
         const o = c as Sprite;
@@ -8953,7 +9093,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
 
     // Poca vida (no jefes, ni enjambre ni embestidores): se retira un momento; tras tu esquiva o parry cerca, duda
-    if (ai && memo && ai.state === 'walk') {
+    if (ai && memo && !ai.boss && !bigFoe && ai.state === 'walk') {
       const arch = ARCHETYPE[ai.behavior];
       const hp = (e.getData('hp') as number) / Math.max(1, (e.getData('maxHp') as number | undefined) ?? 1);
       if (shouldFlinch(arch, this.playerActionAt, time, dist)) memo.flinchUntil = time + 380;
@@ -8966,7 +9106,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
     if (!ai || ai.behavior === 'chase') {
       // Varios a la vez: cada uno busca su hueco alrededor de ti (te rodean en vez de hacer cola)
-      if (ai && !ai.boss && dist > 110 && !this.flow) {
+      if (ai && !ai.boss && dist > 110 && this.foeHasLos(e)) {
         const list = this.enemies.getChildren();
         const f = flankDir(e, this.player, Math.max(0, list.indexOf(e)), Math.min(6, list.length), 90);
         walk(new Phaser.Math.Vector2(f.x, f.y));
@@ -9016,7 +9156,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         const rd = rangedDir(toPlayer, dist, keep, ai.side, los, toward);
         walk(new Phaser.Math.Vector2(rd.x, rd.y));
         this.face(e, toPlayer);
-        if (time >= ai.until) {
+        // Solo dispara si te ve: con un bloque en medio sigue recolocándose (no gasta el disparo contra la piedra)
+        if (time >= ai.until && los) {
           if (Math.random() < 0.3) ai.side = -ai.side;
           // Su disparo según su tipo (bombas en parábola, ráfagas, ondas, persecución…)
           const weak = enemyDamageMul((e.getData('statuses') as ActiveStatus[] | undefined) ?? [], time);
@@ -9188,9 +9329,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         // Te rodea a distancia fija (corrige hacia dentro o hacia fuera) y dispara cada poco
         const radial = dist > ORBIT_RADIUS + 40 ? 0.8 : dist < ORBIT_RADIUS - 40 ? -0.8 : 0;
         const tangent = new Phaser.Math.Vector2(-toPlayer.y * ai.side, toPlayer.x * ai.side);
-        walk(tangent.add(toPlayer.clone().scale(radial)).normalize());
+        // Sin visión (bloque en medio): se acerca rodeando en vez de orbitar y disparar al muro
+        const seen = this.foeHasLos(e);
+        walk(seen ? tangent.add(toPlayer.clone().scale(radial)).normalize() : toward);
         this.face(e, toPlayer);
-        if (time >= ai.until) {
+        if (time >= ai.until && seen) {
           this.fireFoeShot(e, toPlayer.clone(), ai.type);
           ai.until = time + ORBIT_SHOT_MS + Phaser.Math.Between(0, 400);
           if (Math.random() < 0.2) ai.side = -ai.side;
@@ -9308,16 +9451,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
   }
 
-  /** ¿Ve el enemigo al jugador? Solo en salas con obstáculos (rejilla de la sala actual); si no, siempre. */
+  /** ¿Ve el enemigo al jugador? Paredes, el pilar de las 2x2 y las rocas tapan; huecos y agua no. */
   private foeHasLos(e: Sprite): boolean {
-    const grid = this.flow ? this.grids.get(this.current.id) : undefined;
-    if (!grid) return true;
-    const i = this.interior(this.current);
-    const blocked = (tx: number, ty: number) => {
-      const c = grid[ty]?.[tx];
-      return c !== undefined && c !== '.' && c !== 'W' && c !== 'H';
-    };
-    return lineOfSight({ x: e.x - i.x0, y: e.y - i.y0 }, { x: this.player.x - i.x0, y: this.player.y - i.y0 }, TILE, blocked);
+    const nav = this.navData();
+    return !nav || segmentClear(e, this.player, nav.los, 4);
   }
 
   /**
@@ -10189,17 +10326,26 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       else if (eai?.eliteMove && time >= (eai.eliteAt ?? 0)) {
         // Minijefe: alterna sus movimientos (con nombre y algo más de aviso); élite: su ataque extra
         const mini = !!e.getData('miniboss');
+        // Solo si te ve y llegas a tiro: si no, se recoloca (rodea) y vuelve a mirar enseguida
+        if (!aimUsable(this.foeHasLos(e), Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y))) {
+          eai.eliteAt = time + BOSS_RETRY_MS;
+          this.paintEnemy(e, time);
+          this.drawEnemyBar(e);
+          return;
+        }
         // T50: el minijefe a veces usa uno de los ataques extra del bioma (más corto: fase 1)
         if (mini && Math.random() < 0.35) {
           const extra = biomeExtraAttacks(this.biome.types)[Math.random() < 0.5 ? 0 : 1];
           const ms = this.bossExtra(e, eai, extra, 1);
           eai.eliteAt = time + 2600 + ms;
+          eai.castUntil = time + ms + 400;
           this.paintEnemy(e, time);
           this.drawEnemyBar(e);
           return;
         }
         const mv = mini && eai.moves?.length ? eai.moves[Math.floor(Math.random() * eai.moves.length)] : eai.eliteMove;
         eai.eliteAt = time + (mini ? 2600 : Math.max(2200, 4400 - this.level() * 220));
+        eai.castUntil = time + (mini ? 1100 : 800);
         this.foeMove(e, mv, eai.type, Math.round((e.getData('dmg') as number) * (mini ? 0.7 : 0.6)), mini ? 650 : 450, mini);
         // T72: el minijefe de la Torre encadena un segundo movimiento (su ataque extra)
         if (mini && this.mode === 'tower' && eai.moves && eai.moves.length > 0) {
@@ -10942,7 +11088,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       sparkle(this, enemy.x, enemy.y);
     }
     // Un oscuro también: monedas de 5 de más
-    if (enemy.getData('dark') && !enemy.getData('helper')) for (let k = 0; k < DARK_REWARD.extraCoins; k++) loot.push({ kind: 'coin', value: 5 });
+    if (enemy.getData('dark') && !enemy.getData('helper')) {
+      for (let k = 0; k < DARK_REWARD.extraCoins; k++) loot.push({ kind: 'coin', value: 5 });
+      if (!boss && Math.random() < DARK_ITEM_CHANCE) loot.push(Math.random() < 0.5 ? { kind: 'potion' } : { kind: 'key' });
+      const sid = enemy.getData('speciesId') as number | undefined;
+      if (sid && !this.codeRun && addDarkSeen(sid)) this.popup(enemy.x, enemy.y - 72, 'Oscuro descubierto', DARK_COLORS.glow);
+    }
     // Sinergias: Día de Pago (botín extra) y Gigadrenado / Fuego Sagrado (cada baja cura)
     if (!enemy.getData('helper') && this.synFx.extraDrop > 0 && Math.random() < this.synFx.extraDrop) loot.push(...rollEnemyLoot(Math.random, false));
     if (this.synFx.healOnKill > 0 && this.hp > 0 && this.hp < this.stats.maxHp) {

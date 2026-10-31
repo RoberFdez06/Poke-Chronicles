@@ -3,7 +3,7 @@ import { addHelpBar } from '../ui/helpBar';
 import { fitDesign } from '../ui/layout';
 import { classifyRarity, RARITY_LABEL } from '../data/gacha';
 import { countByRegion, filterCollection, type CollectionEntry } from '../data/regions';
-import { loadDarks, loadShinies, loadUnlocked } from '../data/save';
+import { loadDarkSeen, loadDarks, loadShinies, loadUnlocked } from '../data/save';
 import { drawDarkMark } from '../ui/art/darkFx';
 import { loadCollectionIndex, loadSpeciesIndex } from '../data/speciesIndex';
 import { typeNameEs } from '../data/types';
@@ -110,6 +110,7 @@ export class PokedexScene extends Phaser.Scene {
     const owned = new Set(loadUnlocked());
     const shinies = new Set(loadShinies());
     const darks = new Set(loadDarks());
+    const darkSeen = new Set([...loadDarkSeen(), ...darks]).size;
     const all = index.map((s) => ({
       id: s.id,
       name: s.nameEs ?? s.name,
@@ -124,7 +125,7 @@ export class PokedexScene extends Phaser.Scene {
 
     const have = this.entries.filter((e) => e.owned);
     this.add
-      .text(480, 40, this.pickFor ? `Elige un Pokémon para mejorar · Tienes ${have.length}` : `Pokédex · Tienes ${have.length} de ${all.length} · ★ ${shinies.size} shiny${darks.size ? ` · ${darks.size} oscuros` : ''}`, { fontFamily: FONT, fontSize: '30px', color: '#ffffff' })
+      .text(480, 40, this.pickFor ? `Elige un Pokémon para mejorar · Tienes ${have.length}` : `Pokédex · Tienes ${have.length} de ${all.length} · ★ ${shinies.size} shiny${darkSeen ? ` · ${darks.size} oscuros (${darkSeen} descubiertos)` : ''}`, { fontFamily: FONT, fontSize: '30px', color: '#ffffff' })
       .setOrigin(0.5);
     this.filters = new FilterBar(this, {
       tabsY: 92,

@@ -1788,3 +1788,46 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
 - **Sin verificar a ojo**: no probado en el navegador (localhost sirve `main`). Revisar: abrir una sala secreta junto
   a una sala en L, la trampilla del piso 5 con el pilar, la intro del jefe en un piso con Niebla y el tamaño de la
   gravilla en volcán/cueva.
+## Oscuros: ojos rojos y enemigos, minijefes y jefes oscuros (rama `oscuros`)
+
+- **Ojos rojos** (`darkEyes` en `src/ui/art/darkFx.ts`, arrancan con `darkAura`, así que los lleva todo oscuro: jugador,
+  enemigos, minijefes, jefes y legendarios): dos píxeles rojos con halo que late, dibujados en `PRE_RENDER` (después
+  de la animación y la pose de `locoAnim`) con la matriz real del sprite (giro, escala, volteo, elevación), así que no
+  se desfasan. Posición: caja de píxeles opacos de cada cuadro (cacheada) y anchura de la cabeza (35 % de arriba);
+  `eyeSpots`/`eyeFacing` (puras) los corren hacia donde mira y los ocultan de espaldas (filas PMD 3-5 o textura `-back`).
+- **Aparición** (`darkSpawnChance`/`decideDark`, `darkMon.ts`): nunca en el piso 1 (salvo admin); del piso 2 sube
+  hasta el tope: normales 4→12 %, minijefes 20→35 %, jefes 15→30 %; Fácil ×0,7, Difícil ×1,25. Tope de 1 oscuro
+  normal por sala (2 desde el piso 6). Aviso «¡Un Pokémon oscuro!» / «¡Minijefe oscuro!» con `notify` (no centrado).
+- **Más difíciles**: los multiplicadores de siempre (vida ×1,4, daño ×1,3, velocidad ×1,25, cadencia ×1,3), aura y
+  ojos. Jefes y minijefes oscuros: un movimiento siniestro de más y se **enfurecen** una vez a media vida (velocidad
+  ×1,15, recarga ×0,8, aviso «¡Enfurecido!»).
+- **Botín**: +3 monedas de 5 (ya estaba), y los normales 20 % de poción o llave; tickets ×1,5 en jefes (ya estaba).
+- **Oscuros descubiertos**: nueva lista `pokeisaac.darkSeen` (`addDarkSeen`, progreso) al vencer o capturar uno; la
+  Pokédex muestra «N oscuros (M descubiertos)».
+- **Admin**: fila «Siguiente enemigo / minijefe / jefe oscuro» (`setAdminNextDark`/`takeAdminNextDark`), se consume
+  con el primero que aparezca, incluso en el piso 1.
+- Test `tests/darkSpawn.test.ts`. **Sin verificar a ojo**: la posición de los ojos en especies raras (sin cabeza
+  clara, p. ej. Magnemite o Gastly), su tamaño en jefes grandes y el ritmo del enfurecimiento.
+## Jefes y enemigos que rodean, se desatascan y no atacan a ciegas (rama `camino`, 2026-10-31)
+
+- **Causas**: (1) el campo de flujo (`flowField` de la cuadrícula de 1 casilla) solo existía en salas con rocas y solo
+  para la casilla actual: en salas grandes, si el enemigo estaba en otra casilla, o con el pilar de las 2x2 y las
+  uniones (que son `wallRects`, no celdas de la cuadrícula), `flowDir` devolvía la línea recta y se quedaban
+  empujando contra el bloque. (2) Los jefes estaban excluidos del detector de atascos y del vigilante de
+  inactividad. (3) `updateBossAttacks`, los movimientos de minijefe/élite y los tiradores disparaban sin mirar si
+  había visión ni distancia.
+- **`src/data/bossPath.ts`** (puro, `tests/bossPath.test.ts`): rejilla de navegación de toda la arena (casillas de
+  32 px) con paredes, uniones, pilar, rocas/huecos de cada casilla y el hueco de las salas en L como bloqueado; dos
+  holguras (normal 18 px, grande 40 px); campo de distancias Dijkstra de 8 vecinos sin cortar esquinas; `navStep`
+  (mira dos pasos para no ir a escalones; saca de dentro de un bloque), `pathDir` (recta si el segmento está libre
+  para su cuerpo, si no por la rejilla), `segmentClear` (visión contra rectángulos) y `attackUsable/usableAttacks`
+  (apuntados solo con visión y a ≤ 520 px; de zona — lluvia, invocar, anillos, meteoros, rejillas, miasma, juicio,
+  nova… — siempre; la onda solo a ≤ 420 px).
+- **GameScene**: `navData` (caché por sala, se revisa cada 0,5 s y se rehace si cambian paredes o cada 2 s) y
+  `navFieldFor` (recalcula solo si el jugador cambia de casilla). `flowDir` y `foeHasLos` usan esto para todos los
+  enemigos, jefes y minijefes. Desatasco (`tickStuck`) también para jefes/minijefes (sin separación). Vigilante de
+  inactividad también para ellos, salvo durante intro/congelado, fin de partida, ataque en curso (`castUntil`) o
+  antes de activar sus ataques. Sin ataque útil, el jefe pospone 350 ms y sigue recolocándose; igual el reto final,
+  los minijefes/élite, el tirador y el orbital (sin visión se acercan rodeando en vez de orbitar).
+- **Sin verificar a ojo**: no probado en el navegador (localhost sirve `main`). Revisar en el piso 5 detrás del pilar,
+  jefes grandes en esquinas estrechas y que las intros/megaevolución/derrumbe no se vean empujadas.

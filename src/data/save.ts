@@ -446,10 +446,37 @@ export function addDark(id: number, storage: StorageLike | null = browserStorage
   if (isCheatRun()) return false;
   const list = loadDarks(storage);
   unlockPokemon(id, storage);
+  addDarkSeen(id, storage);
   if (list.includes(id)) return false;
   list.push(id);
   try {
     storage?.setItem(DARKS_KEY, JSON.stringify(list));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+  return true;
+}
+
+// --- Oscuros descubiertos: especies vistas en su variante oscura (vencidas o capturadas) ---
+
+export const DARK_SEEN_KEY = 'pokeisaac.darkSeen';
+
+export function loadDarkSeen(storage: StorageLike | null = browserStorage()): number[] {
+  try {
+    return parseDarks(storage?.getItem(DARK_SEEN_KEY) ?? null);
+  } catch {
+    return [];
+  }
+}
+
+/** Apunta un oscuro descubierto. Devuelve si era nuevo. Las partidas admin no cuentan. */
+export function addDarkSeen(id: number, storage: StorageLike | null = browserStorage()): boolean {
+  if (isCheatRun() || !Number.isInteger(id) || id <= 0) return false;
+  const list = loadDarkSeen(storage);
+  if (list.includes(id)) return false;
+  list.push(id);
+  try {
+    storage?.setItem(DARK_SEEN_KEY, JSON.stringify(list));
   } catch {
     // sin almacenamiento: no se guarda
   }
@@ -686,6 +713,7 @@ export const PROGRESS_KEYS: readonly string[] = [
   UPGRADES_KEY,
   SHINIES_KEY,
   DARKS_KEY,
+  DARK_SEEN_KEY,
   MISSIONS_KEY,
   GARDEN_KEY,
   MEDALS_KEY,
