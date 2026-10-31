@@ -1763,3 +1763,28 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   Test `powerPress.test.ts`.
 - **Sin verificar a ojo**: no se ha probado en el navegador (localhost sirve `main`); revisar el aspecto del pilar en
   cada bioma, el selector de abajo con los controles táctiles y el tinte de noche con zoom.
+
+## Sala secreta, rocas falsas, trampilla, salas a oscuras e intro del jefe con niebla (rama `salas`, 2026-10-31)
+
+- **Sala secreta**: al abrir una puerta oculta, `revealDoor` dibujaba el hueco y el marco de la puerta de la OTRA sala
+  (la secreta) sin apuntarlos en `roomObjs`, así que el filtro de cámara (`showRooms`) no los ocultaba: se veían losas
+  y postes flotando en el vacío junto a la sala actual (sobre todo en salas grandes en L, cuyo hueco enseña el fondo).
+  Ahora lo nuevo se apunta a su sala y se vuelve a aplicar `showRooms`. Además, al abrir la sala secreta se abren
+  TODAS sus entradas ocultas (por los dos lados), no solo la de la bomba.
+- **Piedras sin colisión**: las rocas de la rejilla (`R`, escombros de la arena) sí tienen cuerpo. Lo que parecía una
+  piedra sin colisión eran detalles del suelo de `decorateRoom` (piedrecitas de basalto del volcán, guijarros de
+  cueva/cumbre/nieve, cristales y montoncitos de nieve) pintados a tamaño entero (30-48 px). Ahora salen a la mitad
+  y algo apagados, como gravilla (`SOLID_LOOKING` en `roomDecor.ts`).
+- **Trampilla**: `trapdoorSpot` busca primero un sitio con mucho hueco (radios 120 → 96 → 72 → 56 px, también en
+  diagonal con `ringFree`) y solo si no cabe usa el de antes: ya no sale pegada al pilar 2x2, rocas ni paredes.
+- **Salas a oscuras**: en pisos con bioma de tipo fantasma o siniestro (`biome.types`), `pickRoomRules` garantiza
+  entre 1 y 4 salas a oscuras (solo salas de combate normales: nunca inicio, jefe, tienda, Centro, evento ni
+  minijefe). Las tiradas extra van después, así el resto de pisos sale igual. Test en `roomRules.test.ts`.
+  (Caso raro sin cubrir: si el santuario de la Mega Piedra no encuentra sala libre puede quitarle la regla a esa sala.)
+- **Intro del jefe con Niebla**: la viñeta de la niebla (`WeatherFx`) seguía centrada en el jugador mientras la
+  cámara se iba al jefe y hacía zoom, y su borde oscuro tapaba media pantalla. Durante la intro (`cineUntil`) se
+  centra en la vista, con transición suave. El tinte de noche (`dayNightLayer`) se repinta cada fotograma (antes cada
+  80 ms dejaba una franja sin cubrir al hacer zoom).
+- **Sin verificar a ojo**: no probado en el navegador (localhost sirve `main`). Revisar: abrir una sala secreta junto
+  a una sala en L, la trampilla del piso 5 con el pilar, la intro del jefe en un piso con Niebla y el tamaño de la
+  gravilla en volcán/cueva.
