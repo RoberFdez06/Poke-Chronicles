@@ -14,8 +14,14 @@ const EDGE = 0x3a4a7a;
 const GOLD = 0xd4a017;
 const GOLD_L = 0xffd34d;
 
+/** Paleta de los paneles: la de siempre o la del bioma (hudTheme.ts, la pone GameScene al crear el HUD). */
+const pal = { panel: 0x18213a, edge: EDGE, accent: GOLD, accentHi: GOLD_L };
+export function setHudPalette(p: Partial<typeof pal> | null) {
+  Object.assign(pal, { panel: 0x18213a, edge: EDGE, accent: GOLD, accentHi: GOLD_L }, p ?? {});
+}
+
 /** Panel del HUD: fondo oscuro translúcido, borde doble (navy + oro) en escalones de 4 px y remaches. */
-export function drawHudFrame(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, accent = GOLD) {
+export function drawHudFrame(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, accent = pal.accent) {
   const u = 4;
   const r = (i: number, c: number, a = 1) => {
     g.fillStyle(c, a);
@@ -24,19 +30,19 @@ export function drawHudFrame(g: Phaser.GameObjects.Graphics, x: number, y: numbe
   };
   r(0, NAVY);
   r(u, accent);
-  r(u * 2, EDGE);
-  r(u * 3, 0x18213a, 0.92);
+  r(u * 2, pal.edge);
+  r(u * 3, pal.panel, 0.92);
   g.fillStyle(0xffffff, 0.12).fillRect(x + u * 4, y + u * 3, w - u * 8, 2);
   // Remaches en las esquinas
   for (const [cx, cy] of [[x + 10, y + 10], [x + w - 14, y + 10], [x + 10, y + h - 14], [x + w - 14, y + h - 14]]) {
-    g.fillStyle(GOLD_L, 1).fillRect(cx, cy, 4, 4);
+    g.fillStyle(pal.accentHi, 1).fillRect(cx, cy, 4, 4);
   }
   return g;
 }
 
 /** Ranura de poder: marco con franja izquierda del color del tipo; apagada (gris) mientras recarga. */
 export function drawSlotFrame(g: Phaser.GameObjects.Graphics, x: number, y: number, w: number, h: number, typeCol: number, ready = true) {
-  drawHudFrame(g, x, y, w, h, ready ? GOLD : 0x5a6280);
+  drawHudFrame(g, x, y, w, h, ready ? pal.accent : 0x5a6280);
   g.fillStyle(ready ? typeCol : 0x5a6280, 1).fillRect(x + 16, y + 14, 8, h - 28);
   if (ready) g.fillStyle(0xffffff, 0.35).fillRect(x + 16, y + 14, 2, h - 28);
   return g;

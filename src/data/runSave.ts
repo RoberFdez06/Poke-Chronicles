@@ -89,7 +89,13 @@ export interface RunSave {
   bossHistory: number[];
   /** El piso se regenera igual a partir de la semilla y el número de salas. */
   floorSeed: number;
+  /** Salas totales del piso (para mostrarlas). */
   roomCount: number;
+  /**
+   * Número base de salas que se pasó a generateFloor (sin las especiales, extra ni grandes): con él el piso se regenera
+   * idéntico. Los guardados anteriores no lo tienen y se recupera con recoverRoomBase a partir de `roomCount`.
+   */
+  roomBase?: number;
   bossId: number;
   /** Sala en la que estabas. Si no estaba limpia, al continuar se reinicia con los enemigos enteros. */
   roomId: number;
@@ -425,7 +431,7 @@ export function parseRun(raw: string | null): RunSave | null {
   const ok =
     isInt(d.savedAt) && isInt(d.starterId) && isInt(d.formId) && typeof d.starterName === 'string' && isMode(d.mode) &&
     isInt(d.floor) && d.floor >= 1 && isIntArray(d.bossHistory) &&
-    isInt(d.floorSeed) && isInt(d.roomCount) && isInt(d.bossId) && isInt(d.roomId) &&
+    isInt(d.floorSeed) && isInt(d.roomCount) && (d.roomBase === undefined || (isInt(d.roomBase) && d.roomBase >= 3)) && isInt(d.bossId) && isInt(d.roomId) &&
     isIntArray(d.visited) && isIntArray(d.cleared) && typeof d.hp === 'number' && d.hp > 0 && isInt(d.maxHp) && d.maxHp > 0 &&
     Array.isArray(d.passives) && d.passives.every((p) => typeof p === 'string') &&
     Array.isArray(d.slots) && d.slots.every((m) => m === null || isMove(m)) &&

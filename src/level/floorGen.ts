@@ -106,6 +106,24 @@ export function generateFloor(opts: FloorOptions): Floor {
   throw new Error(`No se pudo generar un piso con ${target} salas`);
 }
 
+/**
+ * Guardados anteriores al arreglo del minimapa: guardaban `roomCount` = salas totales del piso (con las especiales,
+ * extra, grandes y la arena del jefe ya añadidas) en vez del número base que se pasa a generateFloor, así que al
+ * reanudar salía otro piso. Busca el número base que, con las mismas opciones, da exactamente `total` salas.
+ * Si ninguno cuadra devuelve `total` (como antes).
+ */
+export function recoverRoomBase(opts: Omit<FloorOptions, 'roomCount'>, total: number): number {
+  const cells = (opts.cols ?? 9) * (opts.rows ?? 9);
+  for (let n = Math.min(total, cells); n >= 3; n--) {
+    try {
+      if (generateFloor({ ...opts, roomCount: n }).rooms.length === total) return n;
+    } catch {
+      // ese número no se puede generar: se prueba el siguiente
+    }
+  }
+  return total;
+}
+
 function tryGenerate(rng: () => number, seed: number, cols: number, rows: number, target: number): Floor | null {
   const grid: (number | undefined)[] = new Array(cols * rows);
   const at = (x: number, y: number) =>

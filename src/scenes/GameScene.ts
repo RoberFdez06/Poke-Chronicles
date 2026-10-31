@@ -314,7 +314,7 @@ import {
 import { canAfford, describeEffects, optionLabel, pickStory, resolveChoice, type ChoiceEffects, type ChoiceState, type ChoiceStory } from '../level/choiceEvents';
 import { GARDEN_BERRIES, GARDEN_HEAL, GARDEN_SHIELD, growGarden, rollSeed, SEED_CHANCE, shouldAutoHeal, useCarried, type GardenBerryId } from '../data/berries';
 import { clampToBounds as clampInArena, clampVelocity, clipBeamToBounds, outOfBounds } from '../level/bounds';
-import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
+import { generateFloor, recoverRoomBase, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
 import { biomeBossPool, biomeById, biomeEnemyPool, biomeFor, Biome, BIOMES, pickBossWeighted, pickMixedFoes } from '../level/biomes';
 import { forcedEventRng, hasRoutes, ROUTE_EVENT, routeLabel, routeMul, routeOptions, type RouteOption } from '../level/routes';
 import type { RouteSceneData } from './RouteScene';
@@ -333,6 +333,9 @@ import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBeh
   turnToward,
 } from '../data/enemies';
 import { drawMinimap } from './minimap';
+import { hudThemeFor } from '../ui/art/hudTheme';
+import { addHudAmbient, drawHudBackdrop } from '../ui/art/hudBackdrop';
+import { setHudPalette } from '../ui/art/hud';
 import { byDevice, drawKeyGlyph, GlyphText } from '../ui/art/keyGlyphs';
 import { bossCallout, floatPopup, PromptPanel } from '../ui/floatText';
 import { cancelCharge, chargedShapeFor, chargeProgress, CHARGE_DAMAGE_MUL, CHARGE_MOVE_MUL, CHARGE_SOURCES, isCharging, newCharge, stepCharge, type ChargeSource, type ChargeState } from '../data/charge.ts';
@@ -562,6 +565,10 @@ export class GameScene extends Phaser.Scene {
   private floor!: Floor;
   private current!: Room;
   private visited = new Set<number>();
+  /** Número base de salas con el que se generó el piso (se guarda para regenerarlo idéntico al reanudar). */
+  private roomBase = 0;
+  /** Salas por las que has pasado, en orden (trazo del camino en el minimapa). */
+  private trail: number[] = [];
   private cleared = new Set<number>();
   private transitioning = false;
   private bossKey = '';
@@ -1097,6 +1104,8 @@ export class GameScene extends Phaser.Scene {
     this.floorItems = [];
     this.doorMap.clear();
     this.visited.clear();
+    this.roomBase = 0;
+    this.trail = [];
     this.cleared.clear();
     this.trapdoor = undefined;
     this.towerArrow = undefined;
@@ -1313,14 +1322,10 @@ export class GameScene extends Phaser.Scene {
     else if (this.mode === 'bossrush' || isFinalFloor(this.mode, this.floorNum)) this.floor = arenaFloor(this.floorSeed, 'boss');
     else {
       this.layout = r?.layout ?? FLOOR_LAYOUT;
-      this.floor = generateFloor({
-        seed: this.floorSeed,
-        roomCount: r?.roomCount ?? roomCountFor(this.floorNum, this.rng(RNG.rooms)),
-        special: this.layout >= 2,
-        extra: this.layout >= 3,
-        big: this.layout >= 4,
-        bossArena: true,
-      });
+      const opts = { seed: this.floorSeed, special: this.layout >= 2, extra: this.layout >= 3, big: this.layout >= 4, bossArena: true };
+      // Al reanudar se usa el número base guardado; los guardados viejos guardaban las salas totales y se recupera
+      this.roomBase = r ? r.roomBase ?? recoverRoomBase(opts, r.roomCount) : roomCountFor(this.floorNum, this.rng(RNG.rooms));
+      this.floor = generateFloor({ ...opts, roomCount: this.roomBase });
       // Santuario obligatorio: si el piso no tiene sala normal para él, una sala de cofre pasa a ser normal
       this.floor = reserveSanctuaryRoom(this.floor);
     }
@@ -3044,6 +3049,19 @@ export class GameScene extends Phaser.Scene {
     const RW = HUD.right.w - HUD.pad * 2;
 
     // Pausa (arriba a la izquierda), para jugar solo con ratón
+    // Laterales con el tema del bioma (fondo, motivos, columna alrededor de la sala) y paneles con su paleta
+    {
+      const th = hudThemeFor(this.biome.id);
+      setHudPalette(th);
+      hud(drawHudBackdrop(this.add.graphics(), th, this.floorSeed));
+      addHudAmbient(this, th, (o) => hud(o), lowFx());
+      const prevBg = document.body.style.background;
+      document.body.style.background = `#${th.bg.toString(16).padStart(6, '0')}`;
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        document.body.style.background = prevBg;
+        setHudPalette(null);
+      });
+    }
     hud(drawHudFrame(this.add.graphics(), LX + HL.pause.x, HL.pause.y, HL.pause.w, HL.pause.h));
     const pb = over(
       hud(this.add.text(LX + HL.pause.x + HL.pause.w / 2, HL.pause.y + HL.pause.h / 2, '❚❚', { fontFamily: FONT, fontSize: '28px', color: '#f8f8f8' }))
@@ -3916,8 +3934,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.slots = Array.from({ length: SLOT_COUNT }, (_, i) => r.slots[i] ?? null);
     this.nextSlotReplace = r.nextSlotReplace;
     this.earned = r.earned;
-    r.visited.forEach((id) => this.visited.add(id));
-    r.cleared.forEach((id) => this.cleared.add(id));
+    // Solo salas que existen en este piso (un guardado de otro piso o de otra forma no deja salas fantasma)
+    const exists = (id: number) => Number.isInteger(id) && id >= 0 && id < this.floor.rooms.length;
+    r.visited.filter(exists).forEach((id) => this.groupIds(this.floor.rooms[id]).forEach((g) => this.visited.add(g)));
+    r.cleared.filter(exists).forEach((id) => this.cleared.add(id));
     this.coins = r.coins;
     this.keys = r.keys;
     this.bombs = r.bombs;
@@ -3951,6 +3971,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       bossHistory: [...this.bossHistory],
       floorSeed: this.floorSeed,
       roomCount: this.floor.rooms.length,
+      ...(this.roomBase > 0 ? { roomBase: this.roomBase } : {}),
       bossId: this.bossId,
       roomId: this.current.id,
       visited: [...this.visited],
@@ -4174,6 +4195,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (here.id === this.current.id) return;
     this.current = here;
     this.visited.add(here.id);
+    this.trail.push(here.id);
     this.flow = undefined;
     this.drawMap();
   }
@@ -4668,7 +4690,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.megaRoomId !== undefined && this.visited.has(this.megaRoomId) && !this.eventsDone.has(megaStoneDoneKey(this.megaRoomId))) marks.set(this.megaRoomId, ROOM_EVENT_COLOR.megaStone);
     // T56: salas con regla, en cuanto se ven en el mapa y hasta limpiarlas
     for (const [id, rule] of this.roomRules) if (!this.cleared.has(id)) marks.set(id, ROOM_RULE_COLOR[rule]);
-    const bottom = drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2, marks, (o) => this.toHud(o));
+    const bottom = drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2, marks, (o) => this.toHud(o), {
+      theme: hudThemeFor(this.biome.id),
+      trail: this.trail,
+      cleared: this.cleared,
+      revealed: this.revealedDoors,
+      chests: new Set((this.floor.chestRooms ?? []).filter((id) => !this.openedChests.has(id))),
+    });
     this.toasts?.setTop(bottom + 16);
   }
 
@@ -6163,7 +6191,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.showRooms([room.id]);
     this.setRoomCamera(room);
     this.shieldLeft = this.stats.shieldPerRoom;
-    this.visited.add(room.id);
+    // Sala grande: se ve entera al entrar, así que todas sus casillas cuentan como descubiertas
+    for (const id of this.groupIds(room)) this.visited.add(id);
+    if (this.trail[this.trail.length - 1] !== room.id) this.trail.push(room.id);
+    if (this.trail.length > 40) this.trail.shift();
     this.huntEnterRoom(room);
     // Tutorial: la primera vez que pasa cada cosa
     if (room.kind === 'start') this.tip('move');
