@@ -312,7 +312,7 @@ import {
 import { canAfford, describeEffects, optionLabel, pickStory, resolveChoice, type ChoiceEffects, type ChoiceState, type ChoiceStory } from '../level/choiceEvents';
 import { GARDEN_BERRIES, GARDEN_HEAL, GARDEN_SHIELD, growGarden, rollSeed, SEED_CHANCE, shouldAutoHeal, useCarried, type GardenBerryId } from '../data/berries';
 import { clampToBounds as clampInArena, clampVelocity, clipBeamToBounds, outOfBounds } from '../level/bounds';
-import { generateFloor, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
+import { generateFloor, recoverRoomBase, mulberry32, doorKey, DIRS, OPPOSITE, sameGroup, Dir, Floor, Room } from '../level/floorGen';
 import { biomeBossPool, biomeById, biomeEnemyPool, biomeFor, Biome, BIOMES, pickBossWeighted, pickMixedFoes } from '../level/biomes';
 import { forcedEventRng, hasRoutes, ROUTE_EVENT, routeLabel, routeMul, routeOptions, type RouteOption } from '../level/routes';
 import type { RouteSceneData } from './RouteScene';
@@ -557,6 +557,8 @@ export class GameScene extends Phaser.Scene {
   private floor!: Floor;
   private current!: Room;
   private visited = new Set<number>();
+  /** Número base de salas con el que se generó el piso (se guarda para regenerarlo idéntico al reanudar). */
+  private roomBase = 0;
   private cleared = new Set<number>();
   private transitioning = false;
   private bossKey = '';
@@ -1088,6 +1090,7 @@ export class GameScene extends Phaser.Scene {
     this.floorItems = [];
     this.doorMap.clear();
     this.visited.clear();
+    this.roomBase = 0;
     this.cleared.clear();
     this.trapdoor = undefined;
     this.towerArrow = undefined;
@@ -1302,14 +1305,10 @@ export class GameScene extends Phaser.Scene {
     else if (this.mode === 'bossrush' || isFinalFloor(this.mode, this.floorNum)) this.floor = arenaFloor(this.floorSeed, 'boss');
     else {
       this.layout = r?.layout ?? FLOOR_LAYOUT;
-      this.floor = generateFloor({
-        seed: this.floorSeed,
-        roomCount: r?.roomCount ?? roomCountFor(this.floorNum, this.rng(RNG.rooms)),
-        special: this.layout >= 2,
-        extra: this.layout >= 3,
-        big: this.layout >= 4,
-        bossArena: true,
-      });
+      const opts = { seed: this.floorSeed, special: this.layout >= 2, extra: this.layout >= 3, big: this.layout >= 4, bossArena: true };
+      // Al reanudar se usa el número base guardado; los guardados viejos guardaban las salas totales y se recupera
+      this.roomBase = r ? r.roomBase ?? recoverRoomBase(opts, r.roomCount) : roomCountFor(this.floorNum, this.rng(RNG.rooms));
+      this.floor = generateFloor({ ...opts, roomCount: this.roomBase });
       // Santuario obligatorio: si el piso no tiene sala normal para él, una sala de cofre pasa a ser normal
       this.floor = reserveSanctuaryRoom(this.floor);
     }
@@ -3809,8 +3808,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.slots = Array.from({ length: SLOT_COUNT }, (_, i) => r.slots[i] ?? null);
     this.nextSlotReplace = r.nextSlotReplace;
     this.earned = r.earned;
-    r.visited.forEach((id) => this.visited.add(id));
-    r.cleared.forEach((id) => this.cleared.add(id));
+    // Solo salas que existen en este piso (un guardado de otro piso o de otra forma no deja salas fantasma)
+    const exists = (id: number) => Number.isInteger(id) && id >= 0 && id < this.floor.rooms.length;
+    r.visited.filter(exists).forEach((id) => this.groupIds(this.floor.rooms[id]).forEach((g) => this.visited.add(g)));
+    r.cleared.filter(exists).forEach((id) => this.cleared.add(id));
     this.coins = r.coins;
     this.keys = r.keys;
     this.bombs = r.bombs;
@@ -3844,6 +3845,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       bossHistory: [...this.bossHistory],
       floorSeed: this.floorSeed,
       roomCount: this.floor.rooms.length,
+      ...(this.roomBase > 0 ? { roomBase: this.roomBase } : {}),
       bossId: this.bossId,
       roomId: this.current.id,
       visited: [...this.visited],
@@ -6046,7 +6048,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.showRooms([room.id]);
     this.setRoomCamera(room);
     this.shieldLeft = this.stats.shieldPerRoom;
-    this.visited.add(room.id);
+    // Sala grande: se ve entera al entrar, así que todas sus casillas cuentan como descubiertas
+    for (const id of this.groupIds(room)) this.visited.add(id);
     this.huntEnterRoom(room);
     // Tutorial: la primera vez que pasa cada cosa
     if (room.kind === 'start') this.tip('move');
