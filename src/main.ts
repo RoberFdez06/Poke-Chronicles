@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { installScreenFit } from './ui/screenFit';
 import { TitleScene } from './scenes/TitleScene';
 import { MenuScene } from './scenes/MenuScene';
 import { StarterScene } from './scenes/StarterScene';
@@ -119,6 +120,8 @@ function startGame() {
     scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, GardenScene, RunDexScene, SummaryScene, HistoryScene, KeysScene, BossIntroScene, GymPuzzleScene, FloorIntroScene, FinalPromptScene, RouteScene, SlotSwapScene, FusionScene, ItemChoiceScene, ConfirmScene, ControlsScene, SecondChanceScene, SeedCodeScene, PauseScene, AccountScene, PadLegendScene, TowerDefenseMenuScene, TowerDefenseScene, AdminScene, SynergyBookScene],
   });
   lockEscapeInFullscreen(game);
+  // Pantalla completa automática en móvil y reajuste del lienzo al cambiar el tamaño real
+  installScreenFit(game);
   // T43: un error no deja el juego colgado: pantalla "Algo ha fallado" con vuelta al menú
   installErrorScreen(game);
   // Para las pruebas de navegador (npm run e2e): saber qué pantalla está activa

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enterFullscreen, exitFullscreen, setAutoFullscreenPref } from '../ui/screenFit';
 import { addHelpBar } from '../ui/helpBar';
 import { fitDesign, COVER_H, COVER_W, DCX, DCY } from '../ui/layout';
 import { openControls } from './ControlsScene';
@@ -191,8 +192,12 @@ export class SettingsScene extends Phaser.Scene {
     else if (row === 'effects' || row === 'fps' || row === 'texts') this.toggleFx(row);
     else if (row === 'fullscreen') {
       // El navegador solo lo permite tras un gesto (Enter, A o clic lo son)
+      // Si el jugador la quita a mano se guarda y no se vuelve a forzar en móvil; si la pone, vuelve a ser automática
+      const wasFs = this.scale.isFullscreen;
+      setAutoFullscreenPref(!wasFs);
       try {
-        this.scale.toggleFullscreen();
+        if (wasFs) exitFullscreen();
+        else enterFullscreen();
       } catch {
         // no disponible
       }
