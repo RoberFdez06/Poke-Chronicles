@@ -1763,3 +1763,19 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   Test `powerPress.test.ts`.
 - **Sin verificar a ojo**: no se ha probado en el navegador (localhost sirve `main`); revisar el aspecto del pilar en
   cada bioma, el selector de abajo con los controles táctiles y el tinte de noche con zoom.
+
+## 2026-10-31 · Rama `ui`: fusión al recoger, esquiva, sin puzzle antes del jefe, ADMIN y filtros del TD
+
+- **Fusión de poderes**: fuera de la pausa (sigue en el panel admin). Con las 4 ranuras llenas, al recoger o comprar
+  un poder sale el cambio normal y, si entre las ranuras y el nuevo hay dos sin fusionar, «Fusionar dos poderes (F)»
+  (FusionScene con 5 candidatos: dos de las ranuras → resultado + el nuevo en la libre; ranura + nuevo → resultado en
+  esa ranura). Reemplazar una ranura con fusión pide confirmar «¡Vas a perder la fusión si continúas!»; solo recibes
+  el ataque nuevo. Lógica pura en `data/fusion.ts` (`canFuseOnPickup`, `applyPickupFusion`, `replaceLosesFusion`).
+- **Esquiva**: la distancia crece con la velocidad (57 → 95 px) y el impulso nunca baja de 1,6× tu velocidad
+  (`dashSpeed(moveSpeed)`); rayas de velocidad y chispas pixel (con lowFx, menos).
+- **Puzzle del gimnasio antes del líder**: apagado (`GYM_PUZZLE_ENABLED = false` en `level/gymPuzzles.ts`); el jefe sale
+  directo. Código y tests conservados.
+- **Distintivo ADMIN**: a la franja de arriba, pegado a la izquierda de la sala (no choca con minimapa, avisos ni barra del jefe).
+- **TD «Elige tu equipo»**: barra con Clase · Tipo · Orden · Todos. ◀▶ y LB/RB cambian el valor del selector enfocado,
+  ▲ pasa al siguiente, B/Esc quita el filtro (si no hay, sale), X o R los quitan todos; F/T/O atajos; clic izq./der.
+- **Sin verificar a ojo**: no probado en el navegador (localhost sirve `main`).
