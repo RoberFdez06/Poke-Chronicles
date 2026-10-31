@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  CROSSFADE_S, MUSIC_ENTER_MS, MUSIC_EXIT_MS, RESUME_WINDOW_MS, crossfadeGains, forceMood, initialMood, moodDelay, resumeStep, stepMood,
+  CROSSFADE_S, MUSIC_ENTER_MS, MUSIC_EXIT_MS, RESUME_WINDOW_MS, crossfadeGains, forceMood, initialMood, moodDelay, needsResume, resumeStep, stepMood,
   type MoodState, type MusicMood,
 } from '../src/audio/musicState.ts';
 
@@ -89,4 +89,11 @@ test('reanudar la pista si vuelve pronto; reiniciar si pasó mucho', () => {
   assert.equal(resumeStep(40, RESUME_WINDOW_MS + 1, 32), 0);
   assert.equal(resumeStep(0, 1000, 32), 0);
   assert.equal(resumeStep(5, 1000, 0), 0);
+});
+
+test('el audio se reanuda si está parado o interrumpido (iOS)', () => {
+  assert.equal(needsResume('suspended'), true);
+  assert.equal(needsResume('interrupted'), true);
+  assert.equal(needsResume('running'), false);
+  assert.equal(needsResume('closed'), false);
 });

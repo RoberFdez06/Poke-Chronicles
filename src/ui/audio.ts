@@ -4,7 +4,7 @@ import { MUSIC, SFX, midiToFreq, stepSeconds, type AudioSettings, type SfxName, 
 import { loadAudio, saveAudio } from '../data/save';
 import { fetchCryUrl } from '../data/pokeapi';
 import type { MusicTrack } from '../data/music';
-import { CROSSFADE_S, crossfadeGains, resumeStep } from '../audio/musicState.ts';
+import { CROSSFADE_S, crossfadeGains, needsResume, resumeStep } from '../audio/musicState.ts';
 
 let ctx: AudioContext | null = null;
 let sfxGain: GainNode | null = null;
@@ -28,6 +28,9 @@ function ensure(): AudioContext | null {
   } catch {
     return null;
   }
+  ctx.onstatechange = () => {
+    if (ctx && ctx.state === 'running' && musicWanted) startLoop();
+  };
   sfxGain = ctx.createGain();
   musicGain = ctx.createGain();
   sfxGain.connect(ctx.destination);
@@ -46,15 +49,37 @@ function applyVolume() {
   if (musicGain) musicGain.gain.value = settings.music * 0.35;
 }
 
-/** Llamar una vez al arrancar: el primer clic, tecla o botón del mando desbloquea el audio. */
+/**
+ * Llamar una vez al arrancar. Android e iOS solo aceptan reanudar el audio dentro de un gesto que *termina*
+ * (`touchend`, `pointerup`, `click`), no con `touchstart` ni `pointerdown`: por eso se escuchan todos. Además se
+ * reanuda al volver a la pestaña o de la ventana de Google, porque el sistema lo corta al irse a segundo plano.
+ */
 export function initAudio() {
+  // iPhone: sin esto el interruptor de silencio apaga el audio web (Safari 16.4+ lo entiende)
+  try {
+    const nav = navigator as Navigator & { audioSession?: { type: string } };
+    if (nav.audioSession) nav.audioSession.type = 'playback';
+  } catch {
+    // no disponible
+  }
   const unlock = () => {
     const c = ensure();
-    if (c && c.state === 'suspended') void c.resume();
+    if (c && needsResume(c.state)) void c.resume().catch(() => undefined);
     if (musicWanted) startLoop();
   };
-  for (const ev of ['pointerdown', 'keydown', 'touchstart'] as const) window.addEventListener(ev, unlock, { passive: true });
+  for (const ev of ['pointerdown', 'pointerup', 'keydown', 'touchstart', 'touchend', 'click'] as const) {
+    window.addEventListener(ev, unlock, { passive: true });
+  }
   window.addEventListener('gamepadconnected', unlock);
+  // Volver a la pestaña, de otra app o de la ventana de Google: si el audio quedó parado, se reanuda en cuanto se pueda
+  const back = () => {
+    if (document.visibilityState === 'hidden') return;
+    const c = ctx;
+    if (c && needsResume(c.state)) void c.resume().catch(() => undefined);
+  };
+  document.addEventListener('visibilitychange', back);
+  window.addEventListener('pageshow', back);
+  window.addEventListener('focus', back);
 }
 
 export const getAudioSettings = (): AudioSettings => ({ ...settings });
@@ -275,7 +300,7 @@ export const audioReady = (): boolean => !!ctx && ctx.state === 'running';
 /** Desbloquea el audio con un gesto y avisa cuando ya suena. */
 export async function unlockAudio(): Promise<void> {
   const c = ensure();
-  if (c && c.state === 'suspended') {
+  if (c && needsResume(c.state)) {
     try {
       await c.resume();
     } catch {

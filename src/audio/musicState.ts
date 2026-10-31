@@ -55,3 +55,8 @@ export function resumeStep(lastStep: number, silentMs: number, length: number): 
   if (length <= 0 || lastStep <= 0) return 0;
   return silentMs <= RESUME_WINDOW_MS ? lastStep % length : 0;
 }
+
+/** ¿El contexto está parado y hay que reanudarlo? (`interrupted` es el estado de iOS tras una llamada o al volver de otra app) */
+export function needsResume(state: string): boolean {
+  return state === 'suspended' || state === 'interrupted';
+}
