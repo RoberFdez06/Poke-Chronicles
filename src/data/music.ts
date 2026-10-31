@@ -1,6 +1,7 @@
 // Música chiptune por bioma y para el jefe (supervisor). Compuesta para el juego: sin derechos de terceros.
 // Cada paso es una corchea; null es silencio. Batería: 1 bombo, 2 caja, 0 nada. Se reproduce con playTrack() de ui/audio.ts.
 import type { Wave } from './sounds.ts';
+import type { MusicMood } from '../audio/musicState.ts';
 
 export interface MusicTrack {
   bpm: number;
@@ -106,7 +107,7 @@ TRACKS.jefe.harmony = [60, null, null, null, 63, null, null, null, 68, null, nul
 TRACKS.jefe.arp = true;
 
 /** Qué música toca según lo que pasa en la sala: jefe final, jefe (o minijefe), combate o la del bioma. */
-export type MusicMood = 'final' | 'boss' | 'combat' | 'calm';
+export type { MusicMood } from '../audio/musicState.ts';
 export function trackForMood(mood: MusicMood, biomeId: string): MusicTrack {
   if (mood === 'final') return TRACKS.jefeFinal;
   if (mood === 'boss') return TRACKS.jefe;

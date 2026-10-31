@@ -156,7 +156,8 @@ import { ARENA_AT, fallTheme } from '../level/arenaPhase';
 import { BOSS_PHASE2_AT, BOSS_ATTACK_LABEL as PATTERN_LABEL, isPatternAttack, patternMs, patternWarnAngles, patternWaves, type PatternAttack } from '../data/bossPatterns';
 import { GAME_ZOOM as BOSS_CAM_ZOOM } from '../ui/layout';
 import { shotSfx } from '../data/sounds';
-import { trackForBiome, trackForMood, TRACKS, type MusicMood } from '../data/music';
+import { trackForBiome, trackForMood, TRACKS } from '../data/music';
+import { forceMood, initialMood, stepMood, type MoodState, type MusicMood } from '../audio/musicState';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
 import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_GLOW, FALL_HAZARD, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
@@ -3353,7 +3354,7 @@ export class GameScene extends Phaser.Scene {
     // T72: llegada al piso nuevo de la Torre con su destello
     if (this.mode === 'tower' && this.carry && !this.resume) towerArrive(this, this.player.x, this.player.y, { lift: this.player, low: lowFx() });
     // Música del bioma (la del jefe la pone spawnBoss); al salir de la partida, la del menú
-    this.musicMood = 'calm';
+    this.musicState = initialMood('calm');
     this.musicAt = 0;
     playTrack(trackForBiome(this.biome.id));
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => playMenuMusic());
@@ -7500,7 +7501,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.notify(trio ? `¡Reto final: ${f.name}!` : `¡Reto final: ${label}, más fuerte que nunca!`, { kind: 'danger', icon: 'star' });
     this.finaleMembers.forEach((m) => void cry(m.id));
     playTrack(TRACKS.jefeFinal);
-    this.musicMood = 'final';
+    this.musicState = forceMood('final', this.time.now);
     const fighter = (m: (typeof this.finaleMembers)[number]) => ({ texture: `${m.key}-front`, name: m.name, types: m.types });
     this.showBossIntro(group[0].getData('ai') as EnemyAI, {
       boss: { ...fighter(this.finaleMembers[0]), name: label },
@@ -7588,7 +7589,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.notify(dark ? `¡${darkName(cap(this.bossName))}, jefe legendario oscuro!\nMás fuerte en todo, con un ataque de más y se enfurece a media vida` : `¡${this.bossName}, jefe legendario!`, { kind: 'danger', icon: 'pokeball' });
     void cry(this.bossId);
     playTrack(TRACKS.jefe);
-    this.musicMood = 'boss';
+    this.musicState = forceMood('boss', this.time.now);
     this.showBossIntro(ai, dark ? { boss: { texture: `${this.bossKey}-front`, name: darkName(cap(this.bossName)), types: this.bossTypes }, dark, subtitle: `Legendario oscuro · ${progressText(this.mode, this.floorNum)}` } : {});
   }
 
@@ -10424,7 +10425,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   // --- Bucle ---
 
   private musicAt = 0;
-  private musicMood: MusicMood = 'calm';
+  private musicState: MoodState = initialMood('calm');
 
   /**
    * Música según el combate: épica de jefe final, de jefe (también minijefes), de combate mientras hay enemigos y la
@@ -10432,7 +10433,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    */
   private musicTick(time: number) {
     if (time < this.musicAt || this.ended || this.transitioning || !this.enemies?.children) return;
-    this.musicAt = time + 400;
+    this.musicAt = time + 120;
     let mood: MusicMood = 'calm';
     for (const c of this.enemies.getChildren()) {
       const e = c as Sprite;
@@ -10442,9 +10443,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (ai?.boss || e.getData('miniboss')) mood = 'boss';
       else if (mood === 'calm') mood = 'combat';
     }
-    if (mood === this.musicMood) return;
-    this.musicMood = mood;
-    playTrack(trackForMood(mood, this.biome.id));
+    // Histéresis (audio/musicState.ts): subir a combate casi al instante, volver a la normal tras unos segundos
+    const r = stepMood(this.musicState, mood, time);
+    this.musicState = r.state;
+    if (r.changed) playTrack(trackForMood(r.state.mood, this.biome.id));
   }
 
   /** ¿Las puertas de la sala (grande) actual están cerradas (combate)? */

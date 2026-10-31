@@ -1916,3 +1916,20 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   dios corta después del parry (sigue siendo invulnerable y el ladrón no roba).
 - **Sin verificar a ojo**: no probado en el navegador (localhost sirve `main`). Revisar el anillo de «Protegido», la
   aparición del jefe en arenas 2x2/3x3 y que las puertas se abran en salas de evento (rival, sala del tiempo).
+
+## Música: crossfade e histéresis entre combate y normal
+
+- **Causa**: `GameScene.musicTick` miraba los enemigos cada 0,4 s y llamaba a `playTrack` en cuanto cambiaba la situación;
+  `playTrack` cortaba la pista y la reiniciaba desde el paso 0 (las notas ya programadas seguían sonando encima).
+  Al limpiar una sala o cruzar una puerta con enemigos sueltos, la música saltaba calma/combate sin margen y sin fundido.
+- **Estado puro** (`src/audio/musicState.ts`, tests en `tests/musicState.test.ts`): `stepMood` con histéresis (subir de
+  intensidad: `MUSIC_ENTER_MS` 450 ms; bajar, p. ej. combate a normal: `MUSIC_EXIT_MS` 2,8 s; una candidata que desaparece se descarta),
+  `forceMood` (jefe y jefe final entran al instante con su intro), `crossfadeGains` (potencia constante, `CROSSFADE_S` 1,5 s)
+  y `resumeStep` (reanudar si la pista salió hace menos de `RESUME_WINDOW_MS` 20 s).
+- **Motor** (`src/ui/audio.ts`): cada pista suena por su propio carril (GainNode) colgado de `musicGain`, así que ajustes de
+  volumen/silencio, `softMusicIn` y `restoreMusicVolume` siguen funcionando. `playTrack` hace crossfade y la pista que sale
+  recuerda su paso; al volver pronto se reanuda en vez de empezar de cero. Mismo bucle de 100 ms (no depende de Phaser, así
+  que la pausa y el modo táctil no cambian).
+- **GameScene** (mínimo): `musicMood` pasa a `musicState`, el tick va cada 120 ms y usa `stepMood`; jefe y jefe final usan `forceMood`.
+- **Sin verificar a oído**: la duración del fundido y los retardos (1,5 s / 0,45 s / 2,8 s) se han elegido sobre el papel;
+  probar en el navegador entrar en salas con y sin enemigos, oleadas seguidas, jefe y volver al menú.

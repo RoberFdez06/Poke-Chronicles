@@ -4,6 +4,7 @@ import { MUSIC, SFX, midiToFreq, stepSeconds, type AudioSettings, type SfxName, 
 import { loadAudio, saveAudio } from '../data/save';
 import { fetchCryUrl } from '../data/pokeapi';
 import type { MusicTrack } from '../data/music';
+import { CROSSFADE_S, crossfadeGains, resumeStep } from '../audio/musicState.ts';
 
 let ctx: AudioContext | null = null;
 let sfxGain: GainNode | null = null;
@@ -12,8 +13,6 @@ let noise: AudioBuffer | null = null;
 let settings: AudioSettings = loadAudio();
 let musicWanted = false;
 let musicTimer: number | undefined;
-let nextStepAt = 0;
-let step = 0;
 let tempoMul = 1;
 /** Pista que suena: la del menú por defecto; playTrack() la cambia (biomas y jefe, ver data/music.ts). */
 const MENU_TRACK: MusicTrack = { bpm: MUSIC.bpm, lead: 'square', melody: MUSIC.melody, bass: MUSIC.bass };
@@ -130,13 +129,89 @@ export async function cry(id: number) {
 }
 
 // --- Música: bucle programado por adelantado (melodía + bajo) ---
+// Cada pista suena por su propio "carril" (GainNode). Cambiar de pista hace un crossfade entre carriles y el que sale
+// recuerda por dónde iba: si vuelve en pocos segundos se reanuda en vez de empezar de cero (lógica en audio/musicState.ts).
 
-/** Cambia la música a otra pista (del bioma, del jefe…) sin cortes raros: empieza desde su primer compás. */
+interface Lane {
+  track: MusicTrack;
+  gain: GainNode;
+  step: number;
+  nextStepAt: number;
+  /** Se está programando (suena o se está apagando en el crossfade). */
+  playing: boolean;
+  /** Desde cuándo (performance.now) no es la pista activa. */
+  silentSince: number;
+  stopTimer?: number;
+}
+const lanes = new Map<MusicTrack, Lane>();
+
+function laneFor(c: AudioContext, t: MusicTrack): Lane {
+  let l = lanes.get(t);
+  if (!l) {
+    const gain = c.createGain();
+    gain.gain.value = 0;
+    gain.connect(musicGain!);
+    l = { track: t, gain, step: 0, nextStepAt: 0, playing: false, silentSince: -Infinity };
+    lanes.set(t, l);
+  }
+  return l;
+}
+
+/** Rampa de volumen de un carril con curva de potencia constante (ver crossfadeGains). */
+function fadeLane(c: AudioContext, l: Lane, to: 0 | 1, secs: number) {
+  const from = Math.max(0, Math.min(1, l.gain.gain.value));
+  const n = 24;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const g = crossfadeGains((i / (n - 1)) * secs, secs);
+    curve[i] = to === 1 ? from + (1 - from) * g.inGain : from * g.outGain;
+  }
+  const p = l.gain.gain;
+  p.cancelScheduledValues(c.currentTime);
+  p.setValueAtTime(from, c.currentTime);
+  p.setValueCurveAtTime(curve, c.currentTime, secs);
+}
+
+/** Pone un carril como el que suena: si no estaba programándose, arranca (reanudando si salió hace poco). */
+function activateLane(c: AudioContext, l: Lane, secs: number) {
+  if (l.stopTimer !== undefined) {
+    window.clearTimeout(l.stopTimer);
+    l.stopTimer = undefined;
+  }
+  if (!l.playing) {
+    l.step = resumeStep(l.step, performance.now() - l.silentSince, l.track.melody.length);
+    l.nextStepAt = c.currentTime + 0.05;
+    l.playing = true;
+  }
+  if (secs > 0) fadeLane(c, l, 1, secs);
+  else {
+    l.gain.gain.cancelScheduledValues(c.currentTime);
+    l.gain.gain.setValueAtTime(1, c.currentTime);
+  }
+}
+
+function deactivateLane(c: AudioContext, l: Lane, secs: number) {
+  l.silentSince = performance.now();
+  fadeLane(c, l, 0, secs);
+  if (l.stopTimer !== undefined) window.clearTimeout(l.stopTimer);
+  l.stopTimer = window.setTimeout(() => {
+    l.playing = false;
+    l.stopTimer = undefined;
+  }, secs * 1000 + 150);
+}
+
+/** Cambia la música a otra pista (bioma, combate, jefe…) con crossfade; la que ya suena no se toca. */
 export function playTrack(next: MusicTrack) {
   if (track === next) return;
+  const prev = track;
   track = next;
   tempoMul = 1;
-  step = 0;
+  const c = ctx;
+  if (c && musicGain && musicTimer !== undefined) {
+    const pl = lanes.get(prev);
+    if (pl) deactivateLane(c, pl, CROSSFADE_S);
+    activateLane(c, laneFor(c, next), CROSSFADE_S);
+  }
   playMusic();
 }
 
@@ -154,37 +229,43 @@ export function playMusic() {
   startLoop();
 }
 
+function scheduleLane(c: AudioContext, l: Lane) {
+  const t = l.track;
+  const mul = t === track ? tempoMul : 1;
+  while (l.nextStepAt < c.currentTime + 0.25) {
+    const dur = stepSeconds(t.bpm * mul);
+    const i = l.step % t.melody.length;
+    const m = t.melody[i];
+    const b = t.bass[i % t.bass.length];
+    const d = t.drums ? t.drums[i % t.drums.length] : 0;
+    const at = l.nextStepAt;
+    const out = l.gain;
+    if (settings.music > 0) {
+      if (m !== null) playTone(c, out, { freq: midiToFreq(m), dur: dur * 0.9, wave: t.lead, gain: t.lead === 'triangle' ? 0.3 : 0.16 }, at);
+      if (d === 1) playTone(c, out, { freq: 90, slideTo: 40, dur: 0.12, wave: 'sine', gain: 0.5 }, at);
+      if (d === 2) playTone(c, out, { freq: 1200, dur: 0.08, wave: 'noise', gain: 0.18 }, at);
+      if (b !== null) playTone(c, out, { freq: midiToFreq(b), dur: dur * 1.8, wave: 'triangle', gain: 0.35 }, at);
+      // Capas de los temas de combate y de jefe: charles, segunda voz y arpegio
+      if (d === 3) playTone(c, out, { freq: 6000, dur: 0.03, wave: 'noise', gain: 0.07 }, at);
+      const hm = t.harmony ? t.harmony[i % t.harmony.length] : null;
+      if (hm !== null && hm !== undefined) playTone(c, out, { freq: midiToFreq(hm), dur: dur * 3.5, wave: 'square', gain: 0.07 }, at);
+      if (t.arp) {
+        const root = t.bass[(i - (i % 4) + t.bass.length) % t.bass.length] ?? b ?? 48;
+        const steps = [24, 28, 31, 36];
+        playTone(c, out, { freq: midiToFreq((root ?? 48) + steps[i % 4]), dur: dur * 0.45, wave: 'square', gain: 0.05 }, at);
+      }
+    }
+    l.nextStepAt += dur;
+    l.step++;
+  }
+}
+
 function startLoop() {
   const c = ctx;
   if (!c || !musicGain || musicTimer !== undefined) return;
-  nextStepAt = c.currentTime + 0.1;
-  let dur = stepSeconds(track.bpm);
+  activateLane(c, laneFor(c, track), 0);
   musicTimer = window.setInterval(() => {
-    // Programa los pasos del próximo cuarto de segundo
-    while (nextStepAt < c.currentTime + 0.25) {
-      dur = stepSeconds(track.bpm * tempoMul);
-      const i = step % track.melody.length;
-      const m = track.melody[i];
-      const b = track.bass[i % track.bass.length];
-      const d = track.drums ? track.drums[i % track.drums.length] : 0;
-      if (settings.music > 0) {
-        if (m !== null) playTone(c, musicGain!, { freq: midiToFreq(m), dur: dur * 0.9, wave: track.lead, gain: track.lead === 'triangle' ? 0.3 : 0.16 }, nextStepAt);
-        if (d === 1) playTone(c, musicGain!, { freq: 90, slideTo: 40, dur: 0.12, wave: 'sine', gain: 0.5 }, nextStepAt);
-        if (d === 2) playTone(c, musicGain!, { freq: 1200, dur: 0.08, wave: 'noise', gain: 0.18 }, nextStepAt);
-        if (b !== null) playTone(c, musicGain!, { freq: midiToFreq(b), dur: dur * 1.8, wave: 'triangle', gain: 0.35 }, nextStepAt);
-        // Capas de los temas de combate y de jefe: charles, segunda voz y arpegio
-        if (d === 3) playTone(c, musicGain!, { freq: 6000, dur: 0.03, wave: 'noise', gain: 0.07 }, nextStepAt);
-        const hm = track.harmony ? track.harmony[i % track.harmony.length] : null;
-        if (hm !== null && hm !== undefined) playTone(c, musicGain!, { freq: midiToFreq(hm), dur: dur * 3.5, wave: 'square', gain: 0.07 }, nextStepAt);
-        if (track.arp) {
-          const root = track.bass[(i - (i % 4) + track.bass.length) % track.bass.length] ?? b ?? 48;
-          const steps = [24, 28, 31, 36];
-          playTone(c, musicGain!, { freq: midiToFreq((root ?? 48) + steps[i % 4]), dur: dur * 0.45, wave: 'square', gain: 0.05 }, nextStepAt);
-        }
-      }
-      nextStepAt += dur;
-      step++;
-    }
+    for (const l of lanes.values()) if (l.playing) scheduleLane(c, l);
   }, 100);
 }
 
