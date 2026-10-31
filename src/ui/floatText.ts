@@ -134,12 +134,12 @@ export class PromptPanel {
   private y: number;
   private maxW: number;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, maxW: number, adopt: (o: Phaser.GameObjects.GameObject) => void) {
+  constructor(scene: Phaser.Scene, x: number, y: number, maxW: number, adopt: (o: Phaser.GameObjects.GameObject) => void, private size = 18) {
     this.x = x;
     this.y = y;
     this.maxW = maxW;
     this.box = scene.add.graphics();
-    this.text = new GlyphText(scene, x + 14, y, '', { size: 18, color: '#ffffff', maxWidth: maxW - 28 });
+    this.text = new GlyphText(scene, x + 14, y, '', { size, color: '#ffffff', maxWidth: maxW - 28 });
     adopt(this.box);
     adopt(this.text);
   }
@@ -159,7 +159,7 @@ export class PromptPanel {
     const body = s.replace(/^Enter \/ A \/ clic:\s*/, `${lead} `);
     this.text.setText(body, d);
     const w = Math.min(this.maxW, this.text.displayW + 28);
-    const h = 40;
+    const h = Math.max(40, this.size + 22);
     const g = this.box;
     g.fillStyle(0x101828, 0.92).fillRect(this.x + 2, this.y - h / 2, w - 4, h).fillRect(this.x, this.y - h / 2 + 2, w, h - 4);
     g.fillStyle(0x3a4560, 1).fillRect(this.x + 2, this.y - h / 2 + 2, w - 4, 2);

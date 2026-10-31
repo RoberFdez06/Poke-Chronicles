@@ -40,3 +40,19 @@ test('rowHitHeight: en móvil la fila de menú (54 + hueco 14) llega a ~41 px CS
   const css = 68 * U * cssPerGamePx(844, 390);
   assert.ok(css > 40);
 });
+
+test('HUD: en escritorio no cambia nada', async () => {
+  const { hudFontSize } = await import('../src/ui/uiScale.ts');
+  for (const s of [11, 15, 20, 46]) assert.equal(hudFontSize(s, 0.347, false), s);
+});
+
+test('HUD: en móvil (escala 0,347) las letras llegan a ~9,5 px CSS, con tope ×2 y máximo opcional', async () => {
+  const { hudFontSize, HUD_MIN_CSS } = await import('../src/ui/uiScale.ts');
+  const k = 667 / 1920;
+  assert.ok(hudFontSize(18, k, true) * k >= HUD_MIN_CSS - 0.3);
+  assert.equal(hudFontSize(11, k, true), 22); // tope ×2
+  assert.equal(hudFontSize(16, k, true, 22), 22);
+  assert.equal(hudFontSize(46, k, true), 46); // ya grande: igual
+  // Nunca más pequeño que el original
+  assert.equal(hudFontSize(30, k, true, 10), 30);
+});

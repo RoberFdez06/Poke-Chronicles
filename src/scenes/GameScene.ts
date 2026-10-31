@@ -17,6 +17,7 @@ import { BOSS_CINE_STORE, bossCineKey, shouldShowBossCine } from '../data/bossCi
 import { bounceOffRects, clipSegmentToRects, segmentBlocked } from '../data/projectileRules';
 import { phaseAtSeconds, phasePowerMul, pickByPhase, PHASE_DESC, PHASE_NOTICE, type Phase } from '../data/dayNight';
 import { TouchControls } from '../ui/touchControls';
+import { hudFont } from '../ui/uiScale';
 import { touchAimDir } from '../data/touchAim';
 import type { PadRect } from '../data/touchPad';
 import { touchOnlyDevice } from '../data/controls';
@@ -3143,7 +3144,7 @@ export class GameScene extends Phaser.Scene {
       const { x: px0, y: py, w: pw, h: ph } = HL.parry;
       const px = LX + px0;
       this.parryHud = { g: hud(this.add.graphics()), x: px, y: py, w: pw, h: ph, shown: '' };
-      txt(px + 12, py + ph / 2, 14, '#f8f8f8', true).setOrigin(0, 0.5).setText('Parry');
+      txt(px + 12, py + ph / 2, hudFont(14, 22), '#f8f8f8', true).setOrigin(0, 0.5).setText('Parry');
       const parryBtn = over(hud(this.add.zone(px + pw / 2, py + ph / 2, pw, ph).setInteractive({ useHandCursor: true })));
       parryBtn.on('pointerdown', () => this.doParry());
     }
@@ -3151,7 +3152,7 @@ export class GameScene extends Phaser.Scene {
     {
       const a = HL.adrenaline;
       const g = hud(this.add.graphics());
-      const text = txt(LX + a.x + a.w / 2, a.y + a.h / 2, 12, '#f8f8f8', true).setOrigin(0.5).setText('Adrenalina');
+      const text = txt(LX + a.x + a.w / 2, a.y + a.h / 2, hudFont(12, 20), '#f8f8f8', true).setOrigin(0.5).setText('Adrenalina');
       this.adrenalineHud = { g, text, x: LX + a.x, y: a.y, w: a.w, h: a.h, shown: '' };
       // T75: medidor de poder, una tira fina entre la adrenalina y la ficha (solo con Banda Dinamax, Teragema o Cristal Z)
       this.powerMeterHud = { g: hud(this.add.graphics()), x: LX + HL.meter.x, y: HL.meter.y, w: HL.meter.w, h: HL.meter.h, shown: '' };
@@ -3166,12 +3167,12 @@ export class GameScene extends Phaser.Scene {
       .setMaxLines(2);
     this.hpBar = addHpBar(this, LX + HL.hpBar.x, HL.hpBar.y, HL.hpBar.w, HL.hpBar.h);
     this.hpBar.objects.forEach((o) => hud(o));
-    this.hpText = txt(LX + HL.hpText.x, HL.hpText.y, 20, '#f8f8f8', true).setOrigin(1, 0.5);
+    this.hpText = txt(LX + HL.hpText.x, HL.hpText.y, hudFont(20), '#f8f8f8', true).setOrigin(1, 0.5);
     // Monedas, llaves y bombas (clic en la bomba para soltar una)
     hud(drawHudFrame(this.add.graphics(), LX, HL.counters.y, LW, HL.counters.h));
     const count = (iconKey: string, x: number) => {
       hud(this.add.image(x, HL.counterIconY, iconKey).setScale(2));
-      return txt(x + 15, HL.counterIconY, 16, '#f8f8f8', true).setOrigin(0, 0.5);
+      return txt(x + 15, HL.counterIconY, hudFont(16, 22), '#f8f8f8', true).setOrigin(0, 0.5);
     };
     {
       // Esquina superior izquierda de la sala, en coordenadas reales de pantalla
@@ -3192,7 +3193,7 @@ export class GameScene extends Phaser.Scene {
     const potionBtn = over(hud(this.add.zone(LX + HUD_COUNT_X.potion + 12, HL.counterIconY + 8, 50, 60).setInteractive({ useHandCursor: true })));
     potionBtn.on('pointerdown', () => this.drinkPotion());
     // Objetos pasivos
-    this.invText = hud(this.add.text(LX + 2, HL.itemsTitleY, '', { fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: '#ffffff' }));
+    this.invText = hud(this.add.text(LX + 2, HL.itemsTitleY, '', { fontFamily: FONT, fontSize: `${hudFont(15, 24)}px`, fontStyle: 'bold', color: '#ffffff' }));
     // Objeto activo: abajo a la izquierda (clic para usarlo)
     this.activeHud = {
       g: hud(this.add.graphics()),
@@ -3268,11 +3269,11 @@ export class GameScene extends Phaser.Scene {
       const y = this.slotY(i);
       this.slotBoxes.push(hud(this.add.graphics()));
       this.slotTypes.push(
-        txt(RX + RW - 52, y + 2, 12, '#ffffff', true).setOrigin(0.5).setShadow(1, 1, '#00000088', 0),
+        txt(RX + RW - 52, y + 2, hudFont(12, 20), '#ffffff', true).setOrigin(0.5).setShadow(1, 1, '#00000088', 0),
       );
       this.slotShown.push('');
       this.slotBadges.push(txt(RX + 30, y + 34, 13, '#ffffff', true).setOrigin(0.5).setShadow(1, 1, '#00000088', 0));
-      this.hud.push(txt(RX + 50, y + 34, 18, '#f8f8f8', true).setOrigin(0, 0.5));
+      this.hud.push(txt(RX + 50, y + 34, hudFont(18), '#f8f8f8', true).setOrigin(0, 0.5));
       const zone = over(hud(this.add.zone(RX + RW / 2, y + 32, RW, 64).setInteractive({ useHandCursor: true })));
       slotZones.push(zone);
       // En táctil sale solo hacia el enemigo más cercano (sin soltar el joystick de apuntar)
@@ -3310,7 +3311,8 @@ export class GameScene extends Phaser.Scene {
     this.toasts = new ToastStack(this, HUD.right.x + HUD.pad, 200, HUD.right.w - HUD.pad * 2, (box, parts) => {
       this.hudLayer.add(box);
       if (this.hudCam) for (const o of [box, ...parts]) o.cameraFilter &= ~this.hudCam.id;
-    });
+      // En táctil, como mucho dos avisos y con letra legible (no bajan hasta Parry y Esquiva)
+    }, this.touch ? 2 : 4, (px) => hudFont(px));
     // Cartel del centro, solo para el fin de partida (como los diálogos de los juegos)
     this.bannerBox = hud(this.add.graphics());
     this.banner = hud(
@@ -3346,7 +3348,7 @@ export class GameScene extends Phaser.Scene {
     }
     // «Enter / A / clic: …» en un panel fijo abajo a la izquierda de la sala (antes flotaba sobre cada cosa; la franja
     // de abajo es de los consejos)
-    this.prompt = new PromptPanel(this, GAME_VIEW.x + 12, HUD.bottom.y - 34, GAME_VIEW.w - 24, (o) => this.toHud(o));
+    this.prompt = new PromptPanel(this, GAME_VIEW.x + 12, HUD.bottom.y - 34, GAME_VIEW.w - 24, (o) => this.toHud(o), hudFont(18));
 
     // Si ya habías vencido al jefe, la trampilla sigue ahí
     if (this.mode === 'tower') this.towerEnter();
@@ -5443,16 +5445,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const h = 56;
     const y = H - h - 2;
     const box = drawBox(this.add.graphics(), x, y, w, h, { radius: 12 }).setAlpha(0.96).setData('top', y);
-    const title = this.add.text(x + 20, y + h / 2, `Consejo · ${TIPS[id].title}`, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(0, 0.5);
+    const title = this.add.text(x + 20, y + h / 2, `Consejo · ${TIPS[id].title}`, { fontFamily: FONT, fontSize: `${hudFont(16)}px`, fontStyle: 'bold', color: '#b8860b' }).setOrigin(0, 0.5);
     const touch = !!this.touch || currentInput() === 'touch';
     // El de las formas de poder, con las teclas y botones dibujados (glifos pixel) del dispositivo que usas
     const text: Phaser.GameObjects.GameObject = id === 'forms'
       ? new GlyphText(this, title.x + title.width + 14, y + h / 2, this.formsTipText(), { size: 14, color: HEX.text, bold: false, auto: false, maxWidth: w - title.width - 440 })
       : this.add.text(title.x + title.width + 14, y + h / 2, tipText(id, touch).replace(/\n/g, ' '), {
-        fontFamily: FONT, fontSize: '14px', color: HEX.text, wordWrap: { width: w - title.width - 440 },
+        fontFamily: FONT, fontSize: `${hudFont(14)}px`, color: HEX.text, wordWrap: { width: w - title.width - 440 },
       }).setOrigin(0, 0.5);
     const button = (bx: number, label: string, onClick: () => void) => {
-      const b = this.add.text(bx, y + h / 2, label, { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#b8860b' })
+      const b = this.add.text(bx, y + h / 2, label, { fontFamily: FONT, fontSize: `${hudFont(16)}px`, fontStyle: 'bold', color: '#b8860b' })
         .setOrigin(1, 0.5).setPadding(8, 6).setInteractive({ useHandCursor: true });
       b.on('pointerover', () => b.setColor(HEX.text));
       b.on('pointerout', () => b.setColor('#b8860b'));
@@ -5465,6 +5467,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const labels = tipButtons(touch);
     const ok = button(x + w - 20, labels.ok, () => this.closeTip());
     const off = button(ok.x - ok.width - 24, labels.off, () => this.closeTip(true));
+    // Móvil (letra más grande): si el texto no cabe en la franja de abajo, el cuadro crece hacia arriba lo justo
+    const textH = (text as Phaser.GameObjects.Text).height ?? 0;
+    if (textH + 16 > h) {
+      const h2 = Math.ceil(textH + 20);
+      const y2 = H - h2 - 2;
+      drawBox(box.clear(), x, y2, w, h2, { radius: 12 }).setData('top', y2);
+      for (const o of [title, text, ok, off]) (o as Phaser.GameObjects.Text).setY(y2 + h2 / 2);
+    }
     this.tipObjects = [box, title, text, ok, off];
     // Con la pausa abierta el consejo se esconde (su barra de ayuda va en la misma franja de abajo)
     const objs = this.tipObjects;
@@ -10790,7 +10800,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // Nombre largo: más pequeño para no pisar la Poké Ball ni la Mega Piedra
       const maxW = this.powerButtonOffered() ? HL.name.maxWMega : HL.name.maxW;
       if (this.nameText.text !== nm || this.nameText.getData('maxW') !== maxW) {
-        this.nameText.setFontSize(nameFontSize(nm, maxW)).setText(nm).setData('maxW', maxW);
+        this.nameText.setFontSize(hudFont(nameFontSize(nm, maxW))).setText(nm).setData('maxW', maxW);
         while (this.nameText.width > maxW && Number(this.nameText.style.fontSize.toString().replace('px', '')) > 12) {
           this.nameText.setFontSize(Number(this.nameText.style.fontSize.toString().replace('px', '')) - 1);
         }

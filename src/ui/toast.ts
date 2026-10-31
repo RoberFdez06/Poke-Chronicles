@@ -47,6 +47,8 @@ export class ToastStack {
     /** Dónde se añaden las tarjetas (p. ej. la capa del HUD) y qué hacer con cada objeto creado (cámaras). */
     private attach: (card: Phaser.GameObjects.Container, parts: Phaser.GameObjects.GameObject[]) => void = () => {},
     private max = 4,
+    /** Tamaño final de cada letra (en móvil el HUD de la partida la agranda; por defecto, igual). */
+    private font: (px: number) => number = (px) => px,
   ) {
     this.top = top;
     bakeIcons(scene);
@@ -67,10 +69,10 @@ export class ToastStack {
     const textX = 50;
     const tw = this.w - textX - pad;
     const head = this.scene.add.text(textX, pad + 2, title ?? '', {
-      fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: '#' + style.color.toString(16).padStart(6, '0'), wordWrap: { width: tw },
+      fontFamily: FONT, fontSize: `${this.font(15)}px`, fontStyle: 'bold', color: '#' + style.color.toString(16).padStart(6, '0'), wordWrap: { width: tw },
     });
     const body = this.scene.add.text(textX, head.y + head.height + 2, rest.join('\n'), {
-      fontFamily: FONT, fontSize: '13px', color: HEX.text, wordWrap: { width: tw },
+      fontFamily: FONT, fontSize: `${this.font(13)}px`, color: HEX.text, wordWrap: { width: tw },
     });
     const h = Math.max(52, Math.ceil(body.y + (rest.length ? body.height : 0) + pad));
     const bg = drawBox(this.scene.add.graphics(), 0, 0, this.w, h, { radius: 10 });

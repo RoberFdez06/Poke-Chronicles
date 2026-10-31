@@ -55,3 +55,21 @@ export function viewportCssPerPx(): number {
   if (typeof window === 'undefined') return 1;
   return cssPerGamePx(window.innerWidth, window.innerHeight);
 }
+
+/**
+ * HUD de la partida en móvil: va en una cámara sin zoom (no la de los menús, ×1,6875), así que con el aumento de
+ * arriba sus letras se quedaban en 5-7 px CSS. Aquí se busca un mínimo propio, con un tope mayor porque el HUD
+ * ocupa las franjas laterales y no la composición 960×640 de los menús.
+ */
+export const HUD_MIN_CSS = 9.5;
+export const HUD_MAX_BOOST = 2;
+
+/** Tamaño de letra de un texto del HUD: igual en escritorio; en móvil, al menos HUD_MIN_CSS (con tope y `max`). */
+export function hudFontSize(size: number, cssPerPx: number, mobile: boolean, max = Infinity): number {
+  if (!mobile) return size;
+  const s = Math.round(size * textBoost(size, cssPerPx, 1, HUD_MIN_CSS, HUD_MAX_BOOST));
+  return Math.max(size, Math.min(s, max));
+}
+
+/** Atajo para las escenas: tamaño del HUD con la ventana actual y el modo móvil fijado al arrancar. */
+export const hudFont = (size: number, max = Infinity): number => hudFontSize(size, viewportCssPerPx(), mobile, max);
