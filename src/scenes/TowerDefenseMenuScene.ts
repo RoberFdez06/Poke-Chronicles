@@ -5,11 +5,16 @@ import Phaser from 'phaser';
 import { addHelpBar } from '../ui/helpBar';
 import { fitDesign } from '../ui/layout';
 import { addBackButton } from '../ui/cards';
-import { NavInput, PadButtons, UI } from '../ui/nav';
+import { NavInput, PadButtons, UI, type PadButton } from '../ui/nav';
 import { drawBox, fadeIn, goTo, RARITY_COLORS, shorten } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
 import { ToastStack } from '../ui/toast';
-import { bakeTdArt, drawMapThumb, tdIcon } from '../ui/art/tdArt';
+import { bakeTdArt, drawMapThumb, tdIcon, tdIconKey } from '../ui/art/tdArt';
+import { bakeClassIcons, classIconKey } from '../ui/art/tdClassIcons';
+import {
+  canHitAir, clampCursor, clampPanel, cycle, filterLabel, filterOptions, filterPicks, indexOf, jumpPage, moveCursor, movePanel, pageCount,
+  sortPicks, turnPage, CLASS_COLOR, CLASS_TRAITS, SORT_KEYS, SORT_LABEL, START_FOCUS, TRIAL_FOCUS, type FilterKey, type GridCursor, type SortKey,
+} from '../data/towerDefense/teamPick';
 import { TD_MAPS } from '../data/towerDefense/maps';
 import { TD_GUIDE } from '../data/towerDefense/guide';
 import { wavesInLevel } from '../data/towerDefense/waves';
@@ -52,6 +57,10 @@ const NAVY = '#2b3a67';
 const COLS = 6;
 const ROWS = 4;
 const PER_PAGE = COLS * ROWS;
+const GRID = { cols: COLS, rows: ROWS };
+/** Lado del sprite en la casilla y lo máximo que crece al enfocarlo (sin salirse de la baldosa de 72). */
+const SPRITE_BOX = 50;
+const SPRITE_MAX = 58;
 
 type Stage = 'maps' | 'levels' | 'team';
 
@@ -70,12 +79,18 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
   private team: TdPick[] = [];
   private page = 0;
   private teamSel = 0;
-  /** Columna derecha del equipo: 0 empezar, 1 prueba (o -1 si estás en la rejilla). */
-  private sideSel = -1;
+  /** Dónde está el foco: la rejilla, la barra de filtro/orden o el panel del equipo. */
+  private zone: 'grid' | 'bar' | 'panel' = 'grid';
+  private barSel = 0;
+  /** Panel: 0-5 huecos, START_FOCUS «¡A jugar!», TRIAL_FOCUS equipo de prueba. */
+  private panelSel = START_FOCUS;
+  private filter: FilterKey = 'todos';
+  private sort: SortKey = 'poder';
+  private hold = { dir: 0, next: 0 };
   private trial = false;
   private loading = false;
   private redraw: (grid?: boolean) => void = () => {};
-  private keys!: { Q: Phaser.Input.Keyboard.Key; E: Phaser.Input.Keyboard.Key; H: Phaser.Input.Keyboard.Key };
+  private keys!: Record<'Q' | 'E' | 'H' | 'F' | 'O' | 'PGUP' | 'PGDN', Phaser.Input.Keyboard.Key>;
   /** Pantalla «Cómo se juega» abierta (y su página). */
   private help: { box: Phaser.GameObjects.Container; page: number; draw: () => void } | null = null;
 
@@ -97,7 +112,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     this.nav = new NavInput(this);
     this.pad = new PadButtons(this);
     const kb = this.input.keyboard!;
-    this.keys = { Q: kb.addKey('Q', false), E: kb.addKey('E', false), H: kb.addKey('H', false) };
+    this.keys = { Q: kb.addKey('Q', false), E: kb.addKey('E', false), H: kb.addKey('H', false), F: kb.addKey('F', false), O: kb.addKey('O', false), PGUP: kb.addKey('PAGE_UP', false), PGDN: kb.addKey('PAGE_DOWN', false) };
     this.toasts = new ToastStack(this, 20, 92, 300, (c) => c.setDepth(50));
     this.progress = loadTdProgress();
     addBackButton(this, () => this.goBack());
@@ -342,9 +357,10 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     const m = TD_MAPS[this.mapSel];
     const lvText = this.levelSel === m.levels ? 'Infinito' : `Nivel ${this.levelSel + 1}`;
     this.title('Elige tu equipo', `${m.name} · ${lvText} · hasta ${TEAM_MAX} Pokémon de tu colección`);
-    this.sideSel = -1;
+    this.zone = 'grid';
     this.teamSel = 0;
     this.page = 0;
+    this.filter = 'todos';
     const loadingText = this.add.text(300, 300, 'Cargando tu colección…', { fontFamily: UI.FONT, fontSize: '20px', color: '#ffffff' }).setOrigin(0.5).setStroke('#18202c', 4);
     this.layer.add(loadingText);
     this.loading = true;
@@ -402,28 +418,68 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     return TRIAL_TEAM.map((t) => ({ id: t.id, name: t.name, types: [...t.types], rarity: t.rarity, bst: 300 }));
   }
 
+  /** Lista que se ve en la rejilla: filtrada y ordenada (o el equipo de prueba). */
+  private viewList(): TdPick[] {
+    if (this.trial) return this.trialPicks();
+    return sortPicks(filterPicks(this.owned, this.filter, new Set(this.team.map((t) => t.id))), this.sort);
+  }
+
+  private cursor(): GridCursor {
+    const c = clampCursor({ page: this.page, idx: this.teamSel }, this.viewList().length, GRID);
+    this.page = c.page;
+    this.teamSel = c.idx;
+    return c;
+  }
+
+  private setCursor(c: GridCursor) {
+    this.page = c.page;
+    this.teamSel = c.idx;
+  }
+
+  private cycleBar(which: number, d: number) {
+    if (this.trial) return;
+    if (which === 0) this.filter = cycle(filterOptions(this.owned), this.filter, d);
+    else this.sort = cycle(SORT_KEYS, this.sort, d);
+    this.setCursor({ page: 0, idx: 0 });
+    this.redraw();
+  }
+
   private layoutTeam() {
-    const list = this.trial ? this.trialPicks() : this.owned;
-    const pages = Math.max(1, Math.ceil(list.length / PER_PAGE));
-    this.page = Math.min(this.page, pages - 1);
-    const cell = 82;
+    bakeClassIcons(this);
+    const cell = 78;
+    const inner = cell - 6;
     const x0 = 40;
-    const y0 = 104;
+    const y0 = 126;
     const grid = this.add.container(0, 0);
     this.layer.add(grid);
-    const panel = this.add.graphics();
-    this.layer.add(panel);
-    const sel = this.add.graphics();
+    const sel = this.add.graphics().setDepth(2);
     this.layer.add(sel);
-    const infoText = this.add.text(286, 456, '', { fontFamily: UI.FONT, fontSize: '16px', color: '#ffffff', align: 'center', wordWrap: { width: 500 }, lineSpacing: 4 }).setOrigin(0.5, 0).setStroke('#18202c', 4);
-    this.layer.add(infoText);
-    const pageText = this.add.text(286, 438, '', { fontFamily: UI.FONT, fontSize: '15px', color: '#ffe9a8' }).setOrigin(0.5).setStroke('#18202c', 3);
+    // Barra de filtro y orden (arriba de la rejilla)
+    const barG = this.add.graphics();
+    this.layer.add(barG);
+    const bars = [
+      { x: x0, y: 98, w: 228, h: 24 },
+      { x: x0 + 236, y: 98, w: inner + cell * 5 - 236, h: 24 },
+    ];
+    const barTexts = bars.map((b, i) => {
+      const t = this.add.text(b.x + b.w / 2, b.y + b.h / 2, '', { fontFamily: UI.FONT, fontSize: '14px', color: NAVY, fontStyle: 'bold' }).setOrigin(0.5);
+      const z = this.add.zone(b.x, b.y, b.w, b.h).setOrigin(0).setInteractive({ useHandCursor: true });
+      z.on('pointerover', () => { this.zone = 'bar'; this.barSel = i; this.redraw(false); });
+      z.on('pointerdown', (p: Phaser.Input.Pointer) => this.cycleBar(i, p.rightButtonDown() ? -1 : 1));
+      this.layer.add([t, z]);
+      return t;
+    });
+    const pageText = this.add.text(x0 + (cell * COLS - 6) / 2, 446, '', { fontFamily: UI.FONT, fontSize: '15px', color: '#ffe9a8' }).setOrigin(0.5).setStroke('#18202c', 3);
     this.layer.add(pageText);
     const arrows = [
-      this.add.text(60, 438, '◀', { fontFamily: UI.FONT, fontSize: '24px', color: '#ffd34d' }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.turnPage(-1)),
-      this.add.text(512, 438, '▶', { fontFamily: UI.FONT, fontSize: '24px', color: '#ffd34d' }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.turnPage(1)),
+      this.add.text(x0 + 14, 446, '◀', { fontFamily: UI.FONT, fontSize: '24px', color: '#ffd34d' }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.turnPage(-1)),
+      this.add.text(x0 + cell * COLS - 20, 446, '▶', { fontFamily: UI.FONT, fontSize: '24px', color: '#ffd34d' }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.turnPage(1)),
     ];
     this.layer.add(arrows);
+    // Ficha de la torre enfocada
+    const infoIcon = this.add.image(x0 + 10, 482, classIconKey('single')).setScale(3).setOrigin(0, 0.5);
+    const infoText = this.add.text(x0 + 46, 464, '', { fontFamily: UI.FONT, fontSize: '15px', color: '#ffffff', wordWrap: { width: 460 }, lineSpacing: 3 }).setStroke('#18202c', 4);
+    this.layer.add([infoIcon, infoText]);
     // Columna derecha: el equipo y los botones
     const side = this.add.container(0, 0);
     this.layer.add(side);
@@ -435,102 +491,190 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     const trialText = this.add.text(trialBtn.x + trialBtn.w / 2, trialBtn.y + 20, '', { fontFamily: UI.FONT, fontSize: '17px', color: NAVY }).setOrigin(0.5);
     side.add([startText, trialText]);
     const sz = this.add.zone(startBtn.x, startBtn.y, startBtn.w, startBtn.h).setOrigin(0).setInteractive({ useHandCursor: true });
-    sz.on('pointerover', () => { this.sideSel = 0; this.redraw(false); }).on('pointerdown', () => this.startGame());
+    sz.on('pointerover', () => { this.zone = 'panel'; this.panelSel = START_FOCUS; this.redraw(false); }).on('pointerdown', () => this.startGame());
     const tz = this.add.zone(trialBtn.x, trialBtn.y, trialBtn.w, trialBtn.h).setOrigin(0).setInteractive({ useHandCursor: true });
-    tz.on('pointerover', () => { this.sideSel = 1; this.redraw(false); }).on('pointerdown', () => this.toggleTrial());
+    tz.on('pointerover', () => { this.zone = 'panel'; this.panelSel = TRIAL_FOCUS; this.redraw(false); }).on('pointerdown', () => this.toggleTrial());
     side.add([sz, tz]);
+    const slotPos = (k: number) => ({ sx: 616 + (k % 2) * 150, sy: 148 + Math.floor(k / 2) * 98 });
+    for (let k = 0; k < TEAM_MAX; k++) {
+      const { sx, sy } = slotPos(k);
+      const z = this.add.zone(sx, sy, 140, 90).setOrigin(0).setInteractive({ useHandCursor: true });
+      z.on('pointerover', () => { if (k < this.team.length) { this.zone = 'panel'; this.panelSel = k; this.redraw(false); } });
+      z.on('pointerdown', () => { const q = this.team[k]; if (q && !this.trial) this.togglePick(q); });
+      side.add(z);
+    }
     const slotImgs: Phaser.GameObjects.GameObject[] = [];
+    type CellRef = { img: Phaser.GameObjects.Image; fit: number; icon: Phaser.GameObjects.Image; iy: number };
+    let cells: CellRef[] = [];
+    let focused = -1;
 
     const paintGrid = () => {
       grid.removeAll(true);
-      const lst = this.trial ? this.trialPicks() : this.owned;
-      const pagesN = Math.max(1, Math.ceil(lst.length / PER_PAGE));
-      pageText.setText(this.trial ? 'Equipo de prueba' : `Página ${this.page + 1}/${pagesN} · Q/E o LB/RB`);
+      cells = [];
+      focused = -1;
+      const lst = this.viewList();
+      const c = this.cursor();
+      const pagesN = pageCount(lst.length, GRID);
+      pageText.setText(this.trial ? 'Equipo de prueba' : lst.length ? `Página ${c.page + 1}/${pagesN}` : 'Nadie con este filtro');
       arrows.forEach((a) => a.setVisible(!this.trial && pagesN > 1));
-      const items = lst.slice(this.page * PER_PAGE, (this.page + 1) * PER_PAGE);
+      const items = lst.slice(c.page * PER_PAGE, (c.page + 1) * PER_PAGE);
+      const teamIds = new Set(this.team.map((t) => t.id));
       items.forEach((p, k) => {
         const x = x0 + (k % COLS) * cell;
         const y = y0 + Math.floor(k / COLS) * cell;
         const g = this.add.graphics();
-        const inTeam = this.team.some((t) => t.id === p.id);
-        g.fillStyle(0x18202c, 0.85).fillRect(x, y, cell - 6, cell - 6);
-        g.fillStyle(inTeam ? 0x2e5a3a : 0x2a3350, 1).fillRect(x + 3, y + 3, cell - 12, cell - 12);
-        g.fillStyle(RARITY_COLORS[p.rarity], 1).fillRect(x + 3, y + cell - 13, cell - 12, 4);
-        const img = this.textures.exists(tdMonKey(p.id)) ? this.add.image(x + (cell - 6) / 2, y + (cell - 6) / 2 - 4, tdMonKey(p.id)).setScale(0.75) : tdIcon(this, x + (cell - 6) / 2, y + (cell - 6) / 2 - 4, 'ball', 3);
-        const parts: Phaser.GameObjects.GameObject[] = [g];
-        if (img) parts.push(img);
-        if (inTeam) parts.push(this.add.text(x + cell - 12, y + 6, '✓', { fontFamily: UI.FONT, fontSize: '16px', color: '#7cf07a' }).setOrigin(1, 0));
-        const z = this.add.zone(x, y, cell - 6, cell - 6).setOrigin(0).setInteractive({ useHandCursor: true });
+        const inTeam = !this.trial && teamIds.has(p.id);
+        const style = towerStyle(p);
+        g.fillStyle(0x18202c, 0.85).fillRect(x, y, inner, inner);
+        g.fillStyle(inTeam ? 0x2e5a3a : 0x2a3350, 1).fillRect(x + 3, y + 3, inner - 6, inner - 6);
+        // Franja de la clase arriba y de la rareza abajo
+        g.fillStyle(CLASS_COLOR[style], 1).fillRect(x + 3, y + 3, inner - 6, 2);
+        g.fillStyle(RARITY_COLORS[p.rarity], 1).fillRect(x + 3, y + inner - 7, inner - 6, 4);
+        // Sprite encajado en la casilla: nunca más grande que su hueco (ni al enfocarse)
+        const key = this.textures.exists(tdMonKey(p.id)) ? tdMonKey(p.id) : tdIconKey('ball');
+        const img = this.add.image(x + inner / 2, y + inner / 2 - 4, key);
+        const fit = Math.min(SPRITE_BOX / img.width, SPRITE_BOX / img.height);
+        img.setScale(fit);
+        const icon = this.add.image(x + 4, y + 6, classIconKey(style)).setOrigin(0).setScale(2);
+        const parts: Phaser.GameObjects.GameObject[] = [g, img, icon];
+        if (canHitAir(p)) parts.push(this.add.image(x + 24, y + 7, classIconKey('air')).setOrigin(0).setScale(1.5));
+        parts.push(this.add.text(x + inner / 2, y + inner - 9, `${towerCost(p)} $`, { fontFamily: UI.FONT, fontSize: '12px', fontStyle: 'bold', color: '#ffe082' }).setOrigin(0.5, 1).setStroke('#18202c', 3));
+        if (inTeam) parts.push(this.add.text(x + inner - 4, y + 3, '✓', { fontFamily: UI.FONT, fontSize: '16px', color: '#7cf07a' }).setOrigin(1, 0).setStroke('#18202c', 3));
+        const z = this.add.zone(x, y, inner, inner).setOrigin(0).setInteractive({ useHandCursor: true });
         z.on('pointerover', () => {
-          this.sideSel = -1;
-          this.teamSel = k;
+          this.zone = 'grid';
+          this.setCursor({ page: this.page, idx: k });
           this.redraw(false);
         });
         z.on('pointerdown', () => this.togglePick(p));
         parts.push(z);
         grid.add(parts);
+        cells.push({ img, fit, icon, iy: icon.y });
       });
+    };
+
+    const focusCell = (k: number) => {
+      if (k === focused) return;
+      const old = cells[focused];
+      if (old) {
+        this.tweens.killTweensOf([old.img, old.icon]);
+        old.img.setScale(old.fit);
+        old.icon.setY(old.iy).setScale(2);
+      }
+      focused = k;
+      const c = cells[k];
+      if (!c) return;
+      // Crece un poco pero sin pasar de su baldosa (SPRITE_MAX), y el icono de la clase da un saltito
+      const grow = Math.min(c.fit * 1.12, (c.fit * SPRITE_MAX) / SPRITE_BOX);
+      this.tweens.add({ targets: c.img, scale: grow, duration: 140, ease: 'Back.Out' });
+      this.tweens.add({ targets: c.icon, y: c.iy - 2, duration: 260, yoyo: true, repeat: -1, ease: 'Sine.InOut' });
     };
 
     this.redraw = (repaint = true) => {
       if (repaint) paintGrid();
-      const lst = this.trial ? this.trialPicks() : this.owned;
-      const items = lst.slice(this.page * PER_PAGE, (this.page + 1) * PER_PAGE);
-      this.teamSel = Math.min(this.teamSel, Math.max(0, items.length - 1));
+      const lst = this.viewList();
+      const c = this.cursor();
+      const items = lst.slice(c.page * PER_PAGE, (c.page + 1) * PER_PAGE);
+      if (this.zone === 'grid' && !items.length && !this.trial) this.zone = 'bar';
       sel.clear();
-      if (this.sideSel < 0 && items.length) {
-        const x = x0 + (this.teamSel % COLS) * cell;
-        const y = y0 + Math.floor(this.teamSel / COLS) * cell;
-        sel.lineStyle(4, 0xffd34d, 1).strokeRect(x - 3, y - 3, cell, cell);
-      }
-      const p = this.sideSel < 0 ? items[this.teamSel] : undefined;
+      // Barra de filtro y orden
+      barG.clear();
+      bars.forEach((b, i) => drawBox(barG, b.x, b.y, b.w, b.h, { radius: 6, selected: this.zone === 'bar' && this.barSel === i, fill: this.trial ? 0xc8ccd4 : undefined }));
+      barTexts[0].setText(`Filtro: ${filterLabel(this.filter)}`);
+      barTexts[1].setText(`Orden: ${SORT_LABEL[this.sort]}`);
+      const ring = (x: number, y: number, w: number, h: number) => {
+        sel.lineStyle(3, 0x18202c, 1).strokeRect(x - 3, y - 3, w + 6, h + 6);
+        sel.lineStyle(2, 0xffd34d, 1).strokeRect(x - 1, y - 1, w + 2, h + 2);
+        sel.lineStyle(1, 0xffffff, 1).strokeRect(x + 1, y + 1, w - 2, h - 2);
+      };
+      if (this.zone === 'grid' && items.length) {
+        ring(x0 + (c.idx % COLS) * cell, y0 + Math.floor(c.idx / COLS) * cell, inner, inner);
+        focusCell(c.idx);
+      } else focusCell(-1);
+      const p = this.zone === 'grid' ? items[c.idx] : this.zone === 'panel' && this.panelSel < START_FOCUS ? (this.trial ? this.trialPicks() : this.team)[this.panelSel] : undefined;
       if (p) {
         const style = towerStyle(p);
-        infoText.setText(`${p.name} · ${p.types.map(typeNameEs).join('/')} · ${RARITY_LABEL[p.rarity]}\nTorre: ${STYLE_LABEL[style]} · Coste ${towerCost(p)} $`);
-      } else infoText.setText(this.trial ? 'Equipo de prueba: para probar el modo. Juega con tus Pokémon del gacha para ir más lejos.' : '');
+        const tr = CLASS_TRAITS[style];
+        infoIcon.setTexture(classIconKey(style)).setVisible(true);
+        infoText.setText(`${p.name} · ${p.types.map(typeNameEs).join('/')} · ${RARITY_LABEL[p.rarity]}\nTorre: ${STYLE_LABEL[style]} · Coste ${towerCost(p)} $ · Alcance ${tr.range} · Daño ${tr.damage}${canHitAir(p) ? ' · Aéreo' : ''}\n${tr.note}`);
+      } else {
+        infoIcon.setVisible(false);
+        infoText.setText(this.trial ? 'Equipo de prueba: para probar el modo. Juega con tus Pokémon del gacha para ir más lejos.' : '');
+      }
       // Equipo
-      panel.clear();
       sideG.clear();
       drawBox(sideG, 600, 104, 320, 352, { radius: 14 });
       slotImgs.forEach((o) => o.destroy());
       slotImgs.length = 0;
       const teamNow = this.trial ? this.trialPicks() : this.team;
+      this.panelSel = clampPanel(this.panelSel, teamNow.length);
       slotImgs.push(this.add.text(760, 126, `Tu equipo (${teamNow.length}/${TEAM_MAX})`, { fontFamily: UI.FONT, fontSize: '19px', fontStyle: 'bold', color: NAVY }).setOrigin(0.5));
       for (let k = 0; k < TEAM_MAX; k++) {
-        const sx = 616 + (k % 2) * 150;
-        const sy = 148 + Math.floor(k / 2) * 98;
+        const { sx, sy } = slotPos(k);
         const g = this.add.graphics();
         g.fillStyle(0x18202c, 0.15).fillRect(sx, sy, 140, 90);
         slotImgs.push(g);
         const q = teamNow[k];
         if (q) {
+          const st = towerStyle(q);
           g.fillStyle(RARITY_COLORS[q.rarity], 1).fillRect(sx, sy + 86, 140, 4);
-          slotImgs.push(this.textures.exists(tdMonKey(q.id)) ? this.add.image(sx + 38, sy + 44, tdMonKey(q.id)).setScale(0.8) : tdIcon(this, sx + 38, sy + 44, 'ball', 3));
-          slotImgs.push(this.add.text(sx + 74, sy + 22, shorten(q.name, 8), { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: NAVY }));
-          slotImgs.push(this.add.text(sx + 74, sy + 44, `${towerCost(q)} $\n${STYLE_LABEL[towerStyle(q)]}`, { fontFamily: UI.FONT, fontSize: '12px', color: NAVY }));
+          const key = this.textures.exists(tdMonKey(q.id)) ? tdMonKey(q.id) : tdIconKey('ball');
+          const im = this.add.image(sx + 38, sy + 44, key);
+          im.setScale(Math.min(72 / im.width, 72 / im.height));
+          slotImgs.push(im);
+          slotImgs.push(this.add.text(sx + 74, sy + 18, shorten(q.name, 8), { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: NAVY }));
+          slotImgs.push(this.add.image(sx + 74, sy + 38, classIconKey(st)).setOrigin(0).setScale(2));
+          slotImgs.push(this.add.text(sx + 96, sy + 40, `${towerCost(q)} $`, { fontFamily: UI.FONT, fontSize: '12px', color: NAVY }));
+          slotImgs.push(this.add.text(sx + 74, sy + 62, STYLE_LABEL[st], { fontFamily: UI.FONT, fontSize: '11px', color: NAVY }));
+          if (this.zone === 'panel' && this.panelSel === k) {
+            g.lineStyle(3, 0x18202c, 1).strokeRect(sx - 2, sy - 2, 144, 94);
+            g.lineStyle(2, 0xffd34d, 1).strokeRect(sx, sy, 140, 90);
+          }
         } else slotImgs.push(this.add.text(sx + 70, sy + 45, 'vacío', { fontFamily: UI.FONT, fontSize: '14px', color: '#8a90a0' }).setOrigin(0.5));
       }
       slotImgs.forEach((o) => side.add(o));
       side.bringToTop(startText);
       side.bringToTop(trialText);
-      side.bringToTop(sz);
-      side.bringToTop(tz);
-      drawBox(sideG, startBtn.x, startBtn.y, startBtn.w, startBtn.h, { selected: this.sideSel === 0, fill: teamNow.length >= TEAM_MIN ? undefined : 0xc8ccd4 });
-      drawBox(sideG, trialBtn.x, trialBtn.y, trialBtn.w, trialBtn.h, { selected: this.sideSel === 1 });
+      side.list.filter((o) => o instanceof Phaser.GameObjects.Zone).forEach((o) => side.bringToTop(o));
+      drawBox(sideG, startBtn.x, startBtn.y, startBtn.w, startBtn.h, { selected: this.zone === 'panel' && this.panelSel === START_FOCUS, fill: teamNow.length >= TEAM_MIN ? undefined : 0xc8ccd4 });
+      drawBox(sideG, trialBtn.x, trialBtn.y, trialBtn.w, trialBtn.h, { selected: this.zone === 'panel' && this.panelSel === TRIAL_FOCUS });
       trialText.setText(this.trial ? (this.owned.length ? 'Usar mi colección' : 'Sin Pokémon: equipo de prueba') : 'Usar equipo de prueba');
     };
     this.redraw();
     const guest = accountInfo().mode === 'guest';
     this.hint(
-      `Flechas/cruceta: moverse · Enter/A: añadir o quitar · Q/E, LB/RB: página · derecha del todo: botones${guest ? ' · Invitado: no se guarda al cerrar' : ''}`,
+      `Flechas/cruceta: moverse (los bordes cambian de página) · Enter/A: añadir o quitar · Q/E, LB/RB: página · AvPág/RePág: ±5 · F: filtro · O: orden · P: ¡A jugar!${guest ? ' · Invitado: no se guarda al cerrar' : ''}`,
     );
   }
 
   private turnPage(d: number) {
     if (this.trial) return;
-    const pages = Math.max(1, Math.ceil(this.owned.length / PER_PAGE));
-    this.page = (this.page + d + pages) % pages;
+    this.zone = 'grid';
+    this.setCursor(turnPage(this.cursor(), d, this.viewList().length, GRID));
     this.redraw();
+  }
+
+  private jumpPages(d: number) {
+    if (this.trial) return;
+    this.zone = 'grid';
+    this.setCursor(jumpPage(this.cursor(), d, this.viewList().length, GRID));
+    this.redraw();
+  }
+
+  /** LB/RB mantenidos: repiten el paso de página. */
+  private padRepeat(): number {
+    const pad = this.input.gamepad?.getPad(0);
+    const held = pad?.connected ? (pad.buttons[4]?.pressed ? -1 : pad.buttons[5]?.pressed ? 1 : 0) : 0;
+    const now = this.time.now;
+    if (held !== this.hold.dir) {
+      this.hold = { dir: held, next: now + 420 };
+      return 0;
+    }
+    if (held && now >= this.hold.next) {
+      this.hold.next = now + 110;
+      return held;
+    }
+    return 0;
   }
 
   private togglePick(p: TdPick) {
@@ -604,29 +748,53 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
         this.redraw();
       }
       if (s.ok) this.pickLevel(this.levelSel);
-    } else if (!this.loading) {
-      if (J(this.keys.Q) || pb.has('LB')) this.turnPage(-1);
-      if (J(this.keys.E) || pb.has('RB')) this.turnPage(1);
-      const lst = this.trial ? this.trialPicks() : this.owned;
-      const count = Math.min(PER_PAGE, Math.max(0, lst.length - this.page * PER_PAGE));
-      if (this.sideSel >= 0) {
-        if (s.dy) this.sideSel = s.dy > 0 ? 1 : 0;
-        if (s.dx < 0) this.sideSel = -1;
-        if (s.dx || s.dy) this.redraw(false);
-        if (s.ok) {
-          if (this.sideSel === 0) this.startGame();
-          else this.toggleTrial();
-        }
-      } else {
-        if (s.dx > 0 && (this.teamSel % COLS === COLS - 1 || this.teamSel + 1 >= count)) {
-          this.sideSel = 0;
-          this.redraw();
-        } else if (s.dx || s.dy) {
-          this.teamSel = Math.max(0, Math.min(count - 1, this.teamSel + s.dx + s.dy * COLS));
-          this.redraw(false);
-        }
-        if (s.ok && count > 0) this.togglePick(lst[this.page * PER_PAGE + this.teamSel]);
+    } else if (!this.loading) this.updateTeam(s, pb);
+  }
+
+  private updateTeam(s: ReturnType<NavInput['read']>, pb: Set<PadButton>) {
+    const J = Phaser.Input.Keyboard.JustDown;
+    const rep = this.padRepeat();
+    if (J(this.keys.Q) || pb.has('LB') || rep < 0) return this.turnPage(-1);
+    if (J(this.keys.E) || pb.has('RB') || rep > 0) return this.turnPage(1);
+    if (J(this.keys.PGUP) || pb.has('LT')) return this.jumpPages(-5);
+    if (J(this.keys.PGDN) || pb.has('RT')) return this.jumpPages(5);
+    if (J(this.keys.F) || pb.has('X')) return this.cycleBar(0, 1);
+    if (J(this.keys.O)) return this.cycleBar(1, 1);
+    if (s.pause) {
+      this.zone = 'panel';
+      this.panelSel = START_FOCUS;
+      return this.redraw(false);
+    }
+    const lst = this.viewList();
+    if (this.zone === 'panel') {
+      const team = this.trial ? this.trialPicks() : this.team;
+      if (s.dx || s.dy) {
+        const f = movePanel(this.panelSel, s.dx, s.dy, team.length);
+        if (f < 0) this.zone = lst.length ? 'grid' : 'bar';
+        else this.panelSel = f;
+        this.redraw(false);
       }
+      if (s.ok) {
+        if (this.panelSel === START_FOCUS) this.startGame();
+        else if (this.panelSel === TRIAL_FOCUS) this.toggleTrial();
+        else if (!this.trial && this.team[this.panelSel]) this.togglePick(this.team[this.panelSel]);
+      }
+    } else if (this.zone === 'bar') {
+      if (s.dx > 0 && this.barSel === 1) { this.zone = 'panel'; this.panelSel = START_FOCUS; }
+      else if (s.dx) this.barSel = s.dx > 0 ? 1 : 0;
+      if (s.dy > 0 && lst.length) this.zone = 'grid';
+      if (s.dx || s.dy) this.redraw(false);
+      if (s.ok) this.cycleBar(this.barSel, 1);
+    } else {
+      if (s.dx || s.dy) {
+        const before = this.cursor();
+        const r = moveCursor(before, s.dx, s.dy, lst.length, GRID);
+        if (r.exit === 'right') { this.zone = 'panel'; this.panelSel = clampPanel(0, (this.trial ? this.trialPicks() : this.team).length); }
+        else if (r.exit === 'up') { this.zone = 'bar'; this.barSel = (before.idx % COLS) < COLS / 2 ? 0 : 1; }
+        this.setCursor(r.cur);
+        this.redraw(r.cur.page !== before.page);
+      }
+      if (s.ok && lst.length) this.togglePick(lst[indexOf(this.cursor(), GRID)]);
     }
   }
 }

@@ -79,7 +79,7 @@ export const PAD_LEGENDS: Record<string, string> = {
   Garden: 'Izq/Der: parcela · Arriba/Abajo: semilla · A: plantar o recoger · B: volver',
   Missions: 'LB/RB o Izq/Der: cambiar de pestaña · B: volver',
   Gacha: 'Cruceta: elegir · A: tirar · B: volver',
-  TowerDefenseMenu: 'Cruceta: moverse · A: elegir · LB/RB: página · Y: cómo se juega · B: volver',
+  TowerDefenseMenu: 'Cruceta: moverse · A: elegir/quitar · LB/RB: página · LT/RT: ±5 páginas · X: filtro · Start: ¡A jugar! · Y: cómo se juega · B: volver',
   ItemChoice: 'Arriba/Abajo: elegir · A: aceptar · B: cancelar',
   Confirm: 'Cruceta: elegir · A: aceptar · B: cancelar',
   Route: 'Cruceta: elegir camino · A: aceptar',
