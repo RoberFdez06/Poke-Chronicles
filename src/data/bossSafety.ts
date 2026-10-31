@@ -125,3 +125,91 @@ export function shiftTimers<T extends AiTimers>(ai: T, dt: number): T {
   ai.graceUntil = mv(ai.graceUntil);
   return ai;
 }
+
+// --- Vigilante de la vida del jefe (que nunca se quede «a mitad de vida» sin bajar) ---
+
+/** Lo más que puede seguir protegido un jefe (fase, megaevolución, derrumbe) mientras le pegas (ms). */
+export const BOSS_PROTECT_MAX_MS = 4000;
+/** Si le pegas durante este tiempo y su vida no baja nada, se corta cualquier protección y se aplica el daño (ms). */
+export const BOSS_STALL_MS = 3000;
+/** Sin golpes durante esto, el contador de «le pego y no baja» vuelve a empezar (ms). */
+export const BOSS_STALL_RESET_MS = 1200;
+/** Daño guardado durante una protección que se aplica al acabar: como mucho esta parte de su vida máxima. */
+export const BOSS_HELD_CAP = 0.15;
+
+export interface BossGuard {
+  /** Desde cuándo está protegido (undefined: no lo está). */
+  protSince?: number;
+  /** Daño recibido mientras estaba protegido (se aplica al acabar, con tope). */
+  held: number;
+  /** Primer golpe de la racha en la que su vida no baja, su vida entonces y el daño de la racha. */
+  stallSince?: number;
+  stallHp?: number;
+  stallDmg: number;
+  lastHitAt: number;
+}
+
+export const newBossGuard = (): BossGuard => ({ held: 0, stallDmg: 0, lastHitAt: -Infinity });
+
+/** Apunta un golpe al jefe (`hpBefore`: su vida antes del golpe; `prot`: si estaba protegido). */
+export function noteBossHit(g: BossGuard, now: number, hpBefore: number, dmg: number, prot: boolean, maxHp: number): void {
+  if (!(dmg > 0)) return;
+  g.lastHitAt = now;
+  if (prot) g.held = Math.min(g.held + dmg, maxHp * BOSS_HELD_CAP);
+  if (g.stallSince === undefined) {
+    g.stallSince = now;
+    g.stallHp = hpBefore;
+    g.stallDmg = 0;
+  }
+  g.stallDmg += dmg;
+}
+
+export interface BossGuardTick {
+  /** Hay que soltar YA cualquier protección (la lleva demasiado o le pegas y no baja). */
+  release: boolean;
+  /** Si viene, su vida debe quedar como mucho en esto (daño guardado que se aplica; nunca por debajo de 1). */
+  hpAtMost?: number;
+}
+
+/** Un fotograma del vigilante: decide si se corta la protección y cuánto daño guardado se aplica. */
+export function tickBossGuard(g: BossGuard, now: number, hp: number, prot: boolean, maxHp: number): BossGuardTick {
+  if (prot && g.protSince === undefined) g.protSince = now;
+  // Su vida ha bajado de verdad: no está atascado
+  if (g.stallHp !== undefined && hp < g.stallHp - 0.5) resetStall(g);
+  // Ya no le pegas: la racha se olvida
+  if (g.stallSince !== undefined && now - g.lastHitAt > BOSS_STALL_RESET_MS) resetStall(g);
+  const tooLong = prot && g.protSince !== undefined && now - g.protSince >= BOSS_PROTECT_MAX_MS;
+  const stalled = g.stallSince !== undefined && now - g.stallSince >= BOSS_STALL_MS;
+  const release = tooLong || stalled;
+  let cap: number | undefined;
+  if (stalled && g.stallHp !== undefined) cap = g.stallHp - Math.min(g.stallDmg, maxHp * BOSS_HELD_CAP);
+  if ((!prot || release) && g.protSince !== undefined) {
+    if (g.held > 0) cap = Math.min(cap ?? Infinity, hp - g.held);
+    g.held = 0;
+    g.protSince = undefined;
+  }
+  if (stalled) resetStall(g);
+  return { release, hpAtMost: cap === undefined ? undefined : Math.max(1, cap) };
+}
+
+function resetStall(g: BossGuard) {
+  g.stallSince = undefined;
+  g.stallHp = undefined;
+  g.stallDmg = 0;
+}
+
+// --- Casilla del jefe en una sala grande ---
+
+export interface CellPt extends Pt {
+  id: number;
+}
+
+/**
+ * Orden de casillas donde puede aparecer un jefe o minijefe: nunca la del jugador (si hay más de una) y de la más
+ * lejana a la más cercana al jugador. Con una sola casilla, esa.
+ */
+export function bossCellOrder(cells: readonly CellPt[], playerCell: number, player: Pt): number[] {
+  const others = cells.filter((c) => c.id !== playerCell);
+  const pool = others.length > 0 ? others : cells;
+  return [...pool].sort((a, b) => Math.hypot(b.x - player.x, b.y - player.y) - Math.hypot(a.x - player.x, a.y - player.y) || a.id - b.id).map((c) => c.id);
+}
