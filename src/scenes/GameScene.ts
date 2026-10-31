@@ -4654,14 +4654,28 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Abre una puerta oculta por los dos lados (la bomba ha estallado cerca). */
   private revealDoor(room: Room, d: Dir) {
     const other = this.floor.rooms[room.doors[d]!];
+    // Al abrir la sala secreta se abren TODAS sus entradas ocultas (por los dos lados), no solo la de la bomba
+    const secret = room.kind === 'secret' ? room : other.kind === 'secret' ? other : undefined;
     const pairs: [Room, Dir][] = [[room, d], [other, OPPOSITE[d]]];
+    if (secret) {
+      for (const sd of DIRS) {
+        const nid = secret.doors[sd];
+        if (nid === undefined || !this.floor.hiddenDoors?.includes(doorKey(secret.id, sd))) continue;
+        pairs.push([secret, sd], [this.floor.rooms[nid], OPPOSITE[sd]]);
+      }
+    }
     for (const [rm, dir] of pairs) {
       const k = doorKey(rm.id, dir);
       if (this.revealedDoors.has(k)) continue;
       this.revealedDoors.add(k);
       this.secretWalls.get(k)?.forEach((o) => o.destroy());
       this.secretWalls.delete(k);
+      // Lo nuevo (suelo del hueco y marco) es de ESA sala: se apunta en roomObjs para que el filtro de cámara lo
+      // oculte desde las demás. Antes quedaba suelto y se veía flotando en el vacío junto a la sala actual.
+      const before = this.children.list.length;
       this.drawDoor(rm, dir, this.add.graphics().setDepth(0), this.floorColorOf(rm));
+      const objs = this.roomObjs.get(rm.id);
+      if (objs) objs.push(...this.children.list.slice(before));
       const block = this.doorMap.get(k);
       // Si la sala está cerrada por un combate (u otro evento), la puerta nueva nace cerrada también: no se puede
       // huir a la sala secreta con enemigos vivos. Se abre con las demás al limpiar la sala.
@@ -4679,6 +4693,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         (block.body as Phaser.Physics.Arcade.StaticBody).enable = false;
       }
     }
+    this.showRooms([this.current.id]);
     this.notify('¡Has encontrado una sala secreta!', { kind: 'reward', icon: 'bomb' });
     sfx('pickup');
     this.drawMap();
