@@ -3,7 +3,7 @@ import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetch
 import { evolveFloors, pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
-import { GYM_PUZZLE_TICKETS, gymPuzzleKind, gymTier, hasGym } from '../level/gymPuzzles';
+import { GYM_PUZZLE_ENABLED, GYM_PUZZLE_TICKETS, gymPuzzleKind, gymTier, hasGym } from '../level/gymPuzzles';
 import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal, loadCandies, loadDaily, loadDefeated, loadTickets, saveDefeated, spendCandies, spendTickets, submitSeedBest } from '../data/save';
 import { buildDexIndex, registerDefeat, type DexIndex } from '../data/runDex';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
@@ -256,7 +256,7 @@ import {
 import { canReact, consumeStatus, discover, discoveredLine, findReaction, reactionDamage, type ReactionId } from '../data/reactions';
 import { comboBonus, comboHit, comboHurt, comboLevelIndex, newCombo, tickCombo, type ComboLevel, type ComboState } from '../data/combo';
 import { DASH_INVULN_MS, DASH_MS, dashCooldownLeft, dashing, newDash, startDash, type DashState } from '../data/dash';
-import { dashPuff, dashTrail, parryBurst, parryShield, threatMark } from '../ui/art/parryFx';
+import { dashBurst, dashPuff, dashSparks, dashTrail, parryBurst, parryShield, threatMark } from '../ui/art/parryFx';
 import { ComboHud } from '../ui/art/comboHud';
 import { addHpBar, addTypeChip, COLORS, drawBox, fadeIn, FONT, goTo, HEX, hpColor, lowFx, shorten } from '../ui/theme';
 import {
@@ -419,6 +419,9 @@ const TOUCH = 46;
 /** Panel izquierdo del HUD: posiciones de cada pieza (data/hudLayout.ts, con tests para que nada se pise). */
 const HL = hudLayout(HUD.left.w - HUD.pad * 2);
 const HUD_COUNT_X = HL.counterX;
+/** Distintivo ADMIN: franja de arriba, pegado a la izquierda de la sala (lejos del minimapa y los avisos de la
+ * derecha, y a la izquierda de la barra del jefe, que empieza en CX − 440). */
+const ADMIN_BADGE = { x: GAME_VIEW.x + 10, y: 16, w: 116, h: 28 } as const;
 /** Posiciones de los 3 artículos de la tienda respecto al centro de la sala. */
 const SHOP_OFFSETS = [-200, 0, 200];
 
@@ -3082,9 +3085,10 @@ export class GameScene extends Phaser.Scene {
     // Modo admin: distintivo arriba a la derecha (clic: panel). Solo existe en dev o con la cuenta admin.
     if (adminAllowed()) {
       const g = hud(this.add.graphics());
-      const t = txt(W - 62, 17, 13, '#ffffff', true).setOrigin(0.5);
+      const A = ADMIN_BADGE;
+      const t = txt(A.x + A.w / 2, A.y + A.h / 2, 13, '#ffffff', true).setOrigin(0.5);
       this.adminBadge = { g, t, shown: '' };
-      over(hud(this.add.zone(W - 60, 17, 116, 28).setInteractive({ useHandCursor: true }))).on('pointerdown', () => this.openAdminPanel());
+      over(hud(this.add.zone(A.x + A.w / 2, A.y + A.h / 2, A.w, A.h).setInteractive({ useHandCursor: true }))).on('pointerdown', () => this.openAdminPanel());
     }
     // T53: cuadro del parry a la derecha de la pausa (la recarga se ve vaciándose); clic en él también hace parry,
     // aunque con ratón lo cómodo es el clic central, que no obliga a quitar el puntero de donde apuntas.
@@ -6047,7 +6051,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private doDash(toward?: { x: number; y: number }) {
     if (this.ended || this.transitioning || this.evolving || this.falling || this.frozenSince !== undefined || !this.player?.active) return;
     const now = this.time.now;
-    const v = startDash(this.dash, now, toward ?? this.moveDir, this.aim);
+    const v = startDash(this.dash, now, toward ?? this.moveDir, this.aim, this.moveSpeedNow());
     if (!v) return;
     this.player.setVelocity(v.x, v.y);
     this.playerKnockUntil = now + DASH_MS;
@@ -6057,14 +6061,21 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     sfx('select');
     this.face(this.player, this.dash.dir);
     dashPuff(this, this.player.x, this.player.y, -this.dash.dir.x, -this.dash.dir.y, typeColor(this.shotType()));
+    dashBurst(this, this.player.x, this.player.y, this.dash.dir.x, this.dash.dir.y, typeColor(this.shotType()));
     this.dashTrailAt = 0;
+  }
+
+  /** Velocidad de movimiento actual sin terreno ni carga (stats, adrenalina, forma y combo): la usa también la esquiva. */
+  private moveSpeedNow(): number {
+    return this.stats.speed * adrenalineSpeedMul(this.adrenaline) * powerFormSpeedMul(this.powerForm) * comboBonus(this.combo).speed;
   }
 
   /** Estela de la esquiva mientras dura (imágenes del jugador que se apagan, de su color). */
   private updateDashFx() {
     if (!this.player?.active || !dashing(this.dash, this.time.now) || this.time.now < this.dashTrailAt) return;
-    this.dashTrailAt = this.time.now + (lowFx() ? 70 : 35);
+    this.dashTrailAt = this.time.now + (lowFx() ? 50 : 22);
     dashTrail(this, this.player, typeColor(this.shotType()));
+    if (!lowFx()) dashSparks(this, this.player.x, this.player.y, -this.dash.dir.x, -this.dash.dir.y, typeColor(this.shotType()));
   }
 
   /** Cuadro de la esquiva: listo (claro), recargando (gris con barra que se vacía) y su tecla o botón. */
@@ -7005,7 +7016,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** T86: antes del líder, el puzzle del gimnasio (en pausa encima). Resolverlo da tickets; rendirse abre el paso sin premio. */
   private gymThenBoss(roomId: number) {
-    if (!hasGym(this.mode, 'boss', !!this.finale && this.finaleMembers.length > 0) || !this.scene.manager.keys['GymPuzzle'] || this.floorIntroOn) {
+    if (!GYM_PUZZLE_ENABLED || !hasGym(this.mode, 'boss', !!this.finale && this.finaleMembers.length > 0) || !this.scene.manager.keys['GymPuzzle'] || this.floorIntroOn) {
       return this.spawnBoss();
     }
     const seed = (this.floorSeed ^ Math.imul(roomId + 1, 0x9e3779b1)) >>> 0;
@@ -7630,9 +7641,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (b.shown === key) return;
     b.shown = key;
     b.g.clear();
-    if (key === 'cheat') drawAdminPlate(b.g, W - 120, 3, 116, 28);
-    else b.g.fillStyle(0x1a0d12, 0.55).fillRect(W - 120, 5, 116, 24);
-    b.t.setText(key === 'cheat' ? '   PARTIDA ADMIN' : 'ADMIN (F9)').setAlpha(key === 'cheat' ? 1 : 0.7).setX(W - 62);
+    const A = ADMIN_BADGE;
+    if (key === 'cheat') drawAdminPlate(b.g, A.x, A.y, A.w, A.h);
+    else b.g.fillStyle(0x1a0d12, 0.55).fillRect(A.x, A.y + 2, A.w, A.h - 4);
+    b.t.setText(key === 'cheat' ? '   PARTIDA ADMIN' : 'ADMIN (F9)').setAlpha(key === 'cheat' ? 1 : 0.7).setX(A.x + A.w / 2);
   }
 
   /** Cualquier truco marca la partida: deja de contar (save.ts lo comprueba) y se ve en el HUD. */
@@ -10026,7 +10038,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // T77: mientras cargas el disparo vas un 40 % más lento
     const loopNow = this.game.loop.time;
     const chargeSlow = CHARGE_SOURCES.some((k) => isCharging(this.charges[k], loopNow)) ? CHARGE_MOVE_MUL : 1;
-    const spd = this.stats.speed * wade * chargeSlow * adrenalineSpeedMul(this.adrenaline) * powerFormSpeedMul(this.powerForm) * comboBonus(this.combo).speed;
+    const spd = this.moveSpeedNow() * wade * chargeSlow;
     if (this.time.now >= this.playerKnockUntil) {
       // T78: en el hielo de la arena resbalas: la velocidad cambia poco a poco
       const [itx, ity] = this.tileOf(this.player.x, this.player.y, this.current);

@@ -29,6 +29,9 @@ export function gymPuzzleKind(biomeId: string, seed: number): GymPuzzleKind {
 export const GYM_PUZZLE_TICKETS = 3;
 
 /** ¿Hay gimnasio antes de este jefe? Fin de bioma en Normal/Infinito y cada 10 pisos en la Torre. */
+/** Puzzle del gimnasio antes del líder: apagado (el usuario prefiere ir directo al jefe). El código se conserva. */
+export const GYM_PUZZLE_ENABLED = false;
+
 export function hasGym(mode: string, roomKind: string, finale: boolean): boolean {
   if (finale || roomKind !== 'boss') return false;
   return mode === 'normal' || mode === 'endless' || mode === 'tower';
