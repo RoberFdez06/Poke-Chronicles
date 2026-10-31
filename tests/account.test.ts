@@ -59,8 +59,12 @@ test('firebaseConfigFrom necesita las cuatro claves básicas', () => {
 test('validación del formulario y mensajes en español', () => {
   assert.equal(checkEmail('ash@kanto.com'), null);
   assert.ok(checkEmail('ash@kanto'));
-  assert.equal(checkPassword('123456'), null);
-  assert.ok(checkPassword('12345'));
+  assert.equal(checkPassword('Abcdef1!'), null);
+  assert.ok(checkPassword('Abc1!'));
+  assert.ok(checkPassword('abcdefg1!'));
+  assert.ok(checkPassword('ABCDEFG1!'));
+  assert.ok(checkPassword('Abcdefgh!'));
+  assert.ok(checkPassword('Abcdefg12'));
   assert.equal(checkName(''), null);
   assert.equal(checkName('Rojo-1'), null);
   assert.ok(checkName('<script>'));

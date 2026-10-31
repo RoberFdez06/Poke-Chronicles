@@ -24,7 +24,7 @@ export function firebaseConfigFrom(env: Record<string, string | boolean | undefi
   return { apiKey, authDomain, projectId, appId, storageBucket: get('STORAGE_BUCKET'), messagingSenderId: get('MESSAGING_SENDER_ID') };
 }
 
-export const MIN_PASSWORD = 6;
+export const MIN_PASSWORD = 8;
 export const MAX_NAME = 20;
 
 /** null si vale; si no, qué falla. */
@@ -33,7 +33,11 @@ export function checkEmail(email: string): string | null {
 }
 
 export function checkPassword(password: string): string | null {
-  return password.length >= MIN_PASSWORD ? null : `La contraseña necesita al menos ${MIN_PASSWORD} caracteres`;
+  if (password.length < MIN_PASSWORD) return `La contraseña necesita al menos ${MIN_PASSWORD} caracteres`;
+  if (!/[a-z]/.test(password)) return 'La contraseña necesita una minúscula';
+  if (!/[A-Z]/.test(password)) return 'La contraseña necesita una mayúscula';
+  if (!/\d/.test(password)) return 'La contraseña necesita un número';
+  return /[^A-Za-z0-9]/.test(password) ? null : 'La contraseña necesita un carácter especial (por ejemplo ! ? # $)';
 }
 
 /** Nombre público opcional: letras, números, espacios, guiones y puntos, como mucho 20. */
@@ -47,6 +51,7 @@ export function checkName(name: string): string | null {
 const AUTH_ERRORS: Record<string, string> = {
   'auth/invalid-email': 'El correo no es válido',
   'auth/missing-password': 'Falta la contraseña',
+  'auth/password-does-not-meet-requirements': `La contraseña necesita al menos ${MIN_PASSWORD} caracteres, mayúscula, minúscula, número y carácter especial`,
   'auth/weak-password': `La contraseña es demasiado débil (mínimo ${MIN_PASSWORD} caracteres)`,
   'auth/email-already-in-use': 'Ya hay una cuenta con ese correo: entra con él',
   'auth/invalid-credential': 'Correo o contraseña incorrectos',
