@@ -2889,6 +2889,7 @@ export class GameScene extends Phaser.Scene {
     this.holes = this.physics.add.staticGroup();
     this.grids.clear();
     this.flow = undefined;
+    this.nav = undefined;
     this.makeObstacleTextures();
     this.doorBlocks = this.physics.add.staticGroup();
     this.pickups = this.physics.add.group();
@@ -4320,6 +4321,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.visited.add(here.id);
     this.trail.push(here.id);
     this.flow = undefined;
+    this.nav = undefined;
     this.drawMap();
   }
 
@@ -4819,6 +4821,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         }),
       );
       this.flow = undefined;
+      this.nav = undefined;
     }
     // Paredes con grieta: la puerta oculta se abre si la bomba estalla cerca
     for (const d of DIRS) {
@@ -6611,6 +6614,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (grid) grid[ty][tx] = '.';
     bush.destroy();
     this.flow = undefined; // el camino ha cambiado
+    this.nav = undefined;
   }
 
   /** Casilla de la sala actual en (x, y) del mundo. */
@@ -6648,6 +6652,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const grid = this.grids.get(this.current.id);
     if (!grid || grid.every((row) => row.every((c) => c === '.' || c === 'W'))) {
       this.flow = undefined;
+      this.nav = undefined;
       return;
     }
     const [tx, ty] = this.tileOf(this.player.x, this.player.y);
@@ -8071,6 +8076,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       }
     }
     this.flow = undefined;
+    this.nav = undefined;
     if (rocks) this.unstickAll();
   }
 
@@ -8234,6 +8240,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     this.bossFx?.setTheme(fall.theme, FALL_GLOW[fall.theme]);
     this.flow = undefined;
+    this.nav = undefined;
     this.unstickAll();
     this.cameras.main.shake(200, 0.01);
     this.notify(FALL_LANDING[fall.theme], { kind: 'danger', icon: 'star' });
