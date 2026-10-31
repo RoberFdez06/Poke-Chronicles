@@ -1763,3 +1763,24 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   Test `powerPress.test.ts`.
 - **Sin verificar a ojo**: no se ha probado en el navegador (localhost sirve `main`); revisar el aspecto del pilar en
   cada bioma, el selector de abajo con los controles táctiles y el tinte de noche con zoom.
+
+## Oscuros: ojos rojos y enemigos, minijefes y jefes oscuros (rama `oscuros`)
+
+- **Ojos rojos** (`darkEyes` en `src/ui/art/darkFx.ts`, arrancan con `darkAura`, así que los lleva todo oscuro: jugador,
+  enemigos, minijefes, jefes y legendarios): dos píxeles rojos con halo que late, dibujados en `PRE_RENDER` (después
+  de la animación y la pose de `locoAnim`) con la matriz real del sprite (giro, escala, volteo, elevación), así que no
+  se desfasan. Posición: caja de píxeles opacos de cada cuadro (cacheada) y anchura de la cabeza (35 % de arriba);
+  `eyeSpots`/`eyeFacing` (puras) los corren hacia donde mira y los ocultan de espaldas (filas PMD 3-5 o textura `-back`).
+- **Aparición** (`darkSpawnChance`/`decideDark`, `darkMon.ts`): nunca en el piso 1 (salvo admin); del piso 2 sube
+  hasta el tope: normales 4→12 %, minijefes 20→35 %, jefes 15→30 %; Fácil ×0,7, Difícil ×1,25. Tope de 1 oscuro
+  normal por sala (2 desde el piso 6). Aviso «¡Un Pokémon oscuro!» / «¡Minijefe oscuro!» con `notify` (no centrado).
+- **Más difíciles**: los multiplicadores de siempre (vida ×1,4, daño ×1,3, velocidad ×1,25, cadencia ×1,3), aura y
+  ojos. Jefes y minijefes oscuros: un movimiento siniestro de más y se **enfurecen** una vez a media vida (velocidad
+  ×1,15, recarga ×0,8, aviso «¡Enfurecido!»).
+- **Botín**: +3 monedas de 5 (ya estaba), y los normales 20 % de poción o llave; tickets ×1,5 en jefes (ya estaba).
+- **Oscuros descubiertos**: nueva lista `pokeisaac.darkSeen` (`addDarkSeen`, progreso) al vencer o capturar uno; la
+  Pokédex muestra «N oscuros (M descubiertos)».
+- **Admin**: fila «Siguiente enemigo / minijefe / jefe oscuro» (`setAdminNextDark`/`takeAdminNextDark`), se consume
+  con el primero que aparezca, incluso en el piso 1.
+- Test `tests/darkSpawn.test.ts`. **Sin verificar a ojo**: la posición de los ojos en especies raras (sin cabeza
+  clara, p. ej. Magnemite o Gastly), su tamaño en jefes grandes y el ritmo del enfurecimiento.
