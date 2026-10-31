@@ -1831,3 +1831,33 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   los minijefes/élite, el tirador y el orbital (sin visión se acercan rodeando en vez de orbitar).
 - **Sin verificar a ojo**: no probado en el navegador (localhost sirve `main`). Revisar en el piso 5 detrás del pilar,
   jefes grandes en esquinas estrechas y que las intros/megaevolución/derrumbe no se vean empujadas.
+
+## Dinamax rediseñado, Mewtwo anda y cinemáticas de Tera, Dinamax y Z (rama `formas`, 2026-10-31)
+
+- **Dinamax** (Roberto: «Gengar Dinamax se ve horrible»): el aura eran óvalos rojos translúcidos del tamaño de la
+  textura entera (con su aire) y la corona flotaba lejos de la cabeza; además el sprite se escalaba a ×1,65 sin más
+  (píxeles de dos anchos). Ahora: `src/data/maxLook.ts` (`maxFitSize`/`maxFitSizePmd`) elige un tamaño con píxeles
+  enteros en pantalla (con GAME_ZOOM) y con tope según lo que mide de verdad el dibujo (`contentBox` en GameScene,
+  caja de píxeles visibles por fotograma con `alphaBox`); el cuerpo físico sigue siendo el de siempre. Aura nueva
+  `drawMaxAura` (`src/ui/art/formCineFx.ts`): charco de bocanadas a los pies, nubes que asoman por los lados de la
+  silueta, jirones que suben y corona de nubes pegada a la cabeza; opaca, en rejilla de píxeles, por detrás, sin tinte.
+- **Andar de gigante** (Dinamax y Gigamax): reloj de la animación ×0,6, hoja de SpriteCollab a 0,65, pasos más altos y
+  menos balanceo (`heavyPose`), y polvo con un temblor mínimo en cada pisotón (solo por el suelo y sin lowFx). El
+  Gigamax con sprite propio conserva su aspecto; solo se ajusta su escala a píxeles enteros (tope más alto) y el paso.
+- **Mewtwo anda**: estaba en `FLOATING_SPECIES`; ahora en `SPECIES_LOCOMOTION` como `walk` junto a sus megas
+  (10043/10044), Shaymin, Genesect, Código Cero, Marshadow, Falinks, fósiles de Galar, Zacian, Zamazenta y Gholdengo;
+  Sandygast/Palossand reptan. Mew, Celebi, Jirachi, el trío del lago, Cresselia y Darkrai siguen flotando. La sombra ya
+  va a los pies (feetOf) y sin hover, así que queda en el suelo.
+- **Cinemáticas nuevas** (`src/scenes/formCinematic.ts`, puro, test `formCinematic.test.ts`; dibujo en
+  `formCineFx.ts`; `playFormCinematic` en GameScene con el mismo armazón que la mega: `freezeWorld`/`thawWorld`,
+  invulnerable, zoom/temblor y `megaCamRestore`). Tera (1,8 s): el cristal sube desde los pies en columnas de facetas,
+  late con un brillo diagonal, estalla en esquirlas y baja la corona; cartel del tipo en el estallido. Dinamax/Gigamax
+  (1,95 s): nube roja en espiral y rayos de la banda, el Pokémon crece a tres golpes con rebote (aros rojos), y ruge con
+  onda roja. Z (1,7 s): pose agachado con la estrella Z a los pies, el Cristal Z sube y concentra rayos, estirón con
+  columna de luz y rayos en X; el ataque (disparos + golpe) sale al acabar, con el mundo ya en marcha. Con lowFx,
+  0,75-0,85 s y sin viñeta. La mega no se ha tocado.
+- **Oscuro**: el jugador no tiene transformación a oscuro (es una propiedad del Pokémon de la tirada), así que no lleva
+  cinemática; además es área del agente `oscuros`.
+- **Sin verificar a ojo**: no se ha probado en el navegador (localhost sirve `main`). Revisar Gengar/Snorlax Dinamax
+  (PMD y shiny/PokeAPI), los Gigamax con sprite propio, el tamaño final frente a puertas y el ritmo de las tres
+  cinemáticas con efectos altos y bajos.
