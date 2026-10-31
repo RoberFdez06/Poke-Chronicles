@@ -1969,3 +1969,52 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
 - **Sin verificar a ojo**: no probado en el navegador (localhost sirve `main`). Revisar la esquina de una 2x2, los
   rayos cortados por rocas (rejilla y minas en cruz sobre todo) y la intro de Marshadow en el piso 1 y de un jefe en
   piso con gimnasio.
+
+## Controles táctiles rehechos para móvil (rama `movil`)
+
+- **Problema** (probado en móvil apaisado, lienzo 1920×1080 visto a ~0,35): para lanzar un poder había que soltar el
+  joystick de apuntar (los botones 1-4 estaban encima), joysticks fijos en las esquinas, diez botones redondos con
+  texto sans-serif, el cuadro de la esquiva pisando los botones 1 y 2, HUD diminuto y tarjetas del menú de modos
+  desbordadas.
+- **Auto-apuntado** (`src/data/touchAim.ts`, pruebas en `tests/touchAim.test.ts`): `touchAimDir` da la dirección
+  de un poder tocado: enemigo más cercano (los jefes cuentan; fuera los que se están capturando o huyen), si no el
+  joystick de apuntar, si no la última dirección de disparo. `GameScene.castSlot` acepta ahora una dirección
+  opcional (`touchCastDir()`), que pasa a ser la última de disparo. Teclado, ratón y mando no la usan.
+- **Joysticks flotantes** (`src/data/touchPad.ts`, pruebas en `tests/touchPad.test.ts`): `stickZone` (mitad
+  izquierda = moverse, derecha = apuntar, salvo zonas reservadas: ranuras de poder, pausa y barra del consejo, que
+  da `GameScene.touchBlocked()`), `stickVector` (zona muerta del 15 % sin salto, tope en el radio y la base sigue al
+  dedo si se aleja más de 1,35 radios). La base se dibuja donde empieza el dedo y se esconde al soltar; queda una
+  pista tenue (respira suave; quieta con efectos bajos). Hasta 5 dedos.
+- **Poderes como en PC**: las ranuras 1-4 del HUD (abajo a la derecha) se ven y se tocan en táctil; tocar = lanzar
+  con auto-apuntado. Fuera los botones 1-4 de `touchControls.ts` (y `setPower`). En móvil el nombre se corta a 10
+  letras y la ficha del tipo se encoge si no cabe.
+- **Botones pixel art** (`src/ui/art/touchIcons.ts` rejillas y colores, sin Phaser y con prueba de forma;
+  `src/ui/art/touchButtons.ts` hornea las texturas): marco 24×24 con bisel y esquinas recortadas, icono propio
+  (escudo = Parry, flecha con estela = Esquiva, estrella = Activo, bomba, mano = Usar, frasco = Poción) y tres
+  estados: normal, pulsado (bisel invertido, icono 1 px abajo, 120 ms) y apagado (gris: esquiva recargando, activo
+  sin carga, sin bombas o pociones; se pueden tocar igual y el juego avisa). Sin texto ni emojis.
+- **Colocación** (`padButtons`, todo en px de lienzo y comentado): derecha, en una fila propia justo encima de las
+  ranuras (y ≈ 654-750): Parry y Esquiva de 96 px. Izquierda, donde en PC está el cuadro del objeto activo: Activo
+  (96) y Bomba (72) abajo; encima, Usar (96, **solo cuando hay algo con lo que interactuar**: el mismo aviso
+  `PromptPanel.hasText`) y Poción (72). Zona de toque: el dibujo + 10 px y nunca menos de 44 px CSS; gana el botón
+  más cercano. En táctil el cuadro «Esquiva» del HUD no se dibuja (era el que pisaba 1 y 2) y los avisos de la
+  derecha son como mucho 2 (no bajan hasta Parry/Esquiva).
+- **HUD legible** (`src/ui/uiScale.ts`: `hudFontSize`/`hudFont`, pruebas en `tests/uiScale.test.ts`): el aumento de
+  letra de `main.ts` se calculaba con el zoom de los menús (×1,6875), pero el HUD va sin zoom y se quedaba en 5-7 px
+  CSS. `hudFont` busca 9,5 px CSS (≈ 27 px de lienzo a 0,35) con tope ×2 y máximo opcional por sitio. Aplicado a PS,
+  nombre (sigue encogiéndose si no cabe), contadores (máx. 22), «Objetos» (máx. 24), Parry/Adrenalina (máx. 22/20),
+  ranuras, avisos (`ToastStack` acepta una función de tamaño), aviso de «Usar/comprar» (`PromptPanel` con tamaño) y
+  consejo (el cuadro crece hacia arriba si el texto no cabe en la franja de abajo). En escritorio `hudFont` devuelve
+  el mismo tamaño: nada cambia.
+- **Menús**: `src/ui/fitText.ts` (`fitTextBox`: baja la letra hasta un mínimo y luego recorta palabras con «…»;
+  `fitTextLine`: una línea, baja la letra y si no, encoge). En «¿A qué quieres jugar?» el nombre, la descripción
+  (hasta encima del récord), el récord (una línea, encogido) y «Luego: …» encajan en su tarjeta; mínimo 15 px en
+  móvil. `addHelpBar`: en móvil nunca enseña teclas aunque el navegador diga «ratón»; el menú de modos tiene pie
+  táctil corto. Pokédex: el nombre de cada casilla no se sale. Controles y consejos (`controls.ts`, `tutorial.ts`)
+  describen los controles nuevos (textos cortos para que quepan en su fila).
+- **Sin verificar a ojo** (no se puede ver el juego en la VM; solo `tsc` y `npm test`): afinar en un móvil real
+  `STICK_R`/`STICK_KNOB`/`STICK_DEAD` y `PAD_BTN_*` en `touchPad.ts`, `HINT` y opacidades en `touchControls.ts`, que
+  la fila Parry/Esquiva no choque con el último aviso, que el nombre y los contadores del panel izquierdo quepan con
+  la letra nueva, el texto de progreso (no se ha agrandado: su hueco es fijo en `hudLayout`), el consejo alto
+  tapando un poco el fondo de la sala, el multitoque real (joystick + ranura a la vez) y la pasada por Partidas,
+  Iniciales, Gacha y Ajustes (solo se miró el código; no se vio nada evidente salvo la Pokédex).
