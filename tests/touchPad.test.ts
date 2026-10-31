@@ -47,8 +47,9 @@ test('zonas: izquierda mueve, derecha apunta, las reservadas no', () => {
   assert.equal(stickZone(NaN, 1, W), null);
 });
 
-test('botones: dentro de sus franjas, sin pisarse ni tapar las ranuras de poder', () => {
-  const b = padButtons(LEFT, RIGHT, H, 16, SLOTS_TOP);
+for (const k of [1, 1.25, 1.5])
+test(`botones (interfaz ×${k}): dentro de sus franjas, sin pisarse ni tapar las ranuras de poder`, () => {
+  const b = padButtons(LEFT, RIGHT, H, 16, SLOTS_TOP, k);
   const rects = Object.entries(b).map(([k, v]) => [k, padRect(v)] as const);
   for (const [k, r] of rects) {
     assert.ok(inside(r, { x: 0, y: 0, w: W, h: H }), k);
