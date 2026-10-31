@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { fitTextLine } from '../ui/fitText';
 import { addHelpBar } from '../ui/helpBar';
 import { fitDesign } from '../ui/layout';
 import { classifyRarity, RARITY_LABEL } from '../data/gacha';
@@ -268,6 +269,8 @@ export class PokedexScene extends Phaser.Scene {
     const name = this.add
       .text(0, h / 2 - 15, shorten(e.name, 12), { fontFamily: FONT, fontSize: '13px', fontStyle: 'bold', color: e.owned ? HEX.text : '#aab4d0' })
       .setOrigin(0.5);
+    // En móvil la letra crece: el nombre no se sale de su casilla (se encoge lo justo)
+    fitTextLine(name, w - 10, 10);
     const parts: Phaser.GameObjects.GameObject[] = [bg, glow, sprite, num, name];
     if (e.shiny) {
       parts.push(this.add.text(w / 2 - 16, h / 2 - 40, '★', { fontFamily: FONT, fontSize: '18px', color: '#ffd34d' }).setOrigin(0.5).setStroke('#8a6d1a', 3));
