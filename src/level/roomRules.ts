@@ -41,18 +41,47 @@ export function ruleChance(floorNum: number): number {
   return Math.min(0.3, 0.08 + 0.04 * (floorNum - 2));
 }
 
+/** Tipos de bioma en los que la sala a oscuras está garantizada (pisos de fantasma o siniestro). */
+export const DARK_BIOME_TYPES: readonly string[] = ['ghost', 'dark'];
+/** En esos pisos, salas a oscuras: mínimo y máximo. */
+export const DARK_MIN = 1;
+export const DARK_MAX = 4;
+export const isDarkBiome = (types: readonly string[] | undefined): boolean => !!types?.some((t) => DARK_BIOME_TYPES.includes(t));
+
 /**
  * Reglas del piso: sala → regla. Solo salas de combate fuera de `exclude`. Cada sala hace siempre dos tiradas de
  * `rng` (en orden de id), así el resto del azar del piso no depende de cuántas salas tengan regla.
+ * Con `biomeTypes` de fantasma o siniestro, entre DARK_MIN y DARK_MAX salas a oscuras (si hay salas válidas):
+ * las tiradas extra van DESPUÉS de las de cada sala, así el resto de pisos sale igual que antes.
  */
-export function pickRoomRules(floor: Floor, floorNum: number, rng: () => number, exclude: ReadonlySet<number> = new Set()): Map<number, RoomRule> {
+export function pickRoomRules(
+  floor: Floor,
+  floorNum: number,
+  rng: () => number,
+  exclude: ReadonlySet<number> = new Set(),
+  biomeTypes?: readonly string[],
+): Map<number, RoomRule> {
   const out = new Map<number, RoomRule>();
   const chance = ruleChance(floorNum);
-  for (const r of [...floor.rooms].sort((a, b) => a.id - b.id)) {
+  const sorted = [...floor.rooms].sort((a, b) => a.id - b.id);
+  for (const r of sorted) {
     const roll = rng();
     const which = rng();
     if (r.kind !== 'combat' || exclude.has(r.id) || roll >= chance) continue;
     out.set(r.id, ROOM_RULES[Math.min(ROOM_RULES.length - 1, Math.floor(which * ROOM_RULES.length))]);
+  }
+  if (isDarkBiome(biomeTypes)) {
+    const eligible = sorted.filter((r) => r.kind === 'combat' && !exclude.has(r.id)).map((r) => r.id);
+    const dark = () => [...out].filter(([, v]) => v === 'dark').map(([k]) => k);
+    // Mínimo: una sala válida pasa a estar a oscuras (mejor una sin regla)
+    if (dark().length < DARK_MIN && eligible.length > 0) {
+      const free = eligible.filter((id) => !out.has(id));
+      const pool = free.length > 0 ? free : eligible;
+      out.set(pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))], 'dark');
+    }
+    // Máximo: las que sobran cambian a otra regla
+    const others = ROOM_RULES.filter((x) => x !== 'dark');
+    for (const id of dark().slice(DARK_MAX)) out.set(id, others[Math.min(others.length - 1, Math.floor(rng() * others.length))]);
   }
   return out;
 }

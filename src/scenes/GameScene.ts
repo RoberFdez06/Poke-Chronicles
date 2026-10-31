@@ -2924,7 +2924,7 @@ export class GameScene extends Phaser.Scene {
     // en las salas grandes (se puede entrar por cualquiera de sus casillas y la regla quedaría en otra)
     this.roomRules =
       this.mode === 'normal' || this.mode === 'endless'
-        ? pickRoomRules(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x6c8e9cf5), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...(this.roomEvent ? [this.roomEvent.roomId] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]))
+        ? pickRoomRules(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x6c8e9cf5), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...(this.roomEvent ? [this.roomEvent.roomId] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]), this.biome.types)
         : new Map();
     // Santuario de la Mega Piedra: una sala por piso (Normal, Infinito y diario), elegida DESPUÉS de lo demás y con su
     // propia semilla para no alterar el resto del piso (ver pickMegaStoneRoom)
