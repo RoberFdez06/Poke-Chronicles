@@ -333,6 +333,9 @@ import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBeh
   turnToward,
 } from '../data/enemies';
 import { drawMinimap } from './minimap';
+import { hudThemeFor } from '../ui/art/hudTheme';
+import { addHudAmbient, drawHudBackdrop } from '../ui/art/hudBackdrop';
+import { setHudPalette } from '../ui/art/hud';
 import { byDevice, drawKeyGlyph, GlyphText } from '../ui/art/keyGlyphs';
 import { bossCallout, floatPopup, PromptPanel } from '../ui/floatText';
 import { cancelCharge, chargedShapeFor, chargeProgress, CHARGE_DAMAGE_MUL, CHARGE_MOVE_MUL, CHARGE_SOURCES, isCharging, newCharge, stepCharge, type ChargeSource, type ChargeState } from '../data/charge.ts';
@@ -564,6 +567,8 @@ export class GameScene extends Phaser.Scene {
   private visited = new Set<number>();
   /** Número base de salas con el que se generó el piso (se guarda para regenerarlo idéntico al reanudar). */
   private roomBase = 0;
+  /** Salas por las que has pasado, en orden (trazo del camino en el minimapa). */
+  private trail: number[] = [];
   private cleared = new Set<number>();
   private transitioning = false;
   private bossKey = '';
@@ -1100,6 +1105,7 @@ export class GameScene extends Phaser.Scene {
     this.doorMap.clear();
     this.visited.clear();
     this.roomBase = 0;
+    this.trail = [];
     this.cleared.clear();
     this.trapdoor = undefined;
     this.towerArrow = undefined;
@@ -3043,6 +3049,19 @@ export class GameScene extends Phaser.Scene {
     const RW = HUD.right.w - HUD.pad * 2;
 
     // Pausa (arriba a la izquierda), para jugar solo con ratón
+    // Laterales con el tema del bioma (fondo, motivos, columna alrededor de la sala) y paneles con su paleta
+    {
+      const th = hudThemeFor(this.biome.id);
+      setHudPalette(th);
+      hud(drawHudBackdrop(this.add.graphics(), th, this.floorSeed));
+      addHudAmbient(this, th, (o) => hud(o), lowFx());
+      const prevBg = document.body.style.background;
+      document.body.style.background = `#${th.bg.toString(16).padStart(6, '0')}`;
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        document.body.style.background = prevBg;
+        setHudPalette(null);
+      });
+    }
     hud(drawHudFrame(this.add.graphics(), LX + HL.pause.x, HL.pause.y, HL.pause.w, HL.pause.h));
     const pb = over(
       hud(this.add.text(LX + HL.pause.x + HL.pause.w / 2, HL.pause.y + HL.pause.h / 2, '❚❚', { fontFamily: FONT, fontSize: '28px', color: '#f8f8f8' }))
@@ -4176,6 +4195,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (here.id === this.current.id) return;
     this.current = here;
     this.visited.add(here.id);
+    this.trail.push(here.id);
     this.flow = undefined;
     this.drawMap();
   }
@@ -4670,7 +4690,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.megaRoomId !== undefined && this.visited.has(this.megaRoomId) && !this.eventsDone.has(megaStoneDoneKey(this.megaRoomId))) marks.set(this.megaRoomId, ROOM_EVENT_COLOR.megaStone);
     // T56: salas con regla, en cuanto se ven en el mapa y hasta limpiarlas
     for (const [id, rule] of this.roomRules) if (!this.cleared.has(id)) marks.set(id, ROOM_RULE_COLOR[rule]);
-    const bottom = drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2, marks, (o) => this.toHud(o));
+    const bottom = drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2, marks, (o) => this.toHud(o), {
+      theme: hudThemeFor(this.biome.id),
+      trail: this.trail,
+      cleared: this.cleared,
+      revealed: this.revealedDoors,
+      chests: new Set((this.floor.chestRooms ?? []).filter((id) => !this.openedChests.has(id))),
+    });
     this.toasts?.setTop(bottom + 16);
   }
 
@@ -6167,6 +6193,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.shieldLeft = this.stats.shieldPerRoom;
     // Sala grande: se ve entera al entrar, así que todas sus casillas cuentan como descubiertas
     for (const id of this.groupIds(room)) this.visited.add(id);
+    if (this.trail[this.trail.length - 1] !== room.id) this.trail.push(room.id);
+    if (this.trail.length > 40) this.trail.shift();
     this.huntEnterRoom(room);
     // Tutorial: la primera vez que pasa cada cosa
     if (room.kind === 'start') this.tip('move');
