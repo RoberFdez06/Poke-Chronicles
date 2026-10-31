@@ -26,7 +26,7 @@ test('la especie manda sobre el tipo', () => {
   assert.equal(locomotionOf(['water'], 7), 'walk'); // Squirtle anda
   assert.equal(locomotionOf(['normal', 'flying'], 84), 'walk'); // Doduo corre
   assert.equal(locomotionOf(['bug', 'flying'], 12), 'fly');
-  assert.equal(locomotionOf(['psychic'], 150), 'float'); // Mewtwo
+  assert.equal(locomotionOf(['psychic'], 150), 'walk'); // Mewtwo anda (Roberto)
   assert.equal(locomotionOf(['psychic'], 63), 'walk'); // Abra
   assert.equal(locomotionOf(['electric'], 100), 'roll'); // Voltorb
   assert.equal(locomotionOf(['normal', 'fairy'], 39), 'hop'); // Jigglypuff
@@ -59,4 +59,11 @@ test('con hoja animada solo los que vuelan o flotan van por el aire', () => {
   assert.equal(sheetHover('walk', 100, true).lift, 0);
   assert.ok(sheetHover('fly', 100, true).lift >= 6);
   assert.ok(sheetHover('float', 100, false).shadow < 1);
+});
+
+test('Mewtwo (y sus megas) y otros con patas que estaban en «flotan» andan', async () => {
+  const { locomotionOf } = await import('../src/data/locomotion.ts');
+  for (const id of [150, 10043, 10044, 492, 649, 772, 802, 870, 888, 889, 1000]) assert.equal(locomotionOf(['psychic'], id), 'walk', String(id));
+  for (const id of [151, 251, 385, 480, 488, 491]) assert.equal(locomotionOf(['psychic'], id), 'float', String(id));
+  assert.equal(locomotionOf(['ghost', 'ground'], 769), 'slither');
 });
