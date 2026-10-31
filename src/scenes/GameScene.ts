@@ -6662,14 +6662,19 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * enemigos normales y otra con más holgura para los grandes; se rehace al cambiar de sala o cada segundo (rocas
    * rotas, puertas que se abren). `los`: lo que tapa la visión (paredes, pilar, rocas; no los huecos ni el agua).
    */
-  private nav?: { key: string; at: number; rects: Box[]; los: Box[]; small: Nav; big: Nav; fields: Map<string, Float32Array> };
+  private nav?: { key: string; at: number; checked: number; rects: Box[]; los: Box[]; small: Nav; big: Nav; fields: Map<string, Float32Array> };
 
   private navData(): NonNullable<GameScene['nav']> | undefined {
     if (!this.current || !this.floor) return undefined;
     const now = this.time.now;
+    // Barato: la misma sala y menos de medio segundo, la de antes; si no, mira si cambiaron las paredes
+    if (this.nav && this.nav.key.startsWith(`${this.current.id}:`) && now - this.nav.checked < 500 && now >= this.nav.checked) return this.nav;
     const walls = this.wallRects();
     const key = `${this.current.id}:${walls.length}`;
-    if (this.nav && this.nav.key === key && now - this.nav.at < 1000) return this.nav;
+    if (this.nav && this.nav.key === key && now - this.nav.at < 2000 && now >= this.nav.at) {
+      this.nav.checked = now;
+      return this.nav;
+    }
     const rects: Box[] = [...walls];
     const los: Box[] = [...walls];
     const ids = this.groupIds(this.current);
@@ -6689,6 +6694,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.nav = {
       key,
       at: now,
+      checked: now,
       rects,
       los,
       small: buildNav(a, rects, NAV_R_SMALL, undefined, outside),
