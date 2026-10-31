@@ -68,9 +68,14 @@ export const ROLLING_SPECIES = ids(100, 101, 10109, 74, 204, 205, 213, 299, 327,
 export const SPECIES_LOCOMOTION: ReadonlyMap<number, Locomotion> = new Map<number, Locomotion>([
   // Fantasmas o voladores que en realidad andan
   ...([94, 302, 623, 709, 724, 867, 897, 911, 937, 971, 972, 979, 10115, 566, 1015, 1016] as const).map((n) => [n, 'walk'] as [number, Locomotion]),
+  // Estaban en «flotan» y andan sobre sus patas (Roberto: «Mewtwo parece que sigue volando»): Mewtwo y sus megas,
+  // Shaymin, Genesect, Código Cero, Marshadow, Falinks, los fósiles de Galar, Zacian, Zamazenta y Gholdengo
+  ...([150, 10043, 10044, 492, 649, 772, 802, 870, 880, 881, 882, 888, 889, 1000] as const).map((n) => [n, 'walk'] as [number, Locomotion]),
   // Capullos y crisálidas: botan
   ...([11, 14, 268, 412, 665, 825, 247, 102, 191, 420, 421, 406, 590, 591, 684, 761, 928, 969, 1011, 755, 597, 598, 932] as const).map((n) => [n, 'hop'] as [number, Locomotion]),
   // Masas, babosas, gusanos y lo que se arrastra
+  // Arena que se arrastra (Sandygast, Palossand)
+  ...([769, 770] as const).map((n) => [n, 'slither'] as [number, Locomotion]),
   ...([88, 89, 10112, 10113, 218, 219, 704, 705, 422, 423, 771, 871, 960, 961, 850, 851, 541, 345, 872, 50, 51, 10105, 10106, 618, 10180, 1001] as const).map((n) => [n, 'slither'] as [number, Locomotion]),
   // Ruedan
   ...([544, 953, 946, 947, 990] as const).map((n) => [n, 'roll'] as [number, Locomotion]),
