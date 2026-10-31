@@ -1764,6 +1764,30 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
 - **Sin verificar a ojo**: no se ha probado en el navegador (localhost sirve `main`); revisar el aspecto del pilar en
   cada bioma, el selector de abajo con los controles táctiles y el tinte de noche con zoom.
 
+## Sala secreta, rocas falsas, trampilla, salas a oscuras e intro del jefe con niebla (rama `salas`, 2026-10-31)
+
+- **Sala secreta**: al abrir una puerta oculta, `revealDoor` dibujaba el hueco y el marco de la puerta de la OTRA sala
+  (la secreta) sin apuntarlos en `roomObjs`, así que el filtro de cámara (`showRooms`) no los ocultaba: se veían losas
+  y postes flotando en el vacío junto a la sala actual (sobre todo en salas grandes en L, cuyo hueco enseña el fondo).
+  Ahora lo nuevo se apunta a su sala y se vuelve a aplicar `showRooms`. Además, al abrir la sala secreta se abren
+  TODAS sus entradas ocultas (por los dos lados), no solo la de la bomba.
+- **Piedras sin colisión**: las rocas de la rejilla (`R`, escombros de la arena) sí tienen cuerpo. Lo que parecía una
+  piedra sin colisión eran detalles del suelo de `decorateRoom` (piedrecitas de basalto del volcán, guijarros de
+  cueva/cumbre/nieve, cristales y montoncitos de nieve) pintados a tamaño entero (30-48 px). Ahora salen a la mitad
+  y algo apagados, como gravilla (`SOLID_LOOKING` en `roomDecor.ts`).
+- **Trampilla**: `trapdoorSpot` busca primero un sitio con mucho hueco (radios 120 → 96 → 72 → 56 px, también en
+  diagonal con `ringFree`) y solo si no cabe usa el de antes: ya no sale pegada al pilar 2x2, rocas ni paredes.
+- **Salas a oscuras**: en pisos con bioma de tipo fantasma o siniestro (`biome.types`), `pickRoomRules` garantiza
+  entre 1 y 4 salas a oscuras (solo salas de combate normales: nunca inicio, jefe, tienda, Centro, evento ni
+  minijefe). Las tiradas extra van después, así el resto de pisos sale igual. Test en `roomRules.test.ts`.
+  (Caso raro sin cubrir: si el santuario de la Mega Piedra no encuentra sala libre puede quitarle la regla a esa sala.)
+- **Intro del jefe con Niebla**: la viñeta de la niebla (`WeatherFx`) seguía centrada en el jugador mientras la
+  cámara se iba al jefe y hacía zoom, y su borde oscuro tapaba media pantalla. Durante la intro (`cineUntil`) se
+  centra en la vista, con transición suave. El tinte de noche (`dayNightLayer`) se repinta cada fotograma (antes cada
+  80 ms dejaba una franja sin cubrir al hacer zoom).
+- **Sin verificar a ojo**: no probado en el navegador (localhost sirve `main`). Revisar: abrir una sala secreta junto
+  a una sala en L, la trampilla del piso 5 con el pilar, la intro del jefe en un piso con Niebla y el tamaño de la
+  gravilla en volcán/cueva.
 ## Oscuros: ojos rojos y enemigos, minijefes y jefes oscuros (rama `oscuros`)
 
 - **Ojos rojos** (`darkEyes` en `src/ui/art/darkFx.ts`, arrancan con `darkAura`, así que los lleva todo oscuro: jugador,
@@ -1822,3 +1846,47 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
     estallido y aviso.
 - El forzado del panel admin sigue mandando en cualquier modo y momento (también en Defensa de torres).
 - Test `tests/darkModes.test.ts`. **Sin verificar a ojo**: los ojos sobre los sprites pequeños de la Defensa de torres.
+## Dinamax rediseñado, Mewtwo anda y cinemáticas de Tera, Dinamax y Z (rama `formas`, 2026-10-31)
+
+- **Dinamax** (Roberto: «Gengar Dinamax se ve horrible»): el aura eran óvalos rojos translúcidos del tamaño de la
+  textura entera (con su aire) y la corona flotaba lejos de la cabeza; además el sprite se escalaba a ×1,65 sin más
+  (píxeles de dos anchos). Ahora: `src/data/maxLook.ts` (`maxFitSize`/`maxFitSizePmd`) elige un tamaño con píxeles
+  enteros en pantalla (con GAME_ZOOM) y con tope según lo que mide de verdad el dibujo (`contentBox` en GameScene,
+  caja de píxeles visibles por fotograma con `alphaBox`); el cuerpo físico sigue siendo el de siempre. Aura nueva
+  `drawMaxAura` (`src/ui/art/formCineFx.ts`): charco de bocanadas a los pies, nubes que asoman por los lados de la
+  silueta, jirones que suben y corona de nubes pegada a la cabeza; opaca, en rejilla de píxeles, por detrás, sin tinte.
+- **Andar de gigante** (Dinamax y Gigamax): reloj de la animación ×0,6, hoja de SpriteCollab a 0,65, pasos más altos y
+  menos balanceo (`heavyPose`), y polvo con un temblor mínimo en cada pisotón (solo por el suelo y sin lowFx). El
+  Gigamax con sprite propio conserva su aspecto; solo se ajusta su escala a píxeles enteros (tope más alto) y el paso.
+- **Mewtwo anda**: estaba en `FLOATING_SPECIES`; ahora en `SPECIES_LOCOMOTION` como `walk` junto a sus megas
+  (10043/10044), Shaymin, Genesect, Código Cero, Marshadow, Falinks, fósiles de Galar, Zacian, Zamazenta y Gholdengo;
+  Sandygast/Palossand reptan. Mew, Celebi, Jirachi, el trío del lago, Cresselia y Darkrai siguen flotando. La sombra ya
+  va a los pies (feetOf) y sin hover, así que queda en el suelo.
+- **Cinemáticas nuevas** (`src/scenes/formCinematic.ts`, puro, test `formCinematic.test.ts`; dibujo en
+  `formCineFx.ts`; `playFormCinematic` en GameScene con el mismo armazón que la mega: `freezeWorld`/`thawWorld`,
+  invulnerable, zoom/temblor y `megaCamRestore`). Tera (1,8 s): el cristal sube desde los pies en columnas de facetas,
+  late con un brillo diagonal, estalla en esquirlas y baja la corona; cartel del tipo en el estallido. Dinamax/Gigamax
+  (1,95 s): nube roja en espiral y rayos de la banda, el Pokémon crece a tres golpes con rebote (aros rojos), y ruge con
+  onda roja. Z (1,7 s): pose agachado con la estrella Z a los pies, el Cristal Z sube y concentra rayos, estirón con
+  columna de luz y rayos en X; el ataque (disparos + golpe) sale al acabar, con el mundo ya en marcha. Con lowFx,
+  0,75-0,85 s y sin viñeta. La mega no se ha tocado.
+- **Oscuro**: el jugador no tiene transformación a oscuro (es una propiedad del Pokémon de la tirada), así que no lleva
+  cinemática; además es área del agente `oscuros`.
+- **Sin verificar a ojo**: no se ha probado en el navegador (localhost sirve `main`). Revisar Gengar/Snorlax Dinamax
+  (PMD y shiny/PokeAPI), los Gigamax con sprite propio, el tamaño final frente a puertas y el ritmo de las tres
+  cinemáticas con efectos altos y bajos.
+## 2026-10-31 · Rama `ui`: fusión al recoger, esquiva, sin puzzle antes del jefe, ADMIN y filtros del TD
+
+- **Fusión de poderes**: fuera de la pausa (sigue en el panel admin). Con las 4 ranuras llenas, al recoger o comprar
+  un poder sale el cambio normal y, si entre las ranuras y el nuevo hay dos sin fusionar, «Fusionar dos poderes (F)»
+  (FusionScene con 5 candidatos: dos de las ranuras → resultado + el nuevo en la libre; ranura + nuevo → resultado en
+  esa ranura). Reemplazar una ranura con fusión pide confirmar «¡Vas a perder la fusión si continúas!»; solo recibes
+  el ataque nuevo. Lógica pura en `data/fusion.ts` (`canFuseOnPickup`, `applyPickupFusion`, `replaceLosesFusion`).
+- **Esquiva**: la distancia crece con la velocidad (57 → 95 px) y el impulso nunca baja de 1,6× tu velocidad
+  (`dashSpeed(moveSpeed)`); rayas de velocidad y chispas pixel (con lowFx, menos).
+- **Puzzle del gimnasio antes del líder**: apagado (`GYM_PUZZLE_ENABLED = false` en `level/gymPuzzles.ts`); el jefe sale
+  directo. Código y tests conservados.
+- **Distintivo ADMIN**: a la franja de arriba, pegado a la izquierda de la sala (no choca con minimapa, avisos ni barra del jefe).
+- **TD «Elige tu equipo»**: barra con Clase · Tipo · Orden · Todos. ◀▶ y LB/RB cambian el valor del selector enfocado,
+  ▲ pasa al siguiente, B/Esc quita el filtro (si no hay, sale), X o R los quitan todos; F/T/O atajos; clic izq./der.
+- **Sin verificar a ojo**: no probado en el navegador (localhost sirve `main`).

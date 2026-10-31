@@ -70,3 +70,26 @@ test('velocidad: botín extra, con monedas solo si hay tienda', () => {
   assert.ok(!speedRoomBonus(3, false).some((d) => d.kind === 'coin'));
   assert.ok(speedRoomBonus(3, false).length >= 2);
 });
+
+test('pisos de fantasma o siniestro: entre 1 y 4 salas a oscuras, solo en combate y fuera de las excluidas', async () => {
+  const { DARK_MIN, DARK_MAX, isDarkBiome } = await import('../src/level/roomRules.ts');
+  assert.ok(isDarkBiome(['ghost', 'psychic', 'dark']));
+  assert.ok(isDarkBiome(['dark']));
+  assert.ok(!isDarkBiome(['water', 'flying']));
+  for (let i = 0; i < 400; i++) {
+    const f = floorFor(900 + i);
+    const exclude = new Set([f.rooms.find((r) => r.kind === 'combat')!.id]);
+    for (const floorNum of [1, 3, 5, 9]) {
+      const rules = pickRoomRules(f, floorNum, mulberry32(i), exclude, ['ghost', 'psychic', 'dark']);
+      const dark = [...rules].filter(([, v]) => v === 'dark').map(([k]) => k);
+      assert.ok(dark.length >= DARK_MIN && dark.length <= DARK_MAX, `semilla ${i}: ${dark.length}`);
+      for (const id of dark) {
+        assert.equal(f.rooms[id].kind, 'combat');
+        assert.ok(!exclude.has(id));
+      }
+      assert.deepEqual([...pickRoomRules(f, floorNum, mulberry32(i), exclude, ['ghost'])], [...rules]);
+    }
+    // En el resto de biomas sale como siempre (igual que sin tipos)
+    assert.deepEqual([...pickRoomRules(f, 5, mulberry32(i), exclude, ['water'])], [...pickRoomRules(f, 5, mulberry32(i), exclude)]);
+  }
+});

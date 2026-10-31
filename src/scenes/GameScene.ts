@@ -3,7 +3,7 @@ import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetch
 import { evolveFloors, pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
-import { GYM_PUZZLE_TICKETS, gymPuzzleKind, gymTier, hasGym } from '../level/gymPuzzles';
+import { GYM_PUZZLE_ENABLED, GYM_PUZZLE_TICKETS, gymPuzzleKind, gymTier, hasGym } from '../level/gymPuzzles';
 import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal, loadCandies, loadDaily, loadDefeated, loadTickets, saveDefeated, spendCandies, spendTickets, submitSeedBest } from '../data/save';
 import { buildDexIndex, registerDefeat, type DexIndex } from '../data/runDex';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
@@ -143,7 +143,8 @@ import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
 import { cry, playMenuMusic, playTrack, sfx } from '../ui/audio';
 import { setMusicTempo, sfxShift } from '../ui/audio';
-import { FUSION_TYPES, fusableSlots, fusionStyleOf, moveHasType, moveTypes, powerTypes, applyFusion } from '../data/fusion';
+import { FUSION_TYPES, fusableSlots, fusionStyleOf, moveHasType, moveTypes, powerTypes, applyFusion, applyPickupFusion } from '../data/fusion';
+import { SLOT_SWAP_FUSE } from './SlotSwapScene';
 import { castFusion } from './fusionCast';
 import { drawFusedSlotFrame, fusionFlash } from '../ui/art/fusionArt';
 import type { FusionData } from './FusionScene';
@@ -170,15 +171,19 @@ import { loadSpeciesIndex as loadSpeciesFacts } from '../data/speciesIndex';
 import { MODE_LABEL as ADMIN_MODE_LABEL, RUN_MODES, TOWER_FLOORS } from '../data/modes';
 import { bombExplosion, bombFuse } from '../ui/art/bombFx';
 import { fallConceptFx, sacredFlame } from '../ui/art/fallArt';
-import { pixBlast, pixRing } from '../ui/art/pixelFx';
+import { pixBlast, pixDebris, pixRing } from '../ui/art/pixelFx';
 import { armMuzzle, drawBossLaser, drawShockRing, hazardBlast, hazardWarn, laserWarn, patternMuzzle, patternWarn, ringWarn, shockLaunch, shockWarn, shotTrails, spiralEndBurst, spiralWarn, vortexCharge } from '../ui/art/bossPatternFx';
 import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, arenaCrack, arenaLanding, arenaLetterbox, arenaQuake, arenaIce, arenaLava, arenaPuddle, arenaRubble, arenaWarnTile } from '../ui/art/arenaArt';
-import { dynamaxBurst, teraBurst, zImpactFx, zMoveFx, zStarFx } from '../ui/art/formsFx';
+import { zImpactFx, zMoveFx } from '../ui/art/formsFx';
 import { darkAura, darkBurst } from '../ui/art/darkFx';
 import { darkBossEnrages, darkCooldown, darkEnemyStats, darkName, darkOdds, darkPlayerStats, darkTickets, darkWarning, darkProgress, decideDark, DARK_BOSS_RAGE, DARK_COLORS, DARK_ITEM_CHANCE, DARK_REWARD, rollDark, type DarkWho } from '../data/darkMon';
 import { guardianKindLabel, MEGA_GUARDIAN, pickGuardian } from '../data/guardians';
 import { drawMegaCine, drawMegaStoneHud, drawPowerMeterFill, drawPowerSelHud, megaCineBurst, playerFormAura } from '../ui/art/megaFx';
 import { megaCamRestore, megaCineFrame, megaCinePlan, megaTypeStyle, type MegaCamHome } from './megaCinematic';
+import { formCineFrame, formCinePlan, formCineSwapAt, type FormCineKind } from './formCinematic';
+import { drawFormCineBack, drawFormCineFront, type WorldBox } from '../ui/art/formCineFx';
+import { heavyPose, MAX_GAIT, maxFitSize, maxFitSizePmd, stomped } from '../data/maxLook';
+import { alphaBox } from '../data/procLoco';
 import { exhaustedFx, finaleShiftFx, judgmentRects, judgmentStrike, judgmentWarn, drawNovaWave, novaWarn } from '../ui/art/finaleFx';
 import { clampFinaleHp, FINALE_AFTER_BEAT_MS, FINALE_ATTACK_LABEL, FINALE_BEAT_MS, finaleAttacks, finaleHpFloor, finaleIntervalMul, finalePhaseText, judgmentHits, judgmentPlan, judgmentSpec, NOVA, nextFinalePhase, novaDurationMs, novaGapAt, pickFinaleAttack, type FinaleAttack, type FinalePhase } from '../data/finalePhases';
 import { chargedShotFx, chargeGlow } from '../ui/art/shotFx';
@@ -188,7 +193,7 @@ import { buildClue, buildNpc, drawBallIcon } from '../ui/art/worldArt';
 import { buildShopArt, type ShopArt } from '../ui/art/shopArt';
 import { buildForgeArt, buildLagoonArt, buildSlotArt } from '../ui/art/eventArt';
 import { ballEscape, ballShake, ballSuccess, ballThrow, dayNightLayer, megaAura, megaEvolveFx } from '../ui/art/powerFx';
-import { adrenalineTrail, lootFlash, reviveBurst, bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
+import { adrenalineTrail, lootFlash, reviveBurst, bakeCombatFx, bossAura, evolveBurst, evolveGlow, phaseShock, clawMarks, dustBurst, cheerPlayer, damageNumber, starBurst, faintBoss, faintEnemy, faintPlayer, hitSpark, muzzle, wallPop } from '../ui/art/combatFx';
 import { bakeIcons, iconKey } from '../ui/art/icons';
 import { bakeItemIcons, itemIconKey } from '../ui/art/itemIcons';
 import { bakeBiomeTiles, bushKeyAt, shade, TILE as ART_TILE } from '../ui/art/tiles';
@@ -216,6 +221,7 @@ import { loadPmd, pmdAnimKey, pmdKey, PmdSheet } from '../ui/pmdSprites';
 import { dir8Row, pmdScale } from '../data/pmdAnim';
 import { pmdAvailable, pmdMega, pmdShiny } from '../data/pmdForms';
 import { applyPose, dressLoose, liftSprite, poseFor, procAnimate, resetLift } from '../ui/locoAnim';
+import { locomotionOf } from '../data/locomotion';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, W } from '../ui/layout';
 import { hudLayout, itemGrid, nameFontSize, HUD_BADGE_MAX_W, HUD_ITEM_R, HUD_PROGRESS_FONT } from '../data/hudLayout';
 import {
@@ -256,7 +262,7 @@ import {
 import { canReact, consumeStatus, discover, discoveredLine, findReaction, reactionDamage, type ReactionId } from '../data/reactions';
 import { comboBonus, comboHit, comboHurt, comboLevelIndex, newCombo, tickCombo, type ComboLevel, type ComboState } from '../data/combo';
 import { DASH_INVULN_MS, DASH_MS, dashCooldownLeft, dashing, newDash, startDash, type DashState } from '../data/dash';
-import { dashPuff, dashTrail, parryBurst, parryShield, threatMark } from '../ui/art/parryFx';
+import { dashBurst, dashPuff, dashSparks, dashTrail, parryBurst, parryShield, threatMark } from '../ui/art/parryFx';
 import { ComboHud } from '../ui/art/comboHud';
 import { addHpBar, addTypeChip, COLORS, drawBox, fadeIn, FONT, goTo, HEX, hpColor, lowFx, shorten } from '../ui/theme';
 import {
@@ -378,6 +384,8 @@ const POWER_SLOT = 40;
 /** Radio máximo del cuerpo del jugador (px): menos de media casilla, para caber por pasillos de una casilla. */
 const PLAYER_BODY_R = 16;
 const DOOR = 120;
+/** Hueco libre alrededor de la trampilla (radio en px), de más a menos: se usa el primero que quepa. */
+const TRAPDOOR_CLEARANCE = [120, 96, 72, 56] as const;
 const SLOT_COUNT = 4;
 /** Separación en radianes entre los proyectiles de un abanico. */
 const SPREAD = 0.2;
@@ -420,6 +428,9 @@ const TOUCH = 46;
 /** Panel izquierdo del HUD: posiciones de cada pieza (data/hudLayout.ts, con tests para que nada se pise). */
 const HL = hudLayout(HUD.left.w - HUD.pad * 2);
 const HUD_COUNT_X = HL.counterX;
+/** Distintivo ADMIN: franja de arriba, pegado a la izquierda de la sala (lejos del minimapa y los avisos de la
+ * derecha, y a la izquierda de la barra del jefe, que empieza en CX − 440). */
+const ADMIN_BADGE = { x: GAME_VIEW.x + 10, y: 16, w: 116, h: 28 } as const;
 /** Posiciones de los 3 artículos de la tienda respecto al centro de la sala. */
 const SHOP_OFFSETS = [-200, 0, 200];
 
@@ -598,6 +609,8 @@ export class GameScene extends Phaser.Scene {
   private finale?: Finale;
   /** Presentación de los jefes (bossArena/bossDeath): ambiente de la sala, fase 2 ya mostrada y fin de la muerte del final. */
   private bossFx?: ReturnType<typeof bossAmbience>;
+  /** Hasta cuándo la cámara está en la intro de cine del jefe (no sigue al jugador). */
+  private cineUntil = 0;
   private bossHot = false;
   private finaleDeathUntil = 0;
   private finaleMembers: { id: number; name: string; types: string[]; stats: BaseStats; key: string }[] = [];
@@ -835,6 +848,8 @@ export class GameScene extends Phaser.Scene {
   private lastShotAt = -1e9;
   /** Ranura que has elegido en la pantalla de cambio (la usa gainItem una sola vez). */
   private chosenSlot?: number;
+  /** Ranuras ya fusionadas al recoger un 5.º poder (se aplican cuando el poder se recoge o se compra de verdad). */
+  private pendingFusion?: { slots: (MovePower | null)[]; at: number; newAt: number; result: MovePower };
   private swapOpen = false;
   /** T73: jefes vencidos (dan huecos de objeto) y la lista de elegir objeto (huecos llenos o forja) abierta. */
   private bossesBeaten = 0;
@@ -1128,6 +1143,7 @@ export class GameScene extends Phaser.Scene {
     this.finaleSinceNova = 0;
     this.finaleBigUntil = 0;
     this.bossFx = undefined;
+    this.cineUntil = 0;
     this.bossHot = false;
     this.finaleDeathUntil = 0;
     // Por si se salió en mitad de la intro de cine o de la muerte del final (física parada o a cámara lenta)
@@ -1603,9 +1619,24 @@ export class GameScene extends Phaser.Scene {
       // SpriteCollab, ciclo de pasos, aleteo, ondulación…; con hoja, solo balanceo y, si vuela, que vaya por el aire
       const types = (s.getData('types') as string[] | undefined) ?? (s.getData('btypes') as string[] | undefined) ?? (s === this.player ? this.playerTypes : [(s.getData('ai') as EnemyAI | undefined)?.type ?? 'normal']);
       const species = s === this.player ? this.formId : (s.getData('speciesId') as number | undefined);
+      // Dinamax/Gigamax del jugador: andar de gigante (pasos más lentos y altos, poco balanceo; maxLook.ts)
+      const giant = s === this.player && this.maxFormActive();
+      const lt = giant ? time * MAX_GAIT.timeMul : time;
       // Sin hoja: fotogramas de locomoción hechos por código (pies, alas, onda…) además de la pose
-      if (!pmd) procAnimate(s, types, species, time, moving);
-      const pose = poseFor(s, types, species, time, moving, pmd);
+      if (!pmd) procAnimate(s, types, species, lt, moving);
+      let pose = poseFor(s, types, species, lt, moving, pmd);
+      if (giant) {
+        const loco = locomotionOf(types, species);
+        const grounded = loco !== 'fly' && loco !== 'float';
+        pose = heavyPose(pose, POWER_FORMS[this.powerForm.active!].sizeMul, grounded);
+        // Cada pisotón levanta polvo (y la cámara tiembla un pelín) si anda por el suelo
+        const prev = (s.getData('giantLift') as number | undefined) ?? 0;
+        s.setData('giantLift', pose.lift);
+        if (grounded && moving && !pmd && stomped(prev, pose.lift) && !lowFx() && !this.megaCine) {
+          dustBurst(this, s.x, body.bottom, 0.8, 4, 2);
+          this.cameras.main.shake(60, 0.0015);
+        }
+      }
       // Quitar la pose antes de medir los pies (si no, la sombra subiría con el dibujo)
       liftSprite(s, 0, 0);
       // Pegada a los pies (Roberto: con la sombra más abajo parecía que volaba). En las hojas de SpriteCollab los
@@ -2928,7 +2959,7 @@ export class GameScene extends Phaser.Scene {
     // en las salas grandes (se puede entrar por cualquiera de sus casillas y la regla quedaría en otra)
     this.roomRules =
       this.mode === 'normal' || this.mode === 'endless'
-        ? pickRoomRules(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x6c8e9cf5), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...(this.roomEvent ? [this.roomEvent.roomId] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]))
+        ? pickRoomRules(this.floor, this.floorNum, mulberry32(this.floorSeed ^ 0x6c8e9cf5), new Set([...(this.minibossRoom !== undefined ? [this.minibossRoom] : []), ...(this.roomEvent ? [this.roomEvent.roomId] : []), ...this.floor.rooms.filter((rm) => rm.group !== undefined).map((rm) => rm.id)]), this.biome.types)
         : new Map();
     // Santuario de la Mega Piedra: una sala por piso (Normal, Infinito y diario), elegida DESPUÉS de lo demás y con su
     // propia semilla para no alterar el resto del piso (ver pickMegaStoneRoom)
@@ -3086,9 +3117,10 @@ export class GameScene extends Phaser.Scene {
     // Modo admin: distintivo arriba a la derecha (clic: panel). Solo existe en dev o con la cuenta admin.
     if (adminAllowed()) {
       const g = hud(this.add.graphics());
-      const t = txt(W - 62, 17, 13, '#ffffff', true).setOrigin(0.5);
+      const A = ADMIN_BADGE;
+      const t = txt(A.x + A.w / 2, A.y + A.h / 2, 13, '#ffffff', true).setOrigin(0.5);
       this.adminBadge = { g, t, shown: '' };
-      over(hud(this.add.zone(W - 60, 17, 116, 28).setInteractive({ useHandCursor: true }))).on('pointerdown', () => this.openAdminPanel());
+      over(hud(this.add.zone(A.x + A.w / 2, A.y + A.h / 2, A.w, A.h).setInteractive({ useHandCursor: true }))).on('pointerdown', () => this.openAdminPanel());
     }
     // T53: cuadro del parry a la derecha de la pausa (la recarga se ve vaciándose); clic en él también hace parry,
     // aunque con ratón lo cómodo es el clic central, que no obliga a quitar el puntero de donde apuntas.
@@ -3628,6 +3660,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Vuelve a la forma normal: sprite de antes, sin PS extra (sin matarte) y aviso. */
   private endPowerForm() {
+    if (this.player) this.player.anims.timeScale = 1;
     this.stats = this.calcStats();
     this.hp = Math.max(1, Math.min(this.hp, this.stats.maxHp));
     this.hpMark = this.hp;
@@ -3652,7 +3685,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const formNow = powerFormActive(this.powerForm) ? this.powerForm.active : null;
     // Dinamax (y Gigamax sin sprite propio): aura roja suave con nubes; Teracristal: corona y facetas del tipo Tera
     const auraKind = formNow === 'mega' ? 'mega' : formNow === 'tera' ? 'tera' : (formNow === 'dynamax' || formNow === 'gigamax') && this.megaKey === this.playerKey ? 'max' : null;
-    if (this.player) playerFormAura(this, this.player, auraKind, typeColor(auraKind === 'tera' ? this.shotType() : this.tearType), (this.player.body as Body | null)?.bottom ?? this.player.y + 30, auraKind === 'mega' && !this.megaKey);
+    if (this.player) playerFormAura(this, this.player, auraKind, typeColor(auraKind === 'tera' ? this.shotType() : this.tearType), (this.player.body as Body | null)?.bottom ?? this.player.y + 30, auraKind === 'mega' && !this.megaKey, auraKind === 'max' ? this.contentBox(this.player) ?? undefined : undefined);
     if (!powerFormActive(this.powerForm)) return;
     if (tickPowerForm(this.powerForm, dt)) return this.endPowerForm();
     // Sin sprite mega: el normal con el brillo de evolución de vez en cuando (con efectos bajos, nada)
@@ -3785,17 +3818,26 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const secs = Math.round(POWER_FORMS[choice].durationMs / 1000);
     const name = this.niceName();
     if (choice === 'tera') {
-      teraBurst(this, this.player.x, this.player.y, typeColor(tera!));
-      if (!lowFx()) {
-        evolveGlow(this, this.player, 900);
-        this.cameras.main.flash(220, 200, 240, 255);
-      }
-      // El cambio de tipo se ve: cartel con el tipo nuevo sobre la cabeza (y los disparos salen de ese color y tipo)
-      this.popup(this.player.x, this.player.y - 70, `Tipo ${typeNameEs(tera!)}`, typeColor(tera!));
+      // Cinemática (formCinematic.ts): el cristal del tipo Tera lo encierra, brilla, estalla y le deja la corona
+      const tc = typeColor(tera!);
+      this.playFormCinematic('tera', tc, () => {
+        if (!lowFx()) this.cameras.main.flash(200, 200, 240, 255);
+        starBurst(this, this.player.x, this.player.y - 6, tc, 10, 1.4, 13);
+        pixDebris(this, this.player.x, this.player.y - 6, tc, 14, 1.4, 13);
+        // El cambio de tipo se ve: cartel con el tipo nuevo sobre la cabeza (y los disparos salen de ese color y tipo)
+        this.popup(this.player.x, this.player.y - 70, `Tipo ${typeNameEs(tera!)}`, tc);
+      });
       this.notify(`¡${name} se teracristaliza!\nTus ataques son de tipo ${typeNameEs(tera!)} durante ${secs} s`, { kind: 'item', icon: 'pokeball' });
     } else {
-      dynamaxBurst(this, this.player.x, this.player.y, this.player.y + this.player.displayHeight / 2);
-      if (!lowFx()) this.cameras.main.flash(250, 232, 56, 79);
+      // Cinemática: la nube roja sube y el Pokémon crece a golpes hasta el gigante (el sprite grande lo pone applyMaxLook)
+      this.playFormCinematic('max', 0xe0304c, () => {
+        const b = (this.player.body as Body | null)?.bottom ?? this.player.y + 30;
+        pixRing(this, this.player.x, b, 220, 0xe0304c, 520, 12);
+        if (!lowFx()) {
+          this.cameras.main.flash(220, 232, 56, 79);
+          dustBurst(this, this.player.x, b, 1.6, 14, 11);
+        }
+      });
       const label = choice === 'gigamax' ? `${name} Gigamax` : `${name} Dinamax`;
       this.notify(`¡${label}!\nGigante, con escudo y ataques más grandes durante ${secs} s`, { kind: 'item', icon: 'pokeball' });
       void this.applyMaxLook(choice);
@@ -3833,6 +3875,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           }
           this.megaKey = key;
           this.setStaticLook(key, size);
+          this.fitMaxLook(key, null, choice);
           return;
         }
       }
@@ -3841,9 +3884,162 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Aspecto aprobado del Dinamax: el sprite de siempre (animado si hay hoja de SpriteCollab), más grande, con el aura
     // roja y las nubes de playerFormAura. megaKey = playerKey marca «forma sin sprite propio» para endPowerForm.
     this.megaKey = this.playerKey;
-    if (this.shiny || !this.applyPmd(this.player, this.formId, size, true)) this.setStaticLook(this.playerKey, size);
-    this.player.setData('size', size);
+    const pmd = !this.shiny && this.applyPmd(this.player, this.formId, size, true);
+    if (!pmd) this.setStaticLook(this.playerKey, size);
+    this.fitMaxLook(this.playerKey, pmd ? this.formId : null, choice);
     this.face(this.player, this.aim);
+  }
+
+  /** ¿Dinamax o Gigamax activo? */
+  private maxFormActive(): boolean {
+    return powerFormActive(this.powerForm) && (this.powerForm.active === 'dynamax' || this.powerForm.active === 'gigamax');
+  }
+
+  /**
+   * Tamaño final del gigante (maxLook.ts): píxeles enteros en pantalla (nítido, sin píxeles de dos anchos) y un tope
+   * según lo que mide de verdad el dibujo, para que con mucho aire en la textura no salga enorme ni con poco se
+   * quede corto. La hoja de SpriteCollab anda más despacio (paso de gigante). El cuerpo físico es el de siempre.
+   */
+  private fitMaxLook(sheet: string, pmdId: number | null, choice: 'dynamax' | 'gigamax') {
+    const p = this.player;
+    if (!p?.active) return;
+    const mul = POWER_FORMS[choice].sizeMul;
+    const box = this.contentBox(p);
+    // alto visible en px de la textura (la caja es del mundo: se deshace la escala)
+    const contentH = box ? (box.bottom - box.top) / Math.max(0.01, Math.abs(p.scaleY)) : null;
+    const maxContentH = choice === 'gigamax' ? 150 : 124;
+    if (pmdId !== null) {
+      const size = maxFitSizePmd({ baseSize: 84, sizeMul: mul, zoom: GAME_ZOOM, contentH, maxContentH });
+      this.applyPmd(p, pmdId, size, true);
+      p.setData('size', size);
+    } else {
+      const tex = this.textures.get(`${sheet}-front`).getSourceImage() as { width?: number };
+      const texSize = tex?.width || 96;
+      const size = maxFitSize({ texSize, baseSize: 84, sizeMul: mul, zoom: GAME_ZOOM, contentH, maxContentH });
+      this.setStaticLook(sheet, size);
+    }
+    p.anims.timeScale = MAX_GAIT.sheetRate;
+  }
+
+  /** Caja de los píxeles visibles del fotograma actual en el mundo (cacheada por fotograma), o null. */
+  private boxCache = new Map<string, { left: number; right: number; top: number; bottom: number } | null>();
+  private contentBox(s: Sprite): WorldBox | null {
+    const f = s.frame;
+    if (!f || !f.source?.image) return null;
+    const key = `${f.texture.key}|${f.name}`;
+    let b = this.boxCache.get(key);
+    if (b === undefined) {
+      b = null;
+      try {
+        const w = Math.max(1, f.cutWidth), h = Math.max(1, f.cutHeight);
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        const cx = c.getContext('2d', { willReadFrequently: true });
+        if (cx) {
+          cx.drawImage(f.source.image as CanvasImageSource, f.cutX, f.cutY, w, h, 0, 0, w, h);
+          b = alphaBox(cx.getImageData(0, 0, w, h).data, w, h);
+          if (b) b = { left: b.left, right: b.right + 1, top: b.top, bottom: b.bottom + 1 };
+        }
+      } catch {
+        b = null;
+      }
+      this.boxCache.set(key, b);
+    }
+    if (!b) return null;
+    const ox = s.originX * f.width, oy = s.originY * f.height;
+    const sx = Math.abs(s.scaleX), sy = Math.abs(s.scaleY);
+    const l = s.flipX ? f.width - b.right : b.left;
+    const r = s.flipX ? f.width - b.left : b.right;
+    return { left: s.x + (l - ox) * sx, right: s.x + (r - ox) * sx, top: s.y + (b.top - oy) * sy, bottom: s.y + (b.bottom - oy) * sy };
+  }
+
+  /**
+   * Cinemáticas de Tera, Dinamax/Gigamax y Z (formCinematic.ts + formCineFx.ts), con el mismo armazón que la de la
+   * mega: mundo congelado, jugador invulnerable, zoom y temblor hacia el Pokémon, silueta blanca en el destello y la
+   * cámara a su sitio al acabar (megaCamRestore). `onSwap` al entrar en la fase del cambio (estallido/rugido/golpe);
+   * `onDone` al acabar entera, ya con el mundo en marcha (el Z dispara entonces). Si se corta (muerte, sala…), no.
+   * El Dinamax encoge el sprite al principio y lo hace crecer a golpes hasta el tamaño que deje applyMaxLook.
+   */
+  private playFormCinematic(kind: FormCineKind, color: number, onSwap: () => void, onDone?: () => void) {
+    this.megaCine?.stop();
+    const p = this.player;
+    const cam = this.cameras.main;
+    const low = lowFx();
+    const plan = formCinePlan(kind, low);
+    const sizeMul = kind === 'max' ? POWER_FORMS[this.powerForm.active === 'gigamax' ? 'gigamax' : 'dynamax'].sizeMul : 1;
+    const roomId = this.current.id;
+    const home: MegaCamHome = { zoom: GAME_ZOOM, scrollX: cam.scrollX, scrollY: cam.scrollY, follows: this.current.group !== undefined };
+    const mid0 = { x: cam.midPoint.x, y: cam.midPoint.y };
+    const frozeWorld = this.frozenSince === undefined;
+    this.freezeWorld();
+    this.invulnUntil = Math.max(this.invulnUntil, this.time.now + plan.total + 500);
+    cam.stopFollow();
+    cam.removeBounds();
+    const back = this.add.graphics().setDepth(p.depth - 0.1);
+    const front = this.add.graphics().setDepth(p.depth + 0.1);
+    const ghost = this.add.image(p.x, p.y, p.texture.key, p.frame.name).setDepth(p.depth + 0.05).setTintFill(0xffffff).setAlpha(0);
+    // Escala «de verdad» del sprite (la que pone applyMaxLook o face); la cinemática la multiplica y la devuelve
+    let target = { sx: p.scaleX, sy: p.scaleY };
+    let applied = { sx: p.scaleX, sy: p.scaleY };
+    const t0 = this.time.now;
+    let swapped = false;
+    let done = false;
+    const stop = (completed = false) => {
+      if (done) return;
+      done = true;
+      ev.remove();
+      back.destroy();
+      front.destroy();
+      ghost.destroy();
+      this.megaCine = undefined;
+      if (p.active) {
+        p.setAlpha(1);
+        if (p.scaleX === applied.sx && p.scaleY === applied.sy) p.setScale(target.sx, target.sy);
+      }
+      const r = megaCamRestore(home, { frozeWorld, roomChanged: this.current.id !== roomId, ended: this.ended });
+      cam.shakeEffect.reset();
+      if (this.transitioning || this.falling) return;
+      cam.setZoom(r.zoom);
+      this.setRoomCamera(this.current);
+      if (r.scroll && this.current.group === undefined) cam.setScroll(r.scroll.x, r.scroll.y);
+      if (r.thaw) this.thawWorld();
+      this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 400);
+      if (completed && !this.ended && this.current.id === roomId) onDone?.();
+    };
+    const tick = () => {
+      if (done) return;
+      if (this.ended || this.transitioning || this.falling || !p.active || this.current.id !== roomId) return stop();
+      const ms = this.time.now - t0;
+      const f = formCineFrame(plan, ms, sizeMul);
+      if (f.phase === 'done') return stop(true);
+      // Alguien ha cambiado la escala (applyMaxLook puso el gigante, face giró el dibujo): esa es la nueva de verdad
+      if (Math.abs(p.scaleX - applied.sx) > 1e-6 || Math.abs(p.scaleY - applied.sy) > 1e-6) target = { sx: p.scaleX, sy: p.scaleY };
+      // En el Dinamax, mientras no llega el sprite gigante, la escala de verdad sigue siendo la normal: no se encoge
+      const grow = kind === 'max' && this.megaKey === null ? 1 : f.grow;
+      applied = { sx: target.sx * grow, sy: target.sy * grow * f.squash };
+      p.setScale(applied.sx, applied.sy);
+      const focus = plan.zoomPeak > 1 ? (f.zoom - 1) / (plan.zoomPeak - 1) : 0;
+      cam.setZoom(home.zoom * f.zoom);
+      cam.centerOn(Phaser.Math.Linear(mid0.x, p.x, focus), Phaser.Math.Linear(mid0.y, p.y - 10, focus));
+      if (f.shake > 0.0005) cam.shake(80, f.shake, true);
+      if (!swapped && ms >= formCineSwapAt(plan)) {
+        swapped = true;
+        onSwap();
+        void cry(this.formId);
+      }
+      ghost.setTexture(p.texture.key, p.frame.name).setFlipX(p.flipX).setOrigin(p.originX, p.originY).setPosition(p.x, p.y).setScale(p.scaleX, p.scaleY).setAngle(p.angle).setAlpha(f.white * 0.9);
+      p.setAlpha(1 - f.white * 0.5);
+      const box = this.contentBox(p) ?? { left: p.x - 24, right: p.x + 24, top: p.y - 40, bottom: (p.body as Body | null)?.bottom ?? p.y + 30 };
+      const args = { x: p.x, y: p.y, box, color, t: ms, low };
+      back.clear().setDepth(p.depth - 0.1);
+      front.clear().setDepth(p.depth + 0.1);
+      drawFormCineBack(back, kind, f, args);
+      drawFormCineFront(front, kind, f, args);
+    };
+    const ev = this.time.addEvent({ delay: 33, loop: true, callback: tick });
+    this.megaCine = { stop: () => stop() };
+    tick();
   }
 
   /**
@@ -3857,14 +4053,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const type = this.shotType();
     // Pose Z: el jugador se queda quieto un instante (invulnerable), estrella Z de su tipo a los pies y, al acabar,
     // una columna de luz y una onda que golpea a todos los enemigos cerca
-    const p = this.player;
-    const feet = (p.body as Body | null)?.bottom ?? p.y + 30;
-    const poseMs = lowFx() ? 300 : 800;
-    this.invulnUntil = Math.max(this.invulnUntil, this.time.now + poseMs + 300);
-    p.setVelocity(0, 0);
-    zStarFx(this, p.x, feet, typeColor(type), poseMs);
-    if (!lowFx()) this.tweens.add({ targets: p, scaleY: p.scaleY * 1.12, duration: poseMs / 4, yoyo: true, repeat: 1, ease: 'Sine.easeInOut' });
-    this.time.delayedCall(poseMs, () => this.zImpact(type));
+    // (ahora es la cinemática de formCinematic.ts: el ataque sale al acabar, con el mundo ya en marcha)
+    this.player.setVelocity(0, 0);
     const basic = basicShotFor(type);
     const opts = {
       damage: s.damage * Z_MOVE_DAMAGE_MUL * this.dmgMul(),
@@ -3879,12 +4069,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       anim: basic.anim,
     };
     sfx('evolve');
-    zMoveFx(this, this.player.x, this.player.y, typeColor(type));
-    if (!lowFx()) this.cameras.main.flash(300, 255, 230, 120);
-    for (let k = 0; k < 16; k++) {
-      const a = (k / 16) * Math.PI * 2;
-      this.spawnShot(new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), 0, opts);
-    }
+    this.playFormCinematic('z', typeColor(type), () => undefined, () => {
+      if (this.ended || !this.player?.active) return;
+      zMoveFx(this, this.player.x, this.player.y, typeColor(type));
+      if (!lowFx()) this.cameras.main.flash(300, 255, 230, 120);
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2;
+        this.spawnShot(new Phaser.Math.Vector2(Math.cos(a), Math.sin(a)), 0, opts);
+      }
+      this.zImpact(type);
+    });
     const again = this.passives.includes(Z_CRYSTAL_ID) ? 'Con el Cristal Z, otra vez en el próximo piso' : 'Solo una vez por partida (con un Cristal Z, una por piso)';
     this.notify(`¡Movimiento Z de ${this.niceName()}!\n${again}`, { kind: 'item', icon: 'star' });
     this.saveNow();
@@ -4206,15 +4400,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             this.time.delayedCall(60, () => !this.ended && this.chooseTeraType());
           }
         : undefined,
-      // Fusionar poderes: cierra la pausa y abre la pantalla de fusión (teclado, ratón y mando)
-      onFusion: () => {
-        this.scene.stop('Pause');
-        this.scene.resume();
-        this.input.keyboard?.resetKeys();
-        this.menuPadPrev = true;
-        this.padPrev = [true, true, true, true];
-        this.time.delayedCall(60, () => !this.ended && this.openFusion(false));
-      },
+      // Fusionar poderes ya no sale en la pausa: se ofrece al recoger un 5.º poder (askSlot); en admin, desde el panel
       onRestart: () => {
         clearRun(this.slot);
         this.scene.stop('Pause');
@@ -4659,14 +4845,28 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Abre una puerta oculta por los dos lados (la bomba ha estallado cerca). */
   private revealDoor(room: Room, d: Dir) {
     const other = this.floor.rooms[room.doors[d]!];
+    // Al abrir la sala secreta se abren TODAS sus entradas ocultas (por los dos lados), no solo la de la bomba
+    const secret = room.kind === 'secret' ? room : other.kind === 'secret' ? other : undefined;
     const pairs: [Room, Dir][] = [[room, d], [other, OPPOSITE[d]]];
+    if (secret) {
+      for (const sd of DIRS) {
+        const nid = secret.doors[sd];
+        if (nid === undefined || !this.floor.hiddenDoors?.includes(doorKey(secret.id, sd))) continue;
+        pairs.push([secret, sd], [this.floor.rooms[nid], OPPOSITE[sd]]);
+      }
+    }
     for (const [rm, dir] of pairs) {
       const k = doorKey(rm.id, dir);
       if (this.revealedDoors.has(k)) continue;
       this.revealedDoors.add(k);
       this.secretWalls.get(k)?.forEach((o) => o.destroy());
       this.secretWalls.delete(k);
+      // Lo nuevo (suelo del hueco y marco) es de ESA sala: se apunta en roomObjs para que el filtro de cámara lo
+      // oculte desde las demás. Antes quedaba suelto y se veía flotando en el vacío junto a la sala actual.
+      const before = this.children.list.length;
       this.drawDoor(rm, dir, this.add.graphics().setDepth(0), this.floorColorOf(rm));
+      const objs = this.roomObjs.get(rm.id);
+      if (objs) objs.push(...this.children.list.slice(before));
       const block = this.doorMap.get(k);
       // Si la sala está cerrada por un combate (u otro evento), la puerta nueva nace cerrada también: no se puede
       // huir a la sala secreta con enemigos vivos. Se abre con las demás al limpiar la sala.
@@ -4684,6 +4884,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         (block.body as Phaser.Physics.Arcade.StaticBody).enable = false;
       }
     }
+    this.showRooms([this.current.id]);
     this.notify('¡Has encontrado una sala secreta!', { kind: 'reward', icon: 'bomb' });
     sfx('pickup');
     this.drawMap();
@@ -5049,10 +5250,45 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         // Hora real del juego: el reloj de la escena estaba parado mientras elegías, así que `this.time.now` es la
         // de cuando se abrió la pantalla y el enfriamiento ya habría pasado al volver (se reabría al momento)
         this.swapCooldownUntil = this.game.loop.time + 1200;
-        if (slot >= 0) then(slot);
+        if (slot === SLOT_SWAP_FUSE) {
+          // Fusionar: si se cancela, vuelve a la pantalla de cambio
+          if (!this.openPickupFusion(move, (plan) => { this.pendingFusion = plan; then(SLOT_SWAP_FUSE); }, () => this.time.delayedCall(60, () => !this.ended && this.askSlot(move, then, cancel)))) cancel();
+        } else if (slot >= 0) then(slot);
         else cancel();
       },
     });
+    this.scene.pause();
+    return true;
+  }
+
+  /** FusionScene con las 4 ranuras y el poder nuevo (5.º). `done` recibe las ranuras resultantes. */
+  private openPickupFusion(move: MovePower, done: (plan: NonNullable<GameScene['pendingFusion']>) => void, back: () => void): boolean {
+    if (this.ended || !this.scene.manager.keys['Fusion'] || this.scene.isActive('Fusion')) return false;
+    this.swapOpen = true;
+    this.player?.setVelocity(0, 0);
+    const close = () => {
+      this.scene.stop('Fusion');
+      this.scene.resume();
+      this.input.keyboard?.resetKeys();
+      this.menuPadPrev = true;
+      this.padPrev = [true, true, true, true];
+      this.swapOpen = false;
+      this.swapCooldownUntil = this.game.loop.time + 1200;
+    };
+    const data: FusionData = {
+      slots: [...this.slots],
+      incoming: move,
+      floor: this.floorNum,
+      usedFloor: this.fusionFloor,
+      onClose: () => { close(); back(); },
+      onFuse: (i, j) => {
+        close();
+        const r = applyPickupFusion(this.slots, move, i, j);
+        if (r) done(r);
+      },
+    };
+    this.scene.launch('Fusion', data);
+    this.scene.bringToTop('Fusion');
     this.scene.pause();
     return true;
   }
@@ -5334,12 +5570,28 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (item.item.id === TERA_GEM_ID && this.passives.filter((p) => p === TERA_GEM_ID).length === 1) this.time.delayedCall(400, () => !this.ended && this.chooseTeraType());
     } else {
       const free = this.slots.indexOf(null);
-      const slot = this.chosenSlot ?? (free !== -1 ? free : this.nextSlotReplace++ % SLOT_COUNT);
-      this.chosenSlot = undefined;
-      this.slots[slot] = item.move;
-      this.slotReady[slot] = 0;
-      this.stats = this.calcStats();
-      this.notify(`${pretty(item.move.name)}\nTecla ${slot + 1}`, { kind: 'item', icon: 'disc', tint: typeColor(item.move.type) });
+      const pf = this.chosenSlot === SLOT_SWAP_FUSE ? this.pendingFusion : undefined;
+      this.pendingFusion = undefined;
+      if (pf) {
+        // Recogido fusionándolo (o fusionando dos de las ranuras y metiendo el nuevo en la que queda libre)
+        this.chosenSlot = undefined;
+        this.slots = pf.slots;
+        this.slotReady[pf.at] = 0;
+        if (pf.newAt >= 0) this.slotReady[pf.newAt] = 0;
+        this.fusionFloor = this.floorNum;
+        this.slotShown = this.slotShown.map(() => '');
+        this.stats = this.calcStats();
+        const f = pf.result.fusion!;
+        if (this.player) fusionFlash(this, this.player.x, this.player.y, typeColor(f.types[0]), typeColor(f.types[1]));
+        this.notify(`¡Fusión! ${pf.result.name} (potencia ${pf.result.power})\nTecla ${pf.at + 1}${pf.newAt >= 0 ? ` · ${pretty(item.move.name)}: tecla ${pf.newAt + 1}` : ''}`, { kind: 'info', icon: 'star' });
+      } else {
+        const slot = this.chosenSlot !== undefined && this.chosenSlot >= 0 ? this.chosenSlot : free !== -1 ? free : this.nextSlotReplace++ % SLOT_COUNT;
+        this.chosenSlot = undefined;
+        this.slots[slot] = item.move;
+        this.slotReady[slot] = 0;
+        this.stats = this.calcStats();
+        this.notify(`${pretty(item.move.name)}\nTecla ${slot + 1}`, { kind: 'item', icon: 'disc', tint: typeColor(item.move.type) });
+      }
     }
     // ¡Sinergia! nueva (objeto + objeto o objeto + poder): aviso, destello y, si es la primera vez, al Libro
     this.announceSynergies(before);
@@ -6053,7 +6305,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private doDash(toward?: { x: number; y: number }) {
     if (this.ended || this.transitioning || this.evolving || this.falling || this.frozenSince !== undefined || !this.player?.active) return;
     const now = this.time.now;
-    const v = startDash(this.dash, now, toward ?? this.moveDir, this.aim);
+    const v = startDash(this.dash, now, toward ?? this.moveDir, this.aim, this.moveSpeedNow());
     if (!v) return;
     this.player.setVelocity(v.x, v.y);
     this.playerKnockUntil = now + DASH_MS;
@@ -6063,14 +6315,21 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     sfx('select');
     this.face(this.player, this.dash.dir);
     dashPuff(this, this.player.x, this.player.y, -this.dash.dir.x, -this.dash.dir.y, typeColor(this.shotType()));
+    dashBurst(this, this.player.x, this.player.y, this.dash.dir.x, this.dash.dir.y, typeColor(this.shotType()));
     this.dashTrailAt = 0;
+  }
+
+  /** Velocidad de movimiento actual sin terreno ni carga (stats, adrenalina, forma y combo): la usa también la esquiva. */
+  private moveSpeedNow(): number {
+    return this.stats.speed * adrenalineSpeedMul(this.adrenaline) * powerFormSpeedMul(this.powerForm) * comboBonus(this.combo).speed;
   }
 
   /** Estela de la esquiva mientras dura (imágenes del jugador que se apagan, de su color). */
   private updateDashFx() {
     if (!this.player?.active || !dashing(this.dash, this.time.now) || this.time.now < this.dashTrailAt) return;
-    this.dashTrailAt = this.time.now + (lowFx() ? 70 : 35);
+    this.dashTrailAt = this.time.now + (lowFx() ? 50 : 22);
     dashTrail(this, this.player, typeColor(this.shotType()));
+    if (!lowFx()) dashSparks(this, this.player.x, this.player.y, -this.dash.dir.x, -this.dash.dir.y, typeColor(this.shotType()));
   }
 
   /** Cuadro de la esquiva: listo (claro), recargando (gris con barra que se vacía) y su tecla o botón. */
@@ -6815,6 +7074,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return clearOfRects({ x, y }, r, rects);
   }
 
+  /** ¿Libre también en diagonal? spotClear solo mira la cruz; con radios grandes una esquina (el pilar) se colaba. */
+  private ringFree(x: number, y: number, r: number): boolean {
+    for (const f of [0.45, 0.8]) {
+      for (let k = 0; k < 8; k++) {
+        const a = (k * Math.PI) / 4;
+        if (!this.freeAt(x + Math.cos(a) * r * f, y + Math.sin(a) * r * f)) return false;
+      }
+    }
+    return true;
+  }
+
   /** El sitio libre más cercano a (x, y) (para enemigos, objetos y la trampilla); si no hay, el de freeSpot. */
   private clearSpotNear(x: number, y: number, r = 26, extra?: (p: { x: number; y: number }) => boolean, a?: { x0: number; y0: number; x1: number; y1: number }) {
     const rects = this.wallRects();
@@ -7110,7 +7380,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** T86: antes del líder, el puzzle del gimnasio (en pausa encima). Resolverlo da tickets; rendirse abre el paso sin premio. */
   private gymThenBoss(roomId: number) {
-    if (!hasGym(this.mode, 'boss', !!this.finale && this.finaleMembers.length > 0) || !this.scene.manager.keys['GymPuzzle'] || this.floorIntroOn) {
+    if (!GYM_PUZZLE_ENABLED || !hasGym(this.mode, 'boss', !!this.finale && this.finaleMembers.length > 0) || !this.scene.manager.keys['GymPuzzle'] || this.floorIntroOn) {
       return this.spawnBoss();
     }
     const seed = (this.floorSeed ^ Math.imul(roomId + 1, 0x9e3779b1)) >>> 0;
@@ -7300,12 +7570,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Los límites de la sala grande impedían centrar al jefe (el zoom acababa en otro sitio): se quitan mientras dura y se ponen al acabar
     const camHome = { x: this.cameras.main.scrollX, y: this.cameras.main.scrollY };
     this.cameras.main.removeBounds();
+    this.cineUntil = Number.POSITIVE_INFINITY;
     bossCinematic(this, {
       boss: b, others: bosses.filter((e) => e !== b), name: name.charAt(0).toUpperCase() + name.slice(1), title, color: typeColor(types[0] ?? 'normal'),
       final, low: lowFx(), hud: (o) => this.toHud(o), zoom: BOSS_CAM_ZOOM, follow: this.player, roar: () => sfx('roar'),
       onDone: () => {
         for (const [e, hp] of hps) if (e.active) e.setData('hp', Math.max(e.getData('hp') as number, hp));
         this.thawWorld();
+        // La cámara vuelve al jugador en ~300 ms
+        this.cineUntil = this.time.now + 350;
         this.invulnUntil = Math.max(this.invulnUntil, this.time.now + 600);
         this.time.delayedCall(700, () => {
           this.setRoomCamera(this.current);
@@ -7767,9 +8040,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (b.shown === key) return;
     b.shown = key;
     b.g.clear();
-    if (key === 'cheat') drawAdminPlate(b.g, W - 120, 3, 116, 28);
-    else b.g.fillStyle(0x1a0d12, 0.55).fillRect(W - 120, 5, 116, 24);
-    b.t.setText(key === 'cheat' ? '   PARTIDA ADMIN' : 'ADMIN (F9)').setAlpha(key === 'cheat' ? 1 : 0.7).setX(W - 62);
+    const A = ADMIN_BADGE;
+    if (key === 'cheat') drawAdminPlate(b.g, A.x, A.y, A.w, A.h);
+    else b.g.fillStyle(0x1a0d12, 0.55).fillRect(A.x, A.y + 2, A.w, A.h - 4);
+    b.t.setText(key === 'cheat' ? '   PARTIDA ADMIN' : 'ADMIN (F9)').setAlpha(key === 'cheat' ? 1 : 0.7).setX(A.x + A.w / 2);
   }
 
   /** Cualquier truco marca la partida: deja de contar (save.ts lo comprueba) y se ve en el HUD. */
@@ -9811,6 +10085,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const [tx, ty] = this.tileOf(q.x, q.y, room);
       return Number.isFinite(dist[ty]?.[tx] ?? Infinity);
     };
+    // Con margen amplio: pegada al pilar del centro (2x2), a una roca o a la pared se veía fatal y no dejaba sitio a
+    // la animación. Se prueba primero con mucho hueco y se va bajando; el último recurso es el de siempre.
+    const rects = this.wallRects();
+    for (const r of TRAPDOOR_CLEARANCE) {
+      const p = nearestClearPoint({ x: g.cx, y: g.cy }, (q) => this.spotClear(q.x, q.y, r, rects, g) && this.ringFree(q.x, q.y, r) && reach(q), TILE / 2, 24);
+      if (p) return p;
+    }
     return this.clearSpotNear(g.cx, g.cy, 40, reach, g);
   }
 
@@ -10103,7 +10384,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       updateShots(this.host, this.shots, time, delta);
       updateShots(this.host, this.foeShots, time, delta);
     }
-    this.weatherFx?.update(delta, this.player);
+    // Durante la intro del jefe la cámara no mira al jugador: la niebla se centra en la vista (ver WeatherFx)
+    this.weatherFx?.update(delta, this.time.now < this.cineUntil ? undefined : this.player);
     if (!this.ended) this.counters.seconds += delta / 1000;
     if (!frozen) {
       this.weatherTick(time);
@@ -10169,7 +10451,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // T77: mientras cargas el disparo vas un 40 % más lento
     const loopNow = this.game.loop.time;
     const chargeSlow = CHARGE_SOURCES.some((k) => isCharging(this.charges[k], loopNow)) ? CHARGE_MOVE_MUL : 1;
-    const spd = this.stats.speed * wade * chargeSlow * adrenalineSpeedMul(this.adrenaline) * powerFormSpeedMul(this.powerForm) * comboBonus(this.combo).speed;
+    const spd = this.moveSpeedNow() * wade * chargeSlow;
     if (this.time.now >= this.playerKnockUntil) {
       // T78: en el hielo de la arena resbalas: la velocidad cambia poco a poco
       const [itx, ity] = this.tileOf(this.player.x, this.player.y, this.current);

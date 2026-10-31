@@ -7,7 +7,7 @@ import { addPixelText } from '../ui/art/pixel';
 import { sfx } from '../ui/audio';
 import { typeColor, typeNameEs } from '../data/types';
 import type { MovePower } from '../data/items';
-import { fusePowers, fusionBlock, fusionStyleOf, patternLabel, recipeByKey } from '../data/fusion';
+import { applyPickupFusion, fusePowers, fusionBlock, fusionStyleOf, patternLabel, pickupCandidates, pickupFusionBlock, recipeByKey, NEW_POWER_INDEX } from '../data/fusion';
 import { addFusionPreview, fusionFlash } from '../ui/art/fusionArt';
 import { openConfirm } from './ConfirmScene';
 
@@ -18,6 +18,8 @@ export interface FusionData {
   usedFloor: number;
   /** Panel admin: sin límite de una por piso. */
   free?: boolean;
+  /** Al recoger un 5.º poder con las 4 ranuras llenas: el poder nuevo (candidato 5). onFuse recibe índices 0-4. */
+  incoming?: MovePower;
   /** Fusiona las ranuras i (se queda el resultado) y j (queda libre). */
   onFuse: (i: number, j: number) => void;
   onClose: () => void;
@@ -27,7 +29,7 @@ const pretty = (s: string) => s.replace(/-/g, ' ').replace(/^./, (c) => c.toUppe
 const typesOf = (m: MovePower) => (m.fusion ? m.fusion.types.map(typeNameEs).join('/') : typeNameEs(m.type));
 
 /**
- * Fusionar poderes (desde la pausa): eliges el primer poder, luego el segundo, ves el resultado (nombre, tipos, daño,
+ * Fusionar poderes (al recoger un 5.º poder con las 4 ranuras llenas, o desde el panel admin): eliges el primer poder, luego el segundo, ves el resultado (nombre, tipos, daño,
  * patrón y su proyectil animado) y lo confirmas. Teclado (flechas, Enter, Esc, 1-4), ratón y mando.
  */
 export class FusionScene extends Phaser.Scene {
@@ -47,6 +49,16 @@ export class FusionScene extends Phaser.Scene {
     super('Fusion');
   }
 
+  /** Candidatos: las ranuras y, al recoger, el poder nuevo al final. */
+  private get cands(): (MovePower | null)[] {
+    return this.args.incoming ? pickupCandidates(this.args.slots, this.args.incoming) : this.args.slots;
+  }
+
+  private block(i: number, j: number): string | null {
+    const a = this.args;
+    return a.incoming ? pickupFusionBlock(a.slots, a.incoming, i, j) : fusionBlock(a.slots, i, j, a.floor, a.usedFloor, a.free);
+  }
+
   init(data: FusionData) {
     this.args = data;
     this.step = 'first';
@@ -63,14 +75,14 @@ export class FusionScene extends Phaser.Scene {
     this.add.rectangle(DCX, DCY, COVER_W + 4, COVER_H + 4, 0x0d1425, 0.85).setInteractive();
     drawBox(this.add.graphics(), 90, 50, 780, 540, { radius: 16, border: 0xd4a017 });
     addPixelText(this, 480, 90, 'FUSIONAR PODERES', { size: 16, scale: 2.4, color: '#f8d030', stroke: '#283068', strokeWidth: 3, shadow: '#101828' });
-    const limit = this.args.free ? 'Panel admin: sin límite.' : this.args.usedFloor === this.args.floor ? 'Ya has fusionado en este piso.' : 'Una fusión por piso. Es para siempre.';
+    const limit = this.args.incoming ? 'Has encontrado un 5.º poder: puedes fusionarlo o fusionar dos de los tuyos.' : this.args.free ? 'Panel admin: sin límite.' : this.args.usedFloor === this.args.floor ? 'Ya has fusionado en este piso.' : 'Una fusión por piso. Es para siempre.';
     this.add.text(120, 126, `Junta dos poderes en uno más fuerte; la otra ranura queda libre. ${limit}`, {
       fontFamily: FONT, fontSize: '14px', color: HEX.textSoft, wordWrap: { width: 720 },
     });
     // Avisos abajo a la izquierda (nunca en el centro)
     this.note = this.add.text(120, 530, '', { fontFamily: FONT, fontSize: '15px', color: '#b03030', wordWrap: { width: 720 } });
-    addHelpBar(this, 480, 566, 'Flechas o ratón · Enter o clic · 1-4 elige · Esc: atrás', { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0.5);
-    (['ONE', 'TWO', 'THREE', 'FOUR'] as const).forEach((k, i) => this.input.keyboard?.on(`keydown-${k}`, () => this.pickSlot(i)));
+    addHelpBar(this, 480, 566, `Flechas o ratón · Enter o clic · 1-${this.args.incoming ? 5 : 4} elige · Esc: atrás`, { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(0.5);
+    (['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE'] as const).forEach((k, i) => this.input.keyboard?.on(`keydown-${k}`, () => this.pickSlot(i)));
     this.showList();
     sfx('select');
   }
@@ -78,7 +90,7 @@ export class FusionScene extends Phaser.Scene {
   /** Lista de ranuras para elegir la primera o la segunda. */
   private showList() {
     this.clearStep();
-    const s = this.args.slots;
+    const s = this.cands;
     const title = this.step === 'first' ? 'Primer poder:' : `${pretty(s[this.first]?.name ?? '')} + ¿cuál?`;
     this.layer = this.add.container(0, 0);
     this.layer.add(this.add.text(120, 160, title, { fontFamily: FONT, fontSize: '19px', fontStyle: 'bold', color: HEX.text }));
@@ -86,15 +98,16 @@ export class FusionScene extends Phaser.Scene {
       if (!m) return `${i + 1} · vacía`;
       const tag = m.fusion ? ' · fusionado' : '';
       const mark = i === this.first ? ' (elegido)' : '';
-      return `${i + 1} · ${pretty(m.name)} (${typesOf(m)}, pot. ${m.power})${tag}${mark}`;
+      const nu = this.args.incoming && i === NEW_POWER_INDEX ? 'NUEVO: ' : '';
+      return `${i + 1} · ${nu}${pretty(m.name)} (${typesOf(m)}, pot. ${m.power})${tag}${mark}`;
     });
     labels.push(this.step === 'first' ? 'Volver' : 'Atrás');
-    this.menu = new MenuList(this, 480, 200, labels, (i) => (i >= s.length ? this.back() : this.pickSlot(i)), { w: 640, h: 50, gap: 10, fontSize: 17 });
+    this.menu = new MenuList(this, 480, 196, labels, (i) => (i >= s.length ? this.back() : this.pickSlot(i)), { w: 680, h: s.length > 4 ? 44 : 50, gap: s.length > 4 ? 6 : 10, fontSize: 17 });
   }
 
   private pickSlot(i: number) {
-    if (this.busy || this.done || this.step === 'preview' || i >= this.args.slots.length) return;
-    const s = this.args.slots;
+    if (this.busy || this.done || this.step === 'preview' || i >= this.cands.length) return;
+    const s = this.cands;
     const m = s[i];
     if (!m) return this.warn('Esa ranura está vacía.');
     if (m.fusion) return this.warn('Un poder fusionado no se puede volver a fusionar.');
@@ -104,7 +117,7 @@ export class FusionScene extends Phaser.Scene {
       sfx('select');
       return this.showList();
     }
-    const block = fusionBlock(s, this.first, i, this.args.floor, this.args.usedFloor, this.args.free);
+    const block = this.block(this.first, i);
     if (block) return this.warn(block);
     this.second = i;
     this.step = 'preview';
@@ -115,8 +128,8 @@ export class FusionScene extends Phaser.Scene {
   /** Vista previa: nombre, tipos, daño, recarga, patrón y el proyectil animado. */
   private showPreview() {
     this.clearStep();
-    const a = this.args.slots[this.first] as MovePower;
-    const b = this.args.slots[this.second] as MovePower;
+    const a = this.cands[this.first] as MovePower;
+    const b = this.cands[this.second] as MovePower;
     const r = fusePowers(a, b);
     const f = r.fusion!;
     const style = fusionStyleOf(r)!;
@@ -140,7 +153,12 @@ export class FusionScene extends Phaser.Scene {
     t(140, 258, `Potencia ${r.power} (antes ${Math.max(a.power, b.power)}) · Recarga ${(r.cooldown / 1000).toFixed(1)} s`, 15);
     t(140, 282, `Ataque: ${patternLabel(r)}`, 15);
     t(140, 306, `Proyectil: ${style.shape} · estela ${style.trail} · impacto ${style.impact}`, 13, HEX.textSoft);
-    t(140, 328, `Ranura ${this.first + 1}: el resultado · Ranura ${this.second + 1}: queda libre`, 13, HEX.textSoft);
+    const inc = this.args.incoming;
+    const plan = inc ? applyPickupFusion(this.args.slots, inc, this.first, this.second) : null;
+    const where = plan
+      ? `Ranura ${plan.at + 1}: el resultado${plan.newAt >= 0 ? ` · Ranura ${plan.newAt + 1}: ${pretty(inc!.name)}` : ''}`
+      : `Ranura ${this.first + 1}: el resultado · Ranura ${this.second + 1}: queda libre`;
+    t(140, 328, where, 13, HEX.textSoft);
     // Proyectil animado de la receta
     const box = this.add.graphics();
     box.fillStyle(0x101828, 1).fillRect(560, 180, 260, 120);
@@ -152,9 +170,9 @@ export class FusionScene extends Phaser.Scene {
   /** Diálogo de confirmación (ConfirmScene). */
   private ask(name: string) {
     if (this.busy) return;
-    const a = this.args.slots[this.first] as MovePower;
-    const b = this.args.slots[this.second] as MovePower;
-    const ok = openConfirm(this, `¿Fusionar ${pretty(a.name)} y ${pretty(b.name)} en ${name}?\nNo se puede deshacer${this.args.free ? '.' : ' y gasta la fusión del piso.'}`, (yes) => {
+    const a = this.cands[this.first] as MovePower;
+    const b = this.cands[this.second] as MovePower;
+    const ok = openConfirm(this, `¿Fusionar ${pretty(a.name)} y ${pretty(b.name)} en ${name}?\nNo se puede deshacer${this.args.free || this.args.incoming ? '.' : ' y gasta la fusión del piso.'}`, (yes) => {
       this.nav = new NavInput(this);
       if (yes) this.fuse();
     }, 'CONFIRMAR FUSIÓN');
@@ -165,7 +183,7 @@ export class FusionScene extends Phaser.Scene {
     this.busy = true;
     this.menu?.destroy();
     this.menu = undefined;
-    const f = fusePowers(this.args.slots[this.first] as MovePower, this.args.slots[this.second] as MovePower).fusion!;
+    const f = fusePowers(this.cands[this.first] as MovePower, this.cands[this.second] as MovePower).fusion!;
     fusionFlash(this, 690, 240, typeColor(f.types[0]), typeColor(f.types[1]), 30);
     sfx('evolve');
     this.time.delayedCall(950, () => {
