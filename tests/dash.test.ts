@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  canDash, dashCooldownLeft, dashDirection, dashEnd, dashing, dashInvulnerable, dashSpeed, newDash, startDash,
-  DASH_COOLDOWN_MS, DASH_DISTANCE, DASH_INVULN_MS, DASH_MS,
+  canDash, dashCooldownLeft, dashDistance, dashDirection, dashEnd, dashing, dashInvulnerable, dashSpeed, newDash, startDash,
+  DASH_BASE_MOVE, DASH_COOLDOWN_MS, DASH_DISTANCE, DASH_MAX_DISTANCE, DASH_MIN_SPEED_MUL, DASH_INVULN_MS, DASH_MS,
 } from '../src/data/dash.ts';
 
 test('valores: impulso corto, ~0,25 s de invulnerabilidad y ~1,2 s de recarga', () => {
@@ -44,4 +44,25 @@ test('no sale de la sala: el final se para en el borde', () => {
   assert.equal(e.x, 380);
   const c = dashEnd(10, 10, { x: -1, y: 0 }, b, 20);
   assert.ok(c.x >= 20 && c.y >= 20);
+});
+
+test('escala con la velocidad: recorre más y siempre va bastante más rápido que andar', () => {
+  assert.ok(Math.abs(dashDistance() - DASH_DISTANCE) < 1e-9);
+  assert.ok(Math.abs(dashDistance(DASH_BASE_MOVE) - DASH_DISTANCE) < 1e-9);
+  let prev = 0;
+  for (const sp of [100, 240, 300, 400, 500, 650, 900]) {
+    const d = dashDistance(sp);
+    assert.ok(d >= prev - 1e-9, `no decrece (${sp})`);
+    prev = d;
+    assert.ok(d >= DASH_DISTANCE - 1e-9);
+    assert.ok(dashSpeed(sp) >= sp * DASH_MIN_SPEED_MUL - 1e-9, `se nota (${sp})`);
+  }
+  assert.ok(dashDistance(400) > DASH_DISTANCE + 20);
+  assert.ok(dashDistance(450) <= DASH_MAX_DISTANCE + 1e-9);
+  assert.equal(dashSpeed(Number.NaN), dashSpeed());
+  const s = newDash();
+  const v = startDash(s, 0, { x: 1, y: 0 }, { x: 1, y: 0 }, 500)!;
+  assert.ok(Math.abs(v.x - dashSpeed(500)) < 1e-9);
+  const b = { x0: 0, y0: 0, x1: 1000, y1: 300 };
+  assert.ok(Math.abs(dashEnd(100, 100, { x: 1, y: 0 }, b, 20, 400).x - (100 + dashDistance(400))) < 1e-9);
 });
