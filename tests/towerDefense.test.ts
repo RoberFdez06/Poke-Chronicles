@@ -411,9 +411,10 @@ test('voladores: siguen el camino como los de tierra y solo los alcanzan las tor
 
 test('megaevolución: nivel 6 extra pagando bastante, solo quien tenga forma mega', () => {
   const charmeleon = { ...TEAM[0], evolveId: 6 };
-  const pikachu = { ...TEAM[3], evolveId: 26 };
+  const pikachu = { ...TEAM[3], evolveId: 134 };
   assert.equal(megaSpeciesOf(5, 6), 6);
-  assert.equal(megaSpeciesOf(25, 26), null);
+  assert.equal(megaSpeciesOf(25, 26), 26, 'Raichu tiene Mega Raichu X');
+  assert.equal(megaSpeciesOf(133, 134), null);
   assert.equal(megaSpeciesOf(115, null), 115, 'sin evolución: la propia especie (Kangaskhan)');
   assert.equal(megaSpriteName(6), 'charizard-mega-x');
   assert.ok(megaCostFor(charmeleon) > upgradeCostFor(charmeleon, 4)!, 'cuesta más que el nivel 5');
@@ -442,7 +443,7 @@ test('megaevolución: nivel 6 extra pagando bastante, solo quien tenga forma meg
   assert.equal(t.level, 5);
   assert.equal(t.evolved, 6);
   assert.equal(g.upgradeCost(t), megaCostFor(charmeleon));
-  assert.equal(g.upgradeCost(p), null, 'Raichu no tiene mega: se queda en el 5');
+  assert.equal(g.upgradeCost(p), null, 'sin mega: se queda en el 5');
   assert.equal(g.upgrade(p.id), 'max');
   g.drainEvents();
   g.money = megaCostFor(charmeleon) - 1;

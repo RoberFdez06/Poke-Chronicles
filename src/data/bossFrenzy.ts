@@ -261,12 +261,12 @@ export function cascadePlan(b: Bounds, shape: CascadeShape, spec: CascadeSpec, o
   let k = 1;
   let slots = n + 1;
   let spacing = (hi - lo) / (slots + 1);
-  let width = Math.max(MIN_LANE_W, Math.min(spec.width, spacing * 0.55));
+  let width = Math.max(MIN_LANE_W, Math.min(spec.width * 2, spacing * 0.8));
   while ((k + 1) * spacing - width < SAFE_MIN && k < 6) {
     k++;
     slots = n + k;
     spacing = (hi - lo) / (slots + 1);
-    width = Math.max(MIN_LANE_W, Math.min(spec.width, spacing * 0.55));
+    width = Math.max(MIN_LANE_W, Math.min(spec.width * 2, spacing * 0.8));
   }
   // Hueco seguro: k huecos interiores seguidos (ni el primero ni el último), en las pinzas cerca del centro
   const room = slots - 1 - k; // posiciones de inicio válidas: 1..room

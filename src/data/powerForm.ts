@@ -71,6 +71,10 @@ export const MEGA_FORMS: ReadonlyMap<number, string> = new Map([
   // Leyendas Z-A
   [36, 'clefable-mega'], [71, 'victreebel-mega'], [121, 'starmie-mega'], [149, 'dragonite-mega'], [154, 'meganium-mega'],
   [160, 'feraligatr-mega'], [227, 'skarmory-mega'], [478, 'froslass-mega'], [500, 'emboar-mega'], [530, 'excadrill-mega'],
+  // Leyendas Z-A: Dimensión Mega (Raichu usa la X)
+  [26, 'raichu-mega-x'], [358, 'chimecho-mega'], [398, 'staraptor-mega'], [485, 'heatran-mega'], [491, 'darkrai-mega'],
+  [623, 'golurk-mega'], [740, 'crabominable-mega'], [768, 'golisopod-mega'], [801, 'magearna-mega'], [807, 'zeraora-mega'],
+  [952, 'scovillain-mega'], [970, 'glimmora-mega'], [998, 'baxcalibur-mega'],
   [545, 'scolipede-mega'], [560, 'scrafty-mega'], [604, 'eelektross-mega'], [609, 'chandelure-mega'], [652, 'chesnaught-mega'],
   [655, 'delphox-mega'], [658, 'greninja-mega'], [668, 'pyroar-mega'], [687, 'malamar-mega'], [689, 'barbaracle-mega'],
   [691, 'dragalge-mega'], [701, 'hawlucha-mega'], [718, 'zygarde-mega'], [780, 'drampa-mega'], [870, 'falinks-mega'],
