@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { shrinkTo } from '../data/columns';
 import { enterFullscreen, exitFullscreen, setAutoFullscreenPref } from '../ui/screenFit';
 import { addHelpBar } from '../ui/helpBar';
 import { fitDesign, COVER_H, COVER_W, DCX, DCY } from '../ui/layout';
@@ -17,7 +18,7 @@ import { openAdmin } from './AdminScene';
 import { currentRunAdminRows, generalAdminRows } from '../ui/adminPanel';
 import { touchOnlyDevice } from '../data/controls';
 import { AUTO_MODE_LABEL, loadAutoMode, saveAutoMode, stepAutoMode, withMode } from '../data/autoMode';
-import { loadMobileView, saveMobileView, stepPct } from '../data/mobileView';
+import { loadMobileView, MOBILE_VIEW_CHANGED, saveMobileView, stepPct } from '../data/mobileView';
 
 export interface SettingsData {
   /**
@@ -172,6 +173,8 @@ export class SettingsScene extends Phaser.Scene {
         border: this.list[i] === 'reset' ? 0xc0392b : undefined,
       });
       r.text.setText(this.label(this.list[i])).setColor(this.list[i] === 'reset' ? '#c0392b' : HEX.text);
+      // En móvil las letras crecen: el texto no pisa la flecha de la izquierda ni se sale de la fila
+      r.text.setScale(1).setScale(shrinkTo(r.text.width, this.geo.w - 84));
       r.arrow.setVisible(sel);
     });
   }
@@ -191,11 +194,12 @@ export class SettingsScene extends Phaser.Scene {
     this.refresh();
   }
 
-  /** Zoom de la sala y tamaño de la interfaz (solo móvil): se aplican al empezar la siguiente partida o piso. */
+  /** Zoom de la sala y tamaño de la interfaz (solo móvil): se guardan y la partida en curso (si la hay) los aplica ya. */
   private stepView(row: 'roomZoom' | 'uiSize', d: number) {
     const v = loadMobileView();
     v[row] = stepPct(v[row], d);
     saveMobileView(v);
+    this.game.events.emit(MOBILE_VIEW_CHANGED, v);
     sfx('select');
     this.refresh();
   }

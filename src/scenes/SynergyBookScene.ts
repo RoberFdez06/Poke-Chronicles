@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { shrinkTo } from '../data/columns';
 import { addHelpBar } from '../ui/helpBar';
 import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { NavInput } from '../ui/nav';
@@ -149,6 +150,8 @@ export class SynergyBookScene extends Phaser.Scene {
       if (i === this.selected) drawBox(r.bg, LIST.x, y, LIST.w, LIST.rowH - 4, { radius: 8, selected: true });
       r.name.setText(e.name + (active.has(e.id) ? '  · activa' : '')).setColor(e.found ? (e.transform ? '#7a3ab8' : HEX.text) : '#8a93a6');
       r.info.setText(`${e.transform ? 'Transformación' : 'Sinergia'} · ${e.pieces} piezas`);
+      // En móvil las letras crecen: que el nombre no se salga de la fila
+      for (const tx of [r.name, r.info]) tx.setScale(1).setScale(shrinkTo(tx.width, LIST.w - 56));
       r.badge.setAlpha(e.found ? 1 : 0.25).setTint(e.found ? 0xffffff : 0x808080);
     });
     this.pageLabel.setText(`Página ${this.page + 1} de ${this.pages()}`);

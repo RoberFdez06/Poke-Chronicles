@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { fitTextLine } from '../ui/fitText';
 import { addHelpBar } from '../ui/helpBar';
 import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { openControls } from './ControlsScene';
@@ -115,8 +116,9 @@ export class PauseScene extends Phaser.Scene {
     rows.forEach(([k, v], i) => {
       const x = 66 + (i % 2) * 245;
       const y = 198 + Math.floor(i / 2) * 27;
-      t(x, y, k, 17, '#4a5578');
-      t(x + 140, y, v, 17, '#2b3a67', true);
+      // Medida real (en móvil las letras crecen): cada dato en su columna sin pisar el de al lado
+      fitTextLine(t(x, y, k, 17, '#4a5578'), 132, 11);
+      fitTextLine(t(x + 140, y, v, 17, '#2b3a67', true), 245 - 140 - 12, 11);
     });
     // Estadísticas base del Pokémon, como en los juegos
     // Estadísticas base del Pokémon, como en los juegos: tres por línea

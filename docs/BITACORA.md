@@ -2146,3 +2146,24 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   zonas de peligro activas); con `spawnBoss()` y `frenzy('cascade', 'mixed')` se ve cómo esquiva las líneas.
 - **Dudas para Roberto**: los números (alcances, distancias, pesos) son a ojo; están arriba de los dos módulos. Los
   ataques de jefe que no son de frenesí (ondas de choque, etc.) solo se esquivan por sus proyectiles.
+
+## Móvil: Controles sin solapes y ajustes de vista en el acto (2026-11-01)
+
+- **Controles** (`ControlsScene.layoutRows`): la tabla se coloca con la medida real de los textos. La ayuda de abajo
+  queda a 16 px del borde del panel; el paso de fila sale de lo que queda (`rowStep`), la letra de las etiquetas
+  baja si la fila no da (`fontForStep`) y las columnas se reparten según la etiqueta y la descripción más largas
+  (`splitColumns`, en `src/data/columns.ts`, puro). Cada etiqueta se encaja con `fitTextLine` en su columna y cada
+  descripción (`GlyphText.setFit`, nuevo: ancho y alto máximos) se encoge si no cabe. Se recalcula al cambiar de
+  pestaña, de Partida ⇄ Defensa de torres o de dispositivo. Vale para Teclado, Ratón, Mando y Táctil.
+- **Otras tablas**: Pausa (estadísticas: nombre 132 px y valor 93 px con `fitTextLine`), Sinergias (nombre e info de
+  cada fila dentro de la lista) y Ajustes (texto de fila sin pisar la flecha) se encogen con `shrinkTo` si no caben.
+- **Zoom de la sala / Tamaño de la interfaz**: Ajustes emite `mobile-view-changed` (`MOBILE_VIEW_CHANGED`) en
+  `game.events`; la partida lo escucha (se quita en SHUTDOWN) y llama a `applyMobileView()`: zoom, viewport,
+  seguimiento y límites de la sala actual (o centrada si es fija), letras del HUD reescaladas desde su base
+  (`hudRescaledPx`, sin deriva al ir y volver), minimapa redibujado y botones táctiles rehechos al reanudar (con la
+  partida en pausa su capa DOM quedaría encima del menú). El estado de la partida no se toca.
+- **Probar**: móvil o DevTools con emulación táctil en horizontal. Pausa > Controles: ninguna fila se pisa. Pausa >
+  Ajustes > Zoom de la sala / Tamaño de la interfaz: la sala cambia detrás al momento; al volver a la partida los
+  botones tienen el tamaño nuevo y se pueden tocar. Consola: `__POKEISAAC_DEBUG__.mobileView()` (aplica lo guardado y
+  dice el estado) y `mobileView(150, 125)` (guarda y aplica).
+- **Tests**: `tests/columns.test.ts`.

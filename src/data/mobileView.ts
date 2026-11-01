@@ -67,3 +67,9 @@ export function saveMobileView(v: MobileView, store: Store | undefined = default
 /** Minimapa en móvil: ×1,6 del de PC (1,5 → 2,4), con píxel entero y como mucho este alto (px de lienzo) para que no
  * llegue a Parry y Esquiva ni a los avisos (tests/autoMode.test.ts lo comprueba con padButtons). */
 export const MOBILE_MAP = { scale: 2.4, maxH: 380, top: 16 } as const;
+
+/** Evento (en game.events) que lanza Ajustes al cambiar zoom o interfaz; la partida lo aplica en el acto. */
+export const MOBILE_VIEW_CHANGED = 'mobile-view-changed';
+
+/** Letra del HUD tras cambiar «Tamaño de la interfaz»: la base (sin factor) por el nuevo factor, entera y ≥ 1. */
+export const hudRescaledPx = (base: number, ui: number): number => Math.max(1, Math.round(base * (ui > 0 ? ui : 1)));

@@ -18,6 +18,8 @@ import { addBackButton } from '../ui/cards';
 import { drawBox } from '../ui/theme';
 import { controlModesFor, currentInput } from '../ui/inputMode';
 import { GlyphText } from '../ui/art/keyGlyphs';
+import { fitTextLine } from '../ui/fitText';
+import { fontForStep, rowStep, splitColumns } from '../data/columns';
 
 export interface ControlsData {
   /** Escena que la abrió (se pausa debajo y se reanuda al cerrar). */
@@ -25,6 +27,8 @@ export interface ControlsData {
 }
 
 const TAB = { y: 120, w: 170, h: 46, gap: 14 };
+/** Tabla de controles: de x0 a x1, filas desde `top`; el panel acaba en `panelBottom` y la ayuda deja `margin` debajo. */
+const TABLE = { x0: 96, x1: 868, top: 172, gap: 18, maxStep: 27, panelBottom: 600, margin: 16, helpGap: 12 };
 
 /**
  * Controles por secciones (T35): pestañas Teclado, Ratón, Mando y Táctil (esta solo en móvil o tableta), cada una
@@ -166,6 +170,47 @@ export class ControlsScene extends Phaser.Scene {
         r.setText(sections[mode][a], mode).setVisible(true);
       }
     });
+    this.layoutRows();
+  }
+
+  /** Letra de las etiquetas al crearlas (en móvil, ya agrandada por main.ts). */
+  private labelPx = 0;
+
+  /**
+   * Coloca la tabla con la medida real de los textos (en móvil las letras crecen y las etiquetas largas pisaban la
+   * descripción): ayuda pegada abajo con margen, paso de fila según lo que queda, columnas repartidas según el texto
+   * más largo y, si aun así no cabe, la letra baja o el texto se encoge.
+   */
+  private layoutRows() {
+    // Ayuda: ocupa lo que ocupe y queda con margen sobre el borde del panel
+    this.help.setFit(TABLE.x1 - TABLE.x0 + 40);
+    const helpH = this.help.textHeight * this.help.scaleY;
+    this.help.y = TABLE.panelBottom - TABLE.margin - helpH / 2;
+    const bottom = this.help.y - helpH / 2 - TABLE.helpGap;
+    const shown = this.labels.filter((l) => l.visible).length;
+    const step = rowStep(shown, TABLE.top, bottom, TABLE.maxStep);
+    if (!this.labelPx) this.labelPx = parseFloat(String(this.labels[0]?.style.fontSize)) || 19;
+    const size = fontForStep(step, this.labelPx, 11);
+    let labelMax = 0;
+    let descMax = 0;
+    this.labels.forEach((l, i) => {
+      if (!l.visible) return;
+      l.setScale(1).setFontSize(size);
+      labelMax = Math.max(labelMax, l.width);
+      descMax = Math.max(descMax, this.rows[i].textWidth);
+    });
+    const cols = splitColumns(labelMax, descMax, TABLE.x1 - TABLE.x0, TABLE.gap);
+    let k = 0;
+    this.labels.forEach((l, i) => {
+      if (!l.visible) return;
+      const y = TABLE.top + k * step;
+      k++;
+      fitTextLine(l.setPosition(TABLE.x0, y + step / 2).setOrigin(0, 0.5), cols.labelW, 11);
+      const r = this.rows[i];
+      r.x = TABLE.x0 + cols.descX;
+      r.y = y + step / 2;
+      r.setFit(cols.descW, step - 2);
+    });
   }
 
   /** Ayuda de abajo: solo lo del dispositivo con el que juegas. */
@@ -183,6 +228,7 @@ export class ControlsScene extends Phaser.Scene {
           : [many ? '←/→, Tab o clic en la pestaña: sección' : '', 'V o clic arriba: Partida ⇄ Defensa de torres', 'Esc, Enter o "Volver": cerrar'];
     this.help.setText(parts.filter(Boolean).join(' · '), dev);
     this.paintView();
+    if (this.rows.length) this.layoutRows();
   }
 
   private paintView() {

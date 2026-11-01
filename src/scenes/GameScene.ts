@@ -18,7 +18,7 @@ import { bounceOffRects, clipSegmentToRects, segmentBlocked } from '../data/proj
 import { phaseAtSeconds, phasePowerMul, pickByPhase, PHASE_DESC, PHASE_NOTICE, type Phase } from '../data/dayNight';
 import { TouchControls } from '../ui/touchControls';
 import { hudFont, hudUiScale, setHudUiScale } from '../ui/uiScale';
-import { loadMobileView, MOBILE_MAP, viewFactor } from '../data/mobileView';
+import { hudRescaledPx, loadMobileView, MOBILE_MAP, MOBILE_VIEW_CHANGED, saveMobileView, viewFactor } from '../data/mobileView';
 import { pickAimTarget, touchAimDir } from '../data/touchAim';
 import {
   AUTO_FIRE_RANGE, AUTO_MODE_LABEL, AUTO_MODE_SHORT, autoCasts, autoFires, autoMoves, effectiveAutoMode, loadAutoMode, manualOverride,
@@ -1242,6 +1242,10 @@ export class GameScene extends Phaser.Scene {
     this.camZoom = GAME_ZOOM * viewFactor(view.roomZoom, mobileView);
     setHudUiScale(viewFactor(view.uiSize, mobileView));
     this.cameras.main.setViewport(GAME_VIEW.x, GAME_VIEW.y, GAME_VIEW.w, GAME_VIEW.h).setZoom(this.camZoom).centerOn(DCX, DCY);
+    // Si se cambian en Ajustes con la partida en pausa, se aplican en el acto (sin esperar al siguiente piso)
+    const onView = () => this.applyMobileView();
+    this.game.events.on(MOBILE_VIEW_CHANGED, onView);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.game.events.off(MOBILE_VIEW_CHANGED, onView));
     // Efectos bajos (T41): sin partículas decorativas ni temblores de cámara
     const fx = loadFx();
     this.fxBudget = new FxBudget(fx.low);
@@ -4599,6 +4603,62 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     cam.setBounds(x0, y0, x1 - x0, y1 - y0);
     cam.setRoundPixels(true);
     cam.startFollow(this.player, true, 0.12, 0.12);
+  }
+
+  /** Botones táctiles por rehacer con el nuevo «Tamaño de la interfaz» (se hace al reanudar: con la escena en
+   * pausa, su capa DOM quedaría encima del menú). */
+  private touchRebuildPending = false;
+
+  /**
+   * «Zoom de la sala» y «Tamaño de la interfaz» (Ajustes, móvil) en el acto, sin tocar el estado de la partida:
+   * cámara (zoom, seguimiento y límites de la sala actual), letras del HUD, botones táctiles y minimapa.
+   */
+  applyMobileView(): string {
+    const view = loadMobileView();
+    const mob = touchOnlyDevice();
+    const cam = this.cameras.main;
+    this.camZoom = GAME_ZOOM * viewFactor(view.roomZoom, mob);
+    const oldUi = hudUiScale();
+    setHudUiScale(viewFactor(view.uiSize, mob));
+    const newUi = hudUiScale();
+    if (!this.player || !this.current || !this.hudLayer) return 'aún cargando: se aplicará al empezar';
+    cam.setViewport(GAME_VIEW.x, GAME_VIEW.y, GAME_VIEW.w, GAME_VIEW.h).setZoom(this.camZoom);
+    this.setRoomCamera(this.current);
+    if (!this.camFollows(this.current)) {
+      const i = this.interior(this.current);
+      cam.centerOn(i.cx, i.cy);
+    }
+    // Letras del HUD: cada una vuelve a su tamaño base (sin el factor anterior) por el nuevo factor
+    if (oldUi !== newUi) {
+      const walk = (o: Phaser.GameObjects.GameObject) => {
+        if (o instanceof Phaser.GameObjects.Text) {
+          const cur = parseFloat(String(o.style.fontSize)) || 0;
+          const base = (o.getData('hudBasePx') as number | undefined) ?? cur / oldUi;
+          o.setData('hudBasePx', base);
+          if (cur > 0) o.setFontSize(hudRescaledPx(base, newUi));
+        } else if (o instanceof Phaser.GameObjects.Container) o.each(walk);
+      };
+      this.hudLayer.each(walk);
+      if (this.touch) {
+        this.touchRebuildPending = true;
+        if (this.scene.isPaused() || this.scene.isSleeping()) this.events.once(Phaser.Scenes.Events.RESUME, () => this.rebuildTouch());
+        else this.rebuildTouch();
+      }
+    }
+    this.drawMap();
+    return `zoom ${view.roomZoom} % (×${this.camZoom.toFixed(3)}) · interfaz ${view.uiSize} % (×${newUi})`;
+  }
+
+  /** Rehace los botones táctiles con el «Tamaño de la interfaz» actual (estado de la partida intacto). */
+  private rebuildTouch() {
+    if (!this.touchRebuildPending || !this.touch || this.ended) return;
+    this.touchRebuildPending = false;
+    this.touch.destroy();
+    this.touch = new TouchControls(this, (o) => void this.toHud(o), this.slotY(0), () => this.touchBlocked(), hudUiScale());
+    if (this.dashHud) this.dashHud.shown = '';
+    if (this.activeHud) this.activeHud.shown = '';
+    this.paintActive();
+    this.drawMap();
   }
 
   /** ¿La cámara sigue al jugador en esta sala? En las grandes siempre; en las normales, solo con zoom de móvil. */
@@ -8547,6 +8607,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         return `guardado: ${this.auto.mode} · en vigor: ${this.autoMode()}${this.touch ? '' : ' (no es móvil: siempre apagado)'}`;
       },
       /** Lo que vería la IA de movimiento ahora (dirección elegida y zonas de peligro activas). */
+      /** Ajustes de vista (móvil): mobileView() aplica lo guardado; mobileView(125, 150) guarda y aplica zoom e interfaz. */
+      mobileView: (zoom?: number, ui?: number) => {
+        if (zoom !== undefined || ui !== undefined) {
+          const v = loadMobileView();
+          if (zoom === 100 || zoom === 125 || zoom === 150) v.roomZoom = zoom;
+          if (ui === 100 || ui === 125 || ui === 150) v.uiSize = ui;
+          saveMobileView(v);
+        }
+        return this.applyMobileView();
+      },
       autoState: () => ({ mode: this.autoMode(), dir: this.player ? this.autoMoveStep() : null, hazards: frenzyHazards().length }),
     };
     (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__ = api;

@@ -265,6 +265,10 @@ export class GlyphText extends Phaser.GameObjects.Container {
   private baseX: number;
   /** Ancho sin escalar. */
   textWidth = 0;
+  /** Alto sin escalar (el del hijo más alto). */
+  textHeight = 0;
+  /** Alto máximo (0 = sin tope): si no cabe, se encoge entero como con maxWidth. */
+  private maxHeight = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number, text: string, style: GlyphTextStyle = {}) {
     super(scene, x, y);
@@ -303,11 +307,24 @@ export class GlyphText extends Phaser.GameObjects.Container {
       }
     }
     this.textWidth = x;
-    const k = st.maxWidth && x > st.maxWidth ? st.maxWidth / x : 1;
-    this.setScale(k);
+    let hh = 0;
+    for (const ch of this.list) hh = Math.max(hh, (ch as unknown as { height: number }).height || 0);
+    this.textHeight = hh;
+    const kw = st.maxWidth && x > st.maxWidth ? st.maxWidth / x : 1;
+    const kh = this.maxHeight && hh > this.maxHeight ? this.maxHeight / hh : 1;
+    this.setScale(Math.min(kw, kh));
     // Origen: se desplazan los hijos (el contenedor sigue en su sitio para no romper tweens)
     const shift = -x * st.originX;
     for (const ch of this.list) (ch as unknown as { x: number }).x += shift;
+    return this;
+  }
+
+  /** Cambia el hueco (ancho y, si se da, alto) y vuelve a encajar el texto. */
+  setFit(maxW: number, maxH = 0): this {
+    this.style.maxWidth = maxW > 0 ? maxW : undefined;
+    this.maxHeight = maxH > 0 ? maxH : 0;
+    const k = Math.min(this.style.maxWidth && this.textWidth > this.style.maxWidth ? this.style.maxWidth / this.textWidth : 1, this.maxHeight && this.textHeight > this.maxHeight ? this.maxHeight / this.textHeight : 1);
+    this.setScale(k);
     return this;
   }
 
