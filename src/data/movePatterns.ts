@@ -244,7 +244,7 @@ export const TYPE_STYLES: Record<string, MoveStyle[]> = {
 export const normName = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
 
 /** Movimientos famosos: id de PokeAPI → estilo de su tipo (por nombre). */
-const FAMOUS_IDS: Record<number, string> = {
+export const FAMOUS_IDS: Readonly<Record<number, string>> = {
   52: 'Ascuas', 53: 'Lanzallamas', 83: 'Giro Fuego', 126: 'Llamarada', 172: 'Rueda Fuego', 257: 'Onda Ígnea', 284: 'Erupción', 394: 'Envite Ígneo',
   55: 'Pistola Agua', 145: 'Burbuja', 61: 'Burbuja', 352: 'Hidropulso', 250: 'Torbellino', 57: 'Surf', 127: 'Cascada', 56: 'Hidrobomba',
   84: 'Impactrueno', 209: 'Chispa', 85: 'Rayo', 87: 'Trueno', 435: 'Chispazo', 192: 'Electrocañón',
