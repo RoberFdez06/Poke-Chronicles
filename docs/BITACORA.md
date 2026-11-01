@@ -2058,3 +2058,20 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   `tests/uiScale.test.ts`.
 - **A probar en un móvil real**: tamaño de los botones en las bandas, que el zoom 150 % no deje fuera de vista
   enemigos importantes y cómo quedan los textos del HUD al 150 %. En la VM solo `tsc` y `npm test`.
+
+## 01/11/2026 — Auditoría y firmas de todos los ataques y fusiones (rama `ataques`)
+
+- **Inventario**: `docs/AUDITORIA_ATAQUES.md` (tabla de los 120 estilos del jugador, los 28 grupos repetitivos que
+  había, las 14 combinaciones de fusión y las 171 parejas). 105 de 120 ataques compartían patrón y rasgos con otro
+  y solo cambiaba el color o el nombre (las 13 embestidas, los 7 rayos fijos, las 6 ondas de suelo…).
+- **Firmas nuevas** (`src/data/moveSignatures.ts` + `src/ui/art/moveFx2.ts`): 24 motivos pixel art 7×7 propios
+  (llamas, burbujas, plumas, engranajes, notas, luna…) colocados según la forma (cono, línea, anillo, caída, remolino,
+  fila, saltos, brote, estela) y un tono de sonido por motivo. Ningún par de ataques comparte forma + rasgos + motivo.
+  Cada combinación de fusión tiene también su motivo de arranque. Rendimiento: un Graphics por firma, máx. 5 a la
+  vez y 8 motivos por firma; con «Reducir efectos» no se dibujan.
+- **Test** `tests/attackAudit.test.ts`: datos válidos (sin undefined/NaN, rangos), sin ids duplicados ni huérfanos
+  (FAMOUS_IDS, excepciones de motivo, combinaciones), textos en español y que no vuelvan los repetidos. No había datos
+  rotos que arreglar.
+- **Consola** (admin/dev): `__POKEISAAC_DEBUG__.listStyles(tipo)`, `.castStyle(tipo, estilo)`, `.castFusion(tipoA, tipoB)`.
+- **Cableado mínimo** en `GameScene.castSlot` (firma + tono) y en `installDebug`; `fusionCast.ts` lanza la firma de la combinación.
+- **A probar en navegador**: legibilidad de los motivos en móvil y que no tapen proyectiles enemigos.
