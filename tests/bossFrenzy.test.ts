@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CASCADE_SHAPES, FRENZY_ATTACKS, FRENZY_MIN_WARN, MAX_LANES, MIN_LANES, MIN_LANE_W, SAFE_MIN, cascadePlan, cascadeShapesFor, cascadeSpec,
-  comboPlan, comboSpec, frenzyAttacksFor, frenzyChance, isFrenzyAttack, laneHits, laneState, pickFrenzy, pickShape, segDist, waveHits, zoneHits,
+  MIXED_SAFE_R, comboPlan, comboSpec, elemKind, ringRadius, frenzyAttacksFor, frenzyChance, isFrenzyAttack, laneHits, laneState, pickFrenzy, pickShape, segDist, waveHits, zoneHits,
   type CascadeShape,
 } from '../src/data/bossFrenzy.ts';
 import { BOSS_ATTACK_LABEL, TELEGRAPH_MS, attackInterval } from '../src/data/bossPatterns.ts';
@@ -70,7 +70,7 @@ test('cascada: cada forma, en cada sala, deja hueco seguro, no sale de la sala y
                 assert.ok(gap >= 80 && gap <= 150, `${tag}: escalonado ${gap}`);
               }
             }
-            assert.equal(p.totalMs, p.lanes[p.lanes.length - 1].offAt);
+            assert.equal(p.totalMs, Math.max(...p.lanes.map((l) => l.offAt)));
           }
 });
 
@@ -93,6 +93,82 @@ test('cascada: el barrido va de verdad en un sentido y las pinzas se cierran des
   const mid = pos.reduce((a, c) => a + c, 0) / pos.length;
   assert.ok(Math.sign(pos[0] - mid) !== Math.sign(pos[1] - mid), 'alterna los lados');
   assert.ok(Math.abs(pos[0] - mid) > Math.abs(pos[pos.length - 1] - mid), 'de fuera hacia dentro');
+});
+
+// Salas pedidas: 1200x800, 480x360 y 2160x660
+const MIX_ROOMS = [
+  { x0: 100, y0: 50, x1: 1300, y1: 850 },
+  { x0: 0, y0: 0, x1: 480, y1: 360 },
+  { x0: 40, y0: 40, x1: 2200, y1: 700 },
+];
+
+test('cascada mezclada: 3+ tipos, 10-14 elementos, de pared a pared, escalonada y con hueco seguro común', () => {
+  const rng = mulberry32(11);
+  for (const b of MIX_ROOMS)
+    for (const shape of ['mixed', 'mixedRing'] as const)
+      for (const ph of [1, 2] as const)
+        for (const diff of DIFFS)
+          for (let rep = 0; rep < 25; rep++) {
+            const spec = cascadeSpec(1 + rep % 10, ph, diff);
+            const boss = { x: b.x0 + (b.x1 - b.x0) * rng(), y: b.y0 + (b.y1 - b.y0) * rng() };
+            const p = cascadePlan(b, shape, spec, boss, rng);
+            const tag = `${shape} ${b.x1 - b.x0}x${b.y1 - b.y0} ${ph} ${diff} #${rep}`;
+            assert.equal(p.lanes.length, spec.lanes, `${tag}: nº`);
+            assert.ok(p.lanes.length >= 10 && p.lanes.length <= 14, tag);
+            const kinds = new Set(p.lanes.map(elemKind));
+            assert.ok(kinds.size >= 3, `${tag}: tipos ${[...kinds]}`);
+            if (shape === 'mixedRing') assert.ok(p.lanes.filter((l) => l.ring).length >= 4, `${tag}: anillos`);
+            else assert.ok(kinds.has('ring'), `${tag}: algún anillo`);
+            assert.ok(p.safeGap >= SAFE_MIN);
+            const S = p.safeAt;
+            assert.ok(inside(b, S.x - MIXED_SAFE_R, S.y - MIXED_SAFE_R) && inside(b, S.x + MIXED_SAFE_R, S.y + MIXED_SAFE_R), `${tag}: hueco dentro`);
+            for (let i = 0; i < p.lanes.length; i++) {
+              const l = p.lanes[i];
+              assert.ok(l.width >= MIN_LANE_W);
+              assert.ok(l.fireAt - l.warnAt >= (diff === 'easy' ? 900 : FRENZY_MIN_WARN), `${tag}: aviso`);
+              if (i > 0) {
+                const gap = l.warnAt - p.lanes[i - 1].warnAt;
+                assert.ok(gap >= 80 && gap <= 150, `${tag}: escalonado ${gap}`);
+              }
+              // Pasillo: el disco seguro entero (diámetro ≥ 48) está libre de cada elemento en todo momento
+              for (let a = 0; a < 16; a++)
+                for (const rr of [0, MIXED_SAFE_R / 2, MIXED_SAFE_R]) {
+                  const x = S.x + Math.cos((a * Math.PI) / 8) * rr;
+                  const y = S.y + Math.sin((a * Math.PI) / 8) * rr;
+                  assert.equal(laneHits(l, x, y, 0), false, `${tag}: el elemento ${i} (${elemKind(l)}) cruza el hueco`);
+                  if (l.ring) for (let t = l.fireAt; t <= l.offAt; t += 20) assert.equal(laneHits(l, x, y, 0, t), false, tag);
+                }
+              if (l.ring) {
+                assert.ok(inside(b, l.ring.cx, l.ring.cy));
+                // Recorre la sala entera: el radio mayor llega a la esquina más lejana
+                const far = Math.max(...[[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1]].map(([x, y]) => Math.hypot(x - l.ring!.cx, y - l.ring!.cy)));
+                assert.ok(Math.abs(Math.max(l.ring.r0, l.ring.r1) - far) < 1e-6, `${tag}: anillo hasta la pared`);
+                assert.ok(ringRadius(l, l.fireAt) === l.ring.r0 && ringRadius(l, l.offAt) === l.ring.r1);
+              } else {
+                // Línea de pared a pared: los dos extremos tocan un borde de la sala
+                const onEdge = (x: number, y: number) => Math.abs(x - b.x0) < 1e-6 || Math.abs(x - b.x1) < 1e-6 || Math.abs(y - b.y0) < 1e-6 || Math.abs(y - b.y1) < 1e-6;
+                assert.ok(onEdge(l.x1, l.y1) && onEdge(l.x2, l.y2), `${tag}: de pared a pared`);
+                assert.ok(inside(b, l.x1, l.y1) && inside(b, l.x2, l.y2));
+              }
+            }
+            assert.equal(p.totalMs, Math.max(...p.lanes.map((l) => l.offAt)));
+          }
+});
+
+test('cascada mezclada: es la más frecuente para todos los tipos y puede repetirse', () => {
+  for (const t of ['fire', 'water', 'grass', 'ghost', 'normal', 'nada']) {
+    const sh = cascadeShapesFor([t], ['ice']);
+    const mixed = sh.filter((s) => s === 'mixed' || s === 'mixedRing').length;
+    assert.ok(mixed > sh.length / 2, t);
+  }
+  const rng = mulberry32(9);
+  let mixed = 0;
+  let last: CascadeShape | undefined;
+  for (let i = 0; i < 400; i++) {
+    last = pickShape(cascadeShapesFor(['fire'], []), rng, last);
+    if (last === 'mixed' || last === 'mixedRing') mixed++;
+  }
+  assert.ok(mixed > 200, `mezcladas ${mixed}/400`);
 });
 
 test('cascada: formas por tipo y bioma (variedad), sin repetir la última', () => {

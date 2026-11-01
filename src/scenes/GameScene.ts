@@ -8497,7 +8497,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       castFusion: (tipoA: string, tipoB: string) => this.adminTestCast(debugFusionMove(tipoA, tipoB)),
       /** Lista los estilos de un tipo (o de todos). */
       listStyles: (tipo?: string) => debugStyleList(tipo),
-      /** Frenesí: frenzy('cascade', 'sweepH'|'sweepV'|'diagonal'|'radial'|'spiral'|'pincer') o frenzy('feintCombo'). */
+      /** Frenesí: frenzy('cascade', 'mixed'|'mixedRing'|'sweepH'|'sweepV'|'diagonal'|'radial'|'spiral'|'pincer') o frenzy('feintCombo'). */
       frenzy: (attack = 'cascade', shape?: string) => this.debugFrenzy(attack, shape),
     };
     (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__ = api;

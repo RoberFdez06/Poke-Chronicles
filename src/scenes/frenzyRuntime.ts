@@ -8,7 +8,7 @@ import {
   type CascadePlan, type ComboSpec, type ComboStep, type Pt,
 } from '../data/bossFrenzy';
 import type { Bounds } from '../level/bounds';
-import { drawDashWarn, drawLaneBeam, drawLaneFade, drawLaneWarn, drawWave, drawWaveWarn, drawZoneBlast, drawZoneWarn } from '../ui/art/frenzyFx';
+import { drawRingBeam, drawRingFade, drawRingWarn, drawDashWarn, drawLaneBeam, drawLaneFade, drawLaneWarn, drawWave, drawWaveWarn, drawZoneBlast, drawZoneWarn } from '../ui/art/frenzyFx';
 
 export interface FrenzyHost {
   scene: Phaser.Scene;
@@ -57,18 +57,24 @@ export function runCascade(h: FrenzyHost, plan: CascadePlan) {
     for (let i = 0; i < plan.lanes.length; i++) {
       const l = plan.lanes[i];
       const st = laneState(l, t);
-      if (st.s === 'warn') drawLaneWarn(g, l, st.k, t, h.low);
-      else if (st.s === 'on') {
-        drawLaneBeam(g, l, st.k, h.color, h.low);
+      if (st.s === 'warn') {
+        if (l.ring) drawRingWarn(g, l, st.k, t, h.arena, h.low);
+        else drawLaneWarn(g, l, st.k, t, h.low);
+      } else if (st.s === 'on') {
+        if (l.ring) drawRingBeam(g, l, t, h.color, h.arena, h.low);
+        else drawLaneBeam(g, l, st.k, h.color, h.low);
         if (!boomed) {
           boomed = true;
           h.sfx('hit');
         }
-        if (!hit.has(i) && laneHits(l, h.player.x, h.player.y, 12)) {
+        if (!hit.has(i) && laneHits(l, h.player.x, h.player.y, 12, t)) {
           hit.add(i);
           h.hurt();
         }
-      } else if (st.s === 'fade') drawLaneFade(g, l, st.k, h.color);
+      } else if (st.s === 'fade') {
+        if (l.ring) drawRingFade(g, l, st.k, h.color, h.arena);
+        else drawLaneFade(g, l, st.k, h.color);
+      }
     }
     return t < plan.totalMs + 160;
   }, 4);

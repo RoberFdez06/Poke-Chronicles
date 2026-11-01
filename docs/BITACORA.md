@@ -2099,3 +2099,21 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
 - **Probar desde la consola**: `__POKEISAAC_DEBUG__.spawnBoss()` y luego `__POKEISAAC_DEBUG__.frenzy('cascade', 'sweepH')`
   (formas: sweepH, sweepV, diagonal, radial, spiral, pincer) o `__POKEISAAC_DEBUG__.frenzy('feintCombo')`.
   En la VM solo `tsc` y `npm test`; falta verlo en el navegador (legibilidad en móvil y sensación de dificultad).
+
+## Cascadas mezcladas: líneas y anillos en la misma ráfaga (rama `mixta`, 2026-11-01)
+
+- **Qué**: nuevas formas `mixed` («Tormenta cruzada») y `mixedRing` («Tormenta de anillos»). Una misma ráfaga mezcla
+  columnas, filas y diagonales (siempre de pared a pared) y anillos que se abren o se cierran desde el jefe o desde
+  puntos al azar y recorren la sala entera. 10-14 elementos, uno tras otro (80-150 ms), cada uno con su aviso
+  (≥750 ms; 950 en Fácil). `mixed`: 2-3 anillos y los tres tipos de línea; `mixedRing`: 4-5 anillos y dos tipos de línea.
+- **Justo**: primero se elige un disco seguro común (radio 32, diámetro 64 ≥ 48) dentro de la sala y, si se puede,
+  lejos del jefe; ninguna línea lo cruza y cada anillo deja un arco libre apuntando a él (marcado con postes blancos).
+- **Frecuencia**: `cascadeShapesFor` añade las mezcladas repetidas: son más de la mitad de las opciones para todos los
+  tipos; las simples siguen saliendo, menos. `pickShape` deja repetir una mezclada (cada ráfaga es distinta).
+- **Dibujo**: anillos en el mismo Graphics de la cascada, como polilínea recortada a la sala (máx. 360 puntos), grosor
+  mínimo 20 px con contorno oscuro; aviso = círculo tenue de salida que se enciende y parpadea. Con pocos efectos se
+  quitan el barrido de anticipación, los postes y la capa clara, no el aviso.
+- **Tests**: `tests/bossFrenzy.test.ts` (salas 1200x800, 480x360 y 2160x660: tipos, nº, tiempos, pared a pared y
+  hueco libre en todo momento, también con el radio de cada instante).
+- **Probar**: `__POKEISAAC_DEBUG__.spawnBoss()` y `__POKEISAAC_DEBUG__.frenzy('cascade', 'mixed')` o `'mixedRing'`.
+  Falta verlo en el navegador (legibilidad en móvil y dificultad).

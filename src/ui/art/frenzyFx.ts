@@ -4,7 +4,8 @@
 // efectos (low) se quitan capas y destellos, pero el aviso conserva grosor y contraste.
 import Phaser from 'phaser';
 import { darkOf, lightOf, PX } from './pixelFx';
-import type { Lane, Pt } from '../../data/bossFrenzy';
+import { ringRadius, type Lane, type Pt } from '../../data/bossFrenzy';
+import type { Bounds } from '../../level/bounds';
 
 type G = Phaser.GameObjects.Graphics;
 const OUT = 0x18202c;
@@ -127,4 +128,86 @@ export function drawZoneBlast(g: G, x: number, y: number, R: number, k: number, 
   g.fillStyle(color, 0.75 * (1 - k)).fillCircle(x, y, R);
   if (!low) g.fillStyle(0xffffff, 0.6 * (1 - k)).fillCircle(x, y, R * (0.4 + 0.5 * k));
   pixArc(g, x, y, R * (1 + 0.15 * k), darkOf(color), 1 - k, PX + 2);
+}
+
+// --- Anillos de las cascadas mezcladas ---
+
+/** Traza el anillo como polilínea (segmentos de ~16 px, máx. 360) saltando el arco libre y lo que cae fuera de la sala. */
+function ringPath(g: G, l: Lane, r: number, b: Bounds) {
+  const R = l.ring!;
+  if (r <= 1) return;
+  const span = Math.PI * 2 - R.gapW;
+  const n = Math.min(360, Math.max(16, Math.ceil((span * r) / 16)));
+  const a0 = R.gapAng + R.gapW / 2;
+  let open = false;
+  for (let i = 0; i <= n; i++) {
+    const a = a0 + (span * i) / n;
+    const x = R.cx + Math.cos(a) * r;
+    const y = R.cy + Math.sin(a) * r;
+    const inside = x >= b.x0 - 8 && x <= b.x1 + 8 && y >= b.y0 - 8 && y <= b.y1 + 8;
+    if (!inside) {
+      if (open) g.strokePath();
+      open = false;
+      continue;
+    }
+    if (!open) {
+      g.beginPath();
+      g.moveTo(x, y);
+      open = true;
+    } else g.lineTo(x, y);
+  }
+  if (open) g.strokePath();
+}
+
+/** Bordes del arco libre: dos postes blancos que marcan por dónde pasar. */
+function ringGapPosts(g: G, l: Lane, r: number, a: number) {
+  const R = l.ring!;
+  for (const s of [-1, 1]) {
+    const ang = R.gapAng + (s * R.gapW) / 2;
+    for (let d = -l.width / 2; d <= l.width / 2; d += PX) sq(g, R.cx + Math.cos(ang) * (r + d), R.cy + Math.sin(ang) * (r + d), 0xffffff, a, PX + 2);
+  }
+}
+
+/** Aviso del anillo: círculo tenue en su radio de salida y otro en el de llegada que se enciende y parpadea (k de 0 a 1). */
+export function drawRingWarn(g: G, l: Lane, k: number, t: number, b: Bounds, low: boolean) {
+  const R = l.ring!;
+  const a = 0.3 + 0.6 * k;
+  const blink = k > 0.7 && Math.floor(t / 70) % 2 === 0;
+  // Círculo de salida (donde nace): bien visible, con contorno oscuro
+  const r = Math.max(R.r0, l.width);
+  const w = Math.max(PX * 2, Math.round(l.width * (0.3 + 0.2 * k)));
+  g.lineStyle(w + 4, OUT, 0.7 * a);
+  ringPath(g, l, r, b);
+  g.lineStyle(w, blink ? 0xffffff : WARN, a);
+  ringPath(g, l, r, b);
+  if (!low) {
+    // Barrido tenue del recorrido (anticipa hacia dónde va)
+    g.lineStyle(PX, WARN, 0.35 * a);
+    ringPath(g, l, R.r0 + (R.r1 - R.r0) * k * 0.5, b);
+    ringGapPosts(g, l, r, a);
+  }
+  sq(g, R.cx, R.cy, blink ? 0xffffff : WARN, a, PX * 3);
+}
+
+/** Anillo activo en su radio actual. */
+export function drawRingBeam(g: G, l: Lane, t: number, color: number, b: Bounds, low: boolean) {
+  const r = ringRadius(l, t);
+  const w = l.width;
+  g.lineStyle(w + 8, OUT, 1);
+  ringPath(g, l, r, b);
+  g.lineStyle(w, color, 1);
+  ringPath(g, l, r, b);
+  if (!low) {
+    g.lineStyle(Math.max(PX, w * 0.5), lightOf(color), 1);
+    ringPath(g, l, r, b);
+    ringGapPosts(g, l, r, 0.9);
+  }
+  g.lineStyle(Math.max(PX / 2, w * 0.2), 0xffffff, 1);
+  ringPath(g, l, r, b);
+}
+
+/** Anillo apagándose donde acabó (k de 0 a 1). */
+export function drawRingFade(g: G, l: Lane, k: number, color: number, b: Bounds) {
+  g.lineStyle(Math.max(PX, l.width * (1 - k)), darkOf(color), 0.8 * (1 - k));
+  ringPath(g, l, l.ring!.r1, b);
 }

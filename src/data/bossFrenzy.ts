@@ -37,8 +37,12 @@ export interface Pt {
 /** sweepH: columnas que barren de lado a lado; sweepV: filas de arriba abajo; diagonal: franjas a 45°; radial: rayos
  * desde el jefe que giran; spiral: dos brazos de rayos opuestos que giran a la vez; pinzas: columnas desde los dos
  * lados hacia el centro. */
-export type CascadeShape = 'sweepH' | 'sweepV' | 'diagonal' | 'radial' | 'spiral' | 'pincer';
-export const CASCADE_SHAPES: readonly CascadeShape[] = ['sweepH', 'sweepV', 'diagonal', 'radial', 'spiral', 'pincer'];
+/** mixed: ráfaga que MEZCLA columnas, filas, diagonales y anillos (todas las líneas de pared a pared); mixedRing: igual
+ * pero con más anillos que se abren o se cierran (desde el jefe o desde puntos al azar). */
+export type CascadeShape = 'sweepH' | 'sweepV' | 'diagonal' | 'radial' | 'spiral' | 'pincer' | 'mixed' | 'mixedRing';
+export const CASCADE_SHAPES: readonly CascadeShape[] = ['sweepH', 'sweepV', 'diagonal', 'radial', 'spiral', 'pincer', 'mixed', 'mixedRing'];
+export const MIXED_SHAPES: readonly CascadeShape[] = ['mixed', 'mixedRing'];
+export const isMixedShape = (s: CascadeShape): boolean => s === 'mixed' || s === 'mixedRing';
 export const CASCADE_LABEL: Record<CascadeShape, string> = {
   sweepH: 'Cascada de columnas',
   sweepV: 'Cascada de franjas',
@@ -46,6 +50,8 @@ export const CASCADE_LABEL: Record<CascadeShape, string> = {
   radial: 'Corona de rayos',
   spiral: 'Espiral de rayos',
   pincer: 'Pinzas de luz',
+  mixed: 'Tormenta cruzada',
+  mixedRing: 'Tormenta de anillos',
 };
 export type CascadeOrder = 'sweep' | 'pingpong' | 'random' | 'pincer' | 'rotate' | 'twin';
 
@@ -82,12 +88,13 @@ export function cascadeShapesFor(types: readonly string[], biomeTypes: readonly 
   const bt = biomeTypes.find((x) => BIOME_CASCADE[x]);
   const extra = bt ? BIOME_CASCADE[bt] : undefined;
   if (extra && !out.includes(extra)) out.push(extra);
-  return out;
+  // Las mezcladas son las más frecuentes (repetidas en la lista; las simples siguen saliendo, pero menos)
+  return [...out, 'mixed', 'mixed', 'mixed', 'mixedRing', 'mixedRing', 'mixedRing'];
 }
 
-/** Siguiente forma sin repetir la última (si hay otras). */
+/** Siguiente forma sin repetir la última simple (las mezcladas pueden repetirse: cada ráfaga es distinta). */
 export function pickShape(shapes: readonly CascadeShape[], rng: () => number, last?: CascadeShape): CascadeShape {
-  const opts = shapes.length > 1 ? shapes.filter((s) => s !== last) : shapes;
+  const opts = shapes.length > 1 && last && !isMixedShape(last) && shapes.some((s) => s !== last) ? shapes.filter((s) => s !== last) : shapes;
   return opts[Math.floor(rng() * opts.length) % opts.length];
 }
 
@@ -141,6 +148,31 @@ export interface Lane {
   warnAt: number;
   fireAt: number;
   offAt: number;
+  /** Si existe, el elemento es un anillo (x1,y1 = x2,y2 = centro; `width` = grosor) que va de r0 a r1 mientras quema,
+   * con un arco libre de `gapW` rad centrado en `gapAng` (alineado con el hueco seguro). */
+  ring?: Ring;
+}
+export interface Ring {
+  cx: number;
+  cy: number;
+  r0: number;
+  r1: number;
+  gapAng: number;
+  gapW: number;
+}
+export type ElemKind = 'v' | 'h' | 'd' | 'ring';
+export function elemKind(l: Lane): ElemKind {
+  if (l.ring) return 'ring';
+  if (Math.abs(l.x1 - l.x2) < 1e-6) return 'v';
+  if (Math.abs(l.y1 - l.y2) < 1e-6) return 'h';
+  return 'd';
+}
+/** Radio del anillo en el instante t (r0 antes de disparar, r1 al acabar). */
+export function ringRadius(l: Lane, t: number): number {
+  const r = l.ring;
+  if (!r) return 0;
+  const k = clamp((t - l.fireAt) / Math.max(1, l.offAt - l.fireAt), 0, 1);
+  return r.r0 + (r.r1 - r.r0) * k;
 }
 export interface CascadePlan {
   shape: CascadeShape;
@@ -202,6 +234,7 @@ function timed(segs: [Pt, Pt][], width: number, spec: CascadeSpec): Lane[] {
  */
 export function cascadePlan(b: Bounds, shape: CascadeShape, spec: CascadeSpec, origin: Pt, rng: () => number): CascadePlan {
   const n = clamp(spec.lanes, MIN_LANES, MAX_LANES);
+  if (isMixedShape(shape)) return mixedPlan(b, shape, n, spec, origin, rng);
   if (shape === 'radial' || shape === 'spiral') {
     const o = { x: clamp(origin.x, b.x0, b.x1), y: clamp(origin.y, b.y0, b.y1) };
     const twin = shape === 'spiral';
@@ -305,6 +338,108 @@ export function cascadePlan(b: Bounds, shape: CascadeShape, spec: CascadeSpec, o
   return withTotal({ shape, order, lanes: timed(segs, width, spec), safeGap: (k + 1) * spacing - width, safeAt, totalMs: 0 });
 }
 
+/** Radio del disco seguro común de las mezcladas (diámetro 64 ≥ SAFE_MIN). */
+export const MIXED_SAFE_R = 32;
+
+/**
+ * Ráfaga mezclada: primero elige un disco seguro S (radio MIXED_SAFE_R, lejos de las paredes y, si se puede, del jefe)
+ * y luego coloca columnas, filas y diagonales de pared a pared que NO lo cruzan y anillos (desde el jefe o un punto al
+ * azar; se abren o se cierran) con su arco libre apuntando a S. Al menos 3 tipos de elemento.
+ */
+function mixedPlan(b: Bounds, shape: CascadeShape, n: number, spec: CascadeSpec, origin: Pt, rng: () => number): CascadePlan {
+  const W = b.x1 - b.x0;
+  const H = b.y1 - b.y0;
+  const rs = MIXED_SAFE_R;
+  const lw = Math.max(MIN_LANE_W, Math.min(spec.width, Math.min(W, H) / 12));
+  const rw = Math.max(MIN_LANE_W, Math.round(spec.width * 0.8));
+  const o = { x: clamp(origin.x, b.x0, b.x1), y: clamp(origin.y, b.y0, b.y1) };
+  // Disco seguro: dentro con margen; preferimos lejos del jefe (los anillos del jefe necesitan distancia)
+  const mx = Math.min(W / 2 - 1, rs + 24);
+  const my = Math.min(H / 2 - 1, rs + 24);
+  let S = { x: b.x0 + W / 2, y: b.y0 + H / 2 };
+  let best = -1;
+  for (let i = 0; i < 24; i++) {
+    const c = { x: b.x0 + mx + rng() * (W - 2 * mx), y: b.y0 + my + rng() * (H - 2 * my) };
+    const d = Math.min(Math.hypot(c.x - o.x, c.y - o.y), 180);
+    if (d > best) {
+      best = d;
+      S = c;
+    }
+    if (d >= 180) break;
+  }
+  // Reparto de tipos: mixed = 2-3 anillos y los tres tipos de línea; mixedRing = 4-5 anillos y dos tipos de línea
+  const rings = shape === 'mixedRing' ? 4 + Math.floor(rng() * 2) : 2 + Math.floor(rng() * 2);
+  const lineKinds: ElemKind[] = shuffle<ElemKind>(['v', 'h', 'd'], rng).slice(0, shape === 'mixedRing' ? 2 : 3);
+  const kinds: ElemKind[] = Array.from({ length: rings }, () => 'ring' as ElemKind);
+  for (const k of lineKinds) kinds.push(k, k);
+  while (kinds.length < n) kinds.push(lineKinds[Math.floor(rng() * lineKinds.length) % lineKinds.length]);
+  shuffle(kinds, rng);
+  const used: Record<'v' | 'h' | 'd', number[]> = { v: [], h: [], d: [] };
+  const clear = rs + lw / 2 + 4;
+  const far = (arr: number[], v: number) => arr.every((u) => Math.abs(u - v) >= lw * 1.3);
+  const placeLine = (k: 'v' | 'h' | 'd'): Omit<Lane, 'warnAt' | 'fireAt' | 'offAt'> | null => {
+    for (let tries = 0; tries < 40; tries++) {
+      if (k === 'v' || k === 'h') {
+        const lo = (k === 'v' ? b.x0 : b.y0) + lw / 2;
+        const hi = (k === 'v' ? b.x1 : b.y1) - lw / 2;
+        const v = lo + rng() * (hi - lo);
+        if (Math.abs(v - (k === 'v' ? S.x : S.y)) < clear || !far(used[k], v)) continue;
+        used[k].push(v);
+        return k === 'v' ? { x1: v, y1: b.y0, x2: v, y2: b.y1, width: lw } : { x1: b.x0, y1: v, x2: b.x1, y2: v, width: lw };
+      }
+      const sg = rng() < 0.5 ? 1 : -1;
+      const nv = { x: Math.SQRT1_2, y: sg * Math.SQRT1_2 };
+      const pr = [b.x0 * nv.x + b.y0 * nv.y, b.x1 * nv.x + b.y0 * nv.y, b.x0 * nv.x + b.y1 * nv.y, b.x1 * nv.x + b.y1 * nv.y];
+      const lo = Math.min(...pr);
+      const hi = Math.max(...pr);
+      const v = lo + rng() * (hi - lo);
+      if (Math.abs(v - (S.x * nv.x + S.y * nv.y)) < clear || !far(used.d, v * sg)) continue;
+      const seg = clipLine({ x: nv.x * v, y: nv.y * v }, { x: -nv.y, y: nv.x }, b);
+      if (!seg || Math.hypot(seg[1].x - seg[0].x, seg[1].y - seg[0].y) < Math.min(W, H) * 0.5) continue;
+      used.d.push(v * sg);
+      return { x1: seg[0].x, y1: seg[0].y, x2: seg[1].x, y2: seg[1].y, width: lw };
+    }
+    return null;
+  };
+  const corners = (c: Pt) => Math.max(...[[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1]].map(([x, y]) => Math.hypot(x - c.x, y - c.y)));
+  let fromBoss = rng() < 0.5;
+  const placeRing = (): Omit<Lane, 'warnAt' | 'fireAt' | 'offAt'> | null => {
+    for (let tries = 0; tries < 40; tries++) {
+      const c = fromBoss && tries < 4 ? o : { x: b.x0 + rng() * W, y: b.y0 + rng() * H };
+      const d = Math.hypot(S.x - c.x, S.y - c.y);
+      const need = rs + rw / 2 + 14;
+      if (d < need + 24) continue;
+      fromBoss = !fromBoss;
+      const R = corners(c);
+      const out = rng() < 0.6; // se abre (desde el centro) o se cierra (desde fuera)
+      const gapW = 2 * Math.asin(Math.min(1, need / d)) + 0.12;
+      return {
+        x1: c.x, y1: c.y, x2: c.x, y2: c.y, width: rw,
+        ring: { cx: c.x, cy: c.y, r0: out ? rw / 2 : R, r1: out ? R : rw / 2, gapAng: Math.atan2(S.y - c.y, S.x - c.x), gapW },
+      };
+    }
+    return null;
+  };
+  const elems: Omit<Lane, 'warnAt' | 'fireAt' | 'offAt'>[] = [];
+  for (const k of kinds) {
+    const order: ElemKind[] = [k, ...shuffle<ElemKind>(['v', 'h', 'd', 'ring'], rng).filter((x) => x !== k)];
+    for (const kk of order) {
+      const e = kk === 'ring' ? placeRing() : placeLine(kk);
+      if (e) {
+        elems.push(e);
+        break;
+      }
+    }
+  }
+  const lanes: Lane[] = elems.map((e, i) => {
+    const warnAt = i * spec.staggerMs;
+    const fireAt = warnAt + spec.warnMs;
+    const dur = e.ring ? clamp(Math.abs(e.ring.r1 - e.ring.r0) * 0.6, 480, 900) : spec.onMs;
+    return { ...e, warnAt, fireAt, offAt: fireAt + dur };
+  });
+  return withTotal({ shape, order: 'random', lanes, safeGap: 2 * rs, safeAt: S, totalMs: 0 });
+}
+
 function withTotal(p: CascadePlan): CascadePlan {
   return { ...p, totalMs: Math.max(0, ...p.lanes.map((l) => l.offAt)) };
 }
@@ -318,8 +453,20 @@ export function segDist(x1: number, y1: number, x2: number, y2: number, x: numbe
   return Math.hypot(x - (x1 + dx * t), y - (y1 + dy * t));
 }
 
-/** ¿Le da la línea a algo de radio `pad` en (x, y)? */
-export const laneHits = (l: Lane, x: number, y: number, pad = 10): boolean => segDist(l.x1, l.y1, l.x2, l.y2, x, y) <= l.width / 2 + pad;
+/** ¿Le da la línea a algo de radio `pad` en (x, y)? En un anillo, con `t` mira su radio en ese instante; sin `t`, si
+ * podría darle en algún momento (toda la corona que recorre, menos el arco libre). */
+export function laneHits(l: Lane, x: number, y: number, pad = 10, t?: number): boolean {
+  const r = l.ring;
+  if (!r) return segDist(l.x1, l.y1, l.x2, l.y2, x, y) <= l.width / 2 + pad;
+  if (t !== undefined) return waveHits(r.cx, r.cy, ringRadius(l, t), l.width, r.gapAng, r.gapW, x, y, pad);
+  const d = Math.hypot(x - r.cx, y - r.cy);
+  const lo = Math.min(r.r0, r.r1) - l.width / 2 - pad;
+  const hi = Math.max(r.r0, r.r1) + l.width / 2 + pad;
+  if (d < lo || d > hi) return false;
+  let da = Math.atan2(y - r.cy, x - r.cx) - r.gapAng;
+  da = Math.atan2(Math.sin(da), Math.cos(da));
+  return Math.abs(da) > r.gapW / 2;
+}
 
 /** Estado de una línea en el instante t: nada, aviso (k de 0 a 1), activa o apagándose. */
 export type LaneState = { s: 'idle' } | { s: 'warn'; k: number } | { s: 'on'; k: number } | { s: 'fade'; k: number } | { s: 'done' };
