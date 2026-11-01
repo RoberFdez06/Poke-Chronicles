@@ -2,10 +2,11 @@
 // con su tipo (estado y debilidades de los dos), y viste cada proyectil con el arte único de la receta (fusionArt.ts).
 import Phaser from 'phaser';
 import type { MovePower } from '../data/items';
-import { fusionParts, fusionStyleOf } from '../data/fusion';
+import { fusionParts, fusionStyleOf, recipeByKey } from '../data/fusion';
 import { typeColor } from '../data/types';
 import { castPattern, type AttackHost } from './attacks';
 import { dressFusionShot, fusionImpact, fusionPalette } from '../ui/art/fusionArt';
+import { fusionSignatureFx } from '../ui/art/moveFx2';
 
 type Sprite = Phaser.Physics.Arcade.Sprite;
 
@@ -27,6 +28,8 @@ export function castFusion(h: AttackHost, src: Sprite, dir: Phaser.Math.Vector2,
     },
   };
   fusionImpact(h.scene, src.x + dir.x * 26, src.y + dir.y * 26, style.impact, fusionPalette(colA, colB), 0.6);
+  // Firma de su combinación (motivo pixel propio de cada una: data/moveSignatures.ts)
+  fusionSignatureFx(h.scene, recipeByKey(f.recipe).combo, f.types[1], src.x, src.y, dir);
   for (const p of fusionParts(m)) {
     const go = () => {
       if (!src.active || !h.alive()) return;

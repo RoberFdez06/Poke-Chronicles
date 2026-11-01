@@ -152,6 +152,9 @@ import { setMusicTempo, sfxShift } from '../ui/audio';
 import { FUSION_TYPES, fusableSlots, fusionStyleOf, moveHasType, moveTypes, powerTypes, applyFusion, applyPickupFusion } from '../data/fusion';
 import { SLOT_SWAP_FUSE } from './SlotSwapScene';
 import { castFusion } from './fusionCast';
+import { moveSignatureFx } from '../ui/art/moveFx2';
+import { motifFor, motifTone } from '../data/moveSignatures';
+import { debugFusionMove, debugStyleList, debugStyleMove } from '../data/moveDebug';
 import { drawFusedSlotFrame, fusionFlash } from '../ui/art/fusionArt';
 import type { FusionData } from './FusionScene';
 import { bossCinematic, bossTitle } from '../ui/art/bossIntro';
@@ -8421,6 +8424,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return `${move.name} (${typeNameEs(type)}) en la ranura ${slot + 1}.`;
   }
 
+  /** Consola: pone `move` en la ranura 1 y lo lanza ya (sin recarga). */
+  private adminTestCast(move: MovePower | string): string {
+    if (typeof move === 'string') return move;
+    this.adminCheat();
+    this.slots[0] = move;
+    this.slotReady[0] = 0;
+    this.stats = this.calcStats();
+    this.castSlot(0, this.time.now);
+    return `${move.name} lanzado (ranura 1).`;
+  }
+
   private adminNewRun(mode: GameMode): string {
     if (this.ended || this.transitioning) return 'Ahora no se puede.';
     this.adminCheat();
@@ -8468,6 +8482,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       goFloor: (n: number) => this.adminGoFloor(n),
       bossHere: (id: number) => this.adminBossHere(id),
       panel: () => (this.openAdminPanel() ? 'panel abierto' : 'panel no disponible'),
+      /** Pone en la ranura 1 el ataque `estilo` (nombre del catálogo) de `tipo` y lo lanza (auditoría de ataques). */
+      castStyle: (tipo: string, estilo: string) => this.adminTestCast(debugStyleMove(tipo, estilo)),
+      /** Pone en la ranura 1 la fusión de dos tipos y la lanza. */
+      castFusion: (tipoA: string, tipoB: string) => this.adminTestCast(debugFusionMove(tipoA, tipoB)),
+      /** Lista los estilos de un tipo (o de todos). */
+      listStyles: (tipo?: string) => debugStyleList(tipo),
     };
     (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__ = api;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { delete (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__; });
@@ -11142,7 +11162,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Los fusionados ya traen su recarga final (data/fusion.ts) y suenan con su propio tono
     this.slotReady[i] = time + m.cooldown * (fstyle ? 1 : style.cd);
     if (fstyle) sfxShift(shotSfx(m.type), fstyle.tone);
-    else sfx(shotSfx(m.type));
+    else sfxShift(shotSfx(m.type), motifTone(motifFor(style.id, m.type)));
     this.lastShotAt = time;
 
     // En táctil el poder lleva su propia dirección (auto-apuntado) y pasa a ser la última de disparo
@@ -11158,6 +11178,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const dmg = Math.max(6, Math.round(m.power * 0.5 * this.stats.powerMul * (this.stats.damage / this.base.damage) * boost * this.dmgMul() * pinch));
     if (fstyle) return castFusion(this.host, this.player, dir, m, dmg);
     castPattern(this.host, 'player', this.player, dir, style.pattern, Math.max(3, Math.round(dmg * style.mul)), m.type);
+    moveSignatureFx(this, style.id, m.type, style.pattern.k, this.player.x, this.player.y, dir);
   }
 
   private onShotWall(shot: Sprite) {
