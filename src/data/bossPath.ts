@@ -244,6 +244,8 @@ export const BOSS_RETRY_MS = 350;
 const ZONE_ATTACKS = new Set<string>([
   'ring', 'star8', 'spiral', 'shockwave', 'rain', 'summon', 'hazard',
   'meteor', 'helix', 'wallGap', 'crossMines', 'gridBeams', 'bounce', 'miasma', 'judgment', 'nova',
+  // Frenéticos (bossFrenzy.ts): cubren la sala, no necesitan verte
+  'cascade', 'feintCombo',
 ]);
 /** La onda expansiva solo llega hasta aquí (más lejos no tiene sentido lanzarla). */
 const SHOCKWAVE_RANGE = 420;
