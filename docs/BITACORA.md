@@ -2075,3 +2075,27 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
 - **Consola** (admin/dev): `__POKEISAAC_DEBUG__.listStyles(tipo)`, `.castStyle(tipo, estilo)`, `.castFusion(tipoA, tipoB)`.
 - **Cableado mínimo** en `GameScene.castSlot` (firma + tono) y en `installDebug`; `fusionCast.ts` lanza la firma de la combinación.
 - **A probar en navegador**: legibilidad de los motivos en móvil y que no tapen proyectiles enemigos.
+## Jefes frenéticos: cascadas y combos retardados (rama `frenesi`, 2026-11-01)
+
+- **Qué**: inspirado en la Radiance de Hollow Knight y en los combos de Elden Ring. Mezcla elegida: en la fase 1 los
+  jefes lanzan **cascadas** (10-14 rayos/franjas que se encienden uno detrás de otro, 80-150 ms entre uno y otro, cada
+  uno con su aviso fino que se enciende y parpadea antes de quemar); en la fase 2, cascadas más densas y rápidas y
+  además **combos retardados** (3-5 golpes: embestida, onda con hueco y zona amplia, con pausas variables y amagos en
+  los que el aviso se queda encendido más tiempo; el aviso nunca se acorta, solo se alarga).
+- **Formas de cascada** (según tipo del jefe y bioma, sin repetir la última): columnas, franjas, diagonal, corona de
+  rayos desde el jefe, espiral de dos brazos y pinzas desde los lados. Órdenes: barrido, ida y vuelta, aleatorio,
+  pinzas (de fuera adentro) y giro.
+- **Justo**: siempre queda un pasillo seguro de al menos 48 px (en salas pequeñas se dejan más huecos libres), aviso
+  mínimo de 750 ms (= TELEGRAPH_MS; más bajo que BLITZ_MIN_WARN porque la oleada se ve venir línea a línea), grosor
+  mínimo de 20 px con contorno oscuro (legible en móvil), sin ráfagas apuntadas encima mientras dura. Fácil: menos
+  líneas, más lentas, 950 ms de aviso, combos de 3 golpes con menos amagos y frenesí menos a menudo; Difícil al revés.
+  Con pocos efectos se quitan capas y destellos, no el aviso.
+- **Ritmo**: 35 % de los ataques del jefe son frenéticos en fase 1 y 50 % en fase 2; `attackInterval(2)` baja de 1500
+  a 1300 ms.
+- **Rendimiento**: un solo Graphics y un temporizador por ataque (repintado cada ~16 ms), como mucho 14 líneas.
+- **Archivos**: `src/data/bossFrenzy.ts` (nuevo, puro), `tests/bossFrenzy.test.ts`, `src/ui/art/frenzyFx.ts`,
+  `src/scenes/frenzyRuntime.ts` (nuevos), `src/data/bossPatterns.ts`, `src/data/bossPath.ts` y cableado mínimo en
+  `src/scenes/GameScene.ts` (`bossFrenzy`, `debugFrenzy`).
+- **Probar desde la consola**: `__POKEISAAC_DEBUG__.spawnBoss()` y luego `__POKEISAAC_DEBUG__.frenzy('cascade', 'sweepH')`
+  (formas: sweepH, sweepV, diagonal, radial, spiral, pincer) o `__POKEISAAC_DEBUG__.frenzy('feintCombo')`.
+  En la VM solo `tsc` y `npm test`; falta verlo en el navegador (legibilidad en móvil y sensación de dificultad).

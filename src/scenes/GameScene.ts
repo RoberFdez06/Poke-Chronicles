@@ -372,6 +372,8 @@ import { DARK_ALPHA, DARK_RADIUS, darkEdge, darkHoleAlpha, oneTypeFor, pickRoomR
 import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data/secondChance';
 import type { SecondChanceChoice } from './SecondChanceScene';
 import { accountInfo } from '../net/cloud';
+import { CASCADE_LABEL, CASCADE_SHAPES, cascadePlan, cascadeShapesFor, cascadeSpec, comboPlan, comboSpec, isFrenzyAttack, pickFrenzy, pickShape, type CascadeShape, type FrenzyAttack } from '../data/bossFrenzy';
+import { runCascade, runCombo, type FrenzyHost } from './frenzyRuntime';
 import { blitzAttacksFor, bounceAngles, bounceSpec, bounceStep, crossArms, crossMinePlaces, crossSpec, dashEnd, dashSpec, gridBeams, gridHits, gridSpec, helixAngles, helixSpec, isBlitzAttack, meteorSpec, meteorSpots, miasmaSpec, wallHits, wallPlan, wallPos, wallSpec, wallTravelMs, BLITZ_MIN_WARN, type BlitzAttack, type Orb } from '../data/bossBlitz';
 import { bounceWarn, dashWarn, drawBounceOrb, drawCrossBlast, drawGridBeam, drawMiasma, drawWallBar, gridWarn, meteorImpact, meteorWarn, miasmaWarn, mineWarn, wallWarn } from '../ui/art/blitzFx';
 import { BOSS_RETRY_MS, NAV_R_BIG, NAV_R_SMALL, aimUsable, buildNav, cellOf, navField, pathDir, segmentClear, usableAttacks, type Box, type Nav } from '../data/bossPath';
@@ -7889,7 +7891,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       ai.castUntil = 0;
       return;
     }
-    const attack = pickAttack(usable, Math.random, ai.lastAttack);
+    // Frenesí (bossFrenzy.ts): a menudo, una cascada (y en fase 2 también combos retardados) en lugar del ataque normal
+    const attack = (ai.boss ? pickFrenzy(ai.phase ?? 1, this.diff, Math.random, ai.lastAttack) : null) ?? pickAttack(usable, Math.random, ai.lastAttack);
     ai.lastAttack = attack;
     ai.nextAttack = time + attackInterval(ai.phase ?? 1) * (rage ? 0.65 : 1) + TELEGRAPH_MS;
     if (attack === 'ring') this.bossRing(b, ai);
@@ -7902,6 +7905,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     } else if (isBlitzAttack(attack)) {
       const ms = this.bossBlitz(b, ai, attack, ai.phase ?? 1);
       ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + ms + 600);
+    } else if (isFrenzyAttack(attack)) {
+      const ms = this.bossFrenzy(b, ai, attack, ai.phase ?? 1);
+      ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + ms + 400);
     } else {
       // T50: los ataques extra duran más; el siguiente espera a que acaben
       const ms = this.bossExtra(b, ai, attack, ai.phase ?? 1);
@@ -8056,6 +8062,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     } else if (isBlitzAttack(attack)) {
       const ms = this.bossBlitz(b, ai, attack, ai.phase ?? 1);
       ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + ms + 600);
+    } else if (isFrenzyAttack(attack)) {
+      const ms = this.bossFrenzy(b, ai, attack, ai.phase ?? 1);
+      ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + ms + 400);
     } else {
       const ms = this.bossExtra(b, ai, attack, ai.phase ?? 1);
       ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + TELEGRAPH_MS + ms + 600);
@@ -8488,6 +8497,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       castFusion: (tipoA: string, tipoB: string) => this.adminTestCast(debugFusionMove(tipoA, tipoB)),
       /** Lista los estilos de un tipo (o de todos). */
       listStyles: (tipo?: string) => debugStyleList(tipo),
+      /** Frenesí: frenzy('cascade', 'sweepH'|'sweepV'|'diagonal'|'radial'|'spiral'|'pincer') o frenzy('feintCombo'). */
+      frenzy: (attack = 'cascade', shape?: string) => this.debugFrenzy(attack, shape),
     };
     (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__ = api;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { delete (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__; });
@@ -9168,6 +9179,55 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   // --- Asaltos nuevos de los jefes (bossBlitz.ts, arte en blitzFx.ts) ---
+
+  /**
+   * Frenesí (bossFrenzy.ts; ejecución en frenzyRuntime.ts, arte en frenzyFx.ts): cascada de 10-14 rayos escalonados o
+   * combo retardado. Se corta con stopBlitz como los asaltos. Devuelve cuánto dura (ms). `shape` fuerza la forma.
+   */
+  private bossFrenzy(b: Sprite, ai: EnemyAI, attack: FrenzyAttack, phase: 1 | 2, shape?: CascadeShape): number {
+    const color = typeColor(ai.type);
+    const host: FrenzyHost = {
+      scene: this, boss: b, player: this.player, arena: this.arena(), color, low: lowFx(),
+      ok: () => b.active && !this.ended && this.frozenSince === undefined && this.arenaFallAt === undefined,
+      hurt: () => this.hurtPlayer(b, true),
+      track: (stop) => { this.blitzLive.add(stop); return () => { this.blitzLive.delete(stop); }; },
+      holdAi: (until) => { ai.knockUntil = Math.max(ai.knockUntil, until); },
+      shake: (ms, k) => this.cameras.main.shake(ms, k),
+      sfx: (n) => sfx(n),
+    };
+    b.setData('flashUntil', this.time.now + 400).setTintFill(0xffffff);
+    let ms: number;
+    if (attack === 'cascade') {
+      const types = (b.getData('btypes') as string[] | undefined) ?? this.bossTypes;
+      const sh = shape ?? pickShape(cascadeShapesFor(types, this.biome.types), Math.random, b.getData('lastShape') as CascadeShape | undefined);
+      b.setData('lastShape', sh);
+      this.bossLabel(CASCADE_LABEL[sh], color);
+      const plan = cascadePlan(host.arena, sh, cascadeSpec(this.level(), phase, this.diff), b, Math.random);
+      runCascade(host, plan);
+      ms = plan.totalMs;
+    } else {
+      this.bossLabel(BOSS_ATTACK_LABEL[attack], color);
+      const spec = comboSpec(this.level(), 2, this.diff);
+      const plan = comboPlan(spec, Math.random);
+      runCombo(host, plan.steps, spec);
+      ms = plan.totalMs;
+    }
+    // Sin ráfagas apuntadas encima mientras dura (frenético pero justo)
+    b.setData('volleyAt', this.time.now + ms);
+    return ms;
+  }
+
+  /** Consola: lanza ya un ataque frenético con el jefe de la sala (forma de cascada opcional). */
+  private debugFrenzy(attack: string, shape?: string): string {
+    const b = this.enemies.getChildren().find((c) => c.active && ((c as Sprite).getData('ai') as EnemyAI | undefined)?.boss) as Sprite | undefined;
+    if (!b) return 'no hay jefe en la sala (usa spawnBoss())';
+    if (!isFrenzyAttack(attack)) return 'ataque: cascade | feintCombo';
+    if (shape !== undefined && !(CASCADE_SHAPES as readonly string[]).includes(shape)) return `forma: ${CASCADE_SHAPES.join(' | ')}`;
+    const ai = b.getData('ai') as EnemyAI;
+    const ms = this.bossFrenzy(b, ai, attack, ai.phase ?? 1, shape as CascadeShape | undefined);
+    ai.nextAttack = this.time.now + ms + 1500;
+    return `${attack}${shape ? ` (${shape})` : ''}: ${Math.round(ms)} ms`;
+  }
 
   /** Corta todos los asaltos en marcha (intro, derrumbe de la arena, fin de la pelea). */
   private stopBlitz() {

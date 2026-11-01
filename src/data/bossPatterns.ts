@@ -2,12 +2,13 @@
 // Lógica pura, sin Phaser ni red, para poder testearla.
 import { EXTRA_BEHAVIORS, type EnemyBehavior } from './enemies.ts';
 import { BLITZ_LABEL, type BlitzAttack } from './bossBlitz.ts';
+import { FRENZY_LABEL, type FrenzyAttack } from './bossFrenzy.ts';
 
 /**
  * Ráfaga en círculo, embestida en línea recta, lluvia de proyectiles sobre el suelo e invocar ayudantes; T50: espiral
  * de proyectiles, onda expansiva (anillo con un hueco por el que pasar), láser giratorio y zonas de peligro que estallan.
  */
-export type BossAttack = 'ring' | 'charge' | 'rain' | 'summon' | 'spiral' | 'shockwave' | 'laser' | 'hazard' | PatternAttack | BlitzAttack;
+export type BossAttack = 'ring' | 'charge' | 'rain' | 'summon' | 'spiral' | 'shockwave' | 'laser' | 'hazard' | PatternAttack | BlitzAttack | FrenzyAttack;
 
 export const BOSS_ATTACK_LABEL: Record<BossAttack, string> = {
   ring: 'Ráfaga',
@@ -24,6 +25,8 @@ export const BOSS_ATTACK_LABEL: Record<BossAttack, string> = {
   sweep: 'Barrido',
   // Asaltos nuevos (bossBlitz.ts)
   ...BLITZ_LABEL,
+  // Frenéticos (bossFrenzy.ts)
+  ...FRENZY_LABEL,
 };
 
 // --- Patrones de balas (más variedad): cada uno con aviso, por tipo del jefe ---
@@ -134,8 +137,8 @@ export const bossPhase = (hpRatio: number): 1 | 2 => (hpRatio < BOSS_PHASE2_AT ?
 /** Aviso antes de cada ataque (ms): lo justo para verlo venir y esquivarlo. */
 export const TELEGRAPH_MS = 750;
 /** Tiempo entre ataques y cosas que cambian en la fase 2. */
-// 20/10 (Roberto): los legendarios atacan más a menudo (antes 3300 y 2100)
-export const attackInterval = (phase: 1 | 2): number => (phase === 2 ? 1500 : 2300);
+// 20/10 (Roberto): los legendarios atacan más a menudo (antes 3300 y 2100). 01/11 (frenesí): fase 2 de 1500 a 1300
+export const attackInterval = (phase: 1 | 2): number => (phase === 2 ? 1300 : 2300);
 /** Entre ataque y ataque, ráfagas cortas apuntadas al jugador (ms entre una y otra) y cuántos disparos. */
 export const volleyEvery = (phase: 1 | 2): number => (phase === 2 ? 900 : 1300);
 export const volleyShots = (phase: 1 | 2): number => (phase === 2 ? 5 : 3);
