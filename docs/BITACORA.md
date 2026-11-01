@@ -2117,3 +2117,32 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   hueco libre en todo momento, también con el radio de cada instante).
 - **Probar**: `__POKEISAAC_DEBUG__.spawnBoss()` y `__POKEISAAC_DEBUG__.frenzy('cascade', 'mixed')` o `'mixedRing'`.
   Falta verlo en el navegador (legibilidad en móvil y dificultad).
+
+## Modo automático en móvil y minimapa más grande (2026-11-01)
+
+- **Qué**: solo en móvil (`touchOnlyDevice()`; teclado, ratón y mando no cambian) hay «Modo automático» con tres
+  valores en Ajustes: Desactivado / Solo disparo / Completo (por defecto, Completo). Se guarda en localStorage
+  (`pokeisaac.autoMode`, con try/catch). Solo disparo: dispara solo al enemigo más cercano a tiro (900 px) con el
+  auto-apuntado de `touchAim.ts`. Completo: además lanza los poderes listos cuando hay un enemigo a 620 px o menos
+  (misma recarga que a mano, uno cada 450 ms como mínimo; tocar la ranura sigue funcionando) y mueve al personaje.
+  Si tocas el joystick de moverse o el de apuntar, manda el tuyo mientras lo uses.
+- **IA de movimiento** (`src/data/autoMove.ts`, pura): prueba 16 direcciones (y quedarse quieto) simulando 0,6 s y
+  puntúa proyectiles enemigos (posición prevista y su trayectoria), zonas de peligro de los jefes (líneas, anillos con
+  su hueco, embestidas, ondas y zonas del combo, desde el aviso: `frenzyHazards()` en `frenzyRuntime.ts`), distancia a
+  cuerpo a cuerpo (210 px) y tiradores (150 px), paredes y obstáculos (`freeAt`), objetos y monedas a menos de 360 px
+  (no los poderes ni los activos, que piden elegir) e inercia para no temblar.
+- **HUD**: botón pequeño pixel art (marco y luz verde/gris) en la franja de arriba a la derecha, fuera de la barra
+  del jefe: indica el modo y lo apaga/enciende al tocarlo (vuelve al último modo encendido). No hace nacer joysticks.
+- **Minimapa en móvil**: ×1,6 (escala 2,4 en vez de 1,5), con píxel entero (sin medios píxeles: casillas y puertas
+  nítidas), lo que quepa en la franja derecha y como mucho 380 px de alto (`MOBILE_MAP` en `mobileView.ts`), así que
+  no llega a Parry/Esquiva ni a las ranuras. Tocarlo dice qué sala es (`minimapRoomAt` + `ROOM_LABEL`, 1,6 s) y no
+  hace nacer el joystick de apuntar. En bandas laterales los botones van fuera del lienzo y no cambia nada.
+- **Archivos**: `src/data/autoMode.ts` y `src/data/autoMove.ts` (nuevos, puros), `src/data/mobileView.ts`,
+  `src/scenes/GameScene.ts`, `src/scenes/frenzyRuntime.ts` (solo el registro de zonas de peligro; no cambia cómo
+  golpean), `src/scenes/minimap.ts` (`maxH` y `crisp` opcionales), `src/scenes/SettingsScene.ts`; tests
+  `tests/autoMode.test.ts` y `tests/autoMove.test.ts`.
+- **Probar**: en móvil (o DevTools con emulación táctil), Ajustes > Modo automático. Consola:
+  `__POKEISAAC_DEBUG__.autoMode()` (estado), `autoMode('off'|'shoot'|'full')`, `autoState()` (dirección de la IA y
+  zonas de peligro activas); con `spawnBoss()` y `frenzy('cascade', 'mixed')` se ve cómo esquiva las líneas.
+- **Dudas para Roberto**: los números (alcances, distancias, pesos) son a ojo; están arriba de los dos módulos. Los
+  ataques de jefe que no son de frenesí (ondas de choque, etc.) solo se esquivan por sus proyectiles.

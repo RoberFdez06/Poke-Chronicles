@@ -90,6 +90,10 @@ export interface MinimapExtras {
   revealed?: ReadonlySet<string>;
   /** Salas con un cofre aún cerrado (se abre con llave). */
   chests?: ReadonlySet<number>;
+  /** Alto máximo (px): si no cabe, se encoge lo justo (móvil, donde el mapa es más grande). */
+  maxH?: number;
+  /** Píxel del arte entero (sin medios píxeles): bordes y puertas nítidos en pantallas pequeñas. */
+  crisp?: boolean;
 }
 
 /** Nombre de cada tipo de sala (para la leyenda). */
@@ -291,9 +295,10 @@ export function drawMinimap(
   const maxY = Math.max(...rooms.map((r) => r.gy));
 
   const natural = (maxX - minX + 1) * (CELL_W + GAP) - GAP + PAD * 2;
-  const k = Math.min(scale, maxW / natural);
+  const naturalH = (maxY - minY + 1) * (CELL_H + GAP) - GAP + PAD * 2;
+  const k = Math.min(scale, maxW / natural, (extras.maxH ?? Infinity) / naturalH);
   // Píxel del arte: todo se alinea a él para que se vea nítido
-  const u = Math.max(1, Math.round(2 * k) / 2);
+  const u = extras.crisp ? Math.max(1, Math.floor(k)) : Math.max(1, Math.round(2 * k) / 2);
   const snap = (v: number) => Math.round(v / u) * u;
   const CW = snap(CELL_W * k);
   const CH = snap(CELL_H * k);

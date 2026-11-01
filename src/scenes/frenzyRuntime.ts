@@ -8,6 +8,7 @@ import {
   type CascadePlan, type ComboSpec, type ComboStep, type Pt,
 } from '../data/bossFrenzy';
 import type { Bounds } from '../level/bounds';
+import type { Hazard } from '../data/autoMove';
 import { drawRingBeam, drawRingFade, drawRingWarn, drawDashWarn, drawLaneBeam, drawLaneFade, drawLaneWarn, drawWave, drawWaveWarn, drawZoneBlast, drawZoneWarn } from '../ui/art/frenzyFx';
 
 export interface FrenzyHost {
@@ -28,11 +29,28 @@ export interface FrenzyHost {
   sfx(name: 'boom' | 'hit'): void;
 }
 
+/** Zonas de peligro de los ataques en marcha (avisos y golpes), para el modo automático de móvil (data/autoMove.ts). */
+const liveHazards = new Set<() => Hazard[]>();
+export function frenzyHazards(): Hazard[] {
+  const out: Hazard[] = [];
+  for (const f of liveHazards) out.push(...f());
+  return out;
+}
+
+/** Línea o anillo de la cascada como zona de peligro. */
+function laneHazard(l: CascadePlan['lanes'][number]): Hazard {
+  const r = l.ring;
+  if (!r) return { kind: 'seg', x1: l.x1, y1: l.y1, x2: l.x2, y2: l.y2, w: l.width };
+  return { kind: 'ring', cx: r.cx, cy: r.cy, rMin: Math.min(r.r0, r.r1) - l.width / 2, rMax: Math.max(r.r0, r.r1) + l.width / 2, gapAng: r.gapAng, gapW: r.gapW };
+}
+
 /** Bucle por fotograma con un Graphics propio; para cuando `step` devuelve false, se corta o acaba la pelea. */
-function run(h: FrenzyHost, step: (g: Phaser.GameObjects.Graphics, t: number) => boolean, depth = 5) {
+function run(h: FrenzyHost, step: (g: Phaser.GameObjects.Graphics, t: number) => boolean, depth = 5, hazards?: (t: number) => Hazard[]) {
   const sc = h.scene;
   const g = sc.add.graphics().setDepth(depth);
   const t0 = sc.time.now;
+  const hz = hazards && (() => hazards(sc.time.now - t0));
+  if (hz) liveHazards.add(hz);
   let untrack = () => {};
   const ev = sc.time.addEvent({
     delay: 16, loop: true,
@@ -42,6 +60,7 @@ function run(h: FrenzyHost, step: (g: Phaser.GameObjects.Graphics, t: number) =>
     },
   });
   function stop() {
+    if (hz) liveHazards.delete(hz);
     untrack();
     ev.remove();
     g.destroy();
@@ -77,7 +96,7 @@ export function runCascade(h: FrenzyHost, plan: CascadePlan) {
       }
     }
     return t < plan.totalMs + 160;
-  }, 4);
+  }, 4, (t) => plan.lanes.filter((l) => { const s = laneState(l, t).s; return s === 'warn' || s === 'on'; }).map(laneHazard));
 }
 
 /** Combo retardado: cada golpe apunta al sacar su aviso (te sigue entre golpes) y golpea al acabar el aviso. */
@@ -153,5 +172,14 @@ export function runCombo(h: FrenzyHost, steps: ComboStep[], spec: ComboSpec, das
       }
     }
     return t < total + 100;
-  }, 4);
+  }, 4, (t) => {
+    const out: Hazard[] = [];
+    for (const s of live) {
+      if (s.done || !s.aimed || t < s.st.warnAt) continue;
+      if (s.st.kind === 'dash') out.push({ kind: 'seg', x1: s.from.x, y1: s.from.y, x2: s.to.x, y2: s.to.y, w: dashWidth + 20 });
+      else if (s.st.kind === 'wave') out.push({ kind: 'ring', cx: s.from.x, cy: s.from.y, rMin: 0, rMax: spec.waveR + spec.waveThick, gapAng: s.gapAng, gapW: spec.waveGap });
+      else out.push({ kind: 'circle', x: s.from.x, y: s.from.y, r: spec.zoneR });
+    }
+    return out;
+  });
 }

@@ -18,8 +18,13 @@ import { bounceOffRects, clipSegmentToRects, segmentBlocked } from '../data/proj
 import { phaseAtSeconds, phasePowerMul, pickByPhase, PHASE_DESC, PHASE_NOTICE, type Phase } from '../data/dayNight';
 import { TouchControls } from '../ui/touchControls';
 import { hudFont, hudUiScale, setHudUiScale } from '../ui/uiScale';
-import { loadMobileView, viewFactor } from '../data/mobileView';
-import { touchAimDir } from '../data/touchAim';
+import { loadMobileView, MOBILE_MAP, viewFactor } from '../data/mobileView';
+import { pickAimTarget, touchAimDir } from '../data/touchAim';
+import {
+  AUTO_FIRE_RANGE, AUTO_MODE_LABEL, AUTO_MODE_SHORT, autoCasts, autoFires, autoMoves, effectiveAutoMode, loadAutoMode, manualOverride,
+  pickAutoCast, quickToggle, saveAutoMode, withMode, AUTO_MODES, type AutoMode, type AutoModeSetting,
+} from '../data/autoMode';
+import { autoMoveDir, type MoveFoe, type MoveShot, type P as AutoP } from '../data/autoMove';
 import type { PadRect } from '../data/touchPad';
 import { touchOnlyDevice } from '../data/controls';
 import { FxBudget } from '../data/fxSettings';
@@ -347,7 +352,7 @@ import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBeh
   shieldPoolFor,
   turnToward,
 } from '../data/enemies';
-import { drawMinimap } from './minimap';
+import { drawMinimap, minimapBounds, minimapRoomAt, ROOM_LABEL } from './minimap';
 import { hudThemeFor } from '../ui/art/hudTheme';
 import { addHudAmbient, drawHudBackdrop } from '../ui/art/hudBackdrop';
 import { setHudPalette } from '../ui/art/hud';
@@ -373,7 +378,7 @@ import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data
 import type { SecondChanceChoice } from './SecondChanceScene';
 import { accountInfo } from '../net/cloud';
 import { CASCADE_LABEL, CASCADE_SHAPES, cascadePlan, cascadeShapesFor, cascadeSpec, comboPlan, comboSpec, isFrenzyAttack, pickFrenzy, pickShape, type CascadeShape, type FrenzyAttack } from '../data/bossFrenzy';
-import { runCascade, runCombo, type FrenzyHost } from './frenzyRuntime';
+import { frenzyHazards, runCascade, runCombo, type FrenzyHost } from './frenzyRuntime';
 import { blitzAttacksFor, bounceAngles, bounceSpec, bounceStep, crossArms, crossMinePlaces, crossSpec, dashEnd, dashSpec, gridBeams, gridHits, gridSpec, helixAngles, helixSpec, isBlitzAttack, meteorSpec, meteorSpots, miasmaSpec, wallHits, wallPlan, wallPos, wallSpec, wallTravelMs, BLITZ_MIN_WARN, type BlitzAttack, type Orb } from '../data/bossBlitz';
 import { bounceWarn, dashWarn, drawBounceOrb, drawCrossBlast, drawGridBeam, drawMiasma, drawWallBar, gridWarn, meteorImpact, meteorWarn, miasmaWarn, mineWarn, wallWarn } from '../ui/art/blitzFx';
 import { BOSS_RETRY_MS, NAV_R_BIG, NAV_R_SMALL, aimUsable, buildNav, cellOf, navField, pathDir, segmentClear, usableAttacks, type Box, type Nav } from '../data/bossPath';
@@ -1031,6 +1036,14 @@ export class GameScene extends Phaser.Scene {
   private static offlineNotified = false;
   private bannerBox!: Phaser.GameObjects.Graphics;
   private minimap!: Phaser.GameObjects.Graphics;
+  /** «Modo automático» (solo móvil, data/autoMode.ts): ajuste guardado, último poder lanzado solo, dirección anterior
+   * de la IA de movimiento y el botón del HUD (indicador y activar/desactivar rápido). */
+  private auto: AutoModeSetting = loadAutoMode();
+  private autoCastAt = -Infinity;
+  private autoPrev: AutoP = { x: 0, y: 0 };
+  private autoBtn?: { g: Phaser.GameObjects.Graphics; t: Phaser.GameObjects.Text; shown: string };
+  /** Leyenda del minimapa al tocarlo (móvil). */
+  private mapTip?: { t: Phaser.GameObjects.Text; until: number };
   /** HUD (T30/N8): capa en coordenadas reales, con su propia cámara sin zoom, en las franjas de alrededor de la sala. */
   private hudLayer!: Phaser.GameObjects.Container;
   private hudCam?: Phaser.Cameras.Scene2D.Camera;
@@ -3304,6 +3317,31 @@ export class GameScene extends Phaser.Scene {
     }
     // Minimapa arriba a la derecha
     this.minimap = hud(this.add.graphics());
+    // Modo automático (solo móvil): botón pequeño en la franja de arriba, a la derecha de la barra del jefe
+    if (this.touch) {
+      const r = GameScene.AUTO_BTN;
+      const g = hud(this.add.graphics());
+      const t = txt(r.x + r.w / 2 + 10, r.y + r.h / 2, hudFont(16), '#f8f8f8', true).setOrigin(0.5);
+      this.autoBtn = { g, t, shown: '' };
+      const z = hud(this.add.zone(r.x + r.w / 2, r.y + r.h / 2, r.w, r.h).setInteractive());
+      z.on('pointerdown', () => this.toggleAuto());
+      const tip = txt(0, 0, hudFont(16), '#ffe9a8', true).setOrigin(1, 0).setShadow(2, 2, '#000000', 0).setDepth(5).setVisible(false);
+      this.mapTip = { t: tip, until: 0 };
+      this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.tapMinimap(p.x, p.y));
+      // Se vuelve a leer al empezar y al volver de la pausa (se puede cambiar en Ajustes desde ella)
+      this.auto = loadAutoMode();
+      const reload = () => {
+        this.auto = loadAutoMode();
+        this.drawAutoBtn();
+      };
+      this.events.on(Phaser.Scenes.Events.RESUME, reload);
+      this.events.on(Phaser.Scenes.Events.WAKE, reload);
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+        this.events.off(Phaser.Scenes.Events.RESUME, reload);
+        this.events.off(Phaser.Scenes.Events.WAKE, reload);
+      });
+      this.drawAutoBtn();
+    }
     // Contador de FPS (Ajustes > Mostrar FPS), abajo a la derecha
     if (loadFx().showFps) this.fpsText = hud(this.add.text(W - 8, H - 6, '', { fontFamily: FONT, fontSize: '16px', color: '#9fe39a' }).setOrigin(1, 1));
     // En táctil las ranuras de poder se ven y se tocan como en PC (tocar = lanzar al enemigo más cercano); el cuadro
@@ -5057,7 +5095,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.megaRoomId !== undefined && this.visited.has(this.megaRoomId) && !this.eventsDone.has(megaStoneDoneKey(this.megaRoomId))) marks.set(this.megaRoomId, ROOM_EVENT_COLOR.megaStone);
     // T56: salas con regla, en cuanto se ven en el mapa y hasta limpiarlas
     for (const [id, rule] of this.roomRules) if (!this.cleared.has(id)) marks.set(id, ROOM_RULE_COLOR[rule]);
-    const bottom = drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - HUD.pad, HUD.pad, hidden, 1.5, HUD.right.w - HUD.pad * 2, marks, (o) => this.toHud(o), {
+    // Móvil: un 60 % más grande (lo que quepa en la franja, sin bajar hasta Parry y Esquiva) y con píxel entero
+    const mob = !!this.touch;
+    const bottom = drawMinimap(this.minimap, this.floor, this.current.id, this.visited, W - (mob ? 6 : HUD.pad), HUD.pad, hidden, mob ? MOBILE_MAP.scale : 1.5, HUD.right.w - (mob ? 12 : HUD.pad * 2), marks, (o) => this.toHud(o), {
+      maxH: mob ? MOBILE_MAP.maxH : undefined,
+      crisp: mob,
       theme: hudThemeFor(this.biome.id),
       trail: this.trail,
       cleared: this.cleared,
@@ -8499,6 +8541,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       listStyles: (tipo?: string) => debugStyleList(tipo),
       /** Frenesí: frenzy('cascade', 'mixed'|'mixedRing'|'sweepH'|'sweepV'|'diagonal'|'radial'|'spiral'|'pincer') o frenzy('feintCombo'). */
       frenzy: (attack = 'cascade', shape?: string) => this.debugFrenzy(attack, shape),
+      /** Modo automático (móvil): autoMode() dice el modo; autoMode('off'|'shoot'|'full') lo cambia. */
+      autoMode: (m?: string) => {
+        if (m !== undefined && (AUTO_MODES as readonly string[]).includes(m)) this.setAutoMode(m as AutoMode);
+        return `guardado: ${this.auto.mode} · en vigor: ${this.autoMode()}${this.touch ? '' : ' (no es móvil: siempre apagado)'}`;
+      },
+      /** Lo que vería la IA de movimiento ahora (dirección elegida y zonas de peligro activas). */
+      autoState: () => ({ mode: this.autoMode(), dir: this.player ? this.autoMoveStep() : null, hazards: frenzyHazards().length }),
     };
     (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__ = api;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { delete (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__; });
@@ -10699,6 +10748,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       mx = this.touch.move.x;
       my = this.touch.move.y;
     }
+    // Modo automático completo (móvil): la IA mueve mientras no se toque el joystick de moverse
+    if (this.touch && autoMoves(this.autoMode()) && !manualOverride(this.touch.move.lengthSq())) {
+      const d = this.autoMoveStep();
+      mx = d.x;
+      my = d.y;
+    } else this.autoPrev = { x: 0, y: 0 };
     // Ratón: mantener el clic derecho lleva al personaje hacia el cursor
     const pointer = this.input.activePointer;
     if (mx === 0 && my === 0 && pointer.rightButtonDown() && this.inGameView(pointer)) {
@@ -10827,6 +10882,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.padPrev[i] = down;
       });
     }
+    // Modo automático completo (móvil): los poderes listos salen solos hacia el enemigo más cercano (misma recarga que a
+    // mano, así que tocar la ranura sigue funcionando; si está recargando, ni uno ni otro la lanzan)
+    if (this.touch && autoCasts(this.autoMode())) this.autoCast(time);
+    this.drawAutoBtn();
+    if (this.mapTip?.t.visible && this.time.now > this.mapTip.until) this.mapTip.t.setVisible(false);
 
     // IA de cada enemigo según su comportamiento
     // Copia: un enemigo puede caer por quemadura o veneno mientras se recorre
@@ -10985,6 +11045,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (this.touch) {
       const a = this.touch.aim;
       if (a.lengthSq() > 0.04) return a.clone().normalize();
+      // Modo automático: sin tocar el joystick de apuntar, dispara solo al enemigo más cercano a tiro
+      if (autoFires(this.autoMode()) && !manualOverride(a.lengthSq())) {
+        const t = pickAimTarget({ x: this.player.x, y: this.player.y }, this.autoTargets(), AUTO_FIRE_RANGE);
+        if (t) {
+          const d = new Phaser.Math.Vector2(t.x - this.player.x, t.y - this.player.y);
+          if (d.lengthSq() > 1) return d.normalize();
+        }
+      }
     }
 
     const pointer = this.input.activePointer;
@@ -11202,12 +11270,145 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     return new Phaser.Math.Vector2(d.x, d.y);
   }
 
+  // --- Modo automático (solo móvil): data/autoMode.ts y data/autoMove.ts ---
+
+  /** Botón del modo automático (franja de arriba, a la derecha de la barra del jefe: x 1400-1680 está libre). */
+  private static readonly AUTO_BTN = { x: GAME_VIEW.x + GAME_VIEW.w - 228, y: 8, w: 212, h: 44 };
+
+  /** Modo en vigor (fuera de móvil, siempre apagado). */
+  private autoMode(): AutoMode {
+    return effectiveAutoMode(this.auto.mode, !!this.touch);
+  }
+
+  private setAutoMode(m: AutoMode) {
+    this.auto = withMode(this.auto, m);
+    saveAutoMode(this.auto);
+    this.autoPrev = { x: 0, y: 0 };
+    this.drawAutoBtn();
+  }
+
+  private toggleAuto() {
+    if (this.ended) return;
+    this.auto = quickToggle(this.auto);
+    saveAutoMode(this.auto);
+    this.autoPrev = { x: 0, y: 0 };
+    sfx('select');
+    this.drawAutoBtn();
+    this.notify(`Modo automático: ${AUTO_MODE_LABEL[this.auto.mode]}`, { kind: 'info' });
+  }
+
+  /** Indicador y botón: marco pixel con una luz (verde encendido, gris apagado) y el modo. */
+  private drawAutoBtn() {
+    const b = this.autoBtn;
+    if (!b || !b.g.active) return;
+    const m = this.autoMode();
+    if (b.shown === m) return;
+    b.shown = m;
+    const { x, y, w, h } = GameScene.AUTO_BTN;
+    const on = m !== 'off';
+    const g = b.g.clear();
+    const u = 4;
+    g.fillStyle(0x101828, 0.92).fillRect(x + u, y, w - 2 * u, h).fillRect(x, y + u, w, h - 2 * u);
+    g.fillStyle(on ? 0x3fbf6a : 0x5a6478, 1).fillRect(x + u, y + u, w - 2 * u, u).fillRect(x + u, y + h - 2 * u, w - 2 * u, u);
+    g.fillRect(x + u, y + u, u, h - 2 * u).fillRect(x + w - 2 * u, y + u, u, h - 2 * u);
+    // Luz: 4×4 píxeles de arte con brillo
+    const lx = x + 16;
+    const ly = y + h / 2 - 8;
+    g.fillStyle(0x0a0f1a, 1).fillRect(lx - u, ly - u, 16 + 2 * u, 16 + 2 * u);
+    g.fillStyle(on ? 0x5cff8a : 0x3a4252, 1).fillRect(lx, ly, 16, 16);
+    g.fillStyle(on ? 0xd8ffe4 : 0x5a6478, 1).fillRect(lx, ly, u, u);
+    b.t.setText(AUTO_MODE_SHORT[m]).setColor(on ? '#f8f8f8' : '#9aa3b5');
+  }
+
+  /** Enemigos a los que se puede apuntar (los mismos que el auto-apuntado de los poderes). */
+  private autoTargets() {
+    const foes = (this.enemies?.getChildren() ?? []) as Sprite[];
+    return foes.map((e) => ({ x: e.x, y: e.y, ok: e.active && e.visible && !e.getData('capturing') && !e.getData('runaway') }));
+  }
+
+  private autoCast(time: number) {
+    const p = this.player;
+    if (!p?.active || this.ended || this.transitioning) return;
+    const t = pickAimTarget({ x: p.x, y: p.y }, this.autoTargets());
+    const i = pickAutoCast({
+      now: time,
+      readyAt: this.slots.map((_, k) => this.slotReady[k] ?? 0),
+      has: this.slots.map((m) => !!m),
+      targetDist: t ? Math.hypot(t.x - p.x, t.y - p.y) : Infinity,
+      lastAutoAt: this.autoCastAt,
+    });
+    if (i < 0) return;
+    this.autoCastAt = time;
+    this.castSlot(i, time, this.touchCastDir());
+  }
+
+  /** Un paso de la IA de movimiento con lo que hay en la sala. */
+  private autoMoveStep(): AutoP {
+    const p = this.player;
+    const shots: MoveShot[] = [];
+    for (const o of (this.foeShots?.getChildren() ?? []) as Sprite[]) {
+      if (!o.active) continue;
+      const v = (o.body as Body | null)?.velocity;
+      shots.push({ x: o.x, y: o.y, vx: v?.x ?? 0, vy: v?.y ?? 0, r: Math.max(6, ((o.body as Body | null)?.halfWidth ?? 8)) });
+    }
+    const foes: MoveFoe[] = [];
+    for (const e of (this.enemies?.getChildren() ?? []) as Sprite[]) {
+      if (!e.active || !e.visible || e.getData('capturing')) continue;
+      const ai = e.getData('ai') as EnemyAI | undefined;
+      const b = ai?.behavior;
+      foes.push({ x: e.x, y: e.y, melee: !!ai?.boss || !(b === 'shoot' || b === 'orbitShooter' || b === 'healer') });
+    }
+    const pickups: AutoP[] = [];
+    for (const o of (this.loot?.getChildren() ?? []) as Sprite[]) if (o.active) pickups.push({ x: o.x, y: o.y });
+    for (const o of (this.pickups?.getChildren() ?? []) as Sprite[]) {
+      const it = o.getData('item') as DroppedItem | undefined;
+      // Poderes y objetos activos piden elegir: esos los coge el jugador
+      if (o.active && it && it.kind !== 'move' && it.kind !== 'active') pickups.push({ x: o.x, y: o.y });
+    }
+    const room = this.cellRoom(p.x, p.y);
+    const i = this.interior(room);
+    const m = 20;
+    const d = autoMoveDir({
+      player: { x: p.x, y: p.y },
+      speed: this.moveSpeedNow(),
+      shots,
+      hazards: frenzyHazards(),
+      foes,
+      pickups,
+      walkable: (x, y) => x > i.x0 + m && x < i.x1 - m && y > i.y0 + m && y < i.y1 - m && this.freeAt(x, y),
+      center: { x: i.cx, y: i.cy },
+      prev: this.autoPrev,
+    });
+    this.autoPrev = d;
+    return d;
+  }
+
+  /** Toque en el minimapa (móvil): dice qué sala es. */
+  private tapMinimap(x: number, y: number) {
+    const tip = this.mapTip;
+    if (!tip || !this.minimap) return;
+    const hit = minimapRoomAt(this.minimap, x, y);
+    if (!hit) return;
+    const b = minimapBounds(this.minimap);
+    const label = hit.seen || hit.room.kind === 'boss' ? (ROOM_LABEL[hit.room.kind] ?? 'Sala') : 'Sala sin explorar';
+    const here = hit.room.id === this.current?.id ? ' (aquí)' : '';
+    tip.t.setText(label + here).setPosition(W - 10, (b ? b.y + b.h : 0) + 4).setVisible(true);
+    tip.until = this.time.now + 1600;
+  }
+
   /** Zonas donde un dedo no hace nacer un joystick: ranuras de poder, pausa y la barra del consejo. */
   private touchBlocked(): PadRect[] {
     const out: PadRect[] = [
       { x: HUD.right.x, y: this.slotY(0) - 8, w: HUD.right.w, h: H - this.slotY(0) + 8 },
       { x: 0, y: 0, w: HUD.pad + HL.pause.x + HL.pause.w + 12, h: HL.pause.y + HL.pause.h + 12 },
     ];
+    // Modo automático y minimapa: se tocan sin que salga el joystick de apuntar
+    if (this.autoBtn) {
+      const r = GameScene.AUTO_BTN;
+      out.push({ x: r.x - 6, y: 0, w: r.w + 12, h: r.y + r.h + 6 });
+    }
+    const mb = this.minimap && minimapBounds(this.minimap);
+    if (mb) out.push({ x: mb.x - 4, y: mb.y - 4, w: mb.w + 8, h: mb.h + 8 });
     const box = this.tipObjects[0] as Phaser.GameObjects.Graphics | undefined;
     if (box?.active) out.push({ x: GAME_VIEW.x, y: (box.getData('top') as number | undefined) ?? H - 60, w: GAME_VIEW.w, h: H });
     return out;

@@ -63,3 +63,7 @@ export function saveMobileView(v: MobileView, store: Store | undefined = default
     // sin almacenamiento: solo dura esta sesión
   }
 }
+
+/** Minimapa en móvil: ×1,6 del de PC (1,5 → 2,4), con píxel entero y como mucho este alto (px de lienzo) para que no
+ * llegue a Parry y Esquiva ni a los avisos (tests/autoMode.test.ts lo comprueba con padButtons). */
+export const MOBILE_MAP = { scale: 2.4, maxH: 380, top: 16 } as const;
