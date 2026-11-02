@@ -30,14 +30,14 @@ export interface SettingsData {
   onReset?: () => void;
 }
 
-type Row = 'music' | 'sfx' | 'fullscreen' | 'effects' | 'fps' | 'texts' | 'roomZoom' | 'uiSize' | 'autoMode' | 'controls' | 'account' | 'credits' | 'reset' | 'admin' | 'back';
-const ROWS: Row[] = ['music', 'sfx', 'fullscreen', 'effects', 'fps', 'texts', 'controls', 'account', 'credits', 'reset', 'back'];
-const ROW = { w: 520, h: 40, gap: 4, top: 124 };
+type Row = 'music' | 'sfx' | 'fullscreen' | 'effects' | 'fps' | 'texts' | 'guide' | 'roomZoom' | 'uiSize' | 'autoMode' | 'controls' | 'account' | 'credits' | 'reset' | 'admin' | 'back';
+const ROWS: Row[] = ['music', 'sfx', 'fullscreen', 'effects', 'fps', 'texts', 'guide', 'controls', 'account', 'credits', 'reset', 'back'];
+const ROW = { w: 520, h: 38, gap: 3, top: 124 };
 /** Con «Panel admin» (solo dev o cuenta admin) hay una fila más: van más juntas. */
 const ROW_ADMIN = { ...ROW, h: 36, gap: 3 };
 const ROWS_GEO = ROW;
 /** Móvil: tres filas más (zoom de la sala, tamaño de la interfaz y modo automático), más juntas. */
-const ROW_MOBILE = { ...ROW, h: 30, gap: 2 };
+const ROW_MOBILE = { ...ROW, h: 29, gap: 2 };
 
 /** Créditos (T31): de dónde salen los datos, los sprites y la fuente. */
 const CREDITS: [string, string][] = [
@@ -75,7 +75,7 @@ export class SettingsScene extends Phaser.Scene {
     this.dialog = undefined;
     this.closing = false;
     this.selected = 0;
-    const base: Row[] = touchOnlyDevice() ? [...ROWS.slice(0, 6), 'roomZoom', 'uiSize', 'autoMode', ...ROWS.slice(6)] : ROWS;
+    const base: Row[] = touchOnlyDevice() ? [...ROWS.slice(0, 7), 'roomZoom', 'uiSize', 'autoMode', ...ROWS.slice(7)] : ROWS;
     this.list = adminAllowed() ? [...base.slice(0, -1), 'admin', 'back'] : base;
     this.geo = base !== ROWS ? ROW_MOBILE : adminAllowed() ? ROW_ADMIN : ROWS_GEO;
     this.nav = new NavInput(this);
@@ -138,6 +138,8 @@ export class SettingsScene extends Phaser.Scene {
         return `Efectos visuales: ${loadFx().low ? 'Bajos' : 'Altos'}`;
       case 'fps':
         return `Mostrar FPS: ${loadFx().showFps ? 'Sí' : 'No'}`;
+      case 'guide':
+        return `Flechas guía: ${loadFx().guideArrows ? 'Sí' : 'No'}`;
       case 'texts':
         return `Textos en pantalla   ◀ ${TEXTS_LABEL[loadFx().texts]} ▶`;
       case 'roomZoom':
@@ -185,10 +187,11 @@ export class SettingsScene extends Phaser.Scene {
   }
 
   /** Efectos visuales altos/bajos y contador de FPS (T41): se aplican al empezar el siguiente piso o partida. */
-  private toggleFx(row: 'effects' | 'fps' | 'texts', d = 1) {
+  private toggleFx(row: 'effects' | 'fps' | 'texts' | 'guide', d = 1) {
     const fx = loadFx();
     if (row === 'texts') fx.texts = nextTexts(fx.texts, d);
     else if (row === 'effects') fx.low = !fx.low;
+    else if (row === 'guide') fx.guideArrows = !fx.guideArrows;
     else fx.showFps = !fx.showFps;
     saveFx(fx);
     this.refresh();
@@ -226,7 +229,7 @@ export class SettingsScene extends Phaser.Scene {
     if (row === 'music' || row === 'sfx') this.adjust(row, 1);
     else if (row === 'roomZoom' || row === 'uiSize') this.stepView(row, 1);
     else if (row === 'autoMode') this.stepAuto(1);
-    else if (row === 'effects' || row === 'fps' || row === 'texts') this.toggleFx(row);
+    else if (row === 'effects' || row === 'fps' || row === 'texts' || row === 'guide') this.toggleFx(row);
     else if (row === 'fullscreen') {
       // El navegador solo lo permite tras un gesto (Enter, A o clic lo son)
       // Si el jugador la quita a mano se guarda y no se vuelve a forzar en móvil; si la pone, vuelve a ser automática
@@ -349,7 +352,7 @@ export class SettingsScene extends Phaser.Scene {
     if (s.dy) this.select(this.selected + Math.sign(s.dy));
     const row = this.list[this.selected];
     if (s.dx && (row === 'music' || row === 'sfx')) this.adjust(row, Math.sign(s.dx));
-    if (s.dx && (row === 'effects' || row === 'fps')) this.toggleFx(row);
+    if (s.dx && (row === 'effects' || row === 'fps' || row === 'guide')) this.toggleFx(row);
     if (s.dx && row === 'texts') this.toggleFx(row, Math.sign(s.dx));
     if (s.dx && (row === 'roomZoom' || row === 'uiSize')) this.stepView(row, Math.sign(s.dx));
     if (s.dx && row === 'autoMode') this.stepAuto(Math.sign(s.dx));

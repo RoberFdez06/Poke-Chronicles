@@ -8,6 +8,8 @@ export interface FxSettings {
   showFps: boolean;
   /** Textos en pantalla (avisos flotantes sobre el juego): completos, reducidos (iconos + cifras) o mínimos. */
   texts: TextsLevel;
+  /** Flechas guía en el borde de la vista hacia el jefe y la trampilla (por defecto, sí). */
+  guideArrows: boolean;
 }
 
 export type TextsLevel = 'full' | 'reduced' | 'minimal';
@@ -16,7 +18,7 @@ export const TEXTS_LABEL: Record<TextsLevel, string> = { full: 'Completos', redu
 /** Siguiente nivel (para el botón de Ajustes). */
 export const nextTexts = (t: TextsLevel, d = 1): TextsLevel => TEXTS_LEVELS[(TEXTS_LEVELS.indexOf(t) + d + 3) % 3];
 
-export const DEFAULT_FX: Readonly<FxSettings> = { low: false, showFps: false, texts: 'reduced' };
+export const DEFAULT_FX: Readonly<FxSettings> = { low: false, showFps: false, texts: 'reduced', guideArrows: true };
 
 export function parseFx(raw: string | null): FxSettings {
   const out: FxSettings = { ...DEFAULT_FX };
@@ -26,6 +28,7 @@ export function parseFx(raw: string | null): FxSettings {
     if (d && typeof d === 'object') {
       if (typeof d.low === 'boolean') out.low = d.low;
       if (typeof d.showFps === 'boolean') out.showFps = d.showFps;
+      if (typeof d.guideArrows === 'boolean') out.guideArrows = d.guideArrows;
       if (typeof d.texts === 'string' && (TEXTS_LEVELS as readonly string[]).includes(d.texts)) out.texts = d.texts;
     }
   } catch {

@@ -2185,3 +2185,27 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
 - **Probar** (consola): `__POKEISAAC_DEBUG__.megaRoom()` (te lleva a la sala), `weakGuardian()` (guardián a 1 PS),
   `megaAltar()` (estado). Sal y vuelve a entrar, o recarga la partida, en cada estado.
 - **Tests**: `tests/megaAltar.test.ts`.
+
+## Flechas guía al jefe y a la trampilla, y objetos en el minimapa (rama `flechas`, 2026-11-02)
+
+- **Flechas guía**: en todos los modos de GameScene (Normal, Oleadas, Infinito, Rush de jefes, Torre; Diario y código
+  son Normal con semilla; la Defensa de torres va en su escena y no las tiene) salen en el borde de la vista dos
+  flechas de pixel art propio: **roja con calavera coronada** hacia el jefe y **verde con escalera y flecha abajo**
+  hacia la trampilla. Si el objetivo está en otra sala apuntan a la puerta que hay que cruzar (camino más corto por
+  salas que ya se ven en el minimapa, sin pasar por puertas ocultas sin abrir; las salas grandes cuentan como una) y
+  dicen cuántas salas faltan; en la misma sala apuntan al jefe o a la trampilla, y se esconden en cuanto se ven en
+  pantalla. La del jefe no sale si su sala aún no se ve en el mapa y se va al limpiarla; la de la trampilla sale en
+  cuanto aparece (en la Torre ya está la flecha dorada junto al jugador y no se duplica). Tamaño con `hudUiScale()`
+  (algo mayor en táctil); van dentro de la vista de la sala, así no pisan las bandas ni los botones táctiles. Si
+  coinciden en el mismo borde, la segunda se aparta.
+- **Ajustes**: fila «Flechas guía: Sí/No» (por defecto Sí), guardada en `pokeisaac.fx` (`FxSettings.guideArrows`)
+  con el resto de ajustes de efectos.
+- **Minimapa**: las salas vistas llevan marcas pequeñas de 3×3 en la esquina de abajo a la derecha: rombo violeta
+  (objeto, poder o activo) y moneda dorada (monedas, llaves, bombas, bayas, pociones); el cofre sigue con su candado.
+  Se redibuja solo cuando cambia lo que queda (se comprueba cada 250 ms una firma barata).
+- **Código**: lógica pura en `src/data/guideArrows.ts` (`guideModeOn`, `knownRooms`, `roomRoute`, `edgePlacement`,
+  `separate`, `roomAtPoint`, `lootMarks`, `distanceLabel`); cableado en GameScene (`guideTick`, `guideTargets`,
+  `mapLoot`, `mapHiddenRooms`) y `minimap.ts` (`extras.loot`).
+- **Probar** (consola): `__POKEISAAC_DEBUG__.guide()` (qué señalan, si se ven y marcas del minimapa),
+  `guide(false)` / `guide(true)` para apagarlas o encenderlas.
+- **Tests**: `tests/guideArrows.test.ts` (y `tests/fxSettings.test.ts` con el ajuste nuevo).
