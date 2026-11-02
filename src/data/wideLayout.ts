@@ -102,6 +102,12 @@ export const HUD_RIGHT_SEGS: HudSeg[] = [
   { y0: 700, y1: BASE_H },
 ];
 
+/** Táctil: el minimapa de móvil es mayor (MOBILE_MAP, hasta 16 + 380 px), así que su zona debe verse entera. */
+export const HUD_RIGHT_SEGS_TOUCH: HudSeg[] = [
+  { y0: 0, y1: 700, crop: true, minSrc: 400 },
+  { y0: 700, y1: BASE_H },
+];
+
 /** Factor de escala de un panel lateral: 1 en 16:9; en ancho, lo que quepa a lo ancho y a lo alto, con tope. */
 export function hudBandScale(lw: number, panelW: number, segs: HudSeg[], h = BASE_H): number {
   if (lw <= BASE_W || panelW <= 0) return 1;

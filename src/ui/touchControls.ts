@@ -10,11 +10,12 @@
 // Bandas: si la pantalla es más ancha que 16:9 y las bandas que deja Scale.FIT son anchas (data/touchLayout.ts),
 // joysticks y botones van en una capa DOM en esas bandas, fuera del lienzo, y no tapan el juego (ver BandLayer).
 import Phaser from 'phaser';
-import { GAME_VIEW, H, HUD, W } from './layout';
+import { GAME_VIEW, H, HUD, LW, W } from './layout';
 import { hitPadButton, padButtons, stickVector, stickZone, STICK_DEAD, STICK_DRAG, STICK_KNOB, STICK_R, type PadButton, type PadRect } from '../data/touchPad';
 import { bandLayout, touchLayoutMode, type BandSpot, type TouchLayoutMode } from '../data/touchLayout';
 import { bakeTouchButtons, touchBtnKey, TOUCH_FRAME } from './art/touchButtons';
 import { lowFx } from './theme';
+import { shouldRelease, stepPointer, touchHitR } from '../data/touchPointers';
 
 export type TouchButton = PadButton;
 
@@ -30,7 +31,7 @@ const KNOB_ALPHA = 0.6;
 /** Cuánto dura el estado «pulsado» de un botón al tocarlo (ms). */
 const PRESS_MS = 120;
 /** Zona de toque mínima de un botón (px CSS de radio): 22 = 44 px de diámetro. */
-const MIN_HIT_CSS = 22;
+const MIN_HIT_CSS = 28;
 
 interface Stick {
   side: 'move' | 'aim';
@@ -122,6 +123,12 @@ export class TouchControls {
     scene.input.on('pointerup', this.onUp, this);
     scene.input.on('pointerupoutside', this.onUp, this);
     scene.events.on(Phaser.Scenes.Events.UPDATE, this.tick, this);
+    // Seguro: al perder el foco, ocultar la pestaña o salir de la página se sueltan todos los dedos
+    if (typeof window !== 'undefined') {
+      window.addEventListener('blur', this.releaseEverything);
+      window.addEventListener('pagehide', this.releaseEverything);
+      document.addEventListener('visibilitychange', this.releaseEverything);
+    }
     scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.destroy());
   }
 
@@ -130,6 +137,7 @@ export class TouchControls {
   /** Escena en pausa o dormida: la capa de las bandas se esconde (si no, quedaría encima del menú de pausa). */
   private hidden = false;
   private onPause = () => {
+    this.releaseEverything();
     this.hidden = true;
     this.band.setVisible(false);
   };
@@ -159,7 +167,7 @@ export class TouchControls {
     for (const s of [this.sticks.move, this.sticks.aim]) s.hint.setVisible(inCanvas && s.pointer === null);
     for (const b of this.buttons) this.paint(b);
     this.band.setVisible(!inCanvas && !this.hidden);
-    this.disp = Math.max(0.1, this.scene.scale.displaySize.width / W);
+    this.disp = Math.max(0.1, this.scene.scale.displaySize.width / LW);
   }
 
   /** ¿Van los controles en las bandas, fuera del lienzo? */
@@ -286,8 +294,20 @@ export class TouchControls {
   }
 
   /** Vuelve a pintar los botones cuyo «pulsado» ha terminado; con efectos bajos la pista no parpadea. */
+  /** Suelta sticks del lienzo y de las bandas (blur, pestaña oculta, pagehide, pausa). */
+  private releaseEverything = () => {
+    if (this.dead) return;
+    for (const s of [this.sticks.move, this.sticks.aim]) if (s.pointer !== null) this.release(s);
+    this.band.releaseAll();
+  };
+
   private tick() {
     const now = this.scene.time.now;
+    // Dedo perdido (sin pointerup): si Phaser ya no lo tiene pulsado, el stick se suelta
+    const ptrs = this.scene.input.manager?.pointers ?? [];
+    for (const s of [this.sticks.move, this.sticks.aim]) {
+      if (shouldRelease({ id: s.pointer, last: 0 }, (id) => ptrs.find((q) => q.id === id)?.isDown)) this.release(s);
+    }
     for (const b of this.buttons) {
       if (b.downUntil > 0 && now >= b.downUntil) {
         b.downUntil = 0;
@@ -301,10 +321,16 @@ export class TouchControls {
   }
 
   destroy() {
+    this.releaseEverything();
     this.dead = true;
     for (const [ev, fn] of [[Phaser.Scenes.Events.PAUSE, this.onPause], [Phaser.Scenes.Events.SLEEP, this.onPause], [Phaser.Scenes.Events.RESUME, this.onResume], [Phaser.Scenes.Events.WAKE, this.onResume]] as const)
       this.scene.events.off(ev, fn);
-    if (typeof window !== 'undefined') window.removeEventListener('resize', this.onResize);
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('resize', this.onResize);
+      window.removeEventListener('blur', this.releaseEverything);
+      window.removeEventListener('pagehide', this.releaseEverything);
+      document.removeEventListener('visibilitychange', this.releaseEverything);
+    }
     this.scene.scale.off(Phaser.Scale.Events.RESIZE, this.onResize);
     this.band.destroy();
     this.scene.input.off('pointerdown', this.onDown, this);
@@ -331,6 +357,8 @@ interface DomStick {
   base: HTMLDivElement;
   knob: HTMLDivElement;
   pointer: number | null;
+  /** Último evento del dedo (ms, para el seguro de dedos perdidos de data/touchPointers.ts). */
+  last: number;
   origin: { x: number; y: number };
   vec: Phaser.Math.Vector2;
   r: number;
@@ -379,10 +407,11 @@ class BandLayer {
       const p = this.sides![s];
       const st: DomStick = {
         side: s,
-        hint: circle(p, `border:3px solid ${color};opacity:0.35;`),
+        hint: circle(p, `border:3px solid ${color};background:radial-gradient(circle, ${color} 0 7%, rgba(0,0,0,0.28) 8% 100%);opacity:0.55;`),
         base: circle(p, `border:3px solid ${color};background:rgba(0,0,0,0.25);opacity:0.7;display:none;`),
         knob: circle(p, `background:${color};border:2px solid rgba(255,255,255,0.7);opacity:0.8;display:none;`),
         pointer: null,
+        last: 0,
         origin: { x: 0, y: 0 },
         vec,
         r: 40,
@@ -411,7 +440,7 @@ class BandLayer {
     const parent = this.scene.game.canvas?.parentElement;
     if (!this.root || !this.sides || !parent) return 'canvas';
     const r = parent.getBoundingClientRect();
-    const mode = touchLayoutMode(r.width, r.height, W, H);
+    const mode = touchLayoutMode(r.width, r.height, LW, H);
     if (mode !== 'bands') return mode;
     const c = this.scene.game.canvas.getBoundingClientRect();
     // Bandas reales: del borde de la caja al borde del lienzo
@@ -476,10 +505,15 @@ class BandLayer {
     const p = this.local(st, e);
     // Botones de esta banda: el más cercano dentro de su radio de toque (al menos 22 px CSS)
     const mine = this.btns.filter((b) => (st.side === 'move') === ['active', 'bomb', 'use', 'potion'].includes(b.id));
-    const hit = hitPadButton(p.x, p.y, mine.map((b) => ({ ...b.spot, visible: b.visible, id: b.id })), (size) => Math.max(size / 2 + 4, 22));
-    if (hit) return this.press(hit.id);
-    if (st.pointer !== null) return;
+    const hit = hitPadButton(p.x, p.y, mine.map((b) => ({ ...b.spot, visible: b.visible, id: b.id })), touchHitR);
+    if (hit) {
+      this.flash(hit.id);
+      return this.press(hit.id);
+    }
+    const nx = stepPointer({ id: st.pointer, last: st.last }, { type: 'down', id: e.pointerId, t: e.timeStamp });
+    if (!nx.took) return;
     st.pointer = e.pointerId;
+    st.last = e.timeStamp;
     try {
       this.sides![st.side].setPointerCapture(e.pointerId);
     } catch {
@@ -497,6 +531,7 @@ class BandLayer {
   private move(st: DomStick, e: PointerEvent) {
     if (st.pointer !== e.pointerId) return;
     e.preventDefault();
+    st.last = e.timeStamp;
     const v = stickVector(st.origin, this.local(st, e), st.r, STICK_DEAD, STICK_DRAG);
     st.origin = { x: v.baseX, y: v.baseY };
     st.vec.set(v.x, v.y);
@@ -519,6 +554,19 @@ class BandLayer {
 
   releaseAll() {
     for (const st of this.sticks) if (st.pointer !== null) this.reset(st);
+  }
+
+  /** Respuesta al pulsar un botón de banda: se encoge y brilla un instante. */
+  private flash(id: TouchButton) {
+    const b = this.btns.find((x) => x.id === id);
+    if (!b) return;
+    b.el.style.transition = 'transform 90ms, filter 90ms';
+    b.el.style.transform = 'translate(-50%,-50%) scale(0.86)';
+    b.el.style.filter = 'brightness(1.5)';
+    window.setTimeout(() => {
+      b.el.style.transform = 'translate(-50%,-50%)';
+      b.el.style.filter = '';
+    }, 140);
   }
 
   destroy() {

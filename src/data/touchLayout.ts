@@ -88,3 +88,56 @@ export function bandLayout(band: number, h: number, ui = 1): BandLayout {
     },
   };
 }
+
+// --- Móvil apaisado más ancho que 16:9 (rama `movilbandas`) ---------------------------------------------------
+// Antes el lienzo táctil se quedaba fijo en 1920×1080 y todo lo que sobraba a los lados eran bandas (botones DOM
+// en la parte de abajo y el resto vacío): en Safari con barras (≈3,2:1) cada banda medía ≈150 px CSS y casi toda
+// quedaba sin uso. Ahora, si hay sitio para bandas, cada banda se queda con lo justo para los botones y el resto
+// lo gana el lienzo (ancho lógico mayor, como en escritorio: menús con más fondo y paneles del HUD más grandes).
+// La sala depende del alto (el lienzo siempre llena el alto cuando la pantalla es más ancha que 16:9), así que
+// nunca se ve más pequeña que antes.
+
+/** Ancho de banda (px CSS, interfaz al 100 %) para dos columnas de botones de ≥ 48 px y el joystick. */
+export const TOUCH_BAND_BASE_CSS = 116;
+/** Tope de aspecto del lienzo en táctil (más ancho, las bandas crecen como antes). */
+export const TOUCH_MAX_ASPECT = 3;
+export const TOUCH_MAX_W = Math.round(1080 * TOUCH_MAX_ASPECT);
+
+/** Ancho que necesita cada banda con el «Tamaño de la interfaz» `ui` (1, 1,25 o 1,5). */
+export const touchBandNeed = (ui = 1): number => Math.max(MIN_BAND_CSS, Math.ceil(TOUCH_BAND_BASE_CSS * (ui > 0 ? ui : 1)));
+
+/**
+ * Ancho lógico del lienzo táctil para una caja (ya sin zonas seguras) de cssW×cssH px CSS. 1920 si las bandas a
+ * 16:9 no llegan al mínimo (modo «lienzo», como siempre); si llegan, el lienzo se ensancha dejando a cada lado
+ * `touchBandNeed(ui)` (nunca menos que a 16:9 ni por debajo de MIN_BAND_CSS). Par y entre 1920 y TOUCH_MAX_W.
+ */
+export function touchLogicalWidth(cssW: number, cssH: number, ui = 1, baseW = 1920, baseH = 1080): number {
+  if (!(cssW > 0 && cssH > 0)) return baseW;
+  const f = fitCanvas(cssW, cssH, baseW, baseH);
+  if (f.band < MIN_BAND_CSS) return baseW;
+  const need = Math.min(touchBandNeed(ui), f.band);
+  // floor: la banda real nunca queda por debajo de `need` (si no, el modo podría saltar a «lienzo»)
+  const want = Math.floor((baseH * (cssW - 2 * need)) / cssH);
+  const w = Math.max(baseW, Math.min(TOUCH_MAX_W, want));
+  return w - (w % 2);
+}
+
+export interface TouchScreen {
+  lw: number;
+  mode: TouchLayoutMode;
+  /** px CSS por px de lienzo. */
+  scale: number;
+  /** Anchos en px CSS. */
+  band: number;
+  canvas: number;
+  room: number;
+  /** Cada panel del HUD (izquierdo/derecho) más su margen, en px CSS. */
+  hudSide: number;
+}
+
+/** Cómo queda la pantalla táctil con un ancho lógico `lw` (sala de `roomW` px de lienzo en el centro). */
+export function touchScreen(cssW: number, cssH: number, lw: number, roomW = 1440, baseH = 1080): TouchScreen {
+  const f = fitCanvas(cssW, cssH, lw, baseH);
+  const mode = f.band >= MIN_BAND_CSS ? 'bands' : 'canvas';
+  return { lw, mode, scale: f.scale, band: f.band, canvas: f.w, room: roomW * f.scale, hudSide: ((lw - roomW) / 2) * f.scale };
+}

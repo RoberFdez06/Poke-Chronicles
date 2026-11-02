@@ -2315,3 +2315,30 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
 - `src/data/safeData.ts` (tests en `tests/safeData.test.ts`): valida el documento de la nube y el progreso de invitado (forma, `__proto__`, límites); si la nube no valida, no se pisa. Nombre de cuenta limpio (≤ 40).
 - `auth/user-not-found` ya no revela si el correo existe; `Referrer-Policy` por meta en `index.html` y páginas legales.
 - Pendiente de Roberto: desplegar reglas, restringir la apiKey por dominio, protección de enumeración y política de contraseña en Firebase, `npm audit`.
+## 2026-11-03 · Móvil apaisado: bandas justas, HUD más grande y dedos que no se quedan pillados (rama `movilbandas`)
+- Problema (Roberto, iPhone 14 Pro): en táctil el lienzo se quedaba en 1920 (16:9) y lo que sobraba a los lados eran bandas; con las barras de Safari (≈3,2:1) cada banda medía ≈150 px CSS casi vacía y el HUD salía diminuto. Además, botones difíciles de acertar y controles que «se quedan pillados» tras jugar un rato.
+- Cómo se compone (px CSS; caja = ventana visible menos zonas seguras, que `index.html` ya descuenta con `env(safe-area-inset-*)` y `viewport-fit=cover`): con la pantalla más ancha que 16:9 el lienzo llena el ALTO, así que la sala mide siempre 1440/1080 × alto y no puede crecer sin rehacer el HUD de arriba/abajo. Lo que sí se gana es el HUD.
+- Cambio: `touchLogicalWidth` (`src/data/touchLayout.ts`): si a 16:9 ya hay bandas (≥ 88 px), cada banda se queda con lo justo para los botones (`touchBandNeed` = 116 px × «Tamaño de la interfaz», dos columnas de ≈ 49 px y el joystick) y el resto lo gana el lienzo (ancho lógico hasta 3:1, `TOUCH_MAX_W` = 3240); los paneles del HUD crecen con `hudBandScale`/`hudPanelSlices` como en escritorio, centrados en su banda y sin pisar la sala. Si no hay bandas (modo «lienzo»: iPhone sin barras, tablets, 16:9) no cambia nada. `ui/wideScreen.ts` ahora también actúa en táctil y recalcula con resize, `orientationchange`, `visualViewport` (barras de Safari/Chrome) y al cambiar «Tamaño de la interfaz». Panel derecho en táctil con `HUD_RIGHT_SEGS_TOUCH` (zona del minimapa grande de móvil, 396 px, siempre entera). `touchControls` mide el modo con `LW`.
+- Resultados (banda / HUD lateral / sala, px CSS; escala de paneles izq./dcha.):
+
+| Dispositivo | Caja | Modo | Antes | LW | Después | Paneles |
+|---|---|---|---|---|---|---|
+| iPhone SE | 667×375 (1,78) | lienzo | 0 / 83 / 500 | 1920 | igual | ×1 |
+| iPhone 14 | 750×369 (2,03) | lienzo | 47 / 82 / 492 | 1920 | igual | ×1 |
+| iPhone 14 Pro | 734×372 (1,97) | lienzo | 36 / 83 / 496 | 1920 | igual | ×1 |
+| 14 Pro Safari con barras | 667×206 (3,24) | bandas | 150 / 46 / 275 | 2280 | 116 / 80 / 275 | ×1,46 / ×1,38 |
+| 14 Pro Safari (captura partida) | 667×258 (2,59) | bandas | 104 / 57 / 344 | 1920 | igual | ×1 |
+| 14 Pro Max | 814×409 (1,99) | lienzo | 43 / 91 / 545 | 1920 | igual | ×1 |
+| Pixel 7 | 915×412 (2,22) | bandas | 91 / 92 / 549 | 1920 | igual | ×1 |
+| Pixel 7 con barra de Chrome | 915×356 (2,57) | bandas | 141 / 79 / 475 | 2072 | 116 / 104 / 475 | ×1,27 |
+| Galaxy S23 | 780×360 (2,17) | lienzo | 70 / 80 / 480 | 1920 | igual | ×1 |
+| Galaxy Z Fold plegado | 882×344 (2,56) | bandas | 135 / 76 / 459 | 2040 | 116 / 96 / 459 | ×1,20 |
+| Galaxy Z Fold abierto | 884×768 (1,15) | lienzo | 0 / 111 / 663 | 1920 | igual | ×1 |
+| iPad mini | 1133×744 (1,52) | lienzo | 0 / 142 / 850 | 1920 | igual | ×1 |
+| iPad Pro 12,9 | 1366×1024 (1,33) | lienzo | 0 / 171 / 1025 | 1920 | igual | ×1 |
+| Extremo 3,5:1 | 840×240 | bandas | 207 / 53 / 320 | 2736 | 116 / 144 / 320 | ×1,46 / ×1,38 |
+
+  La sala nunca baja (en ningún caso crece: manda el alto). Tests en `tests/touchWide.test.ts` (tabla de dispositivos × interfaz 100/125/150 %: nada fuera, sala ≥ antes, botones dentro de la banda y sin solapes, zona de toque ≥ 48 px, HUD sin pisar la sala, minimapa entero).
+- Botones: zona de toque de las bandas `touchHitR` = máx(lado/2 + 10, 28) px (≥ 56 de diámetro, antes 22 de radio) y dentro del lienzo mínimo 28 px CSS; al pulsar uno de banda se encoge y brilla 140 ms. Aros del joystick con relleno translúcido y punto central.
+- Dedos pillados: `src/data/touchPointers.ts` (`stepPointer`: down/move/up/cancel/blur; `shouldRelease`), tests en `tests/touchPointers.test.ts`. Un dedo nuevo se queda el stick si el anterior lleva 1,5 s sin dar señales (se perdió su «up»); en el lienzo, cada fotograma se suelta el stick cuyo puntero Phaser ya no está pulsado; `blur`, `pagehide`, `visibilitychange`, pausa/dormir y cerrar la escena sueltan todo. Teclado, ratón y mando no se tocan.
+- Límites conocidos: (1) a ≈2,0–2,2:1 con notch (iPhone sin barras, Galaxy S) quedan franjas de 36–70 px por lado y el HUD sigue a ×1: ensanchar ahí obligaría a escalar los paneles con los botones táctiles del lienzo dentro (sus filas caen en el tramo recortable del panel izquierdo) y a pasar los toques por `screenToHud`; queda pendiente. (2) La captura de partida de Roberto (≈2,6:1 con barras, banda 104 < 116) no gana: lo que más ayuda es esconder las barras (pantalla completa no existe en iPhone; «Añadir a pantalla de inicio»). (3) Con interfaz 150 % y alto < 300 px los botones dibujados bajan de 44 px (la zona de toque sigue ≥ 56). (4) Aviso inferior de formas y barra del jefe: sin cambiar (no se agrandaron). (5) Vertical: ya existe el aviso `#rotate` de `index.html`. (6) Nada probado en dispositivo real ni en navegador (sin vite aquí): probar iPhone con y sin barras, Android, Fold, iPad, girar y cambiar «Tamaño de la interfaz» en partida.
