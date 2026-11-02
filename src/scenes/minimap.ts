@@ -79,6 +79,18 @@ function drawDiamond(g: Phaser.GameObjects.Graphics, cx: number, cy: number, p: 
 }
 
 
+/** Marca de objeto (3×3 con borde): rombo violeta con brillo (objeto, poder o activo) o moneda dorada (botín menudo). */
+function drawLootMark(g: Phaser.GameObjects.Graphics, kind: string, x: number, y: number, u: number) {
+  g.fillStyle(INK, 1).fillRect(x - u, y - u, 5 * u, 5 * u);
+  if (kind === 'item') {
+    g.fillStyle(0xb48cff, 1).fillRect(x + u, y, u, 3 * u).fillRect(x, y + u, 3 * u, u);
+    g.fillStyle(0xffffff, 1).fillRect(x + u, y + u, u, u);
+  } else {
+    g.fillStyle(0xffd34d, 1).fillRect(x, y, 3 * u, 3 * u);
+    g.fillStyle(0xa86a10, 1).fillRect(x + u, y + u, u, u);
+  }
+}
+
 /** Extras del minimapa (todo opcional; sin ellos sale como antes con el tema azul). */
 export interface MinimapExtras {
   theme?: HudTheme;
@@ -90,6 +102,8 @@ export interface MinimapExtras {
   revealed?: ReadonlySet<string>;
   /** Salas con un cofre aún cerrado (se abre con llave). */
   chests?: ReadonlySet<number>;
+  /** Objetos que quedan en cada sala vista (guideArrows.ts lootMarks): marca pequeña por tipo en la esquina. */
+  loot?: ReadonlyMap<number, readonly string[]>;
   /** Alto máximo (px): si no cabe, se encoge lo justo (móvil, donde el mapa es más grande). */
   maxH?: number;
   /** Píxel del arte entero (sin medios píxeles): bordes y puertas nítidos en pantallas pequeñas. */
@@ -440,6 +454,17 @@ export function drawMinimap(
       g.fillStyle(INK, 1).fillRect(lx - u / 2, ly - u / 2, 4 * u, 4 * u);
       g.fillStyle(0xffd34d, 1).fillRect(lx, ly + u, 3 * u, 2 * u);
       g.fillStyle(0xffd34d, 1).fillRect(lx + u / 2, ly, 2 * u, u);
+    }
+    // Objetos que quedan en la sala: marcas de 3×3 en la esquina de abajo a la derecha (objeto, botín menudo)
+    const loot = seen ? extras.loot?.get(r.id) : undefined;
+    if (loot) {
+      let mx = x + CW - 5 * u;
+      const my = y + CH - 6 * u;
+      for (const m of loot) {
+        if (m === 'chest') continue; // el cofre ya lleva su candado
+        drawLootMark(g, m, mx, my, u);
+        mx -= 4 * u;
+      }
     }
     // Tú, donde no hay icono: la Poké Ball animada (en salas con icono basta el marco que late)
     if (isCurrent && !ICONS[r.kind] && mark === undefined) spots.push({ kind: 'me', cx, cy, p, u, alpha: 1 });

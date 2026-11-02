@@ -27,6 +27,7 @@ import {
 import { autoMoveDir, type MoveFoe, type MoveShot, type P as AutoP } from '../data/autoMove';
 import type { PadRect } from '../data/touchPad';
 import { touchOnlyDevice } from '../data/controls';
+import { distanceLabel, edgePlacement, guideModeOn, knownRooms, lootMarks, roomAtPoint, roomRoute, separate, type GuideKind } from '../data/guideArrows';
 import { FxBudget } from '../data/fxSettings';
 import {
   altarCost,
@@ -92,7 +93,7 @@ import {
   GameMode,
   MODE_LABEL,
 } from '../data/modes';
-import { acceptNpcMission, gainSeed, takeGardenBerries, updateGarden, addRunHistory, loadKeys, loadMissions, loadShinies, loadDarks, addDark, addDarkSeen, loadTutorial, loadUpgrades, recordMissionEvent, saveTutorial, submitDaily, submitRecord, loadFx } from '../data/save';
+import { acceptNpcMission, gainSeed, takeGardenBerries, updateGarden, addRunHistory, loadKeys, loadMissions, loadShinies, loadDarks, addDark, addDarkSeen, loadTutorial, loadUpgrades, recordMissionEvent, saveTutorial, submitDaily, submitRecord, loadFx, saveFx } from '../data/save';
 import { disableTips, markTipSeen, shouldShowTip, tipButtons, tipText, TIPS, type TipId } from '../data/tutorial';
 import { abilityFor, pinchMul, type Ability } from '../data/abilities';
 import { closeFloor, emptyCounters, floorTimes, noteCombo, noteDash, noteParry, notePerfectParry, notePickup, noteRoomTime, openFloor, type RunCounters, type RunRecord } from '../data/runHistory';
@@ -813,6 +814,8 @@ export class GameScene extends Phaser.Scene {
   private towerSeed = 0;
   /** Flecha que señala la columna de luz al superar un piso de la Torre. */
   private towerArrow?: Phaser.GameObjects.Image;
+  /** Flechas guía del HUD (jefe y trampilla) y firma de las marcas de objetos del minimapa (guideArrows.ts). */
+  private guide?: { on: boolean; nextCfg: number; nextLoot: number; lootSig: string; arrows: Record<GuideKind, { c: Phaser.GameObjects.Container; arrow: Phaser.GameObjects.Image; icon: Phaser.GameObjects.Image; text: Phaser.GameObjects.Text; state: string }> };
   private towerStart = 1;
   /** T72: dibujo y puntos de uso de la tienda y el altar del descanso (aparte de los de la forja). */
   private towerRestObjs: Phaser.GameObjects.GameObject[] = [];
@@ -1168,6 +1171,7 @@ export class GameScene extends Phaser.Scene {
     this.cleared.clear();
     this.trapdoor = undefined;
     this.towerArrow = undefined;
+    this.guide = undefined;
     this.invIcons = [];
     this.activeIcon = undefined;
     this.finale = undefined;
@@ -5141,15 +5145,26 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.saveNow();
   }
 
-  private drawMap() {
-    if (!this.current) return;
-    // La sala secreta no sale en el mapa hasta que se abre una de sus puertas
+  /** La sala secreta no sale en el mapa hasta que se abre una de sus puertas. */
+  private mapHiddenRooms(): Set<number> {
     const hidden = new Set<number>();
     const sid = this.floor.secretId;
     if (sid !== undefined && !this.visited.has(sid)) {
       const open = Object.entries(this.floor.rooms[sid].doors).some(([d]) => this.revealedDoors.has(doorKey(sid, d as Dir)));
       if (!open) hidden.add(sid);
     }
+    return hidden;
+  }
+
+  /** Marcas de objetos del minimapa: lo que queda en las salas vistas (objetos, botín menudo, cofres). */
+  private mapLoot() {
+    const chests = (this.floor.chestRooms ?? []).filter((id) => !this.openedChests.has(id));
+    return lootMarks(this.floorItems, chests, this.visited);
+  }
+
+  private drawMap() {
+    if (!this.current) return;
+    const hidden = this.mapHiddenRooms();
     const marks = new Map<number, number>();
     if (this.minibossRoom !== undefined && !this.cleared.has(this.minibossRoom)) marks.set(this.minibossRoom, 0xff8c1a);
     // Sala sorpresa: se marca al descubrirla, hasta resolverla
@@ -5169,6 +5184,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       cleared: this.cleared,
       revealed: this.revealedDoors,
       chests: new Set((this.floor.chestRooms ?? []).filter((id) => !this.openedChests.has(id))),
+      loot: this.mapLoot(),
     });
     this.toasts?.setTop(bottom + 16);
   }
@@ -8725,6 +8741,17 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         }
         return this.applyMobileView();
       },
+      /** Flechas guía: guide() dice qué señalan (mundo) y si están activadas; guide(false|true) las apaga o enciende (Ajustes). */
+      guide: (on?: boolean) => {
+        if (on !== undefined) {
+          const fx = loadFx();
+          fx.guideArrows = on;
+          saveFx(fx);
+          if (this.guide) this.guide.nextCfg = 0;
+        }
+        const gd = this.guide;
+        return { on: loadFx().guideArrows && guideModeOn(this.mode), mode: this.mode, targets: this.guideTargets(), visible: gd ? { boss: gd.arrows.boss.c.visible, trapdoor: gd.arrows.trapdoor.c.visible } : null, loot: Object.fromEntries(this.mapLoot()) };
+      },
       autoState: () => ({ mode: this.autoMode(), dir: this.player ? this.autoMoveStep() : null, hazards: frenzyHazards().length }),
     };
     (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__ = api;
@@ -10528,6 +10555,134 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     a.setVisible(far).setRotation(ang).setPosition(this.player.x + Math.cos(ang) * 64, this.player.y + Math.sin(ang) * 64);
   }
 
+  // --- Flechas guía (jefe y trampilla) ---
+
+  /** Texturas de pixel art propias: flecha 11×11 (punta a la derecha) en rojo o verde e icono 11×11 con fondo oscuro. */
+  private makeGuideTextures() {
+    const paint = (key: string, rows: string[], pal: Record<string, number>) => {
+      if (this.textures.exists(key)) return;
+      const g = this.make.graphics({ x: 0, y: 0 }, false);
+      rows.forEach((row, y) => [...row].forEach((c, x) => {
+        const col = pal[c];
+        if (col !== undefined) g.fillStyle(col, 1).fillRect(x, y, 1, 1);
+      }));
+      g.generateTexture(key, rows[0].length, rows.length);
+      g.destroy();
+    };
+    const arrow = ['...X.......', '...XX......', '...XOX.....', 'XXXXOOX....', 'XOOOOOOX...', 'XOHHHHOOX..', 'XOOOOOOX...', 'XXXXOOX....', '...XOX.....', '...XX......', '...X.......'];
+    paint('guide-arrow-boss', arrow, { X: 0x3a0606, O: 0xff4a3d, H: 0xffb0a0 });
+    paint('guide-arrow-trapdoor', arrow, { X: 0x06300f, O: 0x3ddc6a, H: 0xb8ffc8 });
+    // Calavera con corona (jefe)
+    paint('guide-icon-boss', [
+      'XXXXXXXXXXX', 'XyXyXyXyXyX', 'XyyyyyyyyyX', 'XXwwwwwwwXX', 'XwwwwwwwwwX', 'XwrrwwwrrwX', 'XwrrwwwrrwX', 'XwwwwrwwwwX', 'XXwwwwwwwXX', 'X.wXwXwXw.X', 'XXXXXXXXXXX',
+    ], { X: 0x1a0606, y: 0xffd34d, w: 0xf2ece4, r: 0xd8241c, '.': 0x1a0606 });
+    // Trampilla: escalera que baja con flecha hacia abajo
+    paint('guide-icon-trapdoor', [
+      'XXXXXXXXXXX', 'X....g....X', 'X....g....X', 'X..ggggg..X', 'X...ggg...X', 'X....g....X', 'Xssss.....X', 'X...sss...X', 'X.....sss.X', 'X.......ssX', 'XXXXXXXXXXX',
+    ], { X: 0x06200c, '.': 0x0e3a1a, g: 0x5cff8a, s: 0xa8b4c8 });
+  }
+
+  private makeGuide() {
+    this.makeGuideTextures();
+    const make = (kind: GuideKind) => {
+      const arrow = this.add.image(0, 0, `guide-arrow-${kind}`);
+      const icon = this.add.image(0, 0, `guide-icon-${kind}`);
+      const text = this.add.text(0, 0, '', { fontFamily: FONT, fontSize: `${hudFont(14)}px`, color: kind === 'boss' ? '#ffb0a0' : '#b8ffc8' }).setOrigin(0.5, 0).setStroke('#101828', 4);
+      const c = this.add.container(0, 0, [arrow, icon, text]).setDepth(40).setVisible(false);
+      this.toHud(c);
+      return { c, arrow, icon, text, state: '' };
+    };
+    return { on: true, nextCfg: 0, nextLoot: 0, lootSig: '', arrows: { boss: make('boss'), trapdoor: make('trapdoor') } };
+  }
+
+  /** Destino de una flecha: el objetivo si está en esta sala; si no, la puerta por la que se va (camino por salas). */
+  private guideTarget(roomId: number, here: { x: number; y: number }, known: ReadonlySet<number>) {
+    const rooms = this.floor.rooms;
+    const route = roomRoute(rooms, this.current.id, roomId, { known, blocked: (id, d) => this.isHiddenDoor(id, d) });
+    if (route.kind === 'none') return undefined;
+    if (route.kind === 'here') return { x: here.x, y: here.y, label: '', route: 'aquí' };
+    const r = this.doorRect(rooms[route.room], route.dir);
+    return { x: r.x + r.w / 2, y: r.y + r.h / 2, label: distanceLabel(route), route: `puerta ${route.room}:${route.dir}` };
+  }
+
+  /** Lo que señalan ahora las flechas (en el mundo), o undefined si no toca. También para la consola (guide()). */
+  private guideTargets() {
+    const out: Partial<Record<GuideKind, { x: number; y: number; label: string; route: string }>> = {};
+    if (!this.floor || !this.current || this.ended) return out;
+    const rooms = this.floor.rooms;
+    const known = knownRooms(rooms, this.visited, this.current.id, this.mapHiddenRooms());
+    // Jefe: mientras su sala no esté limpia y se vea en el minimapa (sin descubrir, no se indica)
+    const bid = this.floor.bossId;
+    const br = rooms[bid];
+    if (br && br.kind === 'boss' && !this.cleared.has(bid)) {
+      const b = this.bossBar?.boss;
+      const i = this.interior(br);
+      const t = this.guideTarget(bid, b?.active ? { x: b.x, y: b.y } : { x: i.cx, y: i.cy }, known);
+      if (t) out.boss = t;
+    }
+    // Trampilla: en cuanto aparece (en la Torre ya hay flecha propia junto al jugador)
+    const td = this.trapdoor;
+    if (td && !this.towerArrow) {
+      const tid = roomAtPoint(rooms, td.x, td.y, VIEW.w, VIEW.h);
+      out.trapdoor = (tid !== undefined ? this.guideTarget(tid, td, known) : undefined) ?? { x: td.x, y: td.y, label: '', route: 'directa' };
+    }
+    return out;
+  }
+
+  /** Cada fotograma: coloca las flechas en el borde de la vista (o las esconde) y refresca las marcas del minimapa. */
+  private guideTick() {
+    if (!this.player || !this.current || !this.hudLayer || !this.floor) return;
+    const now = this.time.now;
+    const gd = (this.guide ??= this.makeGuide());
+    if (now >= gd.nextCfg) {
+      gd.on = loadFx().guideArrows && guideModeOn(this.mode);
+      gd.nextCfg = now + 700;
+    }
+    // Minimapa: si cambia lo que queda en las salas (lo coges, cae botín, abres un cofre), se redibuja
+    if (now >= gd.nextLoot) {
+      gd.nextLoot = now + 250;
+      const sig = [...this.mapLoot()].map(([id, m]) => `${id}:${m.join('')}`).join(',');
+      if (sig !== gd.lootSig) {
+        const first = gd.lootSig === '' && sig === '';
+        gd.lootSig = sig;
+        if (!first) this.drawMap();
+      }
+    }
+    const targets = gd.on ? this.guideTargets() : {};
+    const cam = this.cameras.main;
+    const view = { x: cam.x, y: cam.y, w: cam.width, h: cam.height };
+    const ui = hudUiScale() * (this.touch ? 1.25 : 1);
+    const px = Math.max(3, Math.round(4 * ui));
+    const size = 11 * px;
+    const margin = size / 2 + 10;
+    let prev: { x: number; y: number } | undefined;
+    for (const kind of ['boss', 'trapdoor'] as const) {
+      const a = gd.arrows[kind];
+      const t = targets[kind];
+      if (!t) {
+        a.c.setVisible(false);
+        continue;
+      }
+      const sx = view.x + (t.x - cam.worldView.x) * cam.zoom;
+      const sy = view.y + (t.y - cam.worldView.y) * cam.zoom;
+      const spot = edgePlacement(view, sx, sy, margin, 8);
+      if (spot.onScreen) {
+        a.c.setVisible(false);
+        continue;
+      }
+      const at = prev ? separate(prev, spot, size + 8, view, margin) : spot;
+      prev = at;
+      const bob = lowFx() ? 0 : Math.sin(now / 180) * px * 0.6;
+      const cos = Math.cos(spot.angle);
+      const sin = Math.sin(spot.angle);
+      a.c.setVisible(true).setPosition(Math.round(at.x), Math.round(at.y));
+      a.arrow.setScale(px).setRotation(spot.angle).setPosition(cos * (size * 0.35 + bob), sin * (size * 0.35 + bob));
+      a.icon.setScale(px).setPosition(-cos * size * 0.45, -sin * size * 0.45);
+      if (a.text.text !== t.label) a.text.setText(t.label);
+      a.text.setPosition(a.icon.x, a.icon.y + size / 2 + 2).setVisible(t.label !== '');
+    }
+  }
+
   /** Pisar la columna: animación del supervisor (towerFx) y, al acabar, el piso siguiente. */
   private towerClimb() {
     const t = this.trapdoor;
@@ -10872,6 +11027,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!this.escKey) return; // create() aún no ha terminado de cargar
     this.adminTick();
     if (this.towerArrow) this.towerArrowTick();
+    this.guideTick();
     // Red de seguridad: nada sale de la arena (también después de la física, ver keepInside)
     this.keepInside();
     const menuPressed = Phaser.Input.Keyboard.JustDown(this.escKey) || Phaser.Input.Keyboard.JustDown(this.pauseKey) ||
