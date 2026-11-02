@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { fitDesign } from '../ui/layout';
-import { accountErrorMessage, checkEmail, checkName, checkPassword, MAX_NAME } from '../data/account';
+import { accountErrorMessage, checkEmail, checkName, checkPassword, MAX_NAME, MIN_PASSWORD } from '../data/account';
 import { accountInfo, deleteAccount, resetPassword, signIn, signInWithGoogle, signOutAccount, signUp } from '../net/cloud';
 import { googleIcon, mailIcon } from '../ui/art/accountIcons';
 import { COLORS, fadeIn, FONT, goTo, HEX, hex } from '../ui/theme';
@@ -128,7 +128,7 @@ export class AccountScene extends Phaser.Scene {
       text(up ? 'Crear cuenta' : 'Entrar', 22, true);
       text(a.loadFailed ? 'No se pudo leer tu progreso de la nube (¿sin conexión?). Recarga para reintentar.' : 'Juegas como invitado: tu progreso no se guardará al cerrar. Con una cuenta se guarda en la nube.', 14);
       const email = input('Correo', 'email', 'email');
-      const pass = input(up ? `Contraseña (mínimo 6 caracteres)` : 'Contraseña', 'password', up ? 'new-password' : 'current-password');
+      const pass = input(up ? `Contraseña (mínimo ${MIN_PASSWORD}, con mayúscula, número y símbolo)` : 'Contraseña', 'password', up ? 'new-password' : 'current-password');
       const name = up ? input(`Nombre público (opcional, hasta ${MAX_NAME})`, 'text', 'nickname', MAX_NAME) : null;
       const submit = () => {
         const err = checkEmail(email.value) ?? checkPassword(pass.value) ?? (name ? checkName(name.value) : null);

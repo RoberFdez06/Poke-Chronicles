@@ -208,6 +208,8 @@ export async function signUp(email: string, password: string, name: string): Pro
   const cred = await f.authMod.createUserWithEmailAndPassword(f.auth, email.trim(), password);
   const clean = sanitizeName(name);
   if (clean) await f.authMod.updateProfile(cred.user, { displayName: clean }).catch(() => undefined);
+  // Verificación de correo (mejor esfuerzo): evita registros con correos ajenos. No bloquea el registro si falla.
+  await f.authMod.sendEmailVerification(cred.user).catch(() => undefined);
   stashGuest();
   location.reload();
 }
