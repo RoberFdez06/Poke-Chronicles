@@ -83,13 +83,13 @@ export interface HudCamSlice {
   zoom: number;
 }
 export const HUD_SCALE_MAX = 1.6;
-/** Margen total que se deja en la banda (al borde de la ventana; el panel va pegado a la sala). */
+/** Margen total que se deja en la banda (repartido a partes iguales: borde de la ventana y sala). */
 export const HUD_BAND_MARGIN = 12;
 
 /**
  * Tramos de los paneles de la partida (coordenadas de diseño). Izquierda: pausa, parry, adrenalina, ficha,
  * contadores y rejilla de objetos (hasta 16 caben en 0..600), hueco recortable y objeto activo (cuadro en 954..1064).
- * Derecha: minimapa y avisos (recortable, se ven al menos 480 px: minimapa y 3-4 avisos) y esquiva + 4 ranuras
+ * Derecha: minimapa y avisos (recortable, se ven al menos 300 px: minimapa y 1-2 avisos) y esquiva + 4 ranuras
  * (desde 716).
  */
 export const HUD_LEFT_SEGS: HudSeg[] = [
@@ -98,7 +98,7 @@ export const HUD_LEFT_SEGS: HudSeg[] = [
   { y0: 940, y1: BASE_H },
 ];
 export const HUD_RIGHT_SEGS: HudSeg[] = [
-  { y0: 0, y1: 700, crop: true, minSrc: 480 },
+  { y0: 0, y1: 700, crop: true, minSrc: 300 },
   { y0: 700, y1: BASE_H },
 ];
 
@@ -117,7 +117,11 @@ export function hudPanelSlices(lw: number, side: 'left' | 'right', panelW: numbe
   const s = hudBandScale(lw, panelW, segs, h);
   const off = centerOffset(lw);
   const pw = panelW * s;
-  const dx = side === 'left' ? off + panelW - pw : off + BASE_W - panelW;
+  // Centrado en su banda: el ancho que sobra (si el alto no deja crecer más) se reparte igual entre el borde de
+  // la ventana y la sala, en vez de quedar todo como franja vacía en el borde exterior.
+  const band = off + panelW;
+  const bx = side === 'left' ? 0 : off + BASE_W - panelW;
+  const dx = bx + Math.max(0, (band - pw) / 2);
   const sx = side === 'left' ? 0 : BASE_W - panelW;
   const fixedDst = segs.reduce((a, g) => a + (g.crop ? 0 : (g.y1 - g.y0) * s), 0);
   const cropSrc = segs.reduce((a, g) => a + (g.crop ? g.y1 - g.y0 : 0), 0);

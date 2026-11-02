@@ -245,7 +245,7 @@ import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, LW, OFF, W } from '../u
 import { HUD_LEFT_SEGS, HUD_RIGHT_SEGS, hudPanelSlices, hudSlices } from '../data/wideLayout';
 import { bossHpFloor, enterSandbox, hasTutorial, leaveSandbox, refillHp, shortCooldown, TUTORIAL_BONUS, TUTORIAL_MODES, TUTORIAL_STARTER, tutorialStats, type TutorialMode } from '../data/bossTutorial';
 import { TutorialPanel } from './tutorialPanel';
-import { hudLayout, itemGrid, nameFontSize, HUD_BADGE_MAX_W, HUD_ITEM_R, HUD_PROGRESS_FONT } from '../data/hudLayout';
+import { counterRowLayout, hudLayout, itemGrid, nameFontSize, HUD_BADGE_MAX_W, HUD_ITEM_R, HUD_PROGRESS_FONT } from '../data/hudLayout';
 import {
   flowField,
   isWalkable,
@@ -936,6 +936,8 @@ export class GameScene extends Phaser.Scene {
   private prompt!: PromptPanel;
   private enterKey!: Key;
   private coinsHud!: Phaser.GameObjects.Text;
+  /** Contadores colocados por el ancho de sus cifras (counterRowLayout): iconos, zonas de clic y última firma. */
+  private counterRow?: { icons: Phaser.GameObjects.Image[]; zones: ({ setX(x: number): unknown } | undefined)[]; sig: string };
   private keysHud!: Phaser.GameObjects.Text;
   private bombsHud!: Phaser.GameObjects.Text;
   /** Llaves (abren cofres) y bombas (rompen rocas y abren la sala secreta). */
@@ -3258,8 +3260,9 @@ export class GameScene extends Phaser.Scene {
     this.hpText = txt(LX + HL.hpText.x, HL.hpText.y, hudFont(20), '#f8f8f8', true).setOrigin(1, 0.5);
     // Monedas, llaves y bombas (clic en la bomba para soltar una)
     hud(drawHudFrame(this.add.graphics(), LX, HL.counters.y, LW, HL.counters.h));
+    const counterIcons: Phaser.GameObjects.Image[] = [];
     const count = (iconKey: string, x: number) => {
-      hud(this.add.image(x, HL.counterIconY, iconKey).setScale(2));
+      counterIcons.push(hud(this.add.image(x, HL.counterIconY, iconKey).setScale(2)));
       return txt(x + 15, HL.counterIconY, hudFont(16, 22), '#f8f8f8', true).setOrigin(0, 0.5);
     };
     {
@@ -3280,6 +3283,7 @@ export class GameScene extends Phaser.Scene {
     bombBtn.on('pointerdown', () => this.placeBomb());
     const potionBtn = over(hud(this.add.zone(LX + HUD_COUNT_X.potion + 12, HL.counterIconY + 8, 50, 60).setInteractive({ useHandCursor: true })));
     potionBtn.on('pointerdown', () => this.drinkPotion());
+    this.counterRow = { icons: counterIcons, zones: [undefined, undefined, bombBtn, potionBtn], sig: '' };
     // Objetos pasivos
     this.invText = hud(this.add.text(LX + 2, HL.itemsTitleY, '', { fontFamily: FONT, fontSize: `${hudFont(15, 24)}px`, fontStyle: 'bold', color: '#ffffff' }));
     // Objeto activo: abajo a la izquierda (clic para usarlo)
@@ -11589,6 +11593,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.keysHud.setText(String(this.keys));
     this.bombsHud.setText(String(this.bombs));
     this.potionsHud?.setText(String(this.potions));
+    this.layoutCounters();
     this.touch?.setCount('bomb', this.bombs);
     this.touch?.setCount('potion', this.potions);
     this.paintBall(time);
@@ -11640,6 +11645,39 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         .centerOn(sl.src.x + sl.src.w / 2, sl.src.y + sl.src.h / 2)
         .setVisible(true);
     });
+  }
+
+  /**
+   * Coloca monedas, llaves, bombas y pociones según el ancho real de sus cifras (data/hudLayout.ts:
+   * counterRowLayout), para que «120» no pise la llave. Solo recalcula si cambia algún texto.
+   */
+  private layoutCounters() {
+    const row = this.counterRow;
+    const texts = [this.coinsHud, this.keysHud, this.bombsHud, this.potionsHud];
+    if (!row || texts.some((t) => !t)) return;
+    const sig = texts.map((t) => t!.text).join('|');
+    if (sig === row.sig) return;
+    row.sig = sig;
+    const LX = HUD.left.x + HUD.pad;
+    const pref = [HUD_COUNT_X.coin, HUD_COUNT_X.key, HUD_COUNT_X.bomb, HUD_COUNT_X.potion];
+    const { x, scale } = counterRowLayout(HUD.left.w - HUD.pad * 2, texts.map((t) => t!.width), pref);
+    texts.forEach((t, i) => {
+      row.icons[i]?.setX(LX + x[i]);
+      t!.setX(LX + x[i] + 15).setScale(scale);
+      row.zones[i]?.setX(LX + x[i] + 12);
+    });
+    for (const b of this.actionBadges) {
+      const nx = b.action === 'bomb' ? LX + x[2] + 6 : b.action === 'potion' ? LX + x[3] + 6 : b.x;
+      if (nx !== b.x) {
+        b.x = nx;
+        this.badgeShown = ''; // se vuelven a pintar en su sitio nuevo
+      }
+    }
+  }
+
+  /** x actual del icono del contador i (se mueve con counterRowLayout). */
+  private counterIconX(i: number, fallback: number): number {
+    return this.counterRow?.icons[i]?.x ?? fallback;
   }
 
   /** Ventana redimensionada (ui/wideScreen.ts): sala centrada con el mismo tamaño y HUD a los bordes, sin reiniciar. */
@@ -12908,9 +12946,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const LX = HUD.left.x + HUD.pad;
       const LW = HUD.left.w - HUD.pad * 2;
       const target: [number, number, Phaser.GameObjects.Text | undefined] =
-        drop.kind === 'coin' ? [LX + HUD_COUNT_X.coin, HL.counterIconY, this.coinsHud] : drop.kind === 'key' ? [LX + HUD_COUNT_X.key, HL.counterIconY, this.keysHud]
-          : drop.kind === 'bomb' ? [LX + HUD_COUNT_X.bomb, HL.counterIconY, this.bombsHud]
-          : drop.kind === 'potion' ? [LX + HUD_COUNT_X.potion, HL.counterIconY, this.potionsHud] : [LX + LW / 2, HL.hpBar.y + 6, this.hpText];
+        drop.kind === 'coin' ? [this.counterIconX(0, LX + HUD_COUNT_X.coin), HL.counterIconY, this.coinsHud] : drop.kind === 'key' ? [this.counterIconX(1, LX + HUD_COUNT_X.key), HL.counterIconY, this.keysHud]
+          : drop.kind === 'bomb' ? [this.counterIconX(2, LX + HUD_COUNT_X.bomb), HL.counterIconY, this.bombsHud]
+          : drop.kind === 'potion' ? [this.counterIconX(3, LX + HUD_COUNT_X.potion), HL.counterIconY, this.potionsHud] : [LX + LW / 2, HL.hpBar.y + 6, this.hpText];
       // Adorno: con efectos bajos (o si ya hay muchas partículas) no sale
       if (this.fxBudget.take(this.time.now)) lootFlash(this, sprite.x, sprite.y, (sprite.tintTopLeft || 0xffe066) as number);
       this.flyToHud(sprite.texture.key, sprite.frame.name, sprite.x, sprite.y, target[0], target[1], target[2]);

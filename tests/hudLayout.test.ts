@@ -56,3 +56,25 @@ test('los nombres largos se encogen para no pisar la Mega Piedra ni la Poké Bal
   }
   assert.equal(nameFontSize('Mew', l.name.maxW), 24);
 });
+
+test('contadores por ancho medido: 1 a 6 cifras de monedas sin pisarse ni salirse', async () => {
+  const { counterRowLayout, COUNTER_ICON_HALF, COUNTER_TEXT_DX, COUNTER_MIN_GAP } = await import('../src/data/hudLayout.ts');
+  const lw = 208;
+  const l = hudLayout(lw);
+  const pref = [l.counterX.coin, l.counterX.key, l.counterX.bomb, l.counterX.potion];
+  for (const coins of ['0', '12', '120', '1200', '12000', '120000']) {
+    for (const rest of [['4', '2', '1'], ['99', '99', '9'], ['999', '999', '999']]) {
+      const tw = [coins, ...rest].map((t) => approxTextWidth(t, 22));
+      const { x, scale } = counterRowLayout(lw, tw, pref);
+      assert.ok(scale > 0 && scale <= 1);
+      for (let i = 0; i < 4; i++) {
+        const end = x[i] + COUNTER_TEXT_DX + tw[i] * scale;
+        assert.ok(x[i] - COUNTER_ICON_HALF >= -1e-6 && end <= lw + 1e-6, `${coins} ${rest}: dentro`);
+        if (i < 3) assert.ok(x[i + 1] - COUNTER_ICON_HALF >= end + COUNTER_MIN_GAP - 1e-6, `${coins} ${rest}: ${i} pisa al siguiente`);
+      }
+      if (coins.length <= 3 && rest[0].length === 1) assert.equal(scale, 1, 'lo normal no encoge');
+    }
+  }
+  // cifras cortas: se quedan en su sitio de siempre
+  assert.deepEqual(counterRowLayout(lw, ['1', '1', '1', '1'].map((t) => approxTextWidth(t, 16)), pref).x, pref);
+});
