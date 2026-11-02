@@ -73,16 +73,19 @@ export interface TutorialState {
   seen: TipId[];
   /** "No más consejos". */
   off: boolean;
+  /** Modos cuyo tutorial de práctica (bossTutorial.ts) ya se ha jugado o se ha rechazado. */
+  practice: string[];
 }
 
-export const emptyTutorial = (): TutorialState => ({ seen: [], off: false });
+export const emptyTutorial = (): TutorialState => ({ seen: [], off: false, practice: [] });
 
 export function parseTutorial(raw: string | null): TutorialState {
   try {
     const d = raw ? JSON.parse(raw) : null;
     if (!d || typeof d !== 'object' || !Array.isArray(d.seen)) return emptyTutorial();
     const seen = TIP_IDS.filter((id) => d.seen.includes(id));
-    return { seen, off: d.off === true };
+    const practice = Array.isArray(d.practice) ? [...new Set((d.practice as unknown[]).filter((m): m is string => typeof m === 'string'))] : [];
+    return { seen, off: d.off === true, practice };
   } catch {
     return emptyTutorial();
   }

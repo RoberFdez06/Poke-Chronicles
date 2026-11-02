@@ -20,6 +20,9 @@ import { addModeIcon } from '../ui/art/modeIcons';
 import { sfx } from '../ui/audio';
 import { loadTdProgress, totalStars } from '../data/towerDefense/progress';
 import { currentPlan } from './runLaunch';
+import { loadTutorial, saveTutorial } from '../data/save';
+import { markPracticed, practiced, shouldOfferTutorial, tutorialModeFor, TUTORIAL_STARTER, type TutorialMode } from '../data/bossTutorial';
+import { currentInput } from '../ui/inputMode';
 
 /** Margen tras abrir la pantalla en el que se ignora confirmar (el Enter que pulsó «Jugar» no elige modo). */
 const INPUT_DELAY_MS = 350;
@@ -65,7 +68,8 @@ let lastCard = 0;
 export class ModeScene extends Phaser.Scene {
   private nav!: NavInput;
   private pad!: PadButtons;
-  private keys!: Record<'Q' | 'E' | 'C', Phaser.Input.Keyboard.Key>;
+  private keys!: Record<'Q' | 'E' | 'C' | 'T', Phaser.Input.Keyboard.Key>;
+  private tutBtn!: Phaser.GameObjects.Text;
   private cards: { frame: Phaser.GameObjects.Graphics; box: Phaser.GameObjects.Container; record: Phaser.GameObjects.Text }[] = [];
   private selected = 0;
   private records: Records = emptyRecords();
@@ -94,7 +98,7 @@ export class ModeScene extends Phaser.Scene {
     this.cards = [];
     this.nav = new NavInput(this);
     this.pad = new PadButtons(this);
-    this.keys = this.input.keyboard!.addKeys('Q,E,C', false) as ModeScene['keys'];
+    this.keys = this.input.keyboard!.addKeys('Q,E,C,T', false) as ModeScene['keys'];
     addBackButton(this, () => this.back());
     this.add.text(480, 48, '¿A qué quieres jugar?', { fontFamily: UI.FONT, fontSize: '34px', fontStyle: 'bold', color: '#ffd34d' })
       .setOrigin(0.5).setStroke('#2b3a67', 8);
@@ -109,6 +113,12 @@ export class ModeScene extends Phaser.Scene {
       c.on('pointerout', () => c.setColor('#ffffff'));
       c.on('pointerdown', () => this.resume());
     }
+
+    // Tutorial de práctica del modo elegido (bossTutorial.ts): Arceus, jugador potenciado y nada se guarda
+    this.tutBtn = this.add
+      .text(480, 79, '', { fontFamily: UI.FONT, fontSize: '14px', fontStyle: 'bold', color: '#ffffff', backgroundColor: '#2b3a67' })
+      .setOrigin(0.5).setPadding(10, 3).setDepth(5).setInteractive({ useHandCursor: true });
+    this.tutBtn.on('pointerdown', () => this.tutorialSelected());
 
     const prev = currentPlan();
     this.diff = prev.kind === 'mode' ? prev.difficulty : 'normal';
@@ -125,7 +135,7 @@ export class ModeScene extends Phaser.Scene {
     this.diffDesc = this.add.text(470, 0, '', { fontFamily: UI.FONT, fontSize: '14px', color: '#ffffff', wordWrap: { width: 460 } }).setOrigin(0, 0.5);
     this.diffRow = this.add.container(0, 562, [lbl, arrow(285, '◀', -1), this.diffText, arrow(440, '▶', 1), this.diffDesc]);
 
-    addHelpBar(this, 480, 604, 'Flechas o ratón: elegir · Enter o clic: jugar · Q/E o ◀ ▶: dificultad' + (this.hasRuns ? ' · C: continuar' : '') + ' · Esc: menú', {
+    addHelpBar(this, 480, 604, 'Flechas o ratón: elegir · Enter o clic: jugar · Q/E o ◀ ▶: dificultad · T: tutorial' + (this.hasRuns ? ' · C: continuar' : '') + ' · Esc: menú', {
         fontFamily: UI.FONT, fontSize: '14px', color: '#ffffff',
       }, 'Toca una tarjeta para jugar · ◀ ▶: dificultad')
       .setOrigin(0.5).setAlpha(0.85);
@@ -183,6 +193,60 @@ export class ModeScene extends Phaser.Scene {
     });
     // La dificultad solo cuenta en los modos con Pokémon
     this.diffRow?.setAlpha(this.usesDiff() ? 1 : 0.35);
+    this.paintTutorial();
+  }
+
+  /** Botón del tutorial del modo elegido: destacado si aún no lo has jugado; oculto en la Defensa de torres. */
+  private paintTutorial() {
+    if (!this.tutBtn) return;
+    const tm = tutorialModeFor(CARDS[this.selected].id);
+    this.tutBtn.setVisible(!!tm);
+    if (!tm) return;
+    const fresh = !practiced(loadTutorial(), tm);
+    const touch = currentInput() === 'touch' || mobileUi();
+    const base = `Tutorial de ${tm === 'normal' ? 'Normal' : CARDS.find((c) => c.id === tm)?.name ?? ''}`;
+    this.tutBtn.setText(`${fresh ? 'Nuevo · ' : ''}${base}${touch ? '' : ' (T · Y)'}`).setColor(fresh ? '#ffd34d' : '#ffffff');
+  }
+
+  private tutorialSelected() {
+    const tm = tutorialModeFor(CARDS[this.selected].id);
+    if (tm) this.startTutorial(tm);
+  }
+
+  private startTutorial(mode: TutorialMode) {
+    if (this.leaving || this.time.now < this.readyAt) return;
+    sfx('select');
+    this.leaving = true;
+    goTo(this, 'Game', { tutorial: mode, mode: 'bossrush', starterId: TUTORIAL_STARTER, slot: 0, difficulty: 'normal' });
+  }
+
+  /**
+   * La primera vez que eliges un modo con tutorial se recomienda jugarlo. «Jugar ya» lo deja apuntado (no vuelve a
+   * preguntar; el botón sigue ahí). Devuelve true si ha abierto la pregunta.
+   */
+  private offerTutorial(mode: TutorialMode, play: () => void): boolean {
+    if (!shouldOfferTutorial(loadTutorial(), mode) || !this.scene.manager.keys['ItemChoice']) return false;
+    this.leaving = true;
+    this.scene.launch('ItemChoice', {
+      title: 'PRIMERA VEZ',
+      text: 'Hay un tutorial de práctica contra Arceus: vas muy potenciado y te explica jefes, fases, parry, esquiva y transformaciones. No guarda nada.',
+      options: ['Jugar el tutorial (recomendado)', 'Jugar ya'],
+      cancel: 'Volver',
+      onChoice: (k: number) => {
+        this.scene.stop('ItemChoice');
+        this.leaving = false;
+        this.nav = new NavInput(this);
+        this.readyAt = 0;
+        if (k === 0) return this.startTutorial(mode);
+        if (k === 1) {
+          saveTutorial(markPracticed(loadTutorial(), mode));
+          this.paintTutorial();
+          return play();
+        }
+        this.readyAt = this.time.now + INPUT_DELAY_MS;
+      },
+    });
+    return true;
   }
 
   private usesDiff(): boolean {
@@ -222,8 +286,13 @@ export class ModeScene extends Phaser.Scene {
     }
     if (id === 'daily') return this.toSlots({ kind: 'daily' });
     if (id === 'code') return this.toSlots({ kind: 'code' });
-    if (id === 'tower' && this.askTowerStart()) return;
-    this.toSlots({ kind: 'mode', mode: id, difficulty: this.diff });
+    const go = () => {
+      if (id === 'tower' && this.askTowerStart()) return;
+      this.toSlots({ kind: 'mode', mode: id, difficulty: this.diff });
+    };
+    const tm = tutorialModeFor(id);
+    if (tm && this.offerTutorial(tm, go)) return;
+    go();
   }
 
   private toSlots(plan: RunPlan) {
@@ -290,6 +359,7 @@ export class ModeScene extends Phaser.Scene {
       if (J(this.keys.E) || pb.has('RB')) this.changeDiff(1);
     }
     if (J(this.keys.C) || pb.has('X')) return this.resume();
+    if (J(this.keys.T) || pb.has('Y')) return this.tutorialSelected();
     if (s.ok) this.pick(this.selected);
   }
 }
