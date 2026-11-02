@@ -5,8 +5,8 @@
 import Phaser from 'phaser';
 import { dashEnd } from '../data/bossBlitz';
 import {
-  laneHits, laneState, waveHits, zoneHits, COMBO_ACT_MS,
-  type CascadePlan, type ComboSpec, type ComboStep, type Pt,
+  laneHits, laneState, waveHits, zoneHits, COMBO_ACT_MS, chaseOrder, closingRadius, creepStep, homingStep,
+  type CascadePlan, type ChaseKind, type ChaseSpec, type ComboSpec, type ComboStep, type Pt,
 } from '../data/bossFrenzy';
 import type { Bounds } from '../level/bounds';
 import type { Hazard } from '../data/autoMove';
@@ -184,4 +184,118 @@ export function runCombo(h: FrenzyHost, steps: ComboStep[], spec: ComboSpec, das
     }
     return out;
   });
+}
+
+/**
+ * Acoso (fase 2): cada `everyMs` aparece algo que se ACERCA a ti, siempre con aviso y esquivable:
+ * - zona que se arrastra hacia ti (más lenta que tú), late al final y estalla en área dejando un charco que dura;
+ * - orbe teledirigido desde el jefe con giro limitado y vida corta (si giras cerca, se pasa de largo);
+ * - anillo que se cierra sobre tu posición con un hueco por el que salir.
+ * Un Graphics; como mucho `spec.maxLive` objetos vivos (charcos incluidos).
+ */
+export function runChase(h: FrenzyHost, spec: ChaseSpec) {
+  const sc = h.scene;
+  const order = chaseOrder(spec, Math.random);
+  type O = { kind: ChaseKind | 'puddle'; t0: number; x: number; y: number; ang: number; gap: number; hit: boolean; last: number; done: boolean };
+  const live: O[] = [];
+  let next = 0;
+  let idx = 0;
+  const total = Math.min(spec.durMs, order.length * spec.everyMs) + spec.warnMs + Math.max(spec.creepLife + 400, spec.ringMs, spec.homerLife) + spec.puddleMs;
+  const P = h.player;
+  const far = (x: number, y: number) => Math.hypot(x - P.x, y - P.y);
+  const B = h.arena;
+  const inArena = (x: number, y: number) => ({ x: Math.min(B.x1 - 30, Math.max(B.x0 + 30, x)), y: Math.min(B.y1 - 30, Math.max(B.y0 + 30, y)) });
+  run(h, (g, t) => {
+    if (idx < order.length && t >= next && t < spec.durMs && live.filter((o) => !o.done).length < spec.maxLive) {
+      const kind = order[idx++];
+      next = t + spec.everyMs;
+      let x = h.boss.x;
+      let y = h.boss.y;
+      if (kind === 'creep') {
+        // Aparece a 220-360 px de ti, dentro de la sala
+        const a = Math.random() * Math.PI * 2;
+        const r = 220 + Math.random() * 140;
+        ({ x, y } = inArena(P.x + Math.cos(a) * r, P.y + Math.sin(a) * r));
+      } else if (kind === 'ring') ({ x, y } = { x: P.x, y: P.y });
+      live.push({ kind, t0: t, x, y, ang: Math.atan2(P.y - y, P.x - x), gap: Math.random() * Math.PI * 2, hit: false, last: t, done: false });
+    }
+    for (const o of live) {
+      if (o.done) continue;
+      const lt = t - o.t0;
+      const dt = Math.min(50, t - o.last);
+      o.last = t;
+      if (o.kind === 'puddle') {
+        g.fillStyle(h.color, 0.22).fillCircle(o.x, o.y, spec.puddleR);
+        if (!h.low) g.lineStyle(2, h.color, 0.7).strokeCircle(o.x, o.y, spec.puddleR);
+        if (!o.hit && far(o.x, o.y) < spec.puddleR + 8) {
+          o.hit = true;
+          h.hurt();
+        }
+        if (lt > spec.puddleMs) o.done = true;
+        continue;
+      }
+      if (lt < spec.warnMs) {
+        const k = lt / spec.warnMs;
+        if (o.kind === 'creep') drawZoneWarn(g, o.x, o.y, spec.creepR, k, t, false, h.low);
+        else if (o.kind === 'ring') drawWaveWarn(g, o.x, o.y, spec.ringR0, o.gap, spec.ringGap, k, t, false, h.low);
+        else drawZoneWarn(g, o.x, o.y, 22, k, t, false, h.low);
+        continue;
+      }
+      const at = lt - spec.warnMs;
+      if (o.kind === 'creep') {
+        if (at < spec.creepLife) {
+          ({ x: o.x, y: o.y } = creepStep(o, P, spec.creepSpeed, dt));
+          const pulse = at > spec.creepLife - 600 && Math.floor(t / 90) % 2 === 0;
+          drawZoneBlast(g, o.x, o.y, spec.creepR, 0.25, h.color, h.low);
+          if (pulse) drawZoneWarn(g, o.x, o.y, spec.blastR, (at - spec.creepLife + 600) / 600, t, false, h.low);
+          if (!o.hit && far(o.x, o.y) < spec.creepR) {
+            o.hit = true;
+            h.hurt();
+          }
+        } else if (at < spec.creepLife + 260) {
+          const k = (at - spec.creepLife) / 260;
+          drawZoneBlast(g, o.x, o.y, spec.blastR, k, h.color, h.low);
+          if (o.hit === false && k < 0.4 && zoneHits(o.x, o.y, spec.blastR, P.x, P.y)) {
+            o.hit = true;
+            h.hurt();
+          }
+        } else {
+          // Charco persistente donde estalló (se acumulan unos segundos)
+          o.done = true;
+          h.sfx('boom');
+          if (live.filter((q) => !q.done).length < spec.maxLive) live.push({ kind: 'puddle', t0: t, x: o.x, y: o.y, ang: 0, gap: 0, hit: false, last: t, done: false });
+        }
+      } else if (o.kind === 'homer') {
+        if (at > spec.homerLife) {
+          o.done = true;
+          continue;
+        }
+        Object.assign(o, homingStep(o, o.ang, P, spec.homerSpeed, spec.homerTurn, dt));
+        g.fillStyle(h.color, 0.95).fillCircle(o.x, o.y, 11);
+        g.fillStyle(0xffffff, 0.9).fillCircle(o.x, o.y, 5);
+        if (far(o.x, o.y) < 11 + 12) {
+          o.done = true;
+          h.hurt();
+        }
+        if (o.x < B.x0 || o.x > B.x1 || o.y < B.y0 || o.y > B.y1) o.done = true;
+      } else {
+        if (at > spec.ringMs) {
+          o.done = true;
+          continue;
+        }
+        const r = closingRadius(spec.ringR0, at, spec.ringMs);
+        drawWave(g, o.x, o.y, r, 26, o.gap, spec.ringGap, h.color, h.low);
+        if (!o.hit && r > 20 && waveHits(o.x, o.y, r, 26, o.gap, spec.ringGap, P.x, P.y)) {
+          o.hit = true;
+          h.hurt();
+        }
+      }
+    }
+    return t < total && (idx < order.length || live.some((o) => !o.done));
+  }, 4, (t) => live.filter((o) => !o.done).map((o): Hazard => {
+    if (o.kind === 'ring') return { kind: 'ring', cx: o.x, cy: o.y, rMin: 0, rMax: closingRadius(spec.ringR0, Math.max(0, t - o.t0 - spec.warnMs), spec.ringMs) + 20, gapAng: o.gap, gapW: spec.ringGap };
+    const r = o.kind === 'puddle' ? spec.puddleR : o.kind === 'homer' ? 40 : spec.blastR;
+    return { kind: 'circle', x: o.x, y: o.y, r };
+  }));
+  return total;
 }

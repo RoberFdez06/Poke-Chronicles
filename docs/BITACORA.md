@@ -2185,3 +2185,25 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
 - **Probar** (consola): `__POKEISAAC_DEBUG__.megaRoom()` (te lleva a la sala), `weakGuardian()` (guardián a 1 PS),
   `megaAltar()` (estado). Sal y vuelve a entrar, o recarga la partida, en cada estado.
 - **Tests**: `tests/megaAltar.test.ts`.
+
+## 02/11 · Tormentas de cascadas y fase 2 agresiva
+
+- **Problema** (Roberto): las ráfagas de los jefes salían poco y duraban poco; muy fáciles de esquivar.
+- **Tormenta** (`storm`, «Tormenta»; `stormSpec`/`stormPlan` en `src/data/bossFrenzy.ts`): 3-5 cascadas (al menos una
+  mezclada y las simples distintas) que arrancan cada 600-900 ms y se SOLAPAN; cada una es una corriente de tandas de
+  su forma hasta el final. Dura 6-10 s en fase 1 y 9-14 s en fase 2, con rampa (empieza con ~45 % de elementos y acaba
+  densa). Aviso ≥ 750 ms (950 en Fácil). Tope de 40 elementos vivos (26 con lowFx); un solo Graphics (`runCascade`).
+- **Camino seguro**: `stormPath` crea un pasillo (radio 30) que sale de donde estás y se desplaza suave (smoothstep) a
+  ≤ 60 % de tu velocidad. Se pasa como hueco común a `cascadePlan` (nuevo parámetro `safe`) y lo que aún lo tocaría se
+  quita (líneas) o se reorienta su arco libre (anillos). Tests en `tests/bossStorm.test.ts`: ningún elemento activo
+  cubre el pasillo en ningún instante (salas 1200x800, 480x360, 2160x660; tres dificultades; fases 1 y 2).
+- **Frecuencia**: frenesí 60 % en fase 1 y 80 % en fase 2 (Fácil ×0,6, Difícil ×1,2 hasta 95 %), la mitad
+  tormentas; tras un frenesí solo `frenzyRest` (200-450 ms) hasta el siguiente. Las ráfagas apuntadas esperan.
+- **Fase 2 agresiva** (todos los jefes, desde la mitad de vida): `PHASE2_SPEED` 1,3 → 1,55, `attackInterval(2)`
+  1300 → 850, `volleyEvery(2)` 900 → 600, `volleyShots(2)` 5 → 7. Nuevo frenesí **Acoso** (`chase`, solo fase 2;
+  `chaseSpec`, `creepStep`, `homingStep`, `closingRadius`; `runChase` en `frenzyRuntime.ts`): zonas que se arrastran
+  hacia ti más lentas que tú y estallan en área dejando charcos que duran 2,5-4 s, orbes teledirigidos con giro
+  limitado y vida corta, y anillos que se cierran sobre ti con hueco. Todo con aviso, tope de objetos (28, 16 con
+  lowFx) y Fácil más suave. Tests en `tests/bossChase.test.ts`.
+- **Probar** (consola, con `spawnBoss()`): `__POKEISAAC_DEBUG__.frenzy('storm')`, `frenzy('chase')`; el modo
+  automático móvil esquiva ambos con `frenzyHazards()` (`autoState().hazards`).

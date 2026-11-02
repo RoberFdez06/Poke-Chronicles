@@ -9,10 +9,11 @@ import { clipBeamToBounds, type Bounds } from '../level/bounds.ts';
 import type { Difficulty } from './difficulty.ts';
 
 /** storm: tormenta, varias cascadas solapadas durante varios segundos con un pasillo seguro común que se desplaza. */
-export type FrenzyAttack = 'cascade' | 'feintCombo' | 'storm';
-export const FRENZY_ATTACKS: readonly FrenzyAttack[] = ['cascade', 'feintCombo', 'storm'];
+/** chase (solo fase 2): acoso, zonas que se arrastran hacia ti, orbes teledirigidos y anillos que se cierran. */
+export type FrenzyAttack = 'cascade' | 'feintCombo' | 'storm' | 'chase';
+export const FRENZY_ATTACKS: readonly FrenzyAttack[] = ['cascade', 'feintCombo', 'storm', 'chase'];
 export const isFrenzyAttack = (a: string): a is FrenzyAttack => (FRENZY_ATTACKS as readonly string[]).includes(a);
-export const FRENZY_LABEL: Record<FrenzyAttack, string> = { cascade: 'Cascada', feintCombo: 'Combo retardado', storm: 'Tormenta' };
+export const FRENZY_LABEL: Record<FrenzyAttack, string> = { cascade: 'Cascada', feintCombo: 'Combo retardado', storm: 'Tormenta', chase: 'Acoso' };
 
 /**
  * Aviso mínimo de cualquier golpe frenético (ms). Igual que TELEGRAPH_MS (750): más bajo que BLITZ_MIN_WARN (900)
@@ -801,10 +802,101 @@ export function maxOverlap(lanes: readonly Lane[]): number {
 /** Respiro tras un ataque frenético antes del siguiente (ms): corto, más en fase 2. */
 export const frenzyRest = (phase: 1 | 2, attack: FrenzyAttack): number => (attack === 'storm' ? (phase === 2 ? 250 : 450) : phase === 2 ? 200 : 350);
 
+// --- Acoso (fase 2): ataques que se acercan al jugador ---
+
+export interface ChaseSpec {
+  /** Zonas que se arrastran hacia ti (y al acabar estallan y dejan un charco que dura). */
+  creepers: number;
+  creepR: number;
+  /** px/s, siempre por debajo de la velocidad del jugador (se puede huir). */
+  creepSpeed: number;
+  creepLife: number;
+  /** Explosión final (radio) y charco persistente (radio, ms). */
+  blastR: number;
+  puddleR: number;
+  puddleMs: number;
+  /** Orbes teledirigidos: velocidad, giro máximo (rad/s) y vida corta (ms). */
+  homers: number;
+  homerSpeed: number;
+  homerTurn: number;
+  homerLife: number;
+  /** Anillos que se cierran sobre ti con un hueco. */
+  rings: number;
+  ringR0: number;
+  ringMs: number;
+  ringGap: number;
+  warnMs: number;
+  /** Cada cuánto aparece un elemento nuevo (ms) y cuánto dura el acoso. */
+  everyMs: number;
+  durMs: number;
+  /** Tope de objetos vivos a la vez. */
+  maxLive: number;
+}
+
+/** Fácil: menos y más lentos, más aviso; Difícil: más y algo más rápidos (siempre esquivables). */
+export function chaseSpec(floor: number, phase: 1 | 2, diff: Difficulty = 'normal', low = false): ChaseSpec {
+  const d = depth(floor);
+  const e = diff === 'easy';
+  const h = diff === 'hard';
+  return {
+    creepers: (e ? 3 : h ? 6 : 5) + Math.round(d),
+    creepR: e ? 50 : 60,
+    creepSpeed: PLAYER_BASE_SPEED * (e ? 0.38 : h ? 0.55 : 0.48),
+    creepLife: 2600,
+    blastR: e ? 90 : 110,
+    puddleR: e ? 44 : 54,
+    puddleMs: e ? 2500 : 4000,
+    homers: (e ? 4 : h ? 9 : 7) + Math.round(d * 2),
+    homerSpeed: PLAYER_BASE_SPEED * (e ? 0.85 : h ? 1.15 : 1),
+    homerTurn: e ? 1.4 : h ? 2.2 : 1.9,
+    homerLife: e ? 1800 : 2400,
+    rings: e ? 1 : h ? 3 : 2,
+    ringR0: 280,
+    ringMs: e ? 2000 : 1600,
+    ringGap: e ? 1.2 : 0.8,
+    warnMs: e ? 950 : FRENZY_MIN_WARN,
+    everyMs: e ? 520 : h ? 330 : 400,
+    durMs: phase === 2 ? 8000 : 6000,
+    maxLive: low ? 16 : 28,
+  };
+}
+
+/** Un paso de algo que se arrastra hacia `to` a `speed` px/s (sin pasarse). */
+export function creepStep(p: Pt, to: Pt, speed: number, dtMs: number): Pt {
+  const dx = to.x - p.x;
+  const dy = to.y - p.y;
+  const d = Math.hypot(dx, dy);
+  const m = (speed * dtMs) / 1000;
+  if (d <= m || d < 1e-9) return { x: to.x, y: to.y };
+  return { x: p.x + (dx / d) * m, y: p.y + (dy / d) * m };
+}
+
+/** Un paso de un orbe teledirigido: gira como mucho `turn` rad/s hacia `to` y avanza. */
+export function homingStep(p: Pt, ang: number, to: Pt, speed: number, turn: number, dtMs: number): { x: number; y: number; ang: number } {
+  let da = Math.atan2(to.y - p.y, to.x - p.x) - ang;
+  da = Math.atan2(Math.sin(da), Math.cos(da));
+  const max = (turn * dtMs) / 1000;
+  const a = ang + clamp(da, -max, max);
+  const m = (speed * dtMs) / 1000;
+  return { x: p.x + Math.cos(a) * m, y: p.y + Math.sin(a) * m, ang: a };
+}
+
+/** Radio de un anillo que se cierra (de r0 a 0 en `ms`). */
+export const closingRadius = (r0: number, t: number, ms: number): number => r0 * (1 - clamp(t / Math.max(1, ms), 0, 1));
+
+export type ChaseKind = 'creep' | 'homer' | 'ring';
+/** Orden de aparición: mezcla de los tres, con los anillos repartidos (nunca dos seguidos). */
+export function chaseOrder(spec: ChaseSpec, rng: () => number): ChaseKind[] {
+  const rest = shuffle<ChaseKind>([...Array.from({ length: spec.creepers }, () => 'creep' as const), ...Array.from({ length: spec.homers }, () => 'homer' as const)], rng);
+  const out: ChaseKind[] = [...rest];
+  for (let i = 0; i < spec.rings; i++) out.splice(Math.round(((i + 1) * out.length) / (spec.rings + 1)) + i, 0, 'ring');
+  return out;
+}
+
 // --- Selección ---
 
-/** Fase 1: cascadas y tormentas. Fase 2: además combos retardados. */
-export const frenzyAttacksFor = (phase: 1 | 2): FrenzyAttack[] => (phase === 2 ? ['cascade', 'storm', 'feintCombo'] : ['cascade', 'storm']);
+/** Fase 1: cascadas y tormentas. Fase 2: además combos retardados y acoso. */
+export const frenzyAttacksFor = (phase: 1 | 2): FrenzyAttack[] => (phase === 2 ? ['cascade', 'storm', 'feintCombo', 'chase'] : ['cascade', 'storm']);
 
 /** Probabilidad de que el siguiente ataque del jefe sea frenético: 60 % en fase 1 y 80 % en fase 2 (Fácil ×0,6,
  * Difícil ×1,2 hasta el 95 %). */

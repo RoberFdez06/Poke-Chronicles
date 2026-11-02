@@ -138,15 +138,17 @@ export const bossPhase = (hpRatio: number): 1 | 2 => (hpRatio < BOSS_PHASE2_AT ?
 export const TELEGRAPH_MS = 750;
 /** Tiempo entre ataques y cosas que cambian en la fase 2. */
 // 20/10 (Roberto): los legendarios atacan más a menudo (antes 3300 y 2100). 01/11 (frenesí): fase 2 de 1500 a 1300
-export const attackInterval = (phase: 1 | 2): number => (phase === 2 ? 1300 : 2300);
+// 02/11 (fase 2 agresiva): fase 2 de 1300 a 850, ráfagas cada 600 ms (antes 900) con 7 disparos (antes 5)
+export const attackInterval = (phase: 1 | 2): number => (phase === 2 ? 850 : 2300);
 /** Entre ataque y ataque, ráfagas cortas apuntadas al jugador (ms entre una y otra) y cuántos disparos. */
-export const volleyEvery = (phase: 1 | 2): number => (phase === 2 ? 900 : 1300);
-export const volleyShots = (phase: 1 | 2): number => (phase === 2 ? 5 : 3);
+export const volleyEvery = (phase: 1 | 2): number => (phase === 2 ? 600 : 1300);
+export const volleyShots = (phase: 1 | 2): number => (phase === 2 ? 7 : 3);
 /** Además, cada cierto tiempo llaman refuerzos por su cuenta (ms). */
 export const reinforceEvery = (phase: 1 | 2): number => (phase === 2 ? 7000 : 10000);
 export const ringCount = (phase: 1 | 2): number => (phase === 2 ? 16 : 10);
 export const rainCount = (phase: 1 | 2): number => (phase === 2 ? 6 : 4);
-export const PHASE2_SPEED = 1.3;
+/** Velocidad del jefe en fase 2 (antes 1,3). */
+export const PHASE2_SPEED = 1.55;
 
 /** Siguiente ataque al azar, sin repetir el último si hay otros. */
 export function pickAttack(attacks: readonly BossAttack[], rng: () => number, last?: BossAttack): BossAttack {
