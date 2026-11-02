@@ -8,6 +8,18 @@ export function isBenignError(err: unknown): boolean {
   return BENIGN.some((re) => re.test(text));
 }
 
+/**
+ * «Script error.» sin objeto de error ni archivo: el navegador oculta el detalle de un fallo de un script de OTRO origen
+ * (extensiones de Safari, bloqueadores, scripts inyectados…). No es del juego y no se puede arreglar desde aquí:
+ * se anota en la consola y no se saca la pantalla de error.
+ */
+export function isOpaqueScriptError(ev: { message?: unknown; error?: unknown; filename?: unknown }): boolean {
+  if (ev.error != null) return false;
+  const msg = typeof ev.message === 'string' ? ev.message.trim() : '';
+  const file = typeof ev.filename === 'string' ? ev.filename : '';
+  return /^script error\.?$/i.test(msg) && file === '';
+}
+
 /** Mensaje corto para el cuadro (una línea, sin la pila). */
 export function shortMessage(err: unknown, max = 140): string {
   let text: string;

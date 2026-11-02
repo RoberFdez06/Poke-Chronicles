@@ -2,14 +2,17 @@
 // y "Copiar detalles". Es HTML encima del juego porque un error dentro de una escena para el bucle de Phaser.
 // Teclado (flechas/Tab, Enter, Esc), ratón y mando (cruceta, A, B). El guardado no se toca.
 import Phaser from 'phaser';
-import { errorDetails, isBenignError, shortMessage } from '../data/errorReport';
+import { errorDetails, isBenignError, isOpaqueScriptError, shortMessage } from '../data/errorReport';
 import { COLORS, FONT, hex } from './theme';
 
 let open = false;
 
 /** Engancha los errores globales (window.onerror y promesas sin capturar) a la pantalla de error. */
 export function installErrorScreen(game: Phaser.Game) {
-  window.addEventListener('error', (e) => handle(game, e.error ?? e.message));
+  window.addEventListener('error', (e) => {
+    if (isOpaqueScriptError(e)) return console.warn('[Poké Chronicles] «Script error.» de otro origen (ignorado):', e.message);
+    handle(game, e.error ?? e.message);
+  });
   window.addEventListener('unhandledrejection', (e) => handle(game, e.reason));
 }
 

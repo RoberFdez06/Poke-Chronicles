@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { errorDetails, isBenignError, shortMessage } from '../src/data/errorReport.ts';
+import { errorDetails, isBenignError, isOpaqueScriptError, shortMessage } from '../src/data/errorReport.ts';
 
 test('mensaje corto: una línea y con tope', () => {
   assert.equal(shortMessage(new Error('falló\n  la carga')), 'falló la carga');
@@ -27,4 +27,12 @@ test('detalles para copiar: contexto y pila', () => {
   assert.match(d, /Navegador: UA/);
   assert.ok(d.includes(err.stack!.split('\n')[0]));
   assert.match(errorDetails('cadena', { scenes: [], url: '', userAgent: '', when: '' }), /\(sin pila\)/);
+});
+
+test('«Script error.» opaco de otro origen se ignora; un error real del juego no', () => {
+  assert.ok(isOpaqueScriptError({ message: 'Script error.', error: null, filename: '' }));
+  assert.ok(isOpaqueScriptError({ message: 'Script error', filename: '' }));
+  assert.ok(!isOpaqueScriptError({ message: 'Script error.', error: new Error('x'), filename: '' }));
+  assert.ok(!isOpaqueScriptError({ message: 'Script error.', error: null, filename: 'https://x/assets/index.js' }));
+  assert.ok(!isOpaqueScriptError({ message: "Cannot read properties of undefined (reading 'x')", error: null, filename: '' }));
 });
