@@ -242,7 +242,7 @@ import { pmdAvailable, pmdMega, pmdShiny } from '../data/pmdForms';
 import { applyPose, dressLoose, liftSprite, poseFor, procAnimate, resetLift } from '../ui/locoAnim';
 import { locomotionOf } from '../data/locomotion';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, LW, OFF, W } from '../ui/layout';
-import { hudSlices } from '../data/wideLayout';
+import { HUD_LEFT_SEGS, HUD_RIGHT_SEGS, hudPanelSlices, hudSlices } from '../data/wideLayout';
 import { bossHpFloor, enterSandbox, hasTutorial, leaveSandbox, refillHp, shortCooldown, TUTORIAL_BONUS, TUTORIAL_MODES, TUTORIAL_STARTER, tutorialStats, type TutorialMode } from '../data/bossTutorial';
 import { TutorialPanel } from './tutorialPanel';
 import { hudLayout, itemGrid, nameFontSize, HUD_BADGE_MAX_W, HUD_ITEM_R, HUD_PROGRESS_FONT } from '../data/hudLayout';
@@ -3172,7 +3172,8 @@ export class GameScene extends Phaser.Scene {
     // Pantalla ancha (data/wideLayout.ts): el HUD se pinta con tres cámaras (panel izquierdo, centro y panel
     // derecho) para pegar los paneles a los bordes reales. El id de hudCam lleva también los bits de las otras
     // dos, así «ignore» y «cameraFilter &= ~hudCam.id» valen para las tres sin tocar el resto del código.
-    this.hudSideCams = [this.cameras.add(0, 0, HUD.left.w, H).setName('hud-left'), this.cameras.add(0, 0, HUD.right.w, H).setName('hud-right')];
+    // Paneles más grandes en ancho: hasta 3 cámaras por lado (un tramo cada una, ver hudPanelSlices)
+    this.hudSideCams = [0, 1, 2, 3, 4, 5].map((i) => this.cameras.add(0, 0, HUD.left.w, H).setName(`hud-side-${i}`));
     for (const c of this.hudSideCams) (hudCam as { id: number }).id |= c.id;
     this.layoutHudCams();
     hudCam.ignore(this.children.list.filter((o) => o !== this.hudLayer));
@@ -11620,16 +11621,25 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private layoutHudCams() {
     const hudCam = this.hudCam;
     if (!hudCam) return;
-    const [left, right] = this.hudSideCams;
-    if (OFF <= 0 || !left || !right) {
+    for (const c of this.hudSideCams) c.setVisible(false);
+    if (OFF <= 0 || this.hudSideCams.length < 5) {
       hudCam.setViewport(0, 0, W, H).setScroll(0, 0);
-      for (const c of this.hudSideCams) c.setVisible(false);
       return;
     }
     const s = hudSlices(LW, HUD.left.w, HUD.right.w, H);
     hudCam.setViewport(s.center.dst.x, 0, s.center.dst.w, H).setScroll(s.center.src.x, 0);
-    left.setViewport(s.left.dst.x, 0, s.left.dst.w, H).setScroll(s.left.src.x, 0).setVisible(true);
-    right.setViewport(s.right.dst.x, 0, s.right.dst.w, H).setScroll(s.right.src.x, 0).setVisible(true);
+    // Paneles laterales escalados (data/wideLayout.ts): cada tramo, una cámara con zoom que enseña su trozo de diseño
+    const slices = [...hudPanelSlices(LW, 'left', HUD.left.w, HUD_LEFT_SEGS, H), ...hudPanelSlices(LW, 'right', HUD.right.w, HUD_RIGHT_SEGS, H)];
+    slices.forEach((sl, i) => {
+      const c = this.hudSideCams[i];
+      if (!c) return;
+      const x0 = Math.round(sl.dst.x);
+      const y0 = Math.round(sl.dst.y);
+      c.setViewport(x0, y0, Math.round(sl.dst.x + sl.dst.w) - x0, Math.round(sl.dst.y + sl.dst.h) - y0)
+        .setZoom(sl.zoom)
+        .centerOn(sl.src.x + sl.src.w / 2, sl.src.y + sl.src.h / 2)
+        .setVisible(true);
+    });
   }
 
   /** Ventana redimensionada (ui/wideScreen.ts): sala centrada con el mismo tamaño y HUD a los bordes, sin reiniciar. */

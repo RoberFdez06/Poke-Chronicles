@@ -64,6 +64,86 @@ export function screenToHudX(sx: number, lw: number, leftW: number, rightW: numb
 }
 
 /**
+ * Paneles laterales más grandes en pantalla ancha. Cada panel (columna de diseño de `panelW` × 1080) se parte en
+ * tramos verticales: los fijos (con contenido) se pintan enteros a escala s; los «recortables» (huecos o zonas que
+ * pueden mostrarse solo en parte, como la pila de avisos) reparten el alto que sobra y enseñan solo su parte de
+ * arriba (al menos `minSrc` px de diseño). Todo con el mismo zoom s, así nada se deforma.
+ */
+export interface HudSeg {
+  y0: number;
+  y1: number;
+  crop?: boolean;
+  /** Solo recortables: alto de diseño que debe verse como mínimo. */
+  minSrc?: number;
+}
+/** Una cámara de un panel: trozo del diseño (src), dónde se pinta (dst) y su zoom (dst = src × zoom). */
+export interface HudCamSlice {
+  src: Rect;
+  dst: Rect;
+  zoom: number;
+}
+export const HUD_SCALE_MAX = 1.6;
+/** Margen total que se deja en la banda (al borde de la ventana; el panel va pegado a la sala). */
+export const HUD_BAND_MARGIN = 12;
+
+/**
+ * Tramos de los paneles de la partida (coordenadas de diseño). Izquierda: pausa, parry, adrenalina, ficha,
+ * contadores y rejilla de objetos (hasta 16 caben en 0..600), hueco recortable y objeto activo (cuadro en 954..1064).
+ * Derecha: minimapa y avisos (recortable, se ven al menos 480 px: minimapa y 3-4 avisos) y esquiva + 4 ranuras
+ * (desde 716).
+ */
+export const HUD_LEFT_SEGS: HudSeg[] = [
+  { y0: 0, y1: 600 },
+  { y0: 600, y1: 940, crop: true },
+  { y0: 940, y1: BASE_H },
+];
+export const HUD_RIGHT_SEGS: HudSeg[] = [
+  { y0: 0, y1: 700, crop: true, minSrc: 480 },
+  { y0: 700, y1: BASE_H },
+];
+
+/** Factor de escala de un panel lateral: 1 en 16:9; en ancho, lo que quepa a lo ancho y a lo alto, con tope. */
+export function hudBandScale(lw: number, panelW: number, segs: HudSeg[], h = BASE_H): number {
+  if (lw <= BASE_W || panelW <= 0) return 1;
+  const band = centerOffset(lw) + panelW;
+  const byW = (band - HUD_BAND_MARGIN) / panelW;
+  const need = segs.reduce((a, g) => a + (g.crop ? (g.minSrc ?? 0) : g.y1 - g.y0), 0);
+  const byH = need > 0 ? h / need : HUD_SCALE_MAX;
+  return Math.max(1, Math.min(HUD_SCALE_MAX, byW, byH));
+}
+
+/** Cámaras de un panel lateral (izquierdo o derecho) para un lienzo de ancho lw. */
+export function hudPanelSlices(lw: number, side: 'left' | 'right', panelW: number, segs: HudSeg[], h = BASE_H): HudCamSlice[] {
+  const s = hudBandScale(lw, panelW, segs, h);
+  const off = centerOffset(lw);
+  const pw = panelW * s;
+  const dx = side === 'left' ? off + panelW - pw : off + BASE_W - panelW;
+  const sx = side === 'left' ? 0 : BASE_W - panelW;
+  const fixedDst = segs.reduce((a, g) => a + (g.crop ? 0 : (g.y1 - g.y0) * s), 0);
+  const cropSrc = segs.reduce((a, g) => a + (g.crop ? g.y1 - g.y0 : 0), 0);
+  const free = Math.max(0, h - fixedDst);
+  const out: HudCamSlice[] = [];
+  let y = 0;
+  segs.forEach((g, i) => {
+    const full = (g.y1 - g.y0) * s;
+    let dh = g.crop ? (cropSrc > 0 ? Math.min(full, (free * (g.y1 - g.y0)) / cropSrc) : 0) : full;
+    if (i === segs.length - 1) dh = Math.max(0, Math.min(full, h - y));
+    if (dh > 0) out.push({ src: { x: sx, y: g.y0, w: panelW, h: dh / s }, dst: { x: dx, y, w: pw, h: dh }, zoom: s });
+    y += dh;
+  });
+  return out;
+}
+
+/** Pasa un punto de pantalla a coordenadas del diseño (1920 × 1080) según la cámara del HUD que lo pinta. */
+export function screenToHud(sx: number, sy: number, lw: number, leftW: number, rightW: number, leftSegs: HudSeg[], rightSegs: HudSeg[]): { x: number; y: number } {
+  for (const c of [...hudPanelSlices(lw, 'left', leftW, leftSegs), ...hudPanelSlices(lw, 'right', rightW, rightSegs)]) {
+    const d = c.dst;
+    if (sx >= d.x && sx < d.x + d.w && sy >= d.y && sy < d.y + d.h) return { x: c.src.x + (sx - d.x) / c.zoom, y: c.src.y + (sy - d.y) / c.zoom };
+  }
+  return { x: sx - centerOffset(lw), y: sy };
+}
+
+/**
  * Menús de dos columnas (p. ej. la Pausa): cuánto se separa cada columna hacia su lado, en unidades de diseño,
  * a partir del ancho de cada banda lateral. La mitad de la banda, con tope, y 0 en 16:9.
  */

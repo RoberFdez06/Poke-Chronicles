@@ -58,3 +58,69 @@ test('separación de columnas de menú: 0 en 16:9, con tope en 21:9', () => {
   const b = band(2592);
   assert.ok(40 - MENU_SPREAD_MAX >= -b && 905 + MENU_SPREAD_MAX <= 960 + b);
 });
+
+// Paneles laterales más grandes en pantalla ancha
+import { HUD_LEFT_SEGS, HUD_RIGHT_SEGS, HUD_SCALE_MAX, hudBandScale, hudPanelSlices, logicalWidth as lwOf, screenToHud } from '../src/data/wideLayout.ts';
+
+test('escala de los paneles: 1 en 16:9 y nunca menos de 1 ni más del tope', () => {
+  assert.equal(hudBandScale(1920, 240, HUD_LEFT_SEGS), 1);
+  assert.equal(hudBandScale(1920, 240, HUD_RIGHT_SEGS), 1);
+  for (const [w, h] of [[1600, 900], [1920, 950], [2160, 1080], [2560, 1080], [3440, 1440], [5120, 1080]]) {
+    const lw = lwOf(w, h, false);
+    for (const segs of [HUD_LEFT_SEGS, HUD_RIGHT_SEGS]) {
+      const s = hudBandScale(lw, 240, segs);
+      assert.ok(s >= 1 && s <= HUD_SCALE_MAX, `${w}×${h}: ${s}`);
+    }
+  }
+  assert.ok(hudBandScale(2160, 240, HUD_LEFT_SEGS) > 1.3, '2:1 se agranda de verdad');
+});
+
+test('cámaras de los paneles: dentro de la pantalla, sin pisar la sala ni entre sí, y todo el contenido fijo entero', () => {
+  for (const lw of [1920, 2160, 2182, 2520, 2560, 2592]) {
+    const off = (lw - 1920) / 2;
+    for (const [side, segs] of [['left', HUD_LEFT_SEGS], ['right', HUD_RIGHT_SEGS]] as const) {
+      const cams = hudPanelSlices(lw, side, 240, segs);
+      let y = 0;
+      for (const c of cams) {
+        assert.ok(c.dst.x >= -1e-9 && c.dst.x + c.dst.w <= lw + 1e-9, 'dentro a lo ancho');
+        if (side === 'left') assert.ok(c.dst.x + c.dst.w <= off + 240 + 1e-9, 'no pisa la sala');
+        else assert.ok(c.dst.x >= off + 1680 - 1e-9, 'no pisa la sala');
+        assert.ok(Math.abs(c.dst.y - y) < 1e-9, 'tramos seguidos, sin solapes');
+        assert.ok(Math.abs(c.dst.w - c.src.w * c.zoom) < 1e-6 && Math.abs(c.dst.h - c.src.h * c.zoom) < 1e-6, 'sin deformar');
+        y = c.dst.y + c.dst.h;
+      }
+      assert.ok(Math.abs(y - 1080) < 1e-6, 'llena el alto justo');
+      for (const g of segs.filter((g) => !g.crop)) {
+        const c = cams.find((c) => Math.abs(c.src.y - g.y0) < 1e-9);
+        assert.ok(c && Math.abs(c.src.h - (g.y1 - g.y0)) < 1e-6, 'tramo fijo entero');
+      }
+      for (const g of segs.filter((g) => g.crop && g.minSrc)) {
+        const c = cams.find((c) => Math.abs(c.src.y - g.y0) < 1e-9);
+        assert.ok(c && c.src.h >= (g.minSrc ?? 0) - 1e-6, 'se ve lo mínimo del recortable');
+      }
+      if (lw > 1920) assert.ok(Math.abs((side === 'left' ? cams[0].dst.x + cams[0].dst.w : cams[0].dst.x) - (side === 'left' ? off + 240 : off + 1680)) < 1e-6, 'pegado a la sala');
+    }
+  }
+  // 16:9: el reparto de siempre
+  const l = hudPanelSlices(1920, 'left', 240, HUD_LEFT_SEGS);
+  assert.deepEqual(l.map((c) => [c.dst.x, c.dst.w, c.zoom]), l.map(() => [0, 240, 1]));
+});
+
+test('pantalla → diseño con los paneles escalados (ratón y botones del HUD)', () => {
+  for (const lw of [1920, 2182, 2560]) {
+    for (const [side, segs] of [['left', HUD_LEFT_SEGS], ['right', HUD_RIGHT_SEGS]] as const) {
+      for (const c of hudPanelSlices(lw, side, 240, segs)) {
+        // el centro de cada cámara cae en el centro de su trozo de diseño
+        const p = screenToHud(c.dst.x + c.dst.w / 2, c.dst.y + c.dst.h / 2, lw, 240, 240, HUD_LEFT_SEGS, HUD_RIGHT_SEGS);
+        assert.ok(Math.abs(p.x - (c.src.x + c.src.w / 2)) < 1e-6 && Math.abs(p.y - (c.src.y + c.src.h / 2)) < 1e-6);
+      }
+    }
+    // la sala y el HUD del centro no cambian
+    assert.deepEqual(screenToHud(lw / 2, 500, lw, 240, 240, HUD_LEFT_SEGS, HUD_RIGHT_SEGS), { x: 960, y: 500 });
+  }
+  // el botón de pausa (diseño 16..80 × 16..80) sigue donde se ve
+  const lw = 2560;
+  const c = hudPanelSlices(lw, 'left', 240, HUD_LEFT_SEGS)[0];
+  const p = screenToHud(c.dst.x + 48 * c.zoom, 48 * c.zoom, lw, 240, 240, HUD_LEFT_SEGS, HUD_RIGHT_SEGS);
+  assert.ok(Math.abs(p.x - 48) < 1e-6 && Math.abs(p.y - 48) < 1e-6);
+});
