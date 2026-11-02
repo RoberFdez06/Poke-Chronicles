@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { fitTextLine } from '../ui/fitText';
 import { addHelpBar } from '../ui/helpBar';
-import { BAND, COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
+import { MENU_BAND, COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { menuSpread } from '../data/wideLayout';
 import { openControls } from './ControlsScene';
 import type { MovePower, PlayerStats } from '../data/items';
@@ -157,7 +157,7 @@ export class PauseScene extends Phaser.Scene {
     });
 
     // Pantalla ancha: panel y lista se separan hacia los lados para que no vayan tan juntos
-    const spread = menuSpread(BAND);
+    const spread = menuSpread(MENU_BAND);
     if (spread > 0) {
       for (const o of this.children.list.slice(panelFrom)) {
         const m = o as Phaser.GameObjects.GameObject & { x?: number };

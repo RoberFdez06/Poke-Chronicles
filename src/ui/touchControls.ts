@@ -44,11 +44,26 @@ interface Stick {
   vec: Phaser.Math.Vector2;
 }
 
+/**
+ * Cómo se ven los controles cuando el HUD va escalado (lienzo táctil ensanchado, rama `movilhud`): los objetos se
+ * pintan en una cámara sin zoom en coordenadas de pantalla; `toScreen` lleva un punto del diseño del HUD a la
+ * pantalla (con el zoom de su panel) y `toDesign` hace lo contrario (data/wideLayout.ts: hudToScreen/screenToHud).
+ * Sin vista (null), todo es como siempre: diseño = pantalla.
+ */
+export interface TouchView {
+  toScreen(x: number, y: number): { x: number; y: number; zoom: number };
+  toDesign(x: number, y: number): { x: number; y: number };
+}
+
 interface Btn {
   id: TouchButton;
   x: number;
   y: number;
   size: number;
+  /** Dónde se ve y se toca en pantalla (igual que x, y, size sin vista escalada). */
+  sx: number;
+  sy: number;
+  ss: number;
   img: Phaser.GameObjects.Image;
   visible: boolean;
   /** Apagado (recargando, vacío o sin carga): se puede tocar igual (el juego avisa si no hay). */
@@ -103,7 +118,7 @@ export class TouchControls {
     for (const id of Object.keys(layout) as TouchButton[]) {
       const b = layout[id];
       const img = keep(scene.add.image(b.x, b.y, touchBtnKey(id, 'up')).setScale(b.size / TOUCH_FRAME));
-      this.buttons.push({ id, ...b, img, visible: true, dim: false, downUntil: 0 });
+      this.buttons.push({ id, ...b, sx: b.x, sy: b.y, ss: b.size, img, visible: true, dim: false, downUntil: 0 });
     }
     // «Usar» solo aparece cerca de algo con lo que interactuar (GameScene llama a setUseVisible)
     this.setUseVisible(false);
@@ -247,7 +262,33 @@ export class TouchControls {
   }
 
   private hitButton(p: Phaser.Input.Pointer): Btn | null {
-    return hitPadButton(p.x, p.y, this.buttons, this.hitR);
+    const hit = hitPadButton(p.x, p.y, this.buttons.map((b) => ({ x: b.sx, y: b.sy, size: b.ss, visible: b.visible, b })), this.hitR);
+    return hit ? hit.b : null;
+  }
+
+  private view: TouchView | null = null;
+
+  /** Objetos de Phaser de los controles (GameScene los cambia de capa al escalar el HUD). */
+  get displayObjects(): readonly Phaser.GameObjects.GameObject[] {
+    return this.objects;
+  }
+
+  /** Pone (o quita, con null) la vista escalada: recoloca botones y pistas y suelta los joysticks. */
+  setView(v: TouchView | null) {
+    if (this.dead) return;
+    this.view = v;
+    for (const s of [this.sticks.move, this.sticks.aim]) {
+      if (s.pointer !== null) this.release(s);
+      const h = v ? v.toScreen(HINT[s.side].x, HINT[s.side].y) : HINT[s.side];
+      s.hint.setPosition(h.x, h.y);
+    }
+    for (const b of this.buttons) {
+      const p = v ? v.toScreen(b.x, b.y) : { x: b.x, y: b.y, zoom: 1 };
+      b.sx = p.x;
+      b.sy = p.y;
+      b.ss = b.size * p.zoom;
+      if (b.img.active) b.img.setPosition(b.sx, b.sy).setScale(b.ss / TOUCH_FRAME);
+    }
   }
 
   private onDown(p: Phaser.Input.Pointer) {
@@ -258,7 +299,9 @@ export class TouchControls {
       this.pressBtn(b.id);
       return;
     }
-    const side = stickZone(p.x, p.y, W, this.blocked());
+    // Las zonas reservadas están en coordenadas del diseño del HUD
+    const d = this.view ? this.view.toDesign(p.x, p.y) : p;
+    const side = stickZone(d.x, d.y, W, this.blocked());
     if (!side) return;
     const s = this.sticks[side];
     if (s.pointer !== null) return;

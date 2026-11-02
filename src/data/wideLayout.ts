@@ -108,6 +108,21 @@ export const HUD_RIGHT_SEGS_TOUCH: HudSeg[] = [
   { y0: 700, y1: BASE_H },
 ];
 
+/**
+ * Táctil con el lienzo ensanchado sin bandas (modo «lienzo» a ≈2,0–2,6:1, rama `movilhud`): los botones táctiles
+ * van DENTRO de los paneles, así que sus filas deben quedar en tramos fijos (se ven enteras).
+ *  - Izquierda: Activo/Bomba y Usar/Poción (padButtons) empiezan en y ≈ 838 con la interfaz al máximo; el hueco
+ *    recortable se queda en 600..828.
+ *  - Derecha: minimapa de móvil (hasta 396), hasta dos avisos debajo, Parry/Esquiva (desde ≈ 652) y las 4 ranuras:
+ *    todo tiene contenido, así que va entero (escala 1: no se corta ningún aviso).
+ */
+export const HUD_LEFT_SEGS_TOUCH_CANVAS: HudSeg[] = [
+  { y0: 0, y1: 600 },
+  { y0: 600, y1: 828, crop: true },
+  { y0: 828, y1: BASE_H },
+];
+export const HUD_RIGHT_SEGS_TOUCH_CANVAS: HudSeg[] = [{ y0: 0, y1: BASE_H }];
+
 /** Factor de escala de un panel lateral: 1 en 16:9; en ancho, lo que quepa a lo ancho y a lo alto, con tope. */
 export function hudBandScale(lw: number, panelW: number, segs: HudSeg[], h = BASE_H): number {
   if (lw <= BASE_W || panelW <= 0) return 1;
@@ -162,4 +177,22 @@ export function menuSpread(band: number): number {
   const base = (BASE_W / BASE_H) * 640; // ancho visible del diseño 960×640 en 16:9 (≈ 1137,8)
   const extra = band - (base - 960) / 2;
   return extra > 4 ? Math.min(MENU_SPREAD_MAX, Math.floor(extra / 2)) : 0;
+}
+
+/**
+ * Al revés que screenToHud: dónde se ve en pantalla un punto del diseño (1920 × 1080) del HUD y con qué zoom.
+ * `visible` = false si cae en la parte recortada de un panel (no se pinta). El centro (sala) va sin zoom.
+ */
+export function hudToScreen(x: number, y: number, lw: number, leftW: number, rightW: number, leftSegs: HudSeg[], rightSegs: HudSeg[]): { x: number; y: number; zoom: number; visible: boolean } {
+  const side = x < leftW ? 'left' : x >= BASE_W - rightW ? 'right' : null;
+  if (side) {
+    const cams = side === 'left' ? hudPanelSlices(lw, 'left', leftW, leftSegs) : hudPanelSlices(lw, 'right', rightW, rightSegs);
+    for (const c of cams) {
+      const r = c.src;
+      if (y >= r.y && y < r.y + r.h) return { x: c.dst.x + (x - r.x) * c.zoom, y: c.dst.y + (y - r.y) * c.zoom, zoom: c.zoom, visible: true };
+    }
+    const z = cams[0]?.zoom ?? 1;
+    return { x: x + centerOffset(lw), y, zoom: z, visible: false };
+  }
+  return { x: x + centerOffset(lw), y, zoom: 1, visible: true };
 }

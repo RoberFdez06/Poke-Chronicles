@@ -17,6 +17,8 @@ import { BOSS_CINE_STORE, bossCineKey, shouldShowBossCine } from '../data/bossCi
 import { bounceOffRects, clipSegmentToRects, segmentBlocked } from '../data/projectileRules';
 import { phaseAtSeconds, phasePowerMul, pickByPhase, PHASE_DESC, PHASE_NOTICE, type Phase } from '../data/dayNight';
 import { TouchControls } from '../ui/touchControls';
+import { touchCanvasWideNow } from '../ui/wideScreen';
+import { touchHudSegs, TOUCH_HUD_SCALE_ENABLED } from '../data/touchLayout';
 import { hudFont, hudUiScale, setHudUiScale } from '../ui/uiScale';
 import { hudRescaledPx, loadMobileView, MOBILE_MAP, MOBILE_VIEW_CHANGED, saveMobileView, viewFactor } from '../data/mobileView';
 import { pickAimTarget, touchAimDir } from '../data/touchAim';
@@ -242,7 +244,7 @@ import { pmdAvailable, pmdMega, pmdShiny } from '../data/pmdForms';
 import { applyPose, dressLoose, liftSprite, poseFor, procAnimate, resetLift } from '../ui/locoAnim';
 import { locomotionOf } from '../data/locomotion';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, LW, OFF, W } from '../ui/layout';
-import { HUD_LEFT_SEGS, HUD_RIGHT_SEGS, HUD_RIGHT_SEGS_TOUCH, hudPanelSlices, hudSlices } from '../data/wideLayout';
+import { HUD_LEFT_SEGS, HUD_RIGHT_SEGS, hudPanelSlices, hudSlices, hudToScreen, screenToHud, type HudSeg } from '../data/wideLayout';
 import { bossHpFloor, enterSandbox, hasTutorial, leaveSandbox, refillHp, shortCooldown, TUTORIAL_BONUS, TUTORIAL_MODES, TUTORIAL_STARTER, tutorialStats, type TutorialMode } from '../data/bossTutorial';
 import { TutorialPanel } from './tutorialPanel';
 import { counterRowLayout, hudLayout, itemGrid, nameFontSize, HUD_BADGE_MAX_W, HUD_ITEM_R, HUD_PROGRESS_FONT } from '../data/hudLayout';
@@ -1076,6 +1078,12 @@ export class GameScene extends Phaser.Scene {
   private hudCam?: Phaser.Cameras.Scene2D.Camera;
   /** Pantalla ancha: cámaras de los paneles izquierdo y derecho del HUD (hudCam pinta el centro). */
   private hudSideCams: Phaser.Cameras.Scene2D.Camera[] = [];
+  /**
+   * Táctil con el lienzo ensanchado sin bandas (rama `movilhud`): los controles táctiles se pintan en esta capa con
+   * una cámara sin zoom (coordenadas de pantalla), así no se parten entre las cámaras escaladas de los paneles.
+   */
+  private touchLayer?: Phaser.GameObjects.Container;
+  private touchCam?: Phaser.Cameras.Scene2D.Camera;
   /** Zoom de la cámara de la sala: GAME_ZOOM, o más en móvil con «Zoom de la sala» (y entonces sigue al jugador). */
   private camZoom = GAME_ZOOM;
 
@@ -1282,6 +1290,8 @@ export class GameScene extends Phaser.Scene {
     for (const c of [...this.cameras.cameras]) if (c !== this.cameras.main) this.cameras.remove(c);
     this.hudCam = undefined;
     this.hudSideCams = [];
+    this.touchCam = undefined;
+    this.touchLayer = undefined;
     // Ajustes de vista en móvil: zoom de la sala y tamaño de la interfaz (en escritorio, factor 1)
     const view = loadMobileView();
     const mobileView = touchOnlyDevice();
@@ -3187,6 +3197,20 @@ export class GameScene extends Phaser.Scene {
       o.cameraFilter &= ~hudCam.id;
       return o;
     };
+    // Táctil: capa y cámara propias para los controles cuando el HUD va escalado (ver touchLayer). La cámara no
+    // pinta nada más; sin HUD escalado está apagada y los controles siguen en la capa del HUD como siempre.
+    if (touchOnlyDevice() && TOUCH_HUD_SCALE_ENABLED) {
+      const touchLayer = this.add.container(0, 0).setDepth(51);
+      this.cameras.main.ignore(touchLayer);
+      hudCam.ignore(touchLayer);
+      const touchCam = this.cameras.add(0, 0, W, H).setName('touch').setVisible(false);
+      touchCam.ignore(this.children.list.filter((o) => o !== touchLayer));
+      const onAddedTouch = (go: Phaser.GameObjects.GameObject) => go !== touchLayer && touchCam.ignore(go);
+      this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, onAddedTouch);
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, onAddedTouch));
+      this.touchLayer = touchLayer;
+      this.touchCam = touchCam;
+    }
     const txt = (x: number, y: number, size: number, color: string = '#f8f8f8', bold = false) =>
       hud(this.add.text(x, y, '', { fontFamily: FONT, fontSize: `${size}px`, fontStyle: bold ? 'bold' : 'normal', color }));
     const over = (o: Phaser.GameObjects.Zone | Phaser.GameObjects.Text) => {
@@ -3355,6 +3379,7 @@ export class GameScene extends Phaser.Scene {
     activeBtn.on('pointerdown', () => this.useActive());
     // Controles táctiles (T35), solo en móvil o tableta (en PC nunca): joysticks flotantes y botones pixel
     this.touch = touchOnlyDevice() ? new TouchControls(this, (o) => void hud(o), this.slotY(0), () => this.touchBlocked(), hudUiScale()) : undefined;
+    this.applyTouchView();
     // Poderes: cuatro cuadros abajo a la derecha (clic para lanzar)
     const slotZones: (Phaser.GameObjects.Zone | Phaser.GameObjects.Text)[] = [];
     for (let i = 0; i < SLOT_COUNT; i++) {
@@ -3394,7 +3419,11 @@ export class GameScene extends Phaser.Scene {
       z.on('pointerdown', () => this.toggleAuto());
       const tip = txt(0, 0, hudFont(16), '#ffe9a8', true).setOrigin(1, 0).setShadow(2, 2, '#000000', 0).setDepth(5).setVisible(false);
       this.mapTip = { t: tip, until: 0 };
-      this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.tapMinimap(p.x, p.y));
+      this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+        // El minimapa está en el diseño del HUD: con los paneles escalados se pasa el toque a ese diseño
+        const d = this.hudPoint(p.x, p.y);
+        this.tapMinimap(d.x, d.y);
+      });
       // Se vuelve a leer al empezar y al volver de la pausa (se puede cambiar en Ajustes desde ella)
       this.auto = loadAutoMode();
       const reload = () => {
@@ -4721,6 +4750,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.touchRebuildPending = false;
     this.touch.destroy();
     this.touch = new TouchControls(this, (o) => void this.toHud(o), this.slotY(0), () => this.touchBlocked(), hudUiScale());
+    this.applyTouchView();
     if (this.dashHud) this.dashHud.shown = '';
     if (this.activeHud) this.activeHud.shown = '';
     this.paintActive();
@@ -11634,7 +11664,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const s = hudSlices(LW, HUD.left.w, HUD.right.w, H);
     hudCam.setViewport(s.center.dst.x, 0, s.center.dst.w, H).setScroll(s.center.src.x, 0);
     // Paneles laterales escalados (data/wideLayout.ts): cada tramo, una cámara con zoom que enseña su trozo de diseño
-    const slices = [...hudPanelSlices(LW, 'left', HUD.left.w, HUD_LEFT_SEGS, H), ...hudPanelSlices(LW, 'right', HUD.right.w, touchOnlyDevice() ? HUD_RIGHT_SEGS_TOUCH : HUD_RIGHT_SEGS, H)];
+    const segs = this.hudSegs();
+    const slices = [...hudPanelSlices(LW, 'left', HUD.left.w, segs.left, H), ...hudPanelSlices(LW, 'right', HUD.right.w, segs.right, H)];
     slices.forEach((sl, i) => {
       const c = this.hudSideCams[i];
       if (!c) return;
@@ -11685,6 +11716,55 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const cam = this.cameras.main;
     if (cam.x !== GAME_VIEW.x + OFF) cam.setPosition(GAME_VIEW.x + OFF, GAME_VIEW.y);
     this.layoutHudCams();
+    this.applyTouchView();
+  }
+
+  /** ¿HUD táctil escalado con los controles dentro del lienzo? (data/touchLayout.ts: touchCanvasWide) */
+  private touchHudWide(): boolean {
+    return TOUCH_HUD_SCALE_ENABLED && !!this.touchCam && OFF > 0 && touchCanvasWideNow();
+  }
+
+  /** Tramos de los paneles del HUD: escritorio, táctil con bandas o táctil con los botones dentro del lienzo. */
+  private hudSegs(): { left: HudSeg[]; right: HudSeg[] } {
+    if (!touchOnlyDevice()) return { left: HUD_LEFT_SEGS, right: HUD_RIGHT_SEGS };
+    return touchHudSegs(this.touchHudWide());
+  }
+
+  /** Punto de pantalla → diseño del HUD (1920 × 1080), con los paneles escalados si los hay. */
+  private hudPoint(x: number, y: number): { x: number; y: number } {
+    if (OFF <= 0) return { x, y };
+    const segs = this.hudSegs();
+    return screenToHud(x, y, LW, HUD.left.w, HUD.right.w, segs.left, segs.right);
+  }
+
+  /**
+   * Controles táctiles con el HUD escalado: se pasan a su capa (cámara sin zoom) y se colocan en pantalla donde se ve
+   * su sitio del diseño; sin escalar, vuelven a la capa del HUD y todo queda como siempre.
+   */
+  private applyTouchView() {
+    const t = this.touch;
+    const layer = this.touchLayer;
+    const cam = this.touchCam;
+    if (!t || !layer || !cam) return;
+    const wide = this.touchHudWide();
+    cam.setViewport(0, 0, LW, H).setVisible(wide);
+    const target = wide ? layer : this.hudLayer;
+    for (const o of t.displayObjects) {
+      const go = o as Phaser.GameObjects.GameObject & { parentContainer?: Phaser.GameObjects.Container | null };
+      if (!go.active || go.parentContainer === target) continue;
+      go.parentContainer?.remove(go);
+      target.add(go);
+      if (this.hudCam) go.cameraFilter &= ~(this.hudCam.id | cam.id);
+    }
+    if (!wide) {
+      t.setView(null);
+      return;
+    }
+    const segs = this.hudSegs();
+    t.setView({
+      toScreen: (x, y) => hudToScreen(x, y, LW, HUD.left.w, HUD.right.w, segs.left, segs.right),
+      toDesign: (x, y) => screenToHud(x, y, LW, HUD.left.w, HUD.right.w, segs.left, segs.right),
+    });
   }
 
   /** El puntero está sobre la sala (no sobre las franjas del HUD). */

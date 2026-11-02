@@ -35,13 +35,19 @@ export let COVER_W = W / U;
 export const COVER_H = H / U;
 /** Ancho de cada banda lateral, en unidades de diseño. */
 export let BAND = (COVER_W - DW) / 2;
+/**
+ * Banda que usan los menús para separar columnas (Pausa). Igual que BAND salvo en táctil con el lienzo ensanchado
+ * solo para el HUD (data/touchLayout.ts: touchWideWidth), donde se queda la de 1920 para que ningún menú se mueva.
+ */
+export let MENU_BAND = BAND;
 
-/** Cambia el ancho lógico del lienzo (lo llama main.ts al arrancar y al redimensionar). */
-export function setLogicalWidth(lw: number) {
+/** Cambia el ancho lógico del lienzo (lo llama main.ts al arrancar y al redimensionar). `menuLw`: ancho para MENU_BAND. */
+export function setLogicalWidth(lw: number, menuLw = lw) {
   LW = lw;
   OFF = Math.max(0, (lw - W) / 2); // = centerOffset de data/wideLayout.ts
   COVER_W = LW / U;
   BAND = (COVER_W - DW) / 2;
+  MENU_BAND = (menuLw / U - DW) / 2;
 }
 
 /** Coordenada de diseño pegada al borde izquierdo o derecho real de la pantalla (no al del diseño). */
