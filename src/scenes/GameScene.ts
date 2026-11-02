@@ -378,7 +378,7 @@ import { DARK_ALPHA, DARK_RADIUS, darkEdge, darkHoleAlpha, oneTypeFor, pickRoomR
 import { canOfferRevive, reviveCost, revivedHp, REVIVE_IMMUNE_MS } from '../data/secondChance';
 import type { SecondChanceChoice } from './SecondChanceScene';
 import { accountInfo } from '../net/cloud';
-import { CASCADE_LABEL, CASCADE_SHAPES, cascadePlan, cascadeShapesFor, cascadeSpec, comboPlan, comboSpec, isFrenzyAttack, pickFrenzy, pickShape, type CascadeShape, type FrenzyAttack } from '../data/bossFrenzy';
+import { CASCADE_LABEL, CASCADE_SHAPES, cascadePlan, cascadeShapesFor, cascadeSpec, comboPlan, comboSpec, frenzyRest, isFrenzyAttack, pickFrenzy, pickShape, stormPlan, stormSpec, type CascadeShape, type FrenzyAttack } from '../data/bossFrenzy';
 import { frenzyHazards, runCascade, runCombo, type FrenzyHost } from './frenzyRuntime';
 import { blitzAttacksFor, bounceAngles, bounceSpec, bounceStep, crossArms, crossMinePlaces, crossSpec, dashEnd, dashSpec, gridBeams, gridHits, gridSpec, helixAngles, helixSpec, isBlitzAttack, meteorSpec, meteorSpots, miasmaSpec, wallHits, wallPlan, wallPos, wallSpec, wallTravelMs, BLITZ_MIN_WARN, type BlitzAttack, type Orb } from '../data/bossBlitz';
 import { bounceWarn, dashWarn, drawBounceOrb, drawCrossBlast, drawGridBeam, drawMiasma, drawWallBar, gridWarn, meteorImpact, meteorWarn, miasmaWarn, mineWarn, wallWarn } from '../ui/art/blitzFx';
@@ -8090,8 +8090,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const ms = this.bossBlitz(b, ai, attack, ai.phase ?? 1);
       ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + ms + 600);
     } else if (isFrenzyAttack(attack)) {
+      // Tras un frenesí, el siguiente llega con poco respiro (frenzyRest), no con el intervalo entero
       const ms = this.bossFrenzy(b, ai, attack, ai.phase ?? 1);
-      ai.nextAttack = Math.max(ai.nextAttack ?? 0, time + ms + 400);
+      ai.nextAttack = time + ms + frenzyRest(ai.phase ?? 1, attack);
     } else {
       // T50: los ataques extra duran más; el siguiente espera a que acaben
       const ms = this.bossExtra(b, ai, attack, ai.phase ?? 1);
@@ -8706,7 +8707,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       castFusion: (tipoA: string, tipoB: string) => this.adminTestCast(debugFusionMove(tipoA, tipoB)),
       /** Lista los estilos de un tipo (o de todos). */
       listStyles: (tipo?: string) => debugStyleList(tipo),
-      /** Frenesí: frenzy('cascade', 'mixed'|'mixedRing'|'sweepH'|'sweepV'|'diagonal'|'radial'|'spiral'|'pincer') o frenzy('feintCombo'). */
+      /** Frenesí: frenzy('cascade', 'mixed'|'mixedRing'|'sweepH'|'sweepV'|'diagonal'|'radial'|'spiral'|'pincer'), frenzy('storm') o frenzy('feintCombo'). */
       frenzy: (attack = 'cascade', shape?: string) => this.debugFrenzy(attack, shape),
       /** Modo automático (móvil): autoMode() dice el modo; autoMode('off'|'shoot'|'full') lo cambia. */
       autoMode: (m?: string) => {
@@ -9423,7 +9424,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     };
     b.setData('flashUntil', this.time.now + 400).setTintFill(0xffffff);
     let ms: number;
-    if (attack === 'cascade') {
+    if (attack === 'storm') {
+      // Tormenta: varias cascadas solapadas con un pasillo seguro común que se desplaza (stormPlan)
+      const types = (b.getData('btypes') as string[] | undefined) ?? this.bossTypes;
+      this.bossLabel(BOSS_ATTACK_LABEL.storm, color);
+      const plan = stormPlan(host.arena, stormSpec(this.level(), phase, this.diff, host.low), b, this.player, cascadeShapesFor(types, this.biome.types), Math.random, cascadeSpec(this.level(), phase, this.diff));
+      runCascade(host, plan);
+      ms = plan.totalMs;
+    } else if (attack === 'cascade') {
       const types = (b.getData('btypes') as string[] | undefined) ?? this.bossTypes;
       const sh = shape ?? pickShape(cascadeShapesFor(types, this.biome.types), Math.random, b.getData('lastShape') as CascadeShape | undefined);
       b.setData('lastShape', sh);
@@ -9447,7 +9455,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private debugFrenzy(attack: string, shape?: string): string {
     const b = this.enemies.getChildren().find((c) => c.active && ((c as Sprite).getData('ai') as EnemyAI | undefined)?.boss) as Sprite | undefined;
     if (!b) return 'no hay jefe en la sala (usa spawnBoss())';
-    if (!isFrenzyAttack(attack)) return 'ataque: cascade | feintCombo';
+    if (!isFrenzyAttack(attack)) return 'ataque: cascade | storm | feintCombo';
     if (shape !== undefined && !(CASCADE_SHAPES as readonly string[]).includes(shape)) return `forma: ${CASCADE_SHAPES.join(' | ')}`;
     const ai = b.getData('ai') as EnemyAI;
     const ms = this.bossFrenzy(b, ai, attack, ai.phase ?? 1, shape as CascadeShape | undefined);

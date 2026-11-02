@@ -1,6 +1,7 @@
 // Ejecución de los ataques frenéticos de los jefes (planes puros en src/data/bossFrenzy.ts, dibujo en
 // src/ui/art/frenzyFx.ts). Va aparte de GameScene para tocarla lo mínimo: GameScene solo da un `FrenzyHost`.
-// Rendimiento: UN Graphics y UN temporizador por ataque (se repinta cada ~16 ms); como mucho MAX_LANES líneas.
+// Rendimiento: UN Graphics y UN temporizador por ataque (se repinta cada ~16 ms); como mucho MAX_LANES líneas
+// (en la tormenta, STORM_MAX_ACTIVE elementos vivos a la vez).
 import Phaser from 'phaser';
 import { dashEnd } from '../data/bossBlitz';
 import {
@@ -68,8 +69,9 @@ function run(h: FrenzyHost, step: (g: Phaser.GameObjects.Graphics, t: number) =>
   untrack = h.track(stop);
 }
 
-/** Cascada: todas las líneas en un solo Graphics; cada una daña una vez como mucho. */
-export function runCascade(h: FrenzyHost, plan: CascadePlan) {
+/** Cascada (o tormenta: varias solapadas, ver stormPlan): todas las líneas en un solo Graphics reutilizado; cada una
+ * daña una vez como mucho. La tormenta ya trae el tope de elementos a la vez (menor con lowFx). */
+export function runCascade(h: FrenzyHost, plan: Pick<CascadePlan, 'lanes' | 'totalMs'>) {
   const hit = new Set<number>();
   let boomed = false;
   run(h, (g, t) => {

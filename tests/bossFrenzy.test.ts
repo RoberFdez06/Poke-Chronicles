@@ -230,9 +230,9 @@ test('combo: la onda deja su hueco y la zona tiene radio', () => {
   assert.equal(zoneHits(0, 0, 120, 120, 120), false);
 });
 
-test('selección: fase 1 solo cascadas, fase 2 también combos; más a menudo en fase 2 y menos en Fácil', () => {
-  assert.deepEqual(frenzyAttacksFor(1), ['cascade']);
-  assert.deepEqual(frenzyAttacksFor(2), ['cascade', 'feintCombo']);
+test('selección: fase 1 cascadas y tormentas, fase 2 también combos; más a menudo en fase 2 y menos en Fácil', () => {
+  assert.deepEqual(frenzyAttacksFor(1), ['cascade', 'storm']);
+  assert.deepEqual(frenzyAttacksFor(2), ['cascade', 'storm', 'feintCombo']);
   assert.ok(frenzyChance(2) > frenzyChance(1));
   assert.ok(frenzyChance(2, 'easy') < frenzyChance(2));
   const rng = mulberry32(9);
@@ -240,12 +240,12 @@ test('selección: fase 1 solo cascadas, fase 2 también combos; más a menudo en
   for (let i = 0; i < 400; i++) {
     const a = pickFrenzy(1, 'normal', rng);
     if (a) {
-      assert.equal(a, 'cascade');
+      assert.ok(a === 'cascade' || a === 'storm');
       n++;
     }
     const b = pickFrenzy(2, 'normal', rng, 'cascade');
-    if (b) assert.equal(b, 'feintCombo', 'sin repetir el último');
+    if (b) assert.ok(b === 'feintCombo' || b === 'storm', 'sin repetir el último');
   }
-  assert.ok(n > 80 && n < 220);
+  assert.ok(n > 200 && n < 280);
   assert.ok(attackInterval(2) <= 1400, 'fase 2 con menos respiro');
 });
