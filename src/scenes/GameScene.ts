@@ -242,7 +242,7 @@ import { pmdAvailable, pmdMega, pmdShiny } from '../data/pmdForms';
 import { applyPose, dressLoose, liftSprite, poseFor, procAnimate, resetLift } from '../ui/locoAnim';
 import { locomotionOf } from '../data/locomotion';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, LW, OFF, W } from '../ui/layout';
-import { HUD_LEFT_SEGS, HUD_RIGHT_SEGS, hudPanelSlices, hudSlices } from '../data/wideLayout';
+import { HUD_LEFT_SEGS, HUD_RIGHT_SEGS, HUD_RIGHT_SEGS_TOUCH, hudPanelSlices, hudSlices } from '../data/wideLayout';
 import { bossHpFloor, enterSandbox, hasTutorial, leaveSandbox, refillHp, shortCooldown, TUTORIAL_BONUS, TUTORIAL_MODES, TUTORIAL_STARTER, tutorialStats, type TutorialMode } from '../data/bossTutorial';
 import { TutorialPanel } from './tutorialPanel';
 import { counterRowLayout, hudLayout, itemGrid, nameFontSize, HUD_BADGE_MAX_W, HUD_ITEM_R, HUD_PROGRESS_FONT } from '../data/hudLayout';
@@ -11634,7 +11634,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const s = hudSlices(LW, HUD.left.w, HUD.right.w, H);
     hudCam.setViewport(s.center.dst.x, 0, s.center.dst.w, H).setScroll(s.center.src.x, 0);
     // Paneles laterales escalados (data/wideLayout.ts): cada tramo, una cámara con zoom que enseña su trozo de diseño
-    const slices = [...hudPanelSlices(LW, 'left', HUD.left.w, HUD_LEFT_SEGS, H), ...hudPanelSlices(LW, 'right', HUD.right.w, HUD_RIGHT_SEGS, H)];
+    const slices = [...hudPanelSlices(LW, 'left', HUD.left.w, HUD_LEFT_SEGS, H), ...hudPanelSlices(LW, 'right', HUD.right.w, touchOnlyDevice() ? HUD_RIGHT_SEGS_TOUCH : HUD_RIGHT_SEGS, H)];
     slices.forEach((sl, i) => {
       const c = this.hudSideCams[i];
       if (!c) return;
