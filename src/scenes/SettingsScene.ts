@@ -154,7 +154,7 @@ export class SettingsScene extends Phaser.Scene {
         return a.mode === 'cloud' ? `Cuenta: ${a.name || a.email || 'conectado'}` : a.mode === 'local' ? 'Cuenta: modo local' : 'Cuenta: invitado';
       }
       case 'credits':
-        return 'Créditos';
+        return this.args.overlay ? 'Créditos' : 'Créditos y legal';
       case 'admin':
         return 'Panel admin (F9 en partida)';
       case 'controls':
@@ -257,7 +257,13 @@ export class SettingsScene extends Phaser.Scene {
         goTo(this, 'Account');
       }
     }
-    else if (row === 'credits') this.showCredits();
+    else if (row === 'credits') {
+      if (this.args.overlay) this.showCredits();
+      else {
+        this.closing = true;
+        goTo(this, 'Legal', { from: 'Settings' });
+      }
+    }
     else if (row === 'reset') this.confirmReset();
     else if (row === 'admin') openAdmin(this, () => [...generalAdminRows(), ...currentRunAdminRows()]);
     else this.close();
