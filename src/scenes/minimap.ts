@@ -80,7 +80,8 @@ function drawDiamond(g: Phaser.GameObjects.Graphics, cx: number, cy: number, p: 
 
 
 /** Marca de objeto (3×3 con borde): rombo violeta con brillo (objeto, poder o activo) o moneda dorada (botín menudo). */
-function drawLootMark(g: Phaser.GameObjects.Graphics, kind: string, x: number, y: number, u: number) {
+function drawLootMark(g: Phaser.GameObjects.Graphics, kind: string, x: number, y: number, u0: number) {
+  const u = u0 * 2; // el doble de grande: se lee de un vistazo
   g.fillStyle(INK, 1).fillRect(x - u, y - u, 5 * u, 5 * u);
   if (kind === 'item') {
     g.fillStyle(0xb48cff, 1).fillRect(x + u, y, u, 3 * u).fillRect(x, y + u, 3 * u, u);
@@ -449,21 +450,22 @@ export function drawMinimap(
     else if (mark !== undefined) drawDiamond(g, cx, cy, Math.max(1, Math.floor(p * 0.8)), mark, alpha);
     // Cofre aún cerrado: candado pequeño en la esquina
     if (extras.chests?.has(r.id) && seen) {
+      const k = u * 2;
       const lx = x + 2 * u;
-      const ly = y + CH - 6 * u;
-      g.fillStyle(INK, 1).fillRect(lx - u / 2, ly - u / 2, 4 * u, 4 * u);
-      g.fillStyle(0xffd34d, 1).fillRect(lx, ly + u, 3 * u, 2 * u);
-      g.fillStyle(0xffd34d, 1).fillRect(lx + u / 2, ly, 2 * u, u);
+      const ly = y + CH - 9 * u;
+      g.fillStyle(INK, 1).fillRect(lx - k / 2, ly - k / 2, 4 * k, 4 * k);
+      g.fillStyle(0xff9a2e, 1).fillRect(lx, ly + k, 3 * k, 2 * k);
+      g.fillStyle(0xffd34d, 1).fillRect(lx + k / 2, ly, 2 * k, k);
     }
     // Objetos que quedan en la sala: marcas de 3×3 en la esquina de abajo a la derecha (objeto, botín menudo)
     const loot = seen ? extras.loot?.get(r.id) : undefined;
     if (loot) {
-      let mx = x + CW - 5 * u;
-      const my = y + CH - 6 * u;
+      let mx = x + CW - 9 * u;
+      const my = y + CH - 9 * u;
       for (const m of loot) {
         if (m === 'chest') continue; // el cofre ya lleva su candado
         drawLootMark(g, m, mx, my, u);
-        mx -= 4 * u;
+        mx -= 8 * u;
       }
     }
     // Tú, donde no hay icono: la Poké Ball animada (en salas con icono basta el marco que late)
