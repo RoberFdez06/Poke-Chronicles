@@ -56,7 +56,8 @@ const AUTH_ERRORS: Record<string, string> = {
   'auth/email-already-in-use': 'Ya hay una cuenta con ese correo: entra con él',
   'auth/invalid-credential': 'Correo o contraseña incorrectos',
   'auth/wrong-password': 'Correo o contraseña incorrectos',
-  'auth/user-not-found': 'No hay ninguna cuenta con ese correo',
+  // Mismo mensaje que con contraseña mala: no se revela si un correo tiene cuenta
+  'auth/user-not-found': 'Correo o contraseña incorrectos',
   'auth/too-many-requests': 'Demasiados intentos: espera un poco y vuelve a probar',
   'auth/network-request-failed': 'Sin conexión: comprueba tu internet',
   'auth/popup-closed-by-user': 'Se cerró la ventana de Google antes de terminar',

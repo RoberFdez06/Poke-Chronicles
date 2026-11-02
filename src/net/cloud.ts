@@ -5,6 +5,7 @@
 import { accountErrorMessage, firebaseConfigFrom, retryDelay } from '../data/account';
 import { withTimeout } from '../data/offline';
 import { isAdminEmail, setAdminAccount } from '../data/admin';
+import { parseStringMap, sanitizeName, sanitizeStringMap } from '../data/safeData';
 import { DEV_LOCAL_FLAG, gameData, MemoryStorage, pickInitialData, setActiveStorage, SyncedStorage } from '../data/storage';
 
 export type AccountMode = 'local' | 'guest' | 'cloud';
@@ -103,13 +104,16 @@ export async function initAccount(): Promise<AccountInfo> {
 async function attach(f: Firebase, user: import('firebase/auth').User) {
   const ref = f.fsMod.doc(f.db, 'users', user.uid);
   let cloud: Record<string, string> | null = null;
-  let name: string | undefined = user.displayName ?? undefined;
+  let name: string | undefined = sanitizeName(user.displayName);
   try {
     const snap = await withTimeout(f.fsMod.getDoc(ref), 10_000, 'Nube');
     if (snap.exists()) {
-      const d = snap.data() as { data?: Record<string, string>; name?: string };
-      cloud = d.data ?? {};
-      name = d.name ?? name;
+      // El documento se valida antes de usarlo (forma, tipos, tamaño y claves peligrosas)
+      const d = snap.data() as { data?: unknown; name?: unknown };
+      cloud = d.data === undefined ? {} : sanitizeStringMap(d.data);
+      // Datos con forma rara o demasiado grandes: no se pisan (se juega sin guardar, como si no se pudiera leer)
+      if (cloud === null) throw new Error('Guardado de la nube con formato no válido');
+      name = sanitizeName(d.name) ?? name;
     }
   } catch (err) {
     // Sin leer la nube no se escribe nada (no vaya a pisar el progreso bueno): se juega como invitado
@@ -168,7 +172,7 @@ async function flush(): Promise<void> {
   pending = null;
   clearTimeout(timer);
   try {
-    await fb.fsMod.setDoc(fb.fsMod.doc(fb.db, 'users', uid), { data, name: info.name ?? null, updatedAt: fb.fsMod.serverTimestamp() });
+    await fb.fsMod.setDoc(fb.fsMod.doc(fb.db, 'users', uid), { data, name: sanitizeName(info.name) ?? null, updatedAt: fb.fsMod.serverTimestamp() });
     attempt = 0;
   } catch (err) {
     console.warn('[Poké Chronicles] No se pudo guardar en la nube, se reintentará:', err);
@@ -182,7 +186,7 @@ function readPendingGuest(): Record<string, string> | null {
   try {
     const raw = sessionStorage.getItem(PENDING_GUEST);
     sessionStorage.removeItem(PENDING_GUEST);
-    return raw ? (JSON.parse(raw) as Record<string, string>) : null;
+    return parseStringMap(raw);
   } catch {
     return null;
   }
@@ -202,7 +206,8 @@ function stashGuest() {
 export async function signUp(email: string, password: string, name: string): Promise<void> {
   const f = await loadFirebase();
   const cred = await f.authMod.createUserWithEmailAndPassword(f.auth, email.trim(), password);
-  if (name.trim()) await f.authMod.updateProfile(cred.user, { displayName: name.trim() }).catch(() => undefined);
+  const clean = sanitizeName(name);
+  if (clean) await f.authMod.updateProfile(cred.user, { displayName: clean }).catch(() => undefined);
   stashGuest();
   location.reload();
 }
