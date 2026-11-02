@@ -82,7 +82,7 @@ export const ADAPT_WARN_MS = 650;
 /** Ataques de jefe para el tipo actual (patrones de su tipo + los del bioma + ráfagas + frenesí + invocación). */
 export function arceusAttacks(type: string, biomeTypes: readonly string[], supreme: boolean): BossAttack[] {
   const list: BossAttack[] = [...bossAttacksFor([type], biomeTypes), ...blitzAttacksFor([type]), 'summon'];
-  if (supreme) list.push('cascade', 'feintCombo');
+  if (supreme) list.push('cascade', 'feintCombo', 'lightning');
   return [...new Set(list)];
 }
 

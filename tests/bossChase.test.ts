@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FRENZY_MIN_WARN, PLAYER_BASE_SPEED, SAFE_MIN, chaseOrder, chaseSpec, closingRadius, creepStep, frenzyAttacksFor, homingStep, pickFrenzy } from '../src/data/bossFrenzy.ts';
+import { FRENZY_MIN_WARN, PLAYER_BASE_SPEED, SAFE_MIN, chaseOrder, chaseSpec, creepStep, frenzyAttacksFor, homingStep, pickFrenzy } from '../src/data/bossFrenzy.ts';
 import { PHASE2_SPEED, attackInterval, volleyEvery, volleyShots } from '../src/data/bossPatterns.ts';
 import { mulberry32 } from '../src/level/floorGen.ts';
 
@@ -19,7 +19,7 @@ test('acoso: solo en fase 2, se elige a menudo', () => {
   const rng = mulberry32(5);
   let c = 0;
   for (let i = 0; i < 2000; i++) if (pickFrenzy(2, 'normal', rng) === 'chase') c++;
-  assert.ok(c > 200, `${c}`);
+  assert.ok(c > 120, `${c}`);
 });
 
 test('acoso: esquivable en todas las dificultades, Fácil más suave, con tope de objetos', () => {
@@ -31,7 +31,7 @@ test('acoso: esquivable en todas las dificultades, Fácil más suave, con tope d
       assert.ok(s.homerLife <= 2500, 'vida corta');
       // Radio de giro del orbe mayor que el jugador: si giras cerca, se pasa de largo
       assert.ok(s.homerSpeed / s.homerTurn > 80);
-      assert.ok(s.ringGap * 60 >= SAFE_MIN * 0.95, 'hueco del anillo sigue siendo pasable a 60 px');
+      assert.ok(s.boltR >= 90 && s.boltR <= 130 && (PLAYER_BASE_SPEED * s.warnMs) / 1000 > s.boltR + SAFE_MIN, 'se sale del círculo del rayo durante el aviso');
       assert.ok(s.maxLive <= (low ? 16 : 28));
       assert.ok(s.blastR > s.puddleR, 'quien esquiva la explosión no está en el charco');
     }
@@ -40,16 +40,14 @@ test('acoso: esquivable en todas las dificultades, Fácil más suave, con tope d
   assert.ok(e.creepers < h.creepers && e.homers < h.homers && e.everyMs > h.everyMs && e.homerSpeed < h.homerSpeed);
 });
 
-test('acoso: pasos puros (arrastre sin pasarse, giro limitado, anillo que se cierra) y orden repartido', () => {
+test('acoso: pasos puros (arrastre sin pasarse, giro limitado) y rayos repartidos', () => {
   assert.deepEqual(creepStep({ x: 0, y: 0 }, { x: 100, y: 0 }, 100, 500), { x: 50, y: 0 });
   assert.deepEqual(creepStep({ x: 0, y: 0 }, { x: 10, y: 0 }, 100, 500), { x: 10, y: 0 });
   const st = homingStep({ x: 0, y: 0 }, 0, { x: 0, y: 100 }, 200, 2, 100);
   assert.ok(Math.abs(st.ang - 0.2) < 1e-9, 'gira como mucho turn·dt');
-  assert.equal(closingRadius(300, 0, 1000), 300);
-  assert.equal(closingRadius(300, 500, 1000), 150);
-  assert.equal(closingRadius(300, 2000, 1000), 0);
   const s = chaseSpec(3, 2);
   const o = chaseOrder(s, mulberry32(2));
-  assert.equal(o.length, s.creepers + s.homers + s.rings);
-  for (let i = 1; i < o.length; i++) assert.ok(!(o[i] === 'ring' && o[i - 1] === 'ring'));
+  assert.equal(o.length, s.creepers + s.homers + s.bolts);
+  assert.ok(!(o as string[]).includes('ring'), 'sin anillos');
+  for (let i = 1; i < o.length; i++) assert.ok(!(o[i] === 'bolt' && o[i - 1] === 'bolt'));
 });

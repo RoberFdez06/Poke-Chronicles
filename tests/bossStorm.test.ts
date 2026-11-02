@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CASCADE_SHAPES, FRENZY_MIN_WARN, STORM_MAX_ACTIVE, STORM_MAX_ACTIVE_LOW, STORM_SAFE_SPEED, PLAYER_BASE_SPEED, cascadeShapesFor, cascadeSpec,
-  coversSafe, frenzyChance, isMixedShape, maxOverlap, pickFrenzy, safeAt, stormPlan, stormSpec,
+  coversSafe, frenzyChance, isMixedShape, maxOverlap, pickFrenzy, safeAt, stormPlan, stormSpec, strikeCoversSafe,
 } from '../src/data/bossFrenzy.ts';
 import { DASH_BASE_MOVE } from '../src/data/dash.ts';
 import { mulberry32 } from '../src/level/floorGen.ts';
@@ -38,6 +38,10 @@ test('tormenta: el pasillo seguro nunca queda cubierto por un elemento activo (3
       for (const l of p.lanes) {
         if (t < l.fireAt || t >= l.offAt) continue;
         assert.equal(coversSafe(l, p.path, t), false, `cubierto en t=${t}`);
+      }
+      for (const k of p.strikes) {
+        if (t < k.warnAt || t >= k.offAt) continue;
+        assert.equal(strikeCoversSafe(k, p.path, t), false, `rayo sobre el pasillo en t=${t}`);
       }
     }
   });
@@ -79,6 +83,9 @@ test('tormenta: 3-5 cascadas solapadas, duración por fase, aviso mínimo, rampa
     const third = p.totalMs / 3;
     assert.ok(at(0, third) < at(2 * third, p.totalMs + 1), 'rampa');
     assert.ok(p.lanes.length >= 25, `densa (${p.lanes.length})`);
+    // Rayos en círculo combinados con las líneas, dentro de la sala y con aviso
+    assert.ok(p.strikes.length >= (phase === 2 ? 4 : 2), `rayos ${p.strikes.length}`);
+    for (const k of p.strikes) assert.ok(k.fireAt - k.warnAt >= minWarn - 1e-6 && !k.aimed);
   });
 });
 
@@ -96,6 +103,6 @@ test('selección: 60 % / 80 % de frenesí (Fácil ×0,6, Difícil ×1,2 hasta 95
     if (a === 'storm') s++;
   }
   assert.ok(f > 3000 && f < 3400);
-  assert.ok(s > f * 0.42 && s < f * 0.58);
-  assert.ok(CASCADE_SHAPES.length >= 8);
+  assert.ok(s > f * 0.32 && s < f * 0.48);
+  assert.ok(CASCADE_SHAPES.length >= 5);
 });

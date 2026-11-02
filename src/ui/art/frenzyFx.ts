@@ -4,8 +4,7 @@
 // efectos (low) se quitan capas y destellos, pero el aviso conserva grosor y contraste.
 import Phaser from 'phaser';
 import { darkOf, lightOf, PX } from './pixelFx';
-import { ringRadius, type Lane, type Pt } from '../../data/bossFrenzy';
-import type { Bounds } from '../../level/bounds';
+import type { Lane, Pt, Strike } from '../../data/bossFrenzy';
 
 type G = Phaser.GameObjects.Graphics;
 const OUT = 0x18202c;
@@ -65,7 +64,6 @@ function pixArc(g: G, cx: number, cy: number, r: number, c: number, a: number, s
     sq(g, cx + Math.cos(ang) * r, cy + Math.sin(ang) * r, c, a, size);
   }
 }
-const inGap = (gapAng: number, gapW: number) => (ang: number) => Math.abs(Math.atan2(Math.sin(ang - gapAng), Math.cos(ang - gapAng))) <= gapW / 2;
 
 /** Aviso de embestida: carril con chevrones que avanzan. `held` = amago (el aviso aguanta y late más despacio). */
 export function drawDashWarn(g: G, a: Pt, c: Pt, width: number, k: number, t: number, held: boolean, low: boolean) {
@@ -85,29 +83,6 @@ export function drawDashWarn(g: G, a: Pt, c: Pt, width: number, k: number, t: nu
       for (let j = 1; j <= 3; j++) sq(g, x - ux * j * PX + -uy * s * j * PX, y - uy * j * PX + ux * s * j * PX, col, al);
     }
   }
-}
-
-/** Aviso de onda: anillo discontinuo en su radio final con el hueco marcado (huecos en blanco). */
-export function drawWaveWarn(g: G, cx: number, cy: number, R: number, gapAng: number, gapW: number, k: number, t: number, held: boolean, low: boolean) {
-  const al = 0.35 + 0.55 * Math.min(1, k);
-  const col = held && Math.floor(t / 160) % 2 === 0 ? 0xffffff : WARN;
-  const skip = inGap(gapAng, gapW);
-  pixArc(g, cx, cy, R, OUT, al * 0.7, PX + 4, 0, TAU, skip);
-  pixArc(g, cx, cy, R, col, al, PX, 0, TAU, skip);
-  if (!low) pixArc(g, cx, cy, R * Math.min(1, k), col, al * 0.4, PX, 0, TAU, skip);
-  // Bordes del hueco, bien claros: dos postes blancos
-  for (const s of [-1, 1]) {
-    const ang = gapAng + (s * gapW) / 2;
-    for (let r = R - 24; r <= R + 24; r += PX) sq(g, cx + Math.cos(ang) * r, cy + Math.sin(ang) * r, 0xffffff, al);
-  }
-}
-
-/** Onda en marcha de radio r. */
-export function drawWave(g: G, cx: number, cy: number, r: number, thick: number, gapAng: number, gapW: number, color: number, low: boolean) {
-  const skip = inGap(gapAng, gapW);
-  pixArc(g, cx, cy, r, OUT, 1, thick + 6, 0, TAU, skip);
-  pixArc(g, cx, cy, r, color, 1, thick, 0, TAU, skip);
-  if (!low) pixArc(g, cx, cy, r, 0xffffff, 1, Math.max(PX, thick * 0.3), 0, TAU, skip);
 }
 
 /** Aviso de zona amplia: círculo que se llena desde el centro; en un amago el borde late y se queda. */
@@ -130,84 +105,94 @@ export function drawZoneBlast(g: G, x: number, y: number, R: number, k: number, 
   pixArc(g, x, y, R * (1 + 0.15 * k), darkOf(color), 1 - k, PX + 2);
 }
 
-// --- Anillos de las cascadas mezcladas ---
+// --- Rayos: círculo en el suelo donde cae un rayo ---
 
-/** Traza el anillo como polilínea (segmentos de ~16 px, máx. 360) saltando el arco libre y lo que cae fuera de la sala. */
-function ringPath(g: G, l: Lane, r: number, b: Bounds) {
-  const R = l.ring!;
-  if (r <= 1) return;
-  const span = Math.PI * 2 - R.gapW;
-  const n = Math.min(360, Math.max(16, Math.ceil((span * r) / 16)));
-  const a0 = R.gapAng + R.gapW / 2;
-  let open = false;
-  for (let i = 0; i <= n; i++) {
-    const a = a0 + (span * i) / n;
-    const x = R.cx + Math.cos(a) * r;
-    const y = R.cy + Math.sin(a) * r;
-    const inside = x >= b.x0 - 8 && x <= b.x1 + 8 && y >= b.y0 - 8 && y <= b.y1 + 8;
-    if (!inside) {
-      if (open) g.strokePath();
-      open = false;
-      continue;
+const BOLT = 0xfff27a;
+/** Hash pequeño y estable por rayo (el zigzag no tiembla entre fotogramas). */
+const hash = (x: number, y: number, i: number) => {
+  const v = Math.sin(x * 12.9898 + y * 78.233 + i * 37.719) * 43758.5453;
+  return v - Math.floor(v);
+};
+
+/**
+ * Aviso del rayo: círculo de píxeles en el suelo con contorno oscuro que se va rellenando desde el centro (k de 0 a 1)
+ * y parpadea en blanco al final; mira (cruz) en el centro y cuatro marcas que giran. `held`: amago (late despacio).
+ */
+export function drawStrikeWarn(g: G, s: Pick<Strike, 'x' | 'y' | 'r'>, k: number, t: number, low: boolean, held = false) {
+  const kk = Math.min(1, k);
+  const al = 0.35 + 0.55 * kk;
+  const blink = (kk > 0.7 && Math.floor(t / 70) % 2 === 0) || (held && Math.floor(t / 160) % 2 === 0);
+  const col = blink ? 0xffffff : WARN;
+  // Relleno que crece (la zona exacta que va a quemar)
+  g.fillStyle(WARN, 0.1 + 0.2 * kk).fillCircle(s.x, s.y, s.r * kk);
+  if (!low) g.fillStyle(0xffffff, 0.08 + 0.1 * kk).fillCircle(s.x, s.y, s.r * kk * 0.55);
+  pixArc(g, s.x, s.y, s.r, OUT, al * 0.8, PX + 4);
+  pixArc(g, s.x, s.y, s.r, col, al, PX);
+  // Mira en el centro
+  for (let d = -3; d <= 3; d++) {
+    if (d === 0) continue;
+    sq(g, s.x + d * PX, s.y, col, al);
+    sq(g, s.x, s.y + d * PX, col, al);
+  }
+  if (!low) {
+    for (let i = 0; i < 4; i++) {
+      const ang = t * 0.003 + (i * TAU) / 4;
+      sq(g, s.x + Math.cos(ang) * (s.r - PX * 2), s.y + Math.sin(ang) * (s.r - PX * 2), col, al, PX * 2);
     }
-    if (!open) {
-      g.beginPath();
-      g.moveTo(x, y);
-      open = true;
-    } else g.lineTo(x, y);
-  }
-  if (open) g.strokePath();
-}
-
-/** Bordes del arco libre: dos postes blancos que marcan por dónde pasar. */
-function ringGapPosts(g: G, l: Lane, r: number, a: number) {
-  const R = l.ring!;
-  for (const s of [-1, 1]) {
-    const ang = R.gapAng + (s * R.gapW) / 2;
-    for (let d = -l.width / 2; d <= l.width / 2; d += PX) sq(g, R.cx + Math.cos(ang) * (r + d), R.cy + Math.sin(ang) * (r + d), 0xffffff, a, PX + 2);
+    // Chispas que se juntan arriba (la nube que carga)
+    const n = 5;
+    for (let i = 0; i < n; i++) {
+      const ox = (hash(s.x, s.y, i) - 0.5) * s.r * 1.2;
+      sq(g, s.x + ox, s.y - s.r - 30 - hash(s.x, s.y, i + 9) * 50 + kk * 20, BOLT, al * kk, PX);
+    }
   }
 }
 
-/** Aviso del anillo: círculo tenue en su radio de salida y otro en el de llegada que se enciende y parpadea (k de 0 a 1). */
-export function drawRingWarn(g: G, l: Lane, k: number, t: number, b: Bounds, low: boolean) {
-  const R = l.ring!;
-  const a = 0.3 + 0.6 * k;
-  const blink = k > 0.7 && Math.floor(t / 70) % 2 === 0;
-  // Círculo de salida (donde nace): bien visible, con contorno oscuro
-  const r = Math.max(R.r0, l.width);
-  const w = Math.max(PX * 2, Math.round(l.width * (0.3 + 0.2 * k)));
-  g.lineStyle(w + 4, OUT, 0.7 * a);
-  ringPath(g, l, r, b);
-  g.lineStyle(w, blink ? 0xffffff : WARN, a);
-  ringPath(g, l, r, b);
+/** Zigzag del rayo de (x, top) a (x, y): quiebros de píxel estables. */
+function boltPts(x: number, top: number, y: number, seed: number, amp: number): Pt[] {
+  const pts: Pt[] = [{ x, y: top }];
+  const segs = 7;
+  for (let i = 1; i < segs; i++) pts.push({ x: x + (hash(x, seed, i) - 0.5) * 2 * amp, y: top + ((y - top) * i) / segs });
+  pts.push({ x, y });
+  return pts;
+}
+function strokePts(g: G, pts: Pt[], w: number, c: number, a: number) {
+  g.lineStyle(w, c, a);
+  for (let i = 1; i < pts.length; i++) g.lineBetween(snap(pts[i - 1].x), snap(pts[i - 1].y), snap(pts[i].x), snap(pts[i].y));
+}
+
+/**
+ * Rayo cayendo (k de 0 a 1 mientras quema): destello que llena el círculo, rayo vertical en zigzag desde arriba de la
+ * pantalla con capas (contorno, color del tipo, amarillo y núcleo blanco), chispazo de píxeles en el suelo.
+ */
+export function drawStrikeBolt(g: G, s: Pick<Strike, 'x' | 'y' | 'r'>, k: number, color: number, low: boolean) {
+  const fl = 1 - k;
+  g.fillStyle(0xffffff, 0.75 * fl).fillCircle(s.x, s.y, s.r);
+  g.fillStyle(color, 0.45 * fl).fillCircle(s.x, s.y, s.r * (0.7 + 0.3 * k));
+  pixArc(g, s.x, s.y, s.r, darkOf(color), 0.9 * fl + 0.1, PX + 2);
+  const top = s.y - 520;
+  const flick = Math.floor(k * 6) % 2;
+  const pts = boltPts(s.x, top, s.y, s.y + flick * 7, low ? 12 : 22);
+  strokePts(g, pts, 22, OUT, fl);
+  strokePts(g, pts, 14, color, fl);
+  if (!low) strokePts(g, pts, 9, BOLT, fl);
+  strokePts(g, pts, 4, 0xffffff, 1 - k * 0.6);
   if (!low) {
-    // Barrido tenue del recorrido (anticipa hacia dónde va)
-    g.lineStyle(PX, WARN, 0.35 * a);
-    ringPath(g, l, R.r0 + (R.r1 - R.r0) * k * 0.5, b);
-    ringGapPosts(g, l, r, a);
+    // Rama corta que sale del zigzag
+    const m = pts[3];
+    strokePts(g, [m, { x: m.x + (hash(s.x, s.y, 3) < 0.5 ? -1 : 1) * 40, y: m.y + 50 }], 5, BOLT, fl);
+    // Chispazo: chispas en cruz y en diagonal que salen del centro
+    for (let i = 0; i < 8; i++) {
+      const ang = (i * TAU) / 8 + 0.2;
+      const d = s.r * (0.25 + 0.7 * k);
+      sq(g, s.x + Math.cos(ang) * d, s.y + Math.sin(ang) * d, i % 2 ? BOLT : 0xffffff, fl, PX * 2);
+    }
   }
-  sq(g, R.cx, R.cy, blink ? 0xffffff : WARN, a, PX * 3);
+  sq(g, s.x, s.y, 0xffffff, fl, PX * 4);
 }
 
-/** Anillo activo en su radio actual. */
-export function drawRingBeam(g: G, l: Lane, t: number, color: number, b: Bounds, low: boolean) {
-  const r = ringRadius(l, t);
-  const w = l.width;
-  g.lineStyle(w + 8, OUT, 1);
-  ringPath(g, l, r, b);
-  g.lineStyle(w, color, 1);
-  ringPath(g, l, r, b);
-  if (!low) {
-    g.lineStyle(Math.max(PX, w * 0.5), lightOf(color), 1);
-    ringPath(g, l, r, b);
-    ringGapPosts(g, l, r, 0.9);
-  }
-  g.lineStyle(Math.max(PX / 2, w * 0.2), 0xffffff, 1);
-  ringPath(g, l, r, b);
-}
-
-/** Anillo apagándose donde acabó (k de 0 a 1). */
-export function drawRingFade(g: G, l: Lane, k: number, color: number, b: Bounds) {
-  g.lineStyle(Math.max(PX, l.width * (1 - k)), darkOf(color), 0.8 * (1 - k));
-  ringPath(g, l, l.ring!.r1, b);
+/** Marca quemada donde cayó (k de 0 a 1). */
+export function drawStrikeFade(g: G, s: Pick<Strike, 'x' | 'y' | 'r'>, k: number, color: number) {
+  g.fillStyle(darkOf(color), 0.35 * (1 - k)).fillCircle(s.x, s.y, s.r * 0.5);
+  pixArc(g, s.x, s.y, s.r * 0.5, darkOf(color), 0.7 * (1 - k), PX);
 }

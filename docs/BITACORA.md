@@ -2241,3 +2241,23 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
 - Seguro: si el suceso no sale (sala sin cuadrícula, grupo de salas, evento suprimido…), a los 3 s de estar retenido (sin contar mientras hay otro suceso en marcha) el umbral se da por consumido. La arena solo cuenta si la sala del jefe tiene cuadrícula. Minijefes, ayudantes y el trío del reto final (barra compartida) no llevan tope.
 - Código: `src/data/bossThreshold.ts` (`pendingThresholds`, `nextThreshold`, `clampBossHp`, `trackHold`), tests en `tests/bossThreshold.test.ts`; en GameScene todo el daño a enemigos pasa por `enemyHpAfter`.
 - Probar: `__POKEISAAC_DEBUG__.bossBigHit()` (o `bossBigHit(n)`) en la sala del jefe, repetir tras cada animación.
+## 2026-11-02 · Fuera las ráfagas circulares y nuevo ataque «Rayos» (rama `rayos`)
+- **Quitado**: todo lo circular de los frenéticos de jefe. Las cascadas `radial` (corona de rayos) y `spiral`, la
+  `mixedRing` y los anillos que se abrían/cerraban dentro de `mixed` (`Lane.ring`, `ringRadius`, `drawRing*`); los
+  anillos que se cerraban del Acoso (`ChaseKind 'ring'`, `closingRadius`) y la onda circular del combo retardado
+  (`waveHits`, `drawWave*`). Las listas por tipo/bioma usan solo formas rectas (columnas, filas, diagonales, pinzas) y
+  `mixed` mezcla solo líneas, con 3 más (`MIXED_EXTRA`) para seguir siendo densa, siempre con disco seguro libre.
+- **Nuevo, «Rayos»** (`lightning`, `lightningSpec`/`lightningPlan` en `bossFrenzy.ts`, `runLightning` en
+  `frenzyRuntime.ts`, `drawStrike*` en `frenzyFx.ts`): círculos de 90-130 px marcados en el suelo que se rellenan y
+  parpadean (aviso ≥ 750 ms; 1050 en Fácil) y al acabar cae un rayo en zigzag desde arriba con destello y chispazo;
+  solo daña dentro del círculo (una vez por rayo). En cascada: 6-10 en fase 1, 11-18 más seguidos en fase 2; una parte
+  se recoloca sobre el jugador al sacar su aviso (basta moverse). Tope de círculos vivos para no cubrir nunca más del
+  45 % de la sala (35 % en Fácil). Peso alto en `pickFrenzy` (~30 %, sin repetir) en las dos fases.
+- **Rayos en otros ataques**: la Tormenta suelta rayos entre las líneas, nunca sobre su pasillo seguro (más seguidos
+  en fase 2); el Acoso cambia sus anillos por rayos sobre tu posición; el combo retardado es embestida + rayo + zona.
+  Con efectos reducidos: menos capas, sin temblor y menos rayos a la vez en la Tormenta. El modo automático de móvil
+  los esquiva como zonas circulares (`frenzyHazards()`).
+- **Probar** (consola): `__POKEISAAC_DEBUG__.frenzy('lightning')`, `frenzy('storm')`, `frenzy('chase')`,
+  `frenzy('feintCombo')`; `frenzy('cascade', 'mixed')`. Las formas antiguas (`radial`, `spiral`, `mixedRing`) se
+  cambian por `diagonal`, `pincer` y `mixed`.
+- **Tests**: `tests/bossLightning.test.ts` (nuevo) y `bossFrenzy`/`bossStorm`/`bossChase` actualizados.

@@ -1,19 +1,22 @@
 // Ataques «frenéticos» de los jefes (inspirados en la Radiance de Hollow Knight y los combos retardados de Elden Ring):
 // - cascada: 10-14 rayos/franjas que se encienden UNO DETRÁS DE OTRO (80-150 ms entre uno y otro), cada uno con su
 //   aviso, y siempre con un hueco seguro que nunca se dispara;
-// - combo retardado (solo fase 2): 3-5 golpes encadenados (embestida, onda, zona) con pausas variables y, a veces, un
-//   amago: el aviso se queda encendido más tiempo antes de golpear (nunca menos aviso, solo más).
+// - combo retardado (solo fase 2): 3-5 golpes encadenados (embestida, rayo, zona) con pausas variables y, a veces, un
+//   amago: el aviso se queda encendido más tiempo antes de golpear (nunca menos aviso, solo más);
+// - rayos: círculos marcados en el suelo que se rellenan y parpadean y, al acabar el aviso, reciben un rayo del cielo
+//   (solo daña dentro del círculo), en cascada, algunos apuntados a donde estás. Sin anillos ni ondas circulares.
 // Lógica pura (sin Phaser), con tests en tests/bossFrenzy.test.ts. Dibujo en src/ui/art/frenzyFx.ts y ejecución en
 // src/scenes/frenzyRuntime.ts.
-import { clipBeamToBounds, type Bounds } from '../level/bounds.ts';
+import type { Bounds } from '../level/bounds.ts';
 import type { Difficulty } from './difficulty.ts';
 
 /** storm: tormenta, varias cascadas solapadas durante varios segundos con un pasillo seguro común que se desplaza. */
-/** chase (solo fase 2): acoso, zonas que se arrastran hacia ti, orbes teledirigidos y anillos que se cierran. */
-export type FrenzyAttack = 'cascade' | 'feintCombo' | 'storm' | 'chase';
-export const FRENZY_ATTACKS: readonly FrenzyAttack[] = ['cascade', 'feintCombo', 'storm', 'chase'];
+/** chase (solo fase 2): acoso, zonas que se arrastran hacia ti, orbes teledirigidos y rayos sobre tu posición. */
+/** lightning: rayos, círculos en el suelo donde cae un rayo al acabar el aviso, uno detrás de otro. */
+export type FrenzyAttack = 'cascade' | 'feintCombo' | 'storm' | 'chase' | 'lightning';
+export const FRENZY_ATTACKS: readonly FrenzyAttack[] = ['cascade', 'feintCombo', 'storm', 'chase', 'lightning'];
 export const isFrenzyAttack = (a: string): a is FrenzyAttack => (FRENZY_ATTACKS as readonly string[]).includes(a);
-export const FRENZY_LABEL: Record<FrenzyAttack, string> = { cascade: 'Cascada', feintCombo: 'Combo retardado', storm: 'Tormenta', chase: 'Acoso' };
+export const FRENZY_LABEL: Record<FrenzyAttack, string> = { cascade: 'Cascada', feintCombo: 'Combo retardado', storm: 'Tormenta', chase: 'Acoso', lightning: 'Rayos' };
 
 /**
  * Aviso mínimo de cualquier golpe frenético (ms). Igual que TELEGRAPH_MS (750): más bajo que BLITZ_MIN_WARN (900)
@@ -36,52 +39,52 @@ export interface Pt {
 
 // --- Cascada ---
 
-/** sweepH: columnas que barren de lado a lado; sweepV: filas de arriba abajo; diagonal: franjas a 45°; radial: rayos
- * desde el jefe que giran; spiral: dos brazos de rayos opuestos que giran a la vez; pinzas: columnas desde los dos
- * lados hacia el centro. */
-/** mixed: ráfaga que MEZCLA columnas, filas, diagonales y anillos (todas las líneas de pared a pared); mixedRing: igual
- * pero con más anillos que se abren o se cierran (desde el jefe o desde puntos al azar). */
-export type CascadeShape = 'sweepH' | 'sweepV' | 'diagonal' | 'radial' | 'spiral' | 'pincer' | 'mixed' | 'mixedRing';
-export const CASCADE_SHAPES: readonly CascadeShape[] = ['sweepH', 'sweepV', 'diagonal', 'radial', 'spiral', 'pincer', 'mixed', 'mixedRing'];
-export const MIXED_SHAPES: readonly CascadeShape[] = ['mixed', 'mixedRing'];
-export const isMixedShape = (s: CascadeShape): boolean => s === 'mixed' || s === 'mixedRing';
+/** sweepH: columnas que barren de lado a lado; sweepV: filas de arriba abajo; diagonal: franjas a 45°; pinzas:
+ * columnas desde los dos lados hacia el centro; mixed: ráfaga que MEZCLA columnas, filas y diagonales (todas de pared a
+ * pared, sin anillos). Todo líneas rectas: nada de rayos que giran ni anillos. */
+export type CascadeShape = 'sweepH' | 'sweepV' | 'diagonal' | 'pincer' | 'mixed';
+export const CASCADE_SHAPES: readonly CascadeShape[] = ['sweepH', 'sweepV', 'diagonal', 'pincer', 'mixed'];
+export const isMixedShape = (s: CascadeShape): boolean => s === 'mixed';
+/** Formas antiguas (circulares, ya quitadas) → la recta que las sustituye (para la consola de depuración). */
+const LEGACY_SHAPE: Record<string, CascadeShape> = { radial: 'diagonal', spiral: 'pincer', mixedRing: 'mixed' };
+export function normalizeShape(s: string): CascadeShape | undefined {
+  if ((CASCADE_SHAPES as readonly string[]).includes(s)) return s as CascadeShape;
+  return LEGACY_SHAPE[s];
+}
 export const CASCADE_LABEL: Record<CascadeShape, string> = {
   sweepH: 'Cascada de columnas',
   sweepV: 'Cascada de franjas',
   diagonal: 'Cascada diagonal',
-  radial: 'Corona de rayos',
-  spiral: 'Espiral de rayos',
   pincer: 'Pinzas de luz',
   mixed: 'Tormenta cruzada',
-  mixedRing: 'Tormenta de anillos',
 };
-export type CascadeOrder = 'sweep' | 'pingpong' | 'random' | 'pincer' | 'rotate' | 'twin';
+export type CascadeOrder = 'sweep' | 'pingpong' | 'random' | 'pincer';
 
 /** Dos formas por tipo del jefe; el bioma aporta una más (variedad visual por tipo y bioma). */
 const TYPE_CASCADE: Record<string, [CascadeShape, CascadeShape]> = {
-  fire: ['radial', 'sweepV'],
-  water: ['sweepH', 'spiral'],
+  fire: ['diagonal', 'sweepV'],
+  water: ['sweepH', 'pincer'],
   grass: ['diagonal', 'pincer'],
   electric: ['sweepH', 'diagonal'],
   ice: ['pincer', 'sweepV'],
   fighting: ['pincer', 'sweepH'],
-  poison: ['diagonal', 'spiral'],
+  poison: ['diagonal', 'sweepH'],
   ground: ['sweepV', 'pincer'],
-  flying: ['spiral', 'sweepH'],
-  psychic: ['spiral', 'radial'],
+  flying: ['sweepH', 'diagonal'],
+  psychic: ['pincer', 'diagonal'],
   bug: ['diagonal', 'sweepV'],
-  rock: ['sweepV', 'radial'],
-  ghost: ['spiral', 'diagonal'],
-  dragon: ['radial', 'pincer'],
-  dark: ['diagonal', 'radial'],
+  rock: ['sweepV', 'diagonal'],
+  ghost: ['diagonal', 'sweepV'],
+  dragon: ['diagonal', 'pincer'],
+  dark: ['diagonal', 'sweepH'],
   steel: ['sweepH', 'pincer'],
-  fairy: ['radial', 'spiral'],
+  fairy: ['pincer', 'sweepV'],
   normal: ['sweepH', 'sweepV'],
 };
 const BIOME_CASCADE: Record<string, CascadeShape> = {
   fire: 'sweepV', water: 'sweepH', grass: 'diagonal', electric: 'sweepH', ice: 'pincer', rock: 'sweepV', ground: 'sweepV',
-  psychic: 'radial', ghost: 'spiral', dark: 'diagonal', dragon: 'radial', steel: 'pincer', fairy: 'spiral', poison: 'diagonal',
-  bug: 'diagonal', flying: 'spiral', fighting: 'pincer', normal: 'sweepH',
+  psychic: 'diagonal', ghost: 'pincer', dark: 'diagonal', dragon: 'diagonal', steel: 'pincer', fairy: 'pincer', poison: 'diagonal',
+  bug: 'diagonal', flying: 'sweepH', fighting: 'pincer', normal: 'sweepH',
 };
 
 export function cascadeShapesFor(types: readonly string[], biomeTypes: readonly string[]): CascadeShape[] {
@@ -91,7 +94,7 @@ export function cascadeShapesFor(types: readonly string[], biomeTypes: readonly 
   const extra = bt ? BIOME_CASCADE[bt] : undefined;
   if (extra && !out.includes(extra)) out.push(extra);
   // Las mezcladas son las más frecuentes (repetidas en la lista; las simples siguen saliendo, pero menos)
-  return [...out, 'mixed', 'mixed', 'mixed', 'mixedRing', 'mixedRing', 'mixedRing'];
+  return [...out, 'mixed', 'mixed', 'mixed', 'mixed', 'mixed'];
 }
 
 /** Siguiente forma sin repetir la última simple (las mezcladas pueden repetirse: cada ráfaga es distinta). */
@@ -152,37 +155,18 @@ export interface Lane {
   warnAt: number;
   fireAt: number;
   offAt: number;
-  /** Si existe, el elemento es un anillo (x1,y1 = x2,y2 = centro; `width` = grosor) que va de r0 a r1 mientras quema,
-   * con un arco libre de `gapW` rad centrado en `gapAng` (alineado con el hueco seguro). */
-  ring?: Ring;
 }
-export interface Ring {
-  cx: number;
-  cy: number;
-  r0: number;
-  r1: number;
-  gapAng: number;
-  gapW: number;
-}
-export type ElemKind = 'v' | 'h' | 'd' | 'ring';
+export type ElemKind = 'v' | 'h' | 'd';
 export function elemKind(l: Lane): ElemKind {
-  if (l.ring) return 'ring';
   if (Math.abs(l.x1 - l.x2) < 1e-6) return 'v';
   if (Math.abs(l.y1 - l.y2) < 1e-6) return 'h';
   return 'd';
-}
-/** Radio del anillo en el instante t (r0 antes de disparar, r1 al acabar). */
-export function ringRadius(l: Lane, t: number): number {
-  const r = l.ring;
-  if (!r) return 0;
-  const k = clamp((t - l.fireAt) / Math.max(1, l.offAt - l.fireAt), 0, 1);
-  return r.r0 + (r.r1 - r.r0) * k;
 }
 export interface CascadePlan {
   shape: CascadeShape;
   order: CascadeOrder;
   lanes: Lane[];
-  /** Ancho real del pasillo seguro (px; en las radiales, medido a 140 px del jefe). */
+  /** Ancho real del pasillo seguro (px). */
   safeGap: number;
   /** Centro del hueco seguro (para pintarlo o para tests). */
   safeAt: Pt;
@@ -232,57 +216,12 @@ function timed(segs: [Pt, Pt][], width: number, spec: CascadeSpec): Lane[] {
 }
 
 /**
- * Plan de una cascada en la sala `b`. `origin` es el jefe (para las radiales). Las paralelas reparten `lanes + 1`
- * huecos a lo ancho y dejan uno sin disparar (el hueco seguro, nunca en el borde); las radiales dejan un sector libre
- * (dos sectores opuestos en la espiral).
+ * Plan de una cascada en la sala `b`. `origin` es el jefe (las mezcladas eligen su hueco lejos de él). Las paralelas
+ * reparten `lanes + 1` huecos a lo ancho y dejan uno sin disparar (el hueco seguro, nunca en el borde).
  */
 export function cascadePlan(b: Bounds, shape: CascadeShape, spec: CascadeSpec, origin: Pt, rng: () => number, safe?: Pt): CascadePlan {
   const n = clamp(spec.lanes, MIN_LANES, Math.max(MIN_LANES, spec.lanesCap ?? MAX_LANES));
   if (isMixedShape(shape)) return mixedPlan(b, shape, n, spec, origin, rng, safe);
-  if (shape === 'radial' || shape === 'spiral') {
-    const o = { x: clamp(origin.x, b.x0, b.x1), y: clamp(origin.y, b.y0, b.y1) };
-    const twin = shape === 'spiral';
-    // Radial: n rayos + 3 huecos seguidos libres. Espiral: dos brazos de n/2 con 2 huecos libres cada uno, opuestos.
-    const slots = twin ? 2 * (Math.ceil(n / 2) + 2) : n + 3;
-    const step = (Math.PI * 2) / slots;
-    let base = rng() * Math.PI * 2;
-    const dir = rng() < 0.5 ? 1 : -1;
-    // Con hueco común (tormenta): el sector libre apunta a él
-    if (safe) base = Math.atan2(safe.y - o.y, safe.x - o.x) - dir * (twin ? Math.ceil(n / 2) - 0.5 + 1 : n - 0.5 + 1.5) * step;
-    const ang = (i: number) => base + dir * i * step;
-    const len = Math.hypot(b.x1 - b.x0, b.y1 - b.y0);
-    const ray = (a: number): [Pt, Pt] => {
-      const l = clipBeamToBounds(o.x, o.y, a, len, b);
-      return [o, { x: o.x + Math.cos(a) * l, y: o.y + Math.sin(a) * l }];
-    };
-    let idx: number[];
-    let safeSlots: number;
-    if (twin) {
-      const half = slots / 2;
-      const arm = Math.ceil(n / 2);
-      idx = [];
-      for (let i = 0; i < arm && idx.length < n; i++) {
-        idx.push(i);
-        if (idx.length < n) idx.push(i + half);
-      }
-      safeSlots = 2;
-    } else {
-      idx = Array.from({ length: n }, (_, i) => i);
-      safeSlots = 3;
-    }
-    const width = spec.width;
-    const sectorAng = (safeSlots + 1) * step;
-    const safeGap = 2 * 140 * Math.sin(sectorAng / 2) - width;
-    const sa = ang(twin ? Math.ceil(n / 2) - 0.5 + safeSlots / 2 : n - 0.5 + safeSlots / 2);
-    return withTotal({
-      shape,
-      order: twin ? 'twin' : 'rotate',
-      lanes: timed(idx.map((i) => ray(ang(i))), width, spec),
-      safeGap,
-      safeAt: { x: o.x + Math.cos(sa) * 140, y: o.y + Math.sin(sa) * 140 },
-      totalMs: 0,
-    });
-  }
   // Paralelas: normal `nv` (la dirección del barrido) y dirección de la línea `dv`
   const diagSign = rng() < 0.5 ? 1 : -1;
   const vertical = shape === 'sweepH' || (shape === 'pincer' && rng() < 0.6);
@@ -347,20 +286,20 @@ export function cascadePlan(b: Bounds, shape: CascadeShape, spec: CascadeSpec, o
 
 /** Radio del disco seguro común de las mezcladas (diámetro 64 ≥ SAFE_MIN). */
 export const MIXED_SAFE_R = 32;
+/** Líneas de más en las mezcladas (sin anillos, compensan la densidad). */
+export const MIXED_EXTRA = 3;
 
 /**
  * Ráfaga mezclada: primero elige un disco seguro S (radio MIXED_SAFE_R, lejos de las paredes y, si se puede, del jefe)
- * y luego coloca columnas, filas y diagonales de pared a pared que NO lo cruzan y anillos (desde el jefe o un punto al
- * azar; se abren o se cierran) con su arco libre apuntando a S. Al menos 3 tipos de elemento.
+ * y luego coloca columnas, filas y diagonales de pared a pared que NO lo cruzan (n + MIXED_EXTRA líneas, de los tres
+ * tipos).
  */
 function mixedPlan(b: Bounds, shape: CascadeShape, n: number, spec: CascadeSpec, origin: Pt, rng: () => number, safe?: Pt): CascadePlan {
   const W = b.x1 - b.x0;
   const H = b.y1 - b.y0;
   const rs = MIXED_SAFE_R;
   const lw = Math.max(MIN_LANE_W, Math.min(spec.width, Math.min(W, H) / 12));
-  const rw = Math.max(MIN_LANE_W, Math.round(spec.width * 0.8));
   const o = { x: clamp(origin.x, b.x0, b.x1), y: clamp(origin.y, b.y0, b.y1) };
-  // Disco seguro: dentro con margen; preferimos lejos del jefe (los anillos del jefe necesitan distancia)
   const mx = Math.min(W / 2 - 1, rs + 24);
   const my = Math.min(H / 2 - 1, rs + 24);
   let S = { x: b.x0 + W / 2, y: b.y0 + H / 2 };
@@ -375,17 +314,16 @@ function mixedPlan(b: Bounds, shape: CascadeShape, n: number, spec: CascadeSpec,
     if (d >= 180) break;
   }
   if (safe) S = { x: clamp(safe.x, b.x0 + mx, b.x1 - mx), y: clamp(safe.y, b.y0 + my, b.y1 - my) };
-  // Reparto de tipos: mixed = 2-3 anillos y los tres tipos de línea; mixedRing = 4-5 anillos y dos tipos de línea
-  const rings = shape === 'mixedRing' ? 4 + Math.floor(rng() * 2) : 2 + Math.floor(rng() * 2);
-  const lineKinds: ElemKind[] = shuffle<ElemKind>(['v', 'h', 'd'], rng).slice(0, shape === 'mixedRing' ? 2 : 3);
-  const kinds: ElemKind[] = Array.from({ length: rings }, () => 'ring' as ElemKind);
+  const total = n + MIXED_EXTRA;
+  const lineKinds: ElemKind[] = shuffle<ElemKind>(['v', 'h', 'd'], rng);
+  const kinds: ElemKind[] = [];
   for (const k of lineKinds) kinds.push(k, k);
-  while (kinds.length < n) kinds.push(lineKinds[Math.floor(rng() * lineKinds.length) % lineKinds.length]);
+  while (kinds.length < total) kinds.push(lineKinds[Math.floor(rng() * lineKinds.length) % lineKinds.length]);
   shuffle(kinds, rng);
-  const used: Record<'v' | 'h' | 'd', number[]> = { v: [], h: [], d: [] };
+  const used: Record<ElemKind, number[]> = { v: [], h: [], d: [] };
   const clear = rs + lw / 2 + 4;
   const far = (arr: number[], v: number) => arr.every((u) => Math.abs(u - v) >= lw * 1.3);
-  const placeLine = (k: 'v' | 'h' | 'd'): Omit<Lane, 'warnAt' | 'fireAt' | 'offAt'> | null => {
+  const placeLine = (k: ElemKind): Omit<Lane, 'warnAt' | 'fireAt' | 'offAt'> | null => {
     for (let tries = 0; tries < 40; tries++) {
       if (k === 'v' || k === 'h') {
         const lo = (k === 'v' ? b.x0 : b.y0) + lw / 2;
@@ -409,30 +347,11 @@ function mixedPlan(b: Bounds, shape: CascadeShape, n: number, spec: CascadeSpec,
     }
     return null;
   };
-  const corners = (c: Pt) => Math.max(...[[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1]].map(([x, y]) => Math.hypot(x - c.x, y - c.y)));
-  let fromBoss = rng() < 0.5;
-  const placeRing = (): Omit<Lane, 'warnAt' | 'fireAt' | 'offAt'> | null => {
-    for (let tries = 0; tries < 40; tries++) {
-      const c = fromBoss && tries < 4 ? o : { x: b.x0 + rng() * W, y: b.y0 + rng() * H };
-      const d = Math.hypot(S.x - c.x, S.y - c.y);
-      const need = rs + rw / 2 + 14;
-      if (d < need + 24) continue;
-      fromBoss = !fromBoss;
-      const R = corners(c);
-      const out = rng() < 0.6; // se abre (desde el centro) o se cierra (desde fuera)
-      const gapW = 2 * Math.asin(Math.min(1, need / d)) + 0.12;
-      return {
-        x1: c.x, y1: c.y, x2: c.x, y2: c.y, width: rw,
-        ring: { cx: c.x, cy: c.y, r0: out ? rw / 2 : R, r1: out ? R : rw / 2, gapAng: Math.atan2(S.y - c.y, S.x - c.x), gapW },
-      };
-    }
-    return null;
-  };
   const elems: Omit<Lane, 'warnAt' | 'fireAt' | 'offAt'>[] = [];
   for (const k of kinds) {
-    const order: ElemKind[] = [k, ...shuffle<ElemKind>(['v', 'h', 'd', 'ring'], rng).filter((x) => x !== k)];
+    const order: ElemKind[] = [k, ...shuffle<ElemKind>(['v', 'h', 'd'], rng).filter((x) => x !== k)];
     for (const kk of order) {
-      const e = kk === 'ring' ? placeRing() : placeLine(kk);
+      const e = placeLine(kk);
       if (e) {
         elems.push(e);
         break;
@@ -442,8 +361,7 @@ function mixedPlan(b: Bounds, shape: CascadeShape, n: number, spec: CascadeSpec,
   const lanes: Lane[] = elems.map((e, i) => {
     const warnAt = i * spec.staggerMs;
     const fireAt = warnAt + spec.warnMs;
-    const dur = e.ring ? clamp(Math.abs(e.ring.r1 - e.ring.r0) * 0.6, 480, 900) : spec.onMs;
-    return { ...e, warnAt, fireAt, offAt: fireAt + dur };
+    return { ...e, warnAt, fireAt, offAt: fireAt + spec.onMs };
   });
   return withTotal({ shape, order: 'random', lanes, safeGap: 2 * rs, safeAt: S, totalMs: 0 });
 }
@@ -461,24 +379,14 @@ export function segDist(x1: number, y1: number, x2: number, y2: number, x: numbe
   return Math.hypot(x - (x1 + dx * t), y - (y1 + dy * t));
 }
 
-/** ¿Le da la línea a algo de radio `pad` en (x, y)? En un anillo, con `t` mira su radio en ese instante; sin `t`, si
- * podría darle en algún momento (toda la corona que recorre, menos el arco libre). */
-export function laneHits(l: Lane, x: number, y: number, pad = 10, t?: number): boolean {
-  const r = l.ring;
-  if (!r) return segDist(l.x1, l.y1, l.x2, l.y2, x, y) <= l.width / 2 + pad;
-  if (t !== undefined) return waveHits(r.cx, r.cy, ringRadius(l, t), l.width, r.gapAng, r.gapW, x, y, pad);
-  const d = Math.hypot(x - r.cx, y - r.cy);
-  const lo = Math.min(r.r0, r.r1) - l.width / 2 - pad;
-  const hi = Math.max(r.r0, r.r1) + l.width / 2 + pad;
-  if (d < lo || d > hi) return false;
-  let da = Math.atan2(y - r.cy, x - r.cx) - r.gapAng;
-  da = Math.atan2(Math.sin(da), Math.cos(da));
-  return Math.abs(da) > r.gapW / 2;
+/** ¿Le da la línea a algo de radio `pad` en (x, y)? (`t` se acepta por compatibilidad: las líneas no se mueven). */
+export function laneHits(l: Lane, x: number, y: number, pad = 10, _t?: number): boolean {
+  return segDist(l.x1, l.y1, l.x2, l.y2, x, y) <= l.width / 2 + pad;
 }
 
 /** Estado de una línea en el instante t: nada, aviso (k de 0 a 1), activa o apagándose. */
 export type LaneState = { s: 'idle' } | { s: 'warn'; k: number } | { s: 'on'; k: number } | { s: 'fade'; k: number } | { s: 'done' };
-export function laneState(l: Lane, t: number, fadeMs = 140): LaneState {
+export function laneState(l: Pick<Lane, 'warnAt' | 'fireAt' | 'offAt'>, t: number, fadeMs = 140): LaneState {
   if (t < l.warnAt) return { s: 'idle' };
   if (t < l.fireAt) return { s: 'warn', k: (t - l.warnAt) / (l.fireAt - l.warnAt) };
   if (t < l.offAt) return { s: 'on', k: (t - l.fireAt) / (l.offAt - l.fireAt) };
@@ -488,9 +396,10 @@ export function laneState(l: Lane, t: number, fadeMs = 140): LaneState {
 
 // --- Combo retardado ---
 
-export type ComboHit = 'dash' | 'wave' | 'zone';
+/** bolt: rayo que cae en un círculo marcado donde estabas al sacar el aviso. */
+export type ComboHit = 'dash' | 'bolt' | 'zone';
 /** Cuánto dura cada golpe una vez lanzado (ms). */
-export const COMBO_ACT_MS: Record<ComboHit, number> = { dash: 380, wave: 520, zone: 260 };
+export const COMBO_ACT_MS: Record<ComboHit, number> = { dash: 380, bolt: 260, zone: 260 };
 
 export interface ComboSpec {
   hits: number;
@@ -501,12 +410,9 @@ export interface ComboSpec {
   /** Lo que se alarga el aviso en un amago (ms). */
   feintMin: number;
   feintMax: number;
-  /** Radio de la zona (AoE amplia) y de la onda. */
+  /** Radio de la zona (AoE amplia) y del círculo del rayo. */
   zoneR: number;
-  waveR: number;
-  /** Hueco de la onda (rad) y grosor del frente. */
-  waveGap: number;
-  waveThick: number;
+  boltR: number;
 }
 
 /** 3-5 golpes (más en pisos hondos y Difícil). Fácil: 3 golpes, más aviso, pausas más largas y menos amagos. */
@@ -523,9 +429,7 @@ export function comboSpec(floor: number, phase: 1 | 2, diff: Difficulty = 'norma
     feintMin: 280,
     feintMax: 520,
     zoneR: diff === 'easy' ? 100 : 120,
-    waveR: 300,
-    waveGap: diff === 'easy' ? Math.PI / 2.2 : Math.PI / 3,
-    waveThick: 28,
+    boltR: diff === 'easy' ? 90 : 105,
   };
 }
 
@@ -538,9 +442,9 @@ export interface ComboStep {
   feint: boolean;
 }
 
-/** Golpes encadenados: empieza con embestida, luego onda y zona, y sigue sin repetir el anterior. */
+/** Golpes encadenados: empieza con embestida, luego rayo y zona, y sigue sin repetir el anterior. */
 export function comboPlan(spec: ComboSpec, rng: () => number): { steps: ComboStep[]; totalMs: number } {
-  const kinds: ComboHit[] = ['dash', 'wave', 'zone'];
+  const kinds: ComboHit[] = ['dash', 'bolt', 'zone'];
   const steps: ComboStep[] = [];
   let t = 0;
   for (let i = 0; i < clamp(spec.hits, 3, 5); i++) {
@@ -560,14 +464,6 @@ export function comboPlan(spec: ComboSpec, rng: () => number): { steps: ComboSte
   return { steps, totalMs: steps[steps.length - 1].endAt };
 }
 
-/** Onda: anillo de radio r y grosor `thick` desde (cx, cy) con un hueco de `gapW` rad centrado en `gapAng`. */
-export function waveHits(cx: number, cy: number, r: number, thick: number, gapAng: number, gapW: number, x: number, y: number, pad = 10): boolean {
-  const d = Math.hypot(x - cx, y - cy);
-  if (Math.abs(d - r) > thick / 2 + pad) return false;
-  let da = Math.atan2(y - cy, x - cx) - gapAng;
-  da = Math.atan2(Math.sin(da), Math.cos(da));
-  return Math.abs(da) > gapW / 2;
-}
 export const zoneHits = (cx: number, cy: number, r: number, x: number, y: number, pad = 6): boolean => Math.hypot(x - cx, y - cy) <= r + pad;
 
 // --- Tormenta ---
@@ -592,6 +488,9 @@ export interface StormSpec {
   durMax: number;
   warnMs: number;
   maxActive: number;
+  /** Rayos en círculo dentro de la tormenta: cada cuánto (ms) y cuántos a la vez. */
+  strikeEvery: number;
+  strikeMax: number;
 }
 
 /** Fase 1: 3-4 cascadas en 6-10 s; fase 2: 4-5 en 9-14 s. Aviso ≥ 750 ms (950 en Fácil). */
@@ -608,6 +507,8 @@ export function stormSpec(floor: number, phase: 1 | 2, diff: Difficulty = 'norma
     durMax: phase === 2 ? 13500 : 9500,
     warnMs: diff === 'easy' ? 950 : Math.max(FRENZY_MIN_WARN, phase === 2 || diff === 'hard' ? 750 : 820),
     maxActive: low ? STORM_MAX_ACTIVE_LOW : STORM_MAX_ACTIVE,
+    strikeEvery: (phase === 2 ? 480 : 800) + (diff === 'easy' ? 250 : diff === 'hard' ? -80 : 0),
+    strikeMax: low ? 2 : phase === 2 ? 4 : 3,
   };
 }
 
@@ -670,10 +571,15 @@ export function stormPath(b: Bounds, start: Pt, origin: Pt, totalMs: number, rng
   return { pts, r: STORM_SAFE_R };
 }
 
-/** ¿Cubre el elemento (activo) el pasillo seguro en el instante t? Exacto (con el radio del anillo en t). */
+/** ¿Cubre el elemento (activo) el pasillo seguro en el instante t? */
 export function coversSafe(l: Lane, p: SafePath, t: number, extra = 0): boolean {
   const s = safeAt(p, t);
-  return laneHits(l, s.x, s.y, p.r + extra, l.ring ? t : undefined);
+  return laneHits(l, s.x, s.y, p.r + extra);
+}
+/** ¿Cubre el círculo del rayo el pasillo seguro en el instante t? */
+export function strikeCoversSafe(k: Strike, p: SafePath, t: number, extra = 0): boolean {
+  const s = safeAt(p, t);
+  return strikeHits(k, s.x, s.y, p.r + extra);
 }
 
 /** Muestras del pasillo en [t0, t1] (cada `step` ms y los extremos). */
@@ -684,32 +590,12 @@ function pathSamples(p: SafePath, t0: number, t1: number, step = 20): Pt[] {
   return out;
 }
 
-/**
- * Ajusta (anillos) o descarta un elemento que podría tocar el pasillo seguro mientras avisa o quema. Los anillos
- * vuelven a apuntar su arco libre hacia donde estará el pasillo y lo ensanchan para cubrir su recorrido (si haría
- * falta un arco enorme, fuera). La comprobación es conservadora (sin el radio en t: toda la corona que recorre).
- */
+/** Descarta un elemento que podría tocar el pasillo seguro mientras avisa o quema. */
 function respectPath(l: Lane, p: SafePath): Lane | null {
   // Margen extra: el pasillo se mueve como mucho ~4,4 px entre muestras de 20 ms
   const pad = p.r + 8;
   const pts = pathSamples(p, l.warnAt, l.offAt + STORM_FADE_MS);
-  const r = l.ring;
-  if (!r) return pts.some((q) => segDist(l.x1, l.y1, l.x2, l.y2, q.x, q.y) <= l.width / 2 + pad) ? null : l;
-  // Anillo: arco que abarca todas las posiciones del pasillo vistas desde el centro, más el radio de seguridad
-  const mid = pts[Math.floor(pts.length / 2)];
-  const midA = Math.atan2(mid.y - r.cy, mid.x - r.cx);
-  let half = 0;
-  for (const q of pts) {
-    const d = Math.hypot(q.x - r.cx, q.y - r.cy);
-    if (d < pad + l.width + 30) return null;
-    let da = Math.atan2(q.y - r.cy, q.x - r.cx) - midA;
-    da = Math.abs(Math.atan2(Math.sin(da), Math.cos(da)));
-    half = Math.max(half, da + Math.asin(Math.min(1, (pad + l.width / 2) / d)));
-  }
-  const gapW = 2 * half + 0.1;
-  if (gapW > 1.6) return null;
-  const nl: Lane = { ...l, ring: { ...r, gapAng: midA, gapW } };
-  return pts.some((q) => laneHits(nl, q.x, q.y, pad)) ? null : nl;
+  return pts.some((q) => segDist(l.x1, l.y1, l.x2, l.y2, q.x, q.y) <= l.width / 2 + pad) ? null : l;
 }
 
 export interface StormPlan {
@@ -717,6 +603,8 @@ export interface StormPlan {
   /** Arranque de cada cascada (ms). */
   starts: number[];
   lanes: Lane[];
+  /** Rayos en círculo que caen entre las líneas (nunca sobre el pasillo). */
+  strikes: Strike[];
   path: SafePath;
   totalMs: number;
 }
@@ -727,11 +615,9 @@ export const liveAt = (lanes: readonly Lane[], t: number): number => lanes.reduc
 /** Formas de la tormenta: al menos una mezclada y las simples distintas entre sí. */
 export function stormShapes(pool: readonly CascadeShape[], n: number, rng: () => number): CascadeShape[] {
   const simples = shuffle([...new Set(pool.filter((s) => !isMixedShape(s)))], rng);
-  const mixed = shuffle([...MIXED_SHAPES], rng);
-  const out: CascadeShape[] = [mixed[0]];
+  const out: CascadeShape[] = ['mixed'];
   while (out.length < n && simples.length) out.push(simples.shift() as CascadeShape);
-  let i = 1;
-  while (out.length < n) out.push(mixed[i++ % mixed.length]);
+  while (out.length < n) out.push('mixed');
   // La primera, simple (rampa: empieza legible); la mezclada más densa al final si cabe
   const first = out.findIndex((s) => !isMixedShape(s));
   if (first > 0) [out[0], out[first]] = [out[first], out[0]];
@@ -785,7 +671,35 @@ export function stormPlan(b: Bounds, spec: StormSpec, origin: Pt, player: Pt, po
     // Peor caso: todos los solapados con l a la vez
     if (busy.length < spec.maxActive || maxOverlap([...busy, l]) <= spec.maxActive) kept.push(l);
   }
-  return { shapes, starts, lanes: kept, path, totalMs: Math.max(0, ...kept.map((l) => l.offAt)) };
+  const strikes = stormStrikes(b, spec, path, target, rng);
+  return { shapes, starts, lanes: kept, strikes, path, totalMs: Math.max(0, ...kept.map((l) => l.offAt), ...strikes.map((k) => k.offAt)) };
+}
+
+/**
+ * Rayos de la tormenta: cada `strikeEvery` ms un círculo (radio 90-110) donde no llegue el pasillo seguro mientras avisa
+ * y quema; como mucho `strikeMax` a la vez y sin pisarse entre ellos. Sin apuntados (el pasillo manda).
+ */
+function stormStrikes(b: Bounds, spec: StormSpec, path: SafePath, target: number, rng: () => number): Strike[] {
+  const out: Strike[] = [];
+  if (spec.strikeEvery <= 0) return out;
+  const rCap = Math.min(b.x1 - b.x0, b.y1 - b.y0) / 3;
+  for (let t = 600; t + spec.warnMs + LIGHTNING_ON_MS < target; t += spec.strikeEvery * (0.8 + 0.4 * rng())) {
+    const live = out.filter((k) => k.offAt + STORM_FADE_MS > t);
+    if (live.length >= spec.strikeMax) continue;
+    const r = Math.min(rCap, 90 + rng() * 20);
+    const warnAt = t;
+    const fireAt = warnAt + spec.warnMs;
+    const offAt = fireAt + LIGHTNING_ON_MS;
+    const pts = pathSamples(path, warnAt, offAt + STORM_FADE_MS);
+    for (let tries = 0; tries < 16; tries++) {
+      const c = clampCenter(b, b.x0 + rng() * (b.x1 - b.x0), b.y0 + rng() * (b.y1 - b.y0), r);
+      if (pts.some((q) => Math.hypot(q.x - c.x, q.y - c.y) <= r + path.r + 18)) continue;
+      if (live.some((k) => Math.hypot(k.x - c.x, k.y - c.y) < k.r + r * 0.6)) continue;
+      out.push({ x: c.x, y: c.y, r, warnAt, fireAt, offAt, aimed: false });
+      break;
+    }
+  }
+  return out;
 }
 
 /** Máximo de elementos vivos a la vez (barrido por eventos). */
@@ -820,11 +734,9 @@ export interface ChaseSpec {
   homerSpeed: number;
   homerTurn: number;
   homerLife: number;
-  /** Anillos que se cierran sobre ti con un hueco. */
-  rings: number;
-  ringR0: number;
-  ringMs: number;
-  ringGap: number;
+  /** Rayos que caen en un círculo donde estabas (aviso warnMs; se esquivan saliendo del círculo). */
+  bolts: number;
+  boltR: number;
   warnMs: number;
   /** Cada cuánto aparece un elemento nuevo (ms) y cuánto dura el acoso. */
   everyMs: number;
@@ -850,10 +762,8 @@ export function chaseSpec(floor: number, phase: 1 | 2, diff: Difficulty = 'norma
     homerSpeed: PLAYER_BASE_SPEED * (e ? 0.85 : h ? 1.15 : 1),
     homerTurn: e ? 1.4 : h ? 2.2 : 1.9,
     homerLife: e ? 1800 : 2400,
-    rings: e ? 1 : h ? 3 : 2,
-    ringR0: 280,
-    ringMs: e ? 2000 : 1600,
-    ringGap: e ? 1.2 : 0.8,
+    bolts: e ? 2 : h ? 5 : 4,
+    boltR: e ? 90 : 105,
     warnMs: e ? 950 : FRENZY_MIN_WARN,
     everyMs: e ? 520 : h ? 330 : 400,
     durMs: phase === 2 ? 8000 : 6000,
@@ -881,22 +791,152 @@ export function homingStep(p: Pt, ang: number, to: Pt, speed: number, turn: numb
   return { x: p.x + Math.cos(a) * m, y: p.y + Math.sin(a) * m, ang: a };
 }
 
-/** Radio de un anillo que se cierra (de r0 a 0 en `ms`). */
-export const closingRadius = (r0: number, t: number, ms: number): number => r0 * (1 - clamp(t / Math.max(1, ms), 0, 1));
-
-export type ChaseKind = 'creep' | 'homer' | 'ring';
-/** Orden de aparición: mezcla de los tres, con los anillos repartidos (nunca dos seguidos). */
+export type ChaseKind = 'creep' | 'homer' | 'bolt';
+/** Orden de aparición: mezcla de los tres, con los rayos repartidos (nunca dos seguidos). */
 export function chaseOrder(spec: ChaseSpec, rng: () => number): ChaseKind[] {
   const rest = shuffle<ChaseKind>([...Array.from({ length: spec.creepers }, () => 'creep' as const), ...Array.from({ length: spec.homers }, () => 'homer' as const)], rng);
   const out: ChaseKind[] = [...rest];
-  for (let i = 0; i < spec.rings; i++) out.splice(Math.round(((i + 1) * out.length) / (spec.rings + 1)) + i, 0, 'ring');
+  for (let i = 0; i < spec.bolts; i++) out.splice(Math.round(((i + 1) * out.length) / (spec.bolts + 1)) + i, 0, 'bolt');
   return out;
 }
 
+// --- Rayos: círculos en el suelo donde cae un rayo ---
+
+/** Cuánto quema el rayo una vez cae (ms). */
+export const LIGHTNING_ON_MS = 240;
+
+export interface LightningSpec {
+  strikes: number;
+  /** ms entre el aviso de un círculo y el del siguiente. */
+  staggerMs: number;
+  warnMs: number;
+  onMs: number;
+  rMin: number;
+  rMax: number;
+  /** Fracción de círculos apuntados a donde estás al sacar su aviso. */
+  aimed: number;
+  /** Fracción máxima de la sala que pueden cubrir los círculos vivos a la vez (siempre queda hueco). */
+  cover: number;
+}
+
+/** Fase 1: 6-10 rayos cada ~300-400 ms; fase 2: 11-18 cada ~150-260 ms y más apuntados. Fácil más lento y con más aviso. */
+export function lightningSpec(floor: number, phase: 1 | 2, diff: Difficulty = 'normal'): LightningSpec {
+  const d = depth(floor);
+  let strikes = (phase === 2 ? 13 : 7) + Math.round(d * 2);
+  let stagger = (phase === 2 ? 230 : 380) - Math.round(d * 30);
+  let warn = phase === 2 ? 820 : 900;
+  if (diff === 'easy') {
+    strikes -= 1;
+    stagger += 80;
+    warn = 1050;
+  } else if (diff === 'hard') {
+    strikes += 1;
+    stagger -= 30;
+    warn -= 60;
+  }
+  return {
+    strikes: phase === 2 ? clamp(strikes, 11, 18) : clamp(strikes, 6, 10),
+    staggerMs: phase === 2 ? clamp(stagger, 150, 320) : clamp(stagger, 300, 460),
+    warnMs: Math.max(FRENZY_MIN_WARN, warn),
+    onMs: LIGHTNING_ON_MS,
+    rMin: diff === 'easy' ? 90 : 95,
+    rMax: diff === 'easy' ? 115 : 130,
+    aimed: phase === 2 ? 0.5 : 0.35,
+    cover: diff === 'easy' ? 0.35 : 0.45,
+  };
+}
+
+/** Un rayo: círculo (centro y radio) y sus tiempos (ms desde el inicio). `aimed`: se recoloca sobre ti al avisar. */
+export interface Strike {
+  x: number;
+  y: number;
+  r: number;
+  warnAt: number;
+  fireAt: number;
+  offAt: number;
+  aimed: boolean;
+}
+export interface LightningPlan {
+  strikes: Strike[];
+  totalMs: number;
+}
+
+/** Centro para que el círculo entero quede dentro de la sala. */
+export function clampCenter(b: Bounds, x: number, y: number, r: number): Pt {
+  const W = b.x1 - b.x0;
+  const H = b.y1 - b.y0;
+  return {
+    x: W > 2 * r ? clamp(x, b.x0 + r, b.x1 - r) : b.x0 + W / 2,
+    y: H > 2 * r ? clamp(y, b.y0 + r, b.y1 - r) : b.y0 + H / 2,
+  };
+}
+/** Radio real en la sala (como mucho un tercio del lado corto). */
+export const strikeRadius = (b: Bounds, r: number): number => Math.min(r, Math.min(b.x1 - b.x0, b.y1 - b.y0) / 3);
+/** ¿Le da el rayo a algo de radio `pad` en (x, y)? Solo dentro del círculo. */
+export const strikeHits = (k: Pick<Strike, 'x' | 'y' | 'r'>, x: number, y: number, pad = 10): boolean => Math.hypot(x - k.x, y - k.y) <= k.r + pad;
+/** Recoloca un rayo apuntado sobre `p` (dentro de la sala). */
+export function aimStrike(k: Strike, p: Pt, b: Bounds): Strike {
+  const c = clampCenter(b, p.x, p.y, k.r);
+  return { ...k, x: c.x, y: c.y };
+}
+/** Cuántos círculos pueden estar vivos a la vez sin pasar de `cover` de la sala. */
+export function strikeMaxLive(b: Bounds, spec: LightningSpec): number {
+  const r = strikeRadius(b, spec.rMax);
+  return Math.max(1, Math.floor((spec.cover * (b.x1 - b.x0) * (b.y1 - b.y0)) / (Math.PI * r * r)));
+}
+const LIGHTNING_FADE_MS = 160;
+
+/**
+ * Plan de rayos en la sala `b`: uno detrás de otro (staggerMs), cada uno con su aviso; si ya hay demasiados vivos
+ * (strikeMaxLive), el siguiente espera. Los no apuntados buscan sitio lejos de los vivos; los apuntados nacen sobre
+ * `player` y en marcha se recolocan donde estés al sacar su aviso (aimStrike).
+ */
+export function lightningPlan(b: Bounds, spec: LightningSpec, player: Pt, rng: () => number): LightningPlan {
+  const maxLive = strikeMaxLive(b, spec);
+  const out: Strike[] = [];
+  let t = 0;
+  let aimAcc = rng();
+  for (let i = 0; i < spec.strikes; i++) {
+    const r = strikeRadius(b, spec.rMin + rng() * (spec.rMax - spec.rMin));
+    let warnAt = i === 0 ? 0 : t + spec.staggerMs;
+    // Tope de vivos: espera a que se apague el que toque
+    const ends = out.map((k) => k.offAt + LIGHTNING_FADE_MS).sort((a, c) => c - a);
+    if (ends.length >= maxLive) warnAt = Math.max(warnAt, ends[maxLive - 1]);
+    t = warnAt;
+    const fireAt = warnAt + spec.warnMs;
+    const offAt = fireAt + spec.onMs;
+    // Reparto regular de apuntados (una fracción fija, con fase al azar)
+    aimAcc += spec.aimed;
+    const aimed = aimAcc >= 1;
+    if (aimed) aimAcc -= 1;
+    const live = out.filter((k) => k.offAt + LIGHTNING_FADE_MS > warnAt);
+    let c = clampCenter(b, player.x, player.y, r);
+    if (!aimed) {
+      let best = -Infinity;
+      for (let tries = 0; tries < 14; tries++) {
+        const q = clampCenter(b, b.x0 + rng() * (b.x1 - b.x0), b.y0 + rng() * (b.y1 - b.y0), r);
+        const sc = live.length ? Math.min(...live.map((k) => Math.hypot(k.x - q.x, k.y - q.y) - k.r - r)) : 0;
+        // Algunos cerca de ti (sin estar encima): a 1-2,5 radios del jugador
+        const dp = Math.hypot(q.x - player.x, q.y - player.y);
+        const near = dp > r && dp < r * 2.5 ? 40 : 0;
+        if (sc + near + rng() * 30 > best) {
+          best = sc + near + rng() * 30;
+          c = q;
+        }
+      }
+    }
+    out.push({ x: c.x, y: c.y, r, warnAt, fireAt, offAt, aimed });
+  }
+  return { strikes: out, totalMs: Math.max(0, ...out.map((k) => k.offAt)) };
+}
+
+/** Rayos vivos (aviso, cayendo o apagándose) en el instante t. */
+export const strikesLiveAt = (ks: readonly Strike[], t: number): Strike[] => ks.filter((k) => t >= k.warnAt && t < k.offAt + LIGHTNING_FADE_MS);
+
 // --- Selección ---
 
-/** Fase 1: cascadas y tormentas. Fase 2: además combos retardados y acoso. */
-export const frenzyAttacksFor = (phase: 1 | 2): FrenzyAttack[] => (phase === 2 ? ['cascade', 'storm', 'feintCombo', 'chase'] : ['cascade', 'storm']);
+/** Fase 1: cascadas, tormentas y rayos. Fase 2: además combos retardados y acoso. */
+export const frenzyAttacksFor = (phase: 1 | 2): FrenzyAttack[] => (phase === 2 ? ['cascade', 'storm', 'lightning', 'feintCombo', 'chase'] : ['cascade', 'storm', 'lightning']);
 
 /** Probabilidad de que el siguiente ataque del jefe sea frenético: 60 % en fase 1 y 80 % en fase 2 (Fácil ×0,6,
  * Difícil ×1,2 hasta el 95 %). */
@@ -905,11 +945,13 @@ export function frenzyChance(phase: 1 | 2, diff: Difficulty = 'normal'): number 
   return diff === 'easy' ? base * 0.6 : diff === 'hard' ? Math.min(0.95, base * 1.2) : base;
 }
 
-/** ¿Toca un ataque frenético? La mitad son tormentas; si no, otro (sin repetir el último), o null para uno normal. */
+/** ¿Toca un ataque frenético? ~40 % tormentas, ~30 % rayos (sin repetir) y el resto otro (sin repetir el último), o null. */
 export function pickFrenzy(phase: 1 | 2, diff: Difficulty, rng: () => number, last?: string): FrenzyAttack | null {
   if (rng() >= frenzyChance(phase, diff)) return null;
-  if (rng() < 0.5) return 'storm';
-  const all = frenzyAttacksFor(phase).filter((a) => a !== 'storm');
+  const r = rng();
+  if (r < 0.4) return 'storm';
+  if (r < 0.7 && last !== 'lightning') return 'lightning';
+  const all = frenzyAttacksFor(phase).filter((a) => a !== 'storm' && a !== 'lightning');
   const opts = all.length > 1 ? all.filter((a) => a !== last) : all;
   return opts[Math.floor(rng() * opts.length) % opts.length];
 }

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   CASCADE_SHAPES, FRENZY_ATTACKS, FRENZY_MIN_WARN, MAX_LANES, MIN_LANES, MIN_LANE_W, SAFE_MIN, cascadePlan, cascadeShapesFor, cascadeSpec,
-  MIXED_SAFE_R, comboPlan, comboSpec, elemKind, ringRadius, frenzyAttacksFor, frenzyChance, isFrenzyAttack, laneHits, laneState, pickFrenzy, pickShape, segDist, waveHits, zoneHits,
+  MIXED_EXTRA, MIXED_SAFE_R, comboPlan, comboSpec, elemKind, frenzyAttacksFor, frenzyChance, isFrenzyAttack, isMixedShape, laneHits, laneState, normalizeShape, pickFrenzy, pickShape, segDist, strikeHits, zoneHits,
   type CascadeShape,
 } from '../src/data/bossFrenzy.ts';
 import { BOSS_ATTACK_LABEL, TELEGRAPH_MS, attackInterval } from '../src/data/bossPatterns.ts';
@@ -55,7 +55,7 @@ test('cascada: cada forma, en cada sala, deja hueco seguro, no sale de la sala y
             const boss = { x: b.x0 + (b.x1 - b.x0) * rng(), y: b.y0 + (b.y1 - b.y0) * rng() };
             const p = cascadePlan(b, shape, spec, boss, rng);
             const tag = `${shape} ${ph} ${diff}`;
-            assert.ok(p.lanes.length >= MIN_LANES && p.lanes.length <= MAX_LANES, `${tag}: ${p.lanes.length} líneas`);
+            assert.ok(p.lanes.length >= MIN_LANES && p.lanes.length <= MAX_LANES + (isMixedShape(shape) ? MIXED_EXTRA : 0), `${tag}: ${p.lanes.length} líneas`);
             assert.ok(p.safeGap >= SAFE_MIN, `${tag}: pasillo ${p.safeGap}`);
             // El centro del hueco seguro no lo toca ninguna línea (con el cuerpo del jugador)
             if (inside(b, p.safeAt.x, p.safeAt.y)) for (const l of p.lanes) assert.equal(laneHits(l, p.safeAt.x, p.safeAt.y, 14), false, tag);
@@ -102,10 +102,10 @@ const MIX_ROOMS = [
   { x0: 40, y0: 40, x1: 2200, y1: 700 },
 ];
 
-test('cascada mezclada: 3+ tipos, 10-14 elementos, de pared a pared, escalonada y con hueco seguro común', () => {
+test('cascada mezclada: solo líneas rectas de 3 tipos, más densa, de pared a pared, escalonada y con hueco seguro común', () => {
   const rng = mulberry32(11);
   for (const b of MIX_ROOMS)
-    for (const shape of ['mixed', 'mixedRing'] as const)
+    for (const shape of ['mixed'] as const)
       for (const ph of [1, 2] as const)
         for (const diff of DIFFS)
           for (let rep = 0; rep < 25; rep++) {
@@ -113,12 +113,9 @@ test('cascada mezclada: 3+ tipos, 10-14 elementos, de pared a pared, escalonada 
             const boss = { x: b.x0 + (b.x1 - b.x0) * rng(), y: b.y0 + (b.y1 - b.y0) * rng() };
             const p = cascadePlan(b, shape, spec, boss, rng);
             const tag = `${shape} ${b.x1 - b.x0}x${b.y1 - b.y0} ${ph} ${diff} #${rep}`;
-            assert.equal(p.lanes.length, spec.lanes, `${tag}: nº`);
-            assert.ok(p.lanes.length >= 10 && p.lanes.length <= 14, tag);
+            assert.ok(p.lanes.length >= spec.lanes && p.lanes.length <= spec.lanes + MIXED_EXTRA, `${tag}: nº ${p.lanes.length}`);
             const kinds = new Set(p.lanes.map(elemKind));
-            assert.ok(kinds.size >= 3, `${tag}: tipos ${[...kinds]}`);
-            if (shape === 'mixedRing') assert.ok(p.lanes.filter((l) => l.ring).length >= 4, `${tag}: anillos`);
-            else assert.ok(kinds.has('ring'), `${tag}: algún anillo`);
+            assert.equal(kinds.size, 3, `${tag}: tipos ${[...kinds]}`);
             assert.ok(p.safeGap >= SAFE_MIN);
             const S = p.safeAt;
             assert.ok(inside(b, S.x - MIXED_SAFE_R, S.y - MIXED_SAFE_R) && inside(b, S.x + MIXED_SAFE_R, S.y + MIXED_SAFE_R), `${tag}: hueco dentro`);
@@ -136,20 +133,11 @@ test('cascada mezclada: 3+ tipos, 10-14 elementos, de pared a pared, escalonada 
                   const x = S.x + Math.cos((a * Math.PI) / 8) * rr;
                   const y = S.y + Math.sin((a * Math.PI) / 8) * rr;
                   assert.equal(laneHits(l, x, y, 0), false, `${tag}: el elemento ${i} (${elemKind(l)}) cruza el hueco`);
-                  if (l.ring) for (let t = l.fireAt; t <= l.offAt; t += 20) assert.equal(laneHits(l, x, y, 0, t), false, tag);
                 }
-              if (l.ring) {
-                assert.ok(inside(b, l.ring.cx, l.ring.cy));
-                // Recorre la sala entera: el radio mayor llega a la esquina más lejana
-                const far = Math.max(...[[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1]].map(([x, y]) => Math.hypot(x - l.ring!.cx, y - l.ring!.cy)));
-                assert.ok(Math.abs(Math.max(l.ring.r0, l.ring.r1) - far) < 1e-6, `${tag}: anillo hasta la pared`);
-                assert.ok(ringRadius(l, l.fireAt) === l.ring.r0 && ringRadius(l, l.offAt) === l.ring.r1);
-              } else {
-                // Línea de pared a pared: los dos extremos tocan un borde de la sala
-                const onEdge = (x: number, y: number) => Math.abs(x - b.x0) < 1e-6 || Math.abs(x - b.x1) < 1e-6 || Math.abs(y - b.y0) < 1e-6 || Math.abs(y - b.y1) < 1e-6;
-                assert.ok(onEdge(l.x1, l.y1) && onEdge(l.x2, l.y2), `${tag}: de pared a pared`);
-                assert.ok(inside(b, l.x1, l.y1) && inside(b, l.x2, l.y2));
-              }
+              // Línea de pared a pared: los dos extremos tocan un borde de la sala
+              const onEdge = (x: number, y: number) => Math.abs(x - b.x0) < 1e-6 || Math.abs(x - b.x1) < 1e-6 || Math.abs(y - b.y0) < 1e-6 || Math.abs(y - b.y1) < 1e-6;
+              assert.ok(onEdge(l.x1, l.y1) && onEdge(l.x2, l.y2), `${tag}: de pared a pared`);
+              assert.ok(inside(b, l.x1, l.y1) && inside(b, l.x2, l.y2));
             }
             assert.equal(p.totalMs, Math.max(...p.lanes.map((l) => l.offAt)));
           }
@@ -158,7 +146,7 @@ test('cascada mezclada: 3+ tipos, 10-14 elementos, de pared a pared, escalonada 
 test('cascada mezclada: es la más frecuente para todos los tipos y puede repetirse', () => {
   for (const t of ['fire', 'water', 'grass', 'ghost', 'normal', 'nada']) {
     const sh = cascadeShapesFor([t], ['ice']);
-    const mixed = sh.filter((s) => s === 'mixed' || s === 'mixedRing').length;
+    const mixed = sh.filter((s) => s === 'mixed').length;
     assert.ok(mixed > sh.length / 2, t);
   }
   const rng = mulberry32(9);
@@ -166,7 +154,7 @@ test('cascada mezclada: es la más frecuente para todos los tipos y puede repeti
   let last: CascadeShape | undefined;
   for (let i = 0; i < 400; i++) {
     last = pickShape(cascadeShapesFor(['fire'], []), rng, last);
-    if (last === 'mixed' || last === 'mixedRing') mixed++;
+    if (last === 'mixed') mixed++;
   }
   assert.ok(mixed > 200, `mezcladas ${mixed}/400`);
 });
@@ -176,8 +164,21 @@ test('cascada: formas por tipo y bioma (variedad), sin repetir la última', () =
   assert.notDeepEqual(cascadeShapesFor(['fire'], []), cascadeShapesFor(['water'], []));
   assert.ok(cascadeShapesFor(['nada'], []).length >= 2);
   const rng = mulberry32(5);
-  const shapes: CascadeShape[] = ['radial', 'sweepH', 'pincer'];
-  for (let i = 0; i < 30; i++) assert.notEqual(pickShape(shapes, rng, 'radial'), 'radial');
+  const shapes: CascadeShape[] = ['diagonal', 'sweepH', 'pincer'];
+  for (let i = 0; i < 30; i++) assert.notEqual(pickShape(shapes, rng, 'diagonal'), 'diagonal');
+});
+
+test('sin ráfagas circulares: ni radial, ni espiral, ni anillos; las formas antiguas se cambian por rectas', () => {
+  assert.deepEqual([...CASCADE_SHAPES].sort(), ['diagonal', 'mixed', 'pincer', 'sweepH', 'sweepV']);
+  for (const t of ['fire', 'water', 'psychic', 'ghost', 'dragon', 'fairy', 'flying', 'dark', 'rock', 'poison', 'nada'])
+    for (const s of cascadeShapesFor([t], [t])) assert.ok(CASCADE_SHAPES.includes(s), `${t}: ${s}`);
+  assert.equal(normalizeShape('radial'), 'diagonal');
+  assert.equal(normalizeShape('spiral'), 'pincer');
+  assert.equal(normalizeShape('mixedRing'), 'mixed');
+  assert.equal(normalizeShape('sweepV'), 'sweepV');
+  assert.equal(normalizeShape('nada'), undefined);
+  const p = cascadePlan(ROOMS[0], 'mixed', cascadeSpec(6, 2), { x: 500, y: 300 }, mulberry32(4));
+  for (const l of p.lanes) assert.ok(!('ring' in l), 'sin anillos');
 });
 
 test('estado de una línea: aviso que se enciende, activa, se apaga', () => {
@@ -200,7 +201,7 @@ test('combo retardado: 3-5 golpes encadenados, aviso mínimo, amagos solo alarga
         const spec = comboSpec(floor, 2, diff);
         const { steps, totalMs } = comboPlan(spec, mulberry32(s));
         assert.ok(steps.length >= 3 && steps.length <= 5);
-        assert.deepEqual(steps.slice(0, 3).map((x) => x.kind), ['dash', 'wave', 'zone'], 'embestida + onda + zona');
+        assert.deepEqual(steps.slice(0, 3).map((x) => x.kind), ['dash', 'bolt', 'zone'], 'embestida + rayo + zona');
         for (let i = 0; i < steps.length; i++) {
           const st = steps[i];
           assert.ok(st.fireAt - st.warnAt >= Math.max(FRENZY_MIN_WARN, spec.warnMs));
@@ -222,17 +223,18 @@ test('combo retardado: 3-5 golpes encadenados, aviso mínimo, amagos solo alarga
   assert.ok(comboSpec(6, 2, 'easy').warnMs > comboSpec(6, 2).warnMs);
 });
 
-test('combo: la onda deja su hueco y la zona tiene radio', () => {
-  assert.ok(waveHits(0, 0, 100, 28, 0, Math.PI / 3, 0, 100));
-  assert.equal(waveHits(0, 0, 100, 28, 0, Math.PI / 3, 100, 0), false, 'dentro del hueco');
-  assert.equal(waveHits(0, 0, 100, 28, 0, Math.PI / 3, 0, 200), false, 'fuera del frente');
+test('combo: el rayo solo da dentro de su círculo y la zona tiene radio', () => {
+  const r = comboSpec(6, 2).boltR;
+  assert.ok(r >= 90 && r <= 130);
+  assert.ok(strikeHits({ x: 0, y: 0, r }, 0, r - 5));
+  assert.equal(strikeHits({ x: 0, y: 0, r }, 0, r + 30), false, 'fuera del círculo');
   assert.ok(zoneHits(0, 0, 120, 80, 80));
   assert.equal(zoneHits(0, 0, 120, 120, 120), false);
 });
 
-test('selección: fase 1 cascadas y tormentas, fase 2 también combos; más a menudo en fase 2 y menos en Fácil', () => {
-  assert.deepEqual(frenzyAttacksFor(1), ['cascade', 'storm']);
-  assert.deepEqual(frenzyAttacksFor(2), ['cascade', 'storm', 'feintCombo', 'chase']);
+test('selección: fase 1 cascadas, tormentas y rayos, fase 2 también combos; más a menudo en fase 2 y menos en Fácil', () => {
+  assert.deepEqual(frenzyAttacksFor(1), ['cascade', 'storm', 'lightning']);
+  assert.deepEqual(frenzyAttacksFor(2), ['cascade', 'storm', 'lightning', 'feintCombo', 'chase']);
   assert.ok(frenzyChance(2) > frenzyChance(1));
   assert.ok(frenzyChance(2, 'easy') < frenzyChance(2));
   const rng = mulberry32(9);
@@ -240,7 +242,7 @@ test('selección: fase 1 cascadas y tormentas, fase 2 también combos; más a me
   for (let i = 0; i < 400; i++) {
     const a = pickFrenzy(1, 'normal', rng);
     if (a) {
-      assert.ok(a === 'cascade' || a === 'storm');
+      assert.ok(a === 'cascade' || a === 'storm' || a === 'lightning');
       n++;
     }
     const b = pickFrenzy(2, 'normal', rng, 'cascade');
