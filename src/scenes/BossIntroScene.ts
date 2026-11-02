@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { W, H } from '../ui/layout';
+import { W, H, LW, OFF } from '../ui/layout';
 import { FONT } from '../ui/theme';
 import { typeColor, typeNameEs } from '../data/types';
 import { sfx } from '../ui/audio';
@@ -59,8 +59,10 @@ export class BossIntroScene extends Phaser.Scene {
     const tier = this.info.tier;
     const dur = tier === 'final' ? DURATION + 900 : tier === 'mini' ? DURATION - 500 : DURATION;
     const cam = this.cameras.main;
+    // Pantalla ancha: el diseño de 1920 centrado y el fondo hasta los bordes
+    cam.setViewport(0, 0, LW, H).setScroll(-OFF, 0);
     // Fondo oscuro con líneas de velocidad
-    this.add.rectangle(W / 2, H / 2, W, H, 0x0d1425, 0.88);
+    this.add.rectangle(W / 2, H / 2, LW + 8, H, 0x0d1425, 0.88);
     const speed = this.add.graphics();
     for (let i = 0; i < 26; i++) {
       const y = Phaser.Math.Between(0, H);

@@ -22,11 +22,27 @@ export const DCY = DH / 2;
 /** Cuánto se escala el diseño para ocupar todo el alto. */
 export const U = Math.min(W / DW, H / DH);
 
-/** Lo que se ve del espacio de diseño en 16:9 (con las bandas): para fondos y capas que tapan toda la pantalla. */
-export const COVER_W = W / U;
+/**
+ * Ancho real del lienzo (ver data/wideLayout.ts): 1920, o más en ventanas anchas de escritorio. Todo se diseña en
+ * W = 1920; OFF es lo que se desplaza ese diseño para quedar centrado. Son `let` exportados (enlaces vivos): se
+ * actualizan con setLogicalWidth al redimensionar la ventana.
+ */
+export let LW = W;
+export let OFF = 0;
+
+/** Lo que se ve del espacio de diseño (con las bandas): para fondos y capas que tapan toda la pantalla. */
+export let COVER_W = W / U;
 export const COVER_H = H / U;
 /** Ancho de cada banda lateral, en unidades de diseño. */
-export const BAND = (COVER_W - DW) / 2;
+export let BAND = (COVER_W - DW) / 2;
+
+/** Cambia el ancho lógico del lienzo (lo llama main.ts al arrancar y al redimensionar). */
+export function setLogicalWidth(lw: number) {
+  LW = lw;
+  OFF = Math.max(0, (lw - W) / 2); // = centerOffset de data/wideLayout.ts
+  COVER_W = LW / U;
+  BAND = (COVER_W - DW) / 2;
+}
 
 /** Coordenada de diseño pegada al borde izquierdo o derecho real de la pantalla (no al del diseño). */
 export const fromLeft = (x: number): number => -BAND + x;
@@ -35,6 +51,7 @@ export const fromRight = (x: number): number => DW + BAND - x;
 /** Pone la cámara de una pantalla de menú en el espacio de diseño 960×640, centrado y escalado. */
 export function fitDesign(scene: Phaser.Scene) {
   const cam = scene.cameras.main;
+  cam.setViewport(0, 0, LW, H);
   cam.setZoom(U);
   cam.centerOn(DCX, DCY);
 }

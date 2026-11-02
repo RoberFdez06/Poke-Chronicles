@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { fitTextLine } from '../ui/fitText';
 import { addHelpBar } from '../ui/helpBar';
-import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
+import { BAND, COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
+import { menuSpread } from '../data/wideLayout';
 import { openControls } from './ControlsScene';
 import type { MovePower, PlayerStats } from '../data/items';
 import { typeColor, typeHex, typeNameEs } from '../data/types';
@@ -89,6 +90,7 @@ export class PauseScene extends Phaser.Scene {
       .setOrigin(0.5).setStroke('#2b3a67', 10);
 
     // Panel de la partida: estadísticas, objetos y poderes
+    const panelFrom = this.children.list.length;
     const g = this.add.graphics();
     drawBox(g, 40, 100, 520, 470, { radius: 20 });
     const t = (x: number, y: number, s: string, size = 18, color = '#2b3a67', bold = false) =>
@@ -154,6 +156,15 @@ export class PauseScene extends Phaser.Scene {
       if (m) addTypeChip(this, x + 196, y + 11, m.fusion ? 'Fusión' : typeNameEs(m.type), m.fusion ? 0xd4a017 : typeColor(m.type), 64, 20);
     });
 
+    // Pantalla ancha: panel y lista se separan hacia los lados para que no vayan tan juntos
+    const spread = menuSpread(BAND);
+    if (spread > 0) {
+      for (const o of this.children.list.slice(panelFrom)) {
+        const m = o as Phaser.GameObjects.GameObject & { x?: number };
+        if (typeof m.x === 'number') m.x -= spread;
+      }
+    }
+
     const extra = [...(d.onFusion ? ['Fusionar poderes'] : []), ...(d.onTera ? ['Tipo Tera'] : [])];
     const opts = ['Reanudar', 'Reiniciar', 'Código de semilla', 'Sinergias', 'Controles', 'Ajustes', ...extra, 'Salir y guardar'];
     this.actions = [
@@ -165,7 +176,7 @@ export class PauseScene extends Phaser.Scene {
     ];
     // Siete a nueve opciones a la altura del panel de la izquierda (100-570)
     const n = opts.length;
-    this.menu = new MenuList(this, 760, 150, opts, (i) => this.pick(i), {
+    this.menu = new MenuList(this, 760 + spread, 150, opts, (i) => this.pick(i), {
       w: 290, h: n >= 9 ? 40 : n === 8 ? 44 : 48, gap: n >= 9 ? 4 : n === 8 ? 5 : 9,
     });
     addHelpBar(this, 480, 612, 'Esc o P para reanudar · Flechas o ratón para elegir', {

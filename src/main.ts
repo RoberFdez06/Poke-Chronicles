@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { installScreenFit } from './ui/screenFit';
+import { initialWideWidth, installWideScreen } from './ui/wideScreen';
 import { TitleScene } from './scenes/TitleScene';
 import { MenuScene } from './scenes/MenuScene';
 import { StarterScene } from './scenes/StarterScene';
@@ -43,7 +44,7 @@ import { initAudio, playMusic, reloadAudioSettings } from './ui/audio';
 import { initAccount } from './net/cloud';
 import { refreshControls, touchOnlyDevice } from './data/controls';
 import { boostedSize, mobileUi, parseFontPx, setMobileUi, viewportCssPerPx } from './ui/uiScale';
-import { H, U, W } from './ui/layout';
+import { H, U } from './ui/layout';
 import { PLACEHOLDER_SPRITE } from './data/offline';
 import { installErrorScreen } from './ui/errorScreen';
 
@@ -106,14 +107,15 @@ function startGame() {
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
-    width: W,
+    // Pantallas anchas de escritorio: el lienzo crece hasta 2,4:1 (ver data/wideLayout.ts); en táctil, 1920
+    width: initialWideWidth(),
     height: H,
     backgroundColor: hex(COLORS.bg),
     physics: { default: 'arcade', arcade: { debug: false } },
     input: { gamepad: true },
     // Una imagen que tarda más de 8 s cuenta como fallida (y se usa la genérica)
     loader: { timeout: 8000 },
-    // 16:9: en pantallas 16:9 llena la ventana; en otras deja bandas
+    // 16:9 o más ancho (hasta 2,4:1) en escritorio: llena la ventana; fuera de eso deja bandas
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
     // La primera escena es la que arranca; añade las nuevas (p. ej. GachaScene) al final
     // PauseScene va la última para dibujarse encima de la partida
@@ -122,6 +124,7 @@ function startGame() {
   lockEscapeInFullscreen(game);
   // Pantalla completa automática en móvil y reajuste del lienzo al cambiar el tamaño real
   installScreenFit(game);
+  installWideScreen(game);
   // T43: un error no deja el juego colgado: pantalla "Algo ha fallado" con vuelta al menú
   installErrorScreen(game);
   // Para las pruebas de navegador (npm run e2e): saber qué pantalla está activa

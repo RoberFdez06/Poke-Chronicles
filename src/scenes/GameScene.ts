@@ -241,7 +241,8 @@ import { dir8Row, pmdScale } from '../data/pmdAnim';
 import { pmdAvailable, pmdMega, pmdShiny } from '../data/pmdForms';
 import { applyPose, dressLoose, liftSprite, poseFor, procAnimate, resetLift } from '../ui/locoAnim';
 import { locomotionOf } from '../data/locomotion';
-import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, W } from '../ui/layout';
+import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, LW, OFF, W } from '../ui/layout';
+import { hudSlices } from '../data/wideLayout';
 import { hudLayout, itemGrid, nameFontSize, HUD_BADGE_MAX_W, HUD_ITEM_R, HUD_PROGRESS_FONT } from '../data/hudLayout';
 import {
   flowField,
@@ -1063,6 +1064,8 @@ export class GameScene extends Phaser.Scene {
   /** HUD (T30/N8): capa en coordenadas reales, con su propia cámara sin zoom, en las franjas de alrededor de la sala. */
   private hudLayer!: Phaser.GameObjects.Container;
   private hudCam?: Phaser.Cameras.Scene2D.Camera;
+  /** Pantalla ancha: cámaras de los paneles izquierdo y derecho del HUD (hudCam pinta el centro). */
+  private hudSideCams: Phaser.Cameras.Scene2D.Camera[] = [];
   /** Zoom de la cámara de la sala: GAME_ZOOM, o más en móvil con «Zoom de la sala» (y entonces sigue al jugador). */
   private camZoom = GAME_ZOOM;
 
@@ -1258,12 +1261,13 @@ export class GameScene extends Phaser.Scene {
     // La sala ocupa el centro de la pantalla; alrededor quedan las franjas del HUD
     for (const c of [...this.cameras.cameras]) if (c !== this.cameras.main) this.cameras.remove(c);
     this.hudCam = undefined;
+    this.hudSideCams = [];
     // Ajustes de vista en móvil: zoom de la sala y tamaño de la interfaz (en escritorio, factor 1)
     const view = loadMobileView();
     const mobileView = touchOnlyDevice();
     this.camZoom = GAME_ZOOM * viewFactor(view.roomZoom, mobileView);
     setHudUiScale(viewFactor(view.uiSize, mobileView));
-    this.cameras.main.setViewport(GAME_VIEW.x, GAME_VIEW.y, GAME_VIEW.w, GAME_VIEW.h).setZoom(this.camZoom).centerOn(DCX, DCY);
+    this.cameras.main.setViewport(GAME_VIEW.x + OFF, GAME_VIEW.y, GAME_VIEW.w, GAME_VIEW.h).setZoom(this.camZoom).centerOn(DCX, DCY);
     // Si se cambian en Ajustes con la partida en pausa, se aplican en el acto (sin esperar al siguiente piso)
     const onView = () => this.applyMobileView();
     this.game.events.on(MOBILE_VIEW_CHANGED, onView);
@@ -3147,6 +3151,12 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.ignore(this.hudLayer);
     const hudCam = this.cameras.add(0, 0, W, H).setName('hud');
     this.hudCam = hudCam;
+    // Pantalla ancha (data/wideLayout.ts): el HUD se pinta con tres cámaras (panel izquierdo, centro y panel
+    // derecho) para pegar los paneles a los bordes reales. El id de hudCam lleva también los bits de las otras
+    // dos, así «ignore» y «cameraFilter &= ~hudCam.id» valen para las tres sin tocar el resto del código.
+    this.hudSideCams = [this.cameras.add(0, 0, HUD.left.w, H).setName('hud-left'), this.cameras.add(0, 0, HUD.right.w, H).setName('hud-right')];
+    for (const c of this.hudSideCams) (hudCam as { id: number }).id |= c.id;
+    this.layoutHudCams();
     hudCam.ignore(this.children.list.filter((o) => o !== this.hudLayer));
     const onAdded = (go: Phaser.GameObjects.GameObject) => go !== this.hudLayer && hudCam.ignore(go);
     this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, onAdded);
@@ -4652,7 +4662,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     setHudUiScale(viewFactor(view.uiSize, mob));
     const newUi = hudUiScale();
     if (!this.player || !this.current || !this.hudLayer) return 'aún cargando: se aplicará al empezar';
-    cam.setViewport(GAME_VIEW.x, GAME_VIEW.y, GAME_VIEW.w, GAME_VIEW.h).setZoom(this.camZoom);
+    cam.setViewport(GAME_VIEW.x + OFF, GAME_VIEW.y, GAME_VIEW.w, GAME_VIEW.h).setZoom(this.camZoom);
     this.setRoomCamera(this.current);
     if (!this.camFollows(this.current)) {
       const i = this.interior(this.current);
@@ -5333,7 +5343,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const cam = this.cameras.main;
     const hudCam = this.hudCam;
     if (!hudCam || !this.textures.exists(texture)) return;
-    const sx = (wx - cam.worldView.x) * cam.zoom + cam.x;
+    const sx = (wx - cam.worldView.x) * cam.zoom + cam.x - OFF;
     const sy = (wy - cam.worldView.y) * cam.zoom + cam.y;
     const toHud = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
       this.hudLayer.add(o);
@@ -10799,7 +10809,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     const targets = gd.on ? this.guideTargets() : {};
     const cam = this.cameras.main;
-    const view = { x: cam.x, y: cam.y, w: cam.width, h: cam.height };
+    const view = { x: cam.x - OFF, y: cam.y, w: cam.width, h: cam.height };
     const ui = hudUiScale() * (this.touch ? 1.25 : 1);
     const px = Math.max(3, Math.round(4 * ui));
     const size = 11 * px;
@@ -11516,9 +11526,36 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * Dirección de disparo. Flechas (dos a la vez disparan en diagonal; dos opuestas se anulan),
    * si no, clic mantenido hacia el ratón, y si no, stick derecho.
    */
+  /**
+   * Cámaras del HUD según el ancho del lienzo. En 16:9 (o táctil) una sola cámara como siempre; en pantalla ancha,
+   * panel izquierdo pegado al borde izquierdo, centro sobre la sala y panel derecho pegado al borde derecho.
+   */
+  private layoutHudCams() {
+    const hudCam = this.hudCam;
+    if (!hudCam) return;
+    const [left, right] = this.hudSideCams;
+    if (OFF <= 0 || !left || !right) {
+      hudCam.setViewport(0, 0, W, H).setScroll(0, 0);
+      for (const c of this.hudSideCams) c.setVisible(false);
+      return;
+    }
+    const s = hudSlices(LW, HUD.left.w, HUD.right.w, H);
+    hudCam.setViewport(s.center.dst.x, 0, s.center.dst.w, H).setScroll(s.center.src.x, 0);
+    left.setViewport(s.left.dst.x, 0, s.left.dst.w, H).setScroll(s.left.src.x, 0).setVisible(true);
+    right.setViewport(s.right.dst.x, 0, s.right.dst.w, H).setScroll(s.right.src.x, 0).setVisible(true);
+  }
+
+  /** Ventana redimensionada (ui/wideScreen.ts): sala centrada con el mismo tamaño y HUD a los bordes, sin reiniciar. */
+  relayoutWide() {
+    const cam = this.cameras.main;
+    if (cam.x !== GAME_VIEW.x + OFF) cam.setPosition(GAME_VIEW.x + OFF, GAME_VIEW.y);
+    this.layoutHudCams();
+  }
+
   /** El puntero está sobre la sala (no sobre las franjas del HUD). */
   private inGameView(p: Phaser.Input.Pointer): boolean {
-    return p.x >= GAME_VIEW.x && p.x <= GAME_VIEW.x + GAME_VIEW.w && p.y >= GAME_VIEW.y && p.y <= GAME_VIEW.y + GAME_VIEW.h;
+    const x = p.x - OFF;
+    return x >= GAME_VIEW.x && x <= GAME_VIEW.x + GAME_VIEW.w && p.y >= GAME_VIEW.y && p.y <= GAME_VIEW.y + GAME_VIEW.h;
   }
 
   private newCharges(): Record<ChargeSource, ChargeState> {

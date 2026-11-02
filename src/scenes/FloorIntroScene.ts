@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { W, H } from '../ui/layout';
+import { W, H, LW, OFF } from '../ui/layout';
 import { FONT } from '../ui/theme';
 import { sfx } from '../ui/audio';
 
@@ -53,13 +53,15 @@ export class FloorIntroScene extends Phaser.Scene {
 
   create() {
     const { info } = this;
+    // Pantalla ancha: el diseño de 1920 centrado y las franjas hasta los bordes
+    this.cameras.main.setViewport(0, 0, LW, H).setScroll(-OFF, 0);
     // Dos mitades negras que luego se abren (arriba y abajo)
-    const top = this.add.rectangle(W / 2, H / 4, W, H / 2, 0x0d1425);
-    const bottom = this.add.rectangle(W / 2, (H * 3) / 4, W, H / 2, 0x0d1425);
+    const top = this.add.rectangle(W / 2, H / 4, LW + 8, H / 2, 0x0d1425);
+    const bottom = this.add.rectangle(W / 2, (H * 3) / 4, LW + 8, H / 2, 0x0d1425);
     // Franja del color del bioma detrás del texto
-    const band = this.add.rectangle(W / 2, H / 2, W, 260, info.wall, 0.9).setScale(0, 1);
-    const bandLine = this.add.rectangle(W / 2, H / 2 - 134, W, 8, info.floor).setScale(0, 1);
-    const bandLine2 = this.add.rectangle(W / 2, H / 2 + 134, W, 8, info.floor).setScale(0, 1);
+    const band = this.add.rectangle(W / 2, H / 2, LW + 8, 260, info.wall, 0.9).setScale(0, 1);
+    const bandLine = this.add.rectangle(W / 2, H / 2 - 134, LW + 8, 8, info.floor).setScale(0, 1);
+    const bandLine2 = this.add.rectangle(W / 2, H / 2 + 134, LW + 8, 8, info.floor).setScale(0, 1);
     this.tweens.add({ targets: [band, bandLine, bandLine2], scaleX: 1, duration: 360, ease: 'Cubic.easeOut' });
 
     // Emblema: círculo con el color del suelo y el dibujo del bioma en píxeles gordos
