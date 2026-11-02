@@ -174,7 +174,7 @@ import { trackForBiome, trackForMood, TRACKS } from '../data/music';
 import { forceMood, initialMood, stepMood, type MoodState, type MusicMood } from '../audio/musicState';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
-import { ARENA_WARN_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_GLOW, FALL_HAZARD, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
+import { ARENA_WARN_MS, EVENT_GAP_MS, arenaFall, arenaPhase, FALL_FADE_MS, FALL_GLOW, FALL_HAZARD, FALL_HOLD_MS, FALL_LANDING, FALL_SHAKE_MS, FALL_TINT, FALL_TOTAL_MS, FALL_WARNING, nextBossEvent, type ArenaPhase } from '../level/arenaPhase';
 import { MEGA_DAMAGE_MUL, MEGA_SPEED_MUL, MEGA_WARN_MS, megaHelpersToSummon, megaInvulnerable, megaName, megaWarning, shouldMegaEvolve, legendMegaAtPhase } from '../data/megaBoss';
 import { rollTemperament, tempoCooldown, tempoShot, type Temperament } from '../data/temperament';
 import { adminAllowed, godStats, isCheatRun, isGodMode, markCheatRun, setAdminFloorPick, setAdminNextDark, adminNextDarkPending, takeAdminNextDark, setGodMode, stepValue, takeAdminFloorPick, type AdminFloorPick } from '../data/admin';
@@ -201,6 +201,7 @@ import { drawFormCineBack, drawFormCineFront, type WorldBox } from '../ui/art/fo
 import { heavyPose, MAX_GAIT, maxFitSize, maxFitSizePmd, stomped } from '../data/maxLook';
 import { alphaBox } from '../data/procLoco';
 import { exhaustedFx, finaleShiftFx, judgmentRects, judgmentStrike, judgmentWarn, drawNovaWave, novaWarn } from '../ui/art/finaleFx';
+import { clampBossHp, pendingThresholds, trackHold, type BossThresholdState, type CapHold } from '../data/bossThreshold';
 import { clampFinaleHp, FINALE_AFTER_BEAT_MS, FINALE_ATTACK_LABEL, FINALE_BEAT_MS, finaleAttacks, finaleHpFloor, finaleIntervalMul, finalePhaseText, judgmentHits, judgmentPlan, judgmentSpec, NOVA, nextFinalePhase, novaDurationMs, novaGapAt, pickFinaleAttack, type FinaleAttack, type FinalePhase } from '../data/finalePhases';
 import { chargedShotFx, chargeGlow } from '../ui/art/shotFx';
 import { megaBlastFx, reactionChain, reactionFx } from '../ui/art/reactionFx';
@@ -5112,7 +5113,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const e = c as Sprite;
       if (!e.active || !inBlast(x, y, e.x, e.y, R + (e.getData('size') as number) / 3)) continue;
       this.countDamage(e, BOMB.damage);
-      const hp = (e.getData('hp') as number) - BOMB.damage;
+      const hp = this.enemyHpAfter(e, BOMB.damage);
       e.setData('hp', hp).setTint(0xff6666).setData('flashUntil', this.time.now + 120);
       if (hp <= 0) this.killEnemy(e);
     }
@@ -7432,7 +7433,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const maxHp = b.getData('maxHp') as number;
     const t = tickBossGuard(this.bossGuardOf(b), this.time.now, b.getData('hp') as number, prot, maxHp);
     if (t.release) this.releaseBossProtection(b);
-    if (t.hpAtMost !== undefined) b.setData('hp', Math.min(b.getData('hp') as number, t.hpAtMost));
+    if (t.hpAtMost !== undefined) {
+      const cur = b.getData('hp') as number;
+      if (t.hpAtMost < cur) b.setData('hp', this.enemyHpAfter(b, cur - t.hpAtMost));
+    }
     // Indicador: anillo azul que late mientras no se le puede bajar la vida
     let g = b.getData('protFx') as Phaser.GameObjects.Graphics | undefined;
     if (prot && !t.release) {
@@ -8766,6 +8770,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         return 'Mega Piedra añadida';
       },
       /** Megaevoluciona: al jefe/legendario vivo de la sala (baja su vida al 45 %) o, si no hay, al jugador. */
+      /** Golpe enorme al jefe de la sala (por defecto 999999): prueba el tope de umbral (no hay instakill). */
+      bossBigHit: (dmg = 999999) => {
+        const b = boss();
+        if (!b) return 'No hay jefe.';
+        this.hitEnemy(b, dmg, undefined, b.x, b.y, 0xffffff);
+        const max = b.getData('maxHp') as number;
+        return b.active ? `Vida del jefe: ${Math.round(((b.getData('hp') as number) / max) * 1000) / 10} %` : 'Jefe derrotado.';
+      },
       forceMega: () => {
         const b = boss();
         if (b) {
@@ -12092,6 +12104,38 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * Golpe a un enemigo (disparos, poderes de área, rayos, cadenas…): críticos, robo de vida, número de daño,
    * destello, empujón (no a jefes), estado del tipo y, si cae, se debilita. Devuelve los PS que le quedan.
    */
+  /** Estado del tope de umbral de un jefe (qué sucesos de vida le quedan); null si no es un jefe con sucesos. */
+  private bossThresholdState(e: Sprite, ai: EnemyAI): BossThresholdState | null {
+    if (!ai.boss || !ai.attacks || e.getData('helper') || e.getData('miniboss') || this.ended) return null;
+    const skipped = (e.getData('capSkip') as number[] | undefined) ?? [];
+    const base = { arena: false, arenaDone: this.arenaDone, mega: false, megaDone: true, phase1: false, skipped };
+    if (e.getData('finale')) return this.finale?.kind === 'giant' ? { ...base, finalePhase: this.finalePh } : null;
+    const room = this.cellRoom(e.x, e.y);
+    const arena = !!this.grids.get(room.id) && this.groupIds(this.current).includes(room.id);
+    return { ...base, arena, mega: true, megaDone: !!e.getData('megaDone'), phase1: ai.phase === 1 };
+  }
+
+  /**
+   * Vida de un enemigo tras `dmg` (todas las vías de daño pasan por aquí). A los jefes no se les puede saltar un suceso
+   * de vida pendiente (data/bossThreshold.ts): se quedan justo bajo el umbral y el daño sobrante se pierde. Seguro: si
+   * el suceso no sale en CAP_RELEASE_MS de retención, el umbral se da por consumido.
+   */
+  private enemyHpAfter(e: Sprite, dmg: number): number {
+    const hp = e.getData('hp') as number;
+    const ai = e.getData('ai') as EnemyAI | undefined;
+    const st = ai ? this.bossThresholdState(e, ai) : null;
+    if (!st) return hp - dmg;
+    const r = clampBossHp(hp, dmg, e.getData('maxHp') as number, pendingThresholds(st));
+    if (!r.clamped || r.threshold === undefined) return r.hp;
+    const now = this.time.now;
+    const waiting = (this.bossBusyUntil !== undefined && now < this.bossBusyUntil + EVENT_GAP_MS) || this.bossProtected(e) || now < ((e.getData('adaptUntil') as number | undefined) ?? 0);
+    const h = trackHold(e.getData('capHold') as CapHold | undefined, r.threshold, now, waiting);
+    e.setData('capHold', h.hold);
+    if (!h.release) return r.hp;
+    e.setData('capSkip', [...st.skipped ?? [], r.threshold]).setData('capHold', undefined);
+    return this.enemyHpAfter(e, dmg);
+  }
+
   private hitEnemy(enemy: Sprite, base: number, status: string | undefined, sx: number, sy: number, color: number, push?: Phaser.Math.Vector2): number | undefined {
     if (!enemy.active || this.frozenSince !== undefined) return undefined;
     // Dragón: los poderes hacen más daño; Lluvia y Sol cambian Agua y Fuego (T38)
@@ -12149,7 +12193,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.popup(enemy.x, enemy.y - (enemy.getData('size') as number) * 0.6, 'Protegido', 0x8fd3ff);
       }
     }
-    let hp = (enemy.getData('hp') as number) - dmg;
+    let hp = this.enemyHpAfter(enemy, dmg);
     sfx('hit');
     if (status && this.fxBudget.take(this.time.now)) typeImpact(this, enemy.x, enemy.y, status, 0.8, 7);
     // Golpe: destello blanco, chispas, número de daño y un empujoncito (no a los jefes)
@@ -12836,7 +12880,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const boss = !!(e.getData('ai') as EnemyAI | undefined)?.boss;
       const d = reactionDamage(r, damage, boss);
       this.countDamage(e, d);
-      const hp = (e.getData('hp') as number) - d;
+      const hp = this.enemyHpAfter(e, d);
       e.setData('hp', hp);
       damageNumber(this, e.x, e.y - (e.getData('size') as number) * 0.45, d, {});
       if (hp <= 0 && e !== enemy) this.killEnemy(e);
@@ -12861,7 +12905,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     e.setData('statuses', rest);
     if (damage <= 0) return false;
     this.countDamage(e, damage);
-    const hp = (e.getData('hp') as number) - damage;
+    const hp = this.enemyHpAfter(e, damage);
     e.setData('hp', hp);
     if (hp > 0) return false;
     this.killEnemy(e);
@@ -13264,7 +13308,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Casco Dentado: quien te toca se hace daño
     if (ai && this.stats.thorns > 0 && enemy.active) {
       this.countDamage(enemy, this.stats.thorns);
-      const ehp = (enemy.getData('hp') as number) - this.stats.thorns;
+      const ehp = this.enemyHpAfter(enemy, this.stats.thorns);
       enemy.setData('hp', ehp).setData('flashUntil', now + 90).setTint(0xff6666);
       if (ehp <= 0) this.time.delayedCall(0, () => enemy.active && this.killEnemy(enemy));
     }

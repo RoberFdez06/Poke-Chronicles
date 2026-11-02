@@ -2236,3 +2236,8 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
 - Normal, reto final (piso 6): Arceus + 2 legendarios típicos de regiones distintas (barra compartida del trío).
 - Si Arceus sale como jefe normal en cualquier modo: misma adaptación (cada 10 s), ataques e invocaciones, sin el escalado supremo.
 - Depuración: `__POKEISAAC_DEBUG__.arceus()` lo saca en la sala; `goFloor(100)` en la Torre para el Supremo.
+## 2026-11-02 · Jefes sin instakill (tope de umbral)
+- Pedido: a los jefes no se les puede bajar de golpe más allá de su siguiente suceso de vida. Un golpe enorme (o bomba, reacción, estado, Casco Dentado, daño guardado de una protección) deja al jefe justo por debajo del umbral pendiente (arena 67 %, megaevolución/fase 2 50 %, caída 34 %; reto final gigante y Arceus Supremo 75/50/25 %), el sobrante se pierde y sale su pausa/animación. Después recibe daño normal hasta el siguiente.
+- Seguro: si el suceso no sale (sala sin cuadrícula, grupo de salas, evento suprimido…), a los 3 s de estar retenido (sin contar mientras hay otro suceso en marcha) el umbral se da por consumido. La arena solo cuenta si la sala del jefe tiene cuadrícula. Minijefes, ayudantes y el trío del reto final (barra compartida) no llevan tope.
+- Código: `src/data/bossThreshold.ts` (`pendingThresholds`, `nextThreshold`, `clampBossHp`, `trackHold`), tests en `tests/bossThreshold.test.ts`; en GameScene todo el daño a enemigos pasa por `enemyHpAfter`.
+- Probar: `__POKEISAAC_DEBUG__.bossBigHit()` (o `bossBigHit(n)`) en la sala del jefe, repetir tras cada animación.
