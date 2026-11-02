@@ -201,6 +201,7 @@ import { drawFormCineBack, drawFormCineFront, type WorldBox } from '../ui/art/fo
 import { heavyPose, MAX_GAIT, maxFitSize, maxFitSizePmd, stomped } from '../data/maxLook';
 import { alphaBox } from '../data/procLoco';
 import { exhaustedFx, finaleShiftFx, judgmentRects, judgmentStrike, judgmentWarn, drawNovaWave, novaWarn } from '../ui/art/finaleFx';
+import { bossShieldAbsorb, bossShieldAmount, grantBossShield, shouldGrantBossShield } from '../data/bossShield';
 import { clampBossHp, pendingThresholds, trackHold, type BossThresholdState, type CapHold } from '../data/bossThreshold';
 import { clampFinaleHp, FINALE_AFTER_BEAT_MS, FINALE_ATTACK_LABEL, FINALE_BEAT_MS, finaleAttacks, finaleHpFloor, finaleIntervalMul, finalePhaseText, judgmentHits, judgmentPlan, judgmentSpec, NOVA, nextFinalePhase, novaDurationMs, novaGapAt, pickFinaleAttack, type FinaleAttack, type FinalePhase } from '../data/finalePhases';
 import { chargedShotFx, chargeGlow } from '../ui/art/shotFx';
@@ -7429,6 +7430,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    */
   private watchBossHp(b: Sprite) {
     if (b.getData('helper') || this.frozenSince !== undefined) return;
+    this.maybeGrantBossShield(b);
+    this.paintBossShield(b);
     const prot = this.bossProtected(b);
     const maxHp = b.getData('maxHp') as number;
     const t = tickBossGuard(this.bossGuardOf(b), this.time.now, b.getData('hp') as number, prot, maxHp);
@@ -8777,6 +8780,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.hitEnemy(b, dmg, undefined, b.x, b.y, 0xffffff);
         const max = b.getData('maxHp') as number;
         return b.active ? `Vida del jefe: ${Math.round(((b.getData('hp') as number) / max) * 1000) / 10} %` : 'Jefe derrotado.';
+      },
+      /** Escudo de jefe: lleva al jefe de la sala al 33 % y lo concede (si ya lo tenía, lo repite para ver la animación). */
+      bossShield: () => {
+        const b = boss();
+        if (!b || !this.isShieldBoss(b)) return 'No hay jefe con escudo de jefe.';
+        const max = b.getData('maxHp') as number;
+        if ((b.getData('hp') as number) / max > 0.33) b.setData('hp', Math.max(1, Math.floor(max * 0.33)));
+        this.maybeGrantBossShield(b, true);
+        return `escudo ${b.getData('shieldHp')} / ${b.getData('shieldMax')} (vida ${b.getData('hp')} / ${max})`;
       },
       forceMega: () => {
         const b = boss();
@@ -11451,7 +11463,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         bb.shield.g.clear();
         if (sh > 0 && shMax > 0) {
           bb.shield.g.fillStyle(0x1d2848, 1).fillRoundedRect(bb.shield.x - 2, 40, bb.shield.w + 4, 8, 4);
-          bb.shield.g.fillStyle(0x6e8196, 1).fillRoundedRect(bb.shield.x, 41, Math.max(6, bb.shield.w * (sh / shMax)), 6, 3);
+          bb.shield.g.fillStyle(0x3d8fe0, 1).fillRoundedRect(bb.shield.x, 41, Math.max(6, bb.shield.w * (sh / shMax)), 6, 3);
           bb.shield.g.fillStyle(0xcfeaff, 1).fillRect(bb.shield.x + 3, 42, Math.max(0, bb.shield.w * (sh / shMax) - 6), 1);
         }
       }
@@ -12130,6 +12142,80 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * el suceso no sale en CAP_RELEASE_MS de retención, el umbral se da por consumido.
    */
   private enemyHpAfter(e: Sprite, dmg: number): number {
+    return this.enemyHpCore(e, this.absorbBossShield(e, dmg));
+  }
+
+  /** ¿Es un jefe de los que ganan escudo al 33 %? (no ayudantes ni minijefes). */
+  private isShieldBoss(e: Sprite): boolean {
+    const ai = e.getData('ai') as EnemyAI | undefined;
+    return !!ai?.boss && !e.getData('helper') && !e.getData('miniboss') && !e.getData('legendHunt');
+  }
+
+  /** El escudo de jefe se come el daño antes que la vida (todas las vías de daño). Devuelve lo que pasa a la vida. */
+  private absorbBossShield(e: Sprite, dmg: number): number {
+    const sh = (e.getData('shieldHp') as number | undefined) ?? 0;
+    if (dmg <= 0 || sh <= 0 || !this.isShieldBoss(e)) return dmg;
+    const r = bossShieldAbsorb(sh, dmg);
+    e.setData('shieldHp', r.left);
+    if (r.left <= 0) {
+      this.popup(e.x, e.y - 44, '¡Escudo roto!', 0xcfd8dc);
+      pixRing(this, e.x, e.y, 60, 0x8ecbff, 320);
+      sfx('boom');
+    } else if (this.fxBudget.take(this.time.now)) this.popup(e.x, e.y - 44, '¡Escudo!', 0x8ecbff);
+    return r.through;
+  }
+
+  /** Concede (una vez) el escudo de jefe al bajar al 33 %, sin pisar la caída de arena del 34 % ni otros sucesos. */
+  private maybeGrantBossShield(b: Sprite, force = false) {
+    if (!this.isShieldBoss(b) || this.ended) return;
+    const ai = b.getData('ai') as EnemyAI;
+    const maxHp = b.getData('maxHp') as number;
+    if (!force) {
+      const st = this.bossThresholdState(b, ai);
+      if (this.bossProtected(b) || !shouldGrantBossShield(b.getData('hp') as number, maxHp, !!b.getData('bossShieldDone'), st ? pendingThresholds(st) : [])) return;
+    }
+    b.setData('bossShieldDone', true);
+    const g = grantBossShield(b.getData('shieldHp') as number | undefined, b.getData('shieldMax') as number | undefined, bossShieldAmount(maxHp, this.diff));
+    b.setData('shieldHp', g.shield).setData('shieldMax', g.shieldMax);
+    const size = (b.getData('size') as number | undefined) ?? 80;
+    this.popup(b.x, b.y - size * 0.7, '¡Escudo de jefe!', 0x8ecbff);
+    pixRing(this, b.x, b.y, size * 0.9, 0x8ecbff, 420);
+    pixRing(this, b.x, b.y, size * 0.6, 0xcfeaff, 300);
+    sfx('summon');
+  }
+
+  /** Aro de escudo del jefe: cuadraditos azules (pixel art) que giran mientras le quede escudo. */
+  private paintBossShield(b: Sprite) {
+    let g = b.getData('bShieldGfx') as Phaser.GameObjects.Graphics | undefined;
+    const sh = (b.getData('shieldHp') as number | undefined) ?? 0;
+    const ai = b.getData('ai') as EnemyAI | undefined;
+    if (sh <= 0 || ai?.behavior === 'shielded') {
+      if (g) {
+        g.destroy();
+        b.setData('bShieldGfx', undefined);
+      }
+      return;
+    }
+    if (!g) {
+      g = this.add.graphics().setDepth(5);
+      b.setData('bShieldGfx', g);
+      const gg = g;
+      b.once(Phaser.GameObjects.Events.DESTROY, () => gg.destroy());
+    }
+    const k = sh / Math.max(1, (b.getData('shieldMax') as number | undefined) ?? sh);
+    const r = ((b.getData('size') as number | undefined) ?? 80) * 0.62;
+    const n = 24;
+    const spin = lowFx() ? 0 : this.time.now / 1400;
+    g.clear();
+    for (let i = 0; i < n; i++) {
+      const a = spin + (i / n) * Math.PI * 2;
+      const x = Math.round((b.x + Math.cos(a) * r) / 4) * 4;
+      const y = Math.round((b.y + Math.sin(a) * r) / 4) * 4;
+      g.fillStyle(i % 2 === 0 ? 0x8ecbff : 0xcfeaff, 0.35 + 0.5 * k).fillRect(x - 2, y - 2, 4, 4);
+    }
+  }
+
+  private enemyHpCore(e: Sprite, dmg: number): number {
     const hp = e.getData('hp') as number;
     const ai = e.getData('ai') as EnemyAI | undefined;
     const st = ai ? this.bossThresholdState(e, ai) : null;
@@ -12142,7 +12228,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     e.setData('capHold', h.hold);
     if (!h.release) return r.hp;
     e.setData('capSkip', [...st.skipped ?? [], r.threshold]).setData('capHold', undefined);
-    return this.enemyHpAfter(e, dmg);
+    return this.enemyHpCore(e, dmg);
   }
 
   private hitEnemy(enemy: Sprite, base: number, status: string | undefined, sx: number, sy: number, color: number, push?: Phaser.Math.Vector2): number | undefined {
@@ -12192,7 +12278,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         sfx('boom');
       } else if (this.fxBudget.take(this.time.now)) this.popup(enemy.x, enemy.y - 44, '¡Escudo!', 0x8ecbff);
     }
-    this.countDamage(enemy, dmg, shieldLeft !== undefined && shieldLeft > 0 && shAi?.behavior === 'shielded');
+    // Escudo de jefe (33 %): se come el daño antes que la vida
+    const bossShielded = shAi?.behavior !== 'shielded' && ((enemy.getData('shieldHp') as number | undefined) ?? 0) > 0 && this.isShieldBoss(enemy);
+    if (bossShielded) dmg = this.absorbBossShield(enemy, dmg);
+    this.countDamage(enemy, dmg, bossShielded || (shieldLeft !== undefined && shieldLeft > 0 && shAi?.behavior === 'shielded'));
     // Vigilante del jefe: apunta el golpe (si está protegido, el daño se guarda y se aplica al acabar, con tope)
     if (shAi?.boss && !enemy.getData('helper')) {
       const prot = this.bossProtected(enemy);
@@ -12464,7 +12553,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       // Escudo: barra azul acero encima de la vida
       const sr = Math.min(1, sh / Math.max(1, (e.getData('shieldMax') as number | undefined) ?? sh));
       g.fillStyle(0x1d2848, 1).fillRoundedRect(x - 2, y - 8, w + 4, 6, 2);
-      g.fillStyle(0x6e8196, 1).fillRect(x, y - 6, w * sr, 3);
+      g.fillStyle(0x3d8fe0, 1).fillRect(x, y - 6, w * sr, 3);
       g.fillStyle(0xcfeaff, 1).fillRect(x, y - 6, w * sr, 1);
     }
   }

@@ -2261,3 +2261,9 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   `frenzy('feintCombo')`; `frenzy('cascade', 'mixed')`. Las formas antiguas (`radial`, `spiral`, `mixedRing`) se
   cambian por `diagonal`, `pincer` y `mixed`.
 - **Tests**: `tests/bossLightning.test.ts` (nuevo) y `bossFrenzy`/`bossStorm`/`bossChase` actualizados.
+## 2026-11-02 · Escudo de jefe al 33 % (rama `escudo`)
+- Pedido: a todos los jefes, cuando les queda un 33 % de vida, se les añade un escudo igual a ese 33 % de su vida máxima para que aguanten más. Una sola vez por jefe; no afecta a ayudantes ni minijefes. Fácil 70 %, Normal 100 %, Difícil 130 % del escudo.
+- Reutiliza `shieldHp`/`shieldMax` y `absorbShieldHit`: el escudo se come el daño antes que la vida en todas las vías (`hitEnemy` y `enemyHpAfter`: bombas, reacciones, estados, daño guardado). Barra azul en la barra grande del jefe (debajo de la vida), aro de cuadraditos azules que gira mientras dure, aviso «¡Escudo de jefe!», anillos y sonido; al romperse, «¡Escudo roto!».
+- Con el tope de umbral: no se concede mientras quede la caída de arena del 34 % (ni con el jefe protegido); sale al acabar la caída o en cuanto la vida ≤ 33 %. El escudo es finito y el tope de 3 s no depende de él: nunca inmortal.
+- Código: `src/data/bossShield.ts` (`bossShieldAmount`, `shouldGrantBossShield`, `grantBossShield`), tests en `tests/bossShield.test.ts`.
+- Probar: `__POKEISAAC_DEBUG__.bossShield()` en la sala del jefe (lo baja al 33 % y concede el escudo); luego `bossBigHit(200)` para ver cómo lo gasta.
