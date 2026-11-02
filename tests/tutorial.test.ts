@@ -30,11 +30,11 @@ test('un consejo sale una sola vez y se pueden desactivar todos', () => {
 test('parseTutorial: corrupto, ids desconocidos y guardado', () => {
   assert.deepEqual(parseTutorial(null), emptyTutorial());
   assert.deepEqual(parseTutorial('{roto'), emptyTutorial());
-  assert.deepEqual(parseTutorial(JSON.stringify({ seen: ['move', 'volar'], off: 'si' })), { seen: ['move'], off: false });
+  assert.deepEqual(parseTutorial(JSON.stringify({ seen: ['move', 'volar'], off: 'si' })), { seen: ['move'], off: false, practice: [] });
   const data = new Map<string, string>();
   const st: StorageLike = { getItem: (k) => data.get(k) ?? null, setItem: (k, v) => void data.set(k, v) };
-  saveTutorial({ seen: ['shop'], off: true }, st);
-  assert.deepEqual(loadTutorial(st), { seen: ['shop'], off: true });
+  saveTutorial({ seen: ['shop'], off: true, practice: ['tower'] }, st);
+  assert.deepEqual(loadTutorial(st), { seen: ['shop'], off: true, practice: ['tower'] });
   assert.ok(PROGRESS_KEYS.includes(TUTORIAL_KEY));
 });
 

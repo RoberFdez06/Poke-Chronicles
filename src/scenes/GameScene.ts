@@ -243,6 +243,8 @@ import { applyPose, dressLoose, liftSprite, poseFor, procAnimate, resetLift } fr
 import { locomotionOf } from '../data/locomotion';
 import { CX, CY, DCX, DCY, GAME_VIEW, GAME_ZOOM, H, HUD, LW, OFF, W } from '../ui/layout';
 import { hudSlices } from '../data/wideLayout';
+import { bossHpFloor, enterSandbox, hasTutorial, leaveSandbox, refillHp, shortCooldown, TUTORIAL_BONUS, TUTORIAL_MODES, TUTORIAL_STARTER, tutorialStats, type TutorialMode } from '../data/bossTutorial';
+import { TutorialPanel } from './tutorialPanel';
 import { hudLayout, itemGrid, nameFontSize, HUD_BADGE_MAX_W, HUD_ITEM_R, HUD_PROGRESS_FONT } from '../data/hudLayout';
 import {
   flowField,
@@ -487,6 +489,8 @@ export interface GameData {
   seeded?: SeedRun | null;
   /** T72: piso de la Torre desde el que se empieza (punto de control elegido en ModeScene). */
   towerStart?: number;
+  /** Tutorial de práctica de ese modo (bossTutorial.ts): Arceus, jugador potenciado y nada se guarda. */
+  tutorial?: TutorialMode;
 }
 
 /** Una de las especies de enemigo del piso. */
@@ -1018,6 +1022,10 @@ export class GameScene extends Phaser.Scene {
   private overHud = false;
   /** Modo admin (data/admin.ts): lo elegido para este piso, valores del panel, F9 y el distintivo del HUD. */
   private adminPick: AdminFloorPick | null = null;
+  /** Tutorial de práctica (bossTutorial.ts): modo del que es y su cartel. */
+  private tutMode: TutorialMode | null = null;
+  private tutPanel?: TutorialPanel;
+  private tutEnding = false;
   private adminUi = { floor: 1, boss: 150, biome: 0, form: 0, mode: 0, syn: 0, ptype: 1 };
   private adminKey?: Phaser.Input.Keyboard.Key;
   private adminPadPrev = false;
@@ -1097,6 +1105,16 @@ export class GameScene extends Phaser.Scene {
     if (!data?.carry || this.resume) this.shinyChain = newShinyChain();
     this.diff = this.resume ? this.resume.difficulty : (data?.difficulty ?? 'normal');
     this.towerStart = !this.resume && !data?.carry && this.mode === 'tower' ? Math.max(1, Math.floor(data?.towerStart ?? 1)) : 1;
+    // Tutorial: una arena con Arceus (versión normal) y el guardado en una copia en memoria que se tira al salir
+    this.tutMode = !this.resume && !data?.carry && hasTutorial(data?.tutorial) ? data.tutorial : null;
+    this.tutEnding = false;
+    this.tutPanel = undefined;
+    if (this.tutMode) {
+      enterSandbox();
+      Object.assign(this, { mode: 'bossrush', diff: 'normal', daily: null, towerStart: 1 });
+      setAdminFloorPick({ bossId: ARCEUS_ID });
+      this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.tutLeave());
+    }
   }
 
   create() {
@@ -1816,7 +1834,7 @@ export class GameScene extends Phaser.Scene {
     // Inicial oscuro: más vida, daño, velocidad y cadencia (darkMon.ts)
     const out = this.dark ? darkPlayerStats(stats) : stats;
     // Modo admin: modo dios
-    return isGodMode() ? godStats(out) : out;
+    return isGodMode() ? godStats(out) : this.tutMode ? tutorialStats(out) : out;
   }
 
   /** Multiplicador de daño de Ataque X mientras dura. */
@@ -3465,6 +3483,7 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.physics.world?.off(Phaser.Physics.Arcade.Events.WORLD_STEP, this.keepInside, this));
     this.installDebug();
     this.installAdmin();
+    if (this.tutMode) this.tutStart();
     // Al perder el foco la ventana o la pestaña, se abre la pausa (si no hay ya una pausa, confirmación o transición)
     onFocusLost(this, () => {
       if (this.scene.isActive() && !this.ended && !this.transitioning && !this.falling && !this.confirmOpen && !this.scene.isPaused()) this.openPause();
@@ -3607,6 +3626,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const why = megaBlock(this.powerForm, ctx);
     if (why) return this.notify(MEGA_BLOCK_TEXT[why], { kind: 'warning', icon: 'pokeball' });
     this.powerForm = startPowerForm(this.powerForm, 'mega');
+    this.tutPanel?.event('transform');
     this.powerFormLoopAt = this.game.loop.time;
     this.megaPulseAt = this.game.loop.time + POWER_FORMS.mega.pulseMs;
     // Los PS máximos extra también curan lo mismo (como al evolucionar)
@@ -3923,6 +3943,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private startPower(choice: PowerChoice) {
     if (!spendPowerMeter(this.powerMeter, powerCost(choice, this.passives))) return;
     if (this.powerMeterHud) this.powerMeterHud.shown = '';
+    this.tutPanel?.event('transform');
     if (choice === 'z') return this.zMove();
     const tera = choice === 'tera' ? resolveTeraType(this.teraPick, this.biome.types, this.tearType, rawEffectiveness) : null;
     this.powerForm = startPowerForm(this.powerForm, choice, tera);
@@ -5596,9 +5617,66 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.notify(`¡Semilla de ${GARDEN_BERRIES[berry].name}!\nPlántala en el huerto`, { kind: 'reward', icon: 'heart' });
   }
 
+  /** Tutorial de práctica: Mega Piedra, medidor lleno, vida llena y el cartel de la guía. */
+  private tutStart() {
+    if (!this.tutMode || this.ended) return;
+    if (!this.passives.includes(MEGA_STONE_ID)) this.passives.push(MEGA_STONE_ID);
+    this.refreshInventory();
+    if (this.megaHud) this.megaHud.shown = '';
+    this.powerMeter.value = POWER_METER_MAX;
+    this.stats = this.calcStats();
+    this.hp = this.stats.maxHp;
+    this.tutPanel = new TutorialPanel(this, this.tutMode, {
+      touch: () => !!this.touch || currentInput() === 'touch',
+      addHud: (o) => {
+        this.hudLayer.add(o);
+        if (this.hudCam) o.cameraFilter &= ~this.hudCam.id;
+      },
+      onSkip: () => this.tutEnd(false),
+    });
+  }
+
+  /** Cada frame del tutorial: recargas cortas, medidor lleno, no se cae y «moverse» cuenta al andar. */
+  private tutTick() {
+    const p = this.tutPanel;
+    if (!p || this.ended || !this.player?.active) return;
+    p.tick();
+    this.parry.readyAt = shortCooldown(this.parry.readyAt, this.game.loop.time, TUTORIAL_BONUS.parryCdMs);
+    this.dash.readyAt = shortCooldown(this.dash.readyAt, this.time.now, TUTORIAL_BONUS.dashCdMs);
+    if (!this.powerForm.active && this.powerMeter.value < POWER_METER_MAX) {
+      this.powerMeter.value = POWER_METER_MAX;
+      this.zUsed = false;
+      if (this.powerMeterHud) this.powerMeterHud.shown = '';
+    }
+    this.hp = refillHp(this.hp, this.stats.maxHp);
+    const v = (this.player.body as Body | null)?.velocity;
+    if (v && v.lengthSq() > 900) p.event('move');
+  }
+
+  /** Fin del tutorial (Arceus vencido, saltado o «caído»): vuelve a la pantalla de modos. */
+  private tutEnd(won: boolean) {
+    if (this.tutEnding) return;
+    this.tutEnding = true;
+    this.ended = true;
+    this.physics.pause();
+    this.tutPanel?.destroy();
+    if (won && this.player?.active) cheerPlayer(this, this.player);
+    this.setBanner(won ? '¡Has vencido a Arceus!\nTutorial completado' : 'Tutorial terminado\nVuelves al menú');
+    const mode = this.tutMode ?? 'normal';
+    this.time.delayedCall(won ? 2400 : 900, () => goTo(this, 'Mode', { select: mode }));
+  }
+
+  /** Al cerrar la escena: se tira la copia del guardado y se apunta el tutorial del modo como jugado. */
+  private tutLeave() {
+    this.tutPanel?.destroy();
+    this.tutPanel = undefined;
+    leaveSandbox(this.tutMode);
+    this.tutMode = null;
+  }
+
   /** Pone en cola un consejo del tutorial si aún no se ha visto (y no están desactivados). */
   private tip(id: TipId) {
-    if (!shouldShowTip(loadTutorial(), id) || this.tipQueue.includes(id)) return;
+    if (this.tutMode || !shouldShowTip(loadTutorial(), id) || this.tipQueue.includes(id)) return;
     this.tipQueue.push(id);
     this.nextTip();
   }
@@ -6430,6 +6508,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * enemigo más cercano y quien pega cuerpo a cuerpo se queda aturdido. Perfecto (primera mitad de la ventana): más.
    */
   private onParry(result: ParryResult, src: Sprite) {
+    this.tutPanel?.event('parry');
     const now = this.time.now;
     const perfect = result === 'perfect';
     this.invulnUntil = now + PARRY_GRACE_MS;
@@ -6550,6 +6629,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.playerKnockUntil = now + DASH_MS;
     this.invulnUntil = Math.max(this.invulnUntil, now + DASH_INVULN_MS);
     noteDash(this.counters);
+    this.tutPanel?.event('dash');
     this.playerActionAt = now;
     sfx('select');
     this.face(this.player, this.dash.dir);
@@ -8864,6 +8944,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         return `${r} · se adapta a tus ataques e invoca legendarios/ultraentes`;
       },
       panel: () => (this.openAdminPanel() ? 'panel abierto' : 'panel no disponible'),
+      /** Tutorial de práctica de un modo (normal, waves, endless, bossrush, tower): Arceus y nada se guarda. */
+      tutorial: (mode: string = 'normal') => {
+        if (!hasTutorial(mode)) return `Modos con tutorial: ${TUTORIAL_MODES.join(', ')}`;
+        this.scene.restart({ slot: this.slot, starterId: TUTORIAL_STARTER, mode: 'bossrush', tutorial: mode } satisfies GameData);
+        return `tutorial de ${mode}`;
+      },
       /** Pone en la ranura 1 el ataque `estilo` (nombre del catálogo) de `tipo` y lo lanza (auditoría de ataques). */
       castStyle: (tipo: string, estilo: string) => this.adminTestCast(debugStyleMove(tipo, estilo)),
       /** Pone en la ranura 1 la fusión de dos tipos y la lanza. */
@@ -11187,6 +11273,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.adminTick();
     if (this.towerArrow) this.towerArrowTick();
     this.guideTick();
+    if (this.tutPanel) this.tutTick();
     // Red de seguridad: nada sale de la arena (también después de la física, ver keepInside)
     this.keepInside();
     const menuPressed = Phaser.Input.Keyboard.JustDown(this.escKey) || Phaser.Input.Keyboard.JustDown(this.pauseKey) ||
@@ -11329,11 +11416,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const rbNow = hasPad && !!pad!.buttons[5]?.pressed;
     if (Phaser.Input.Keyboard.JustDown(this.bombKey) || (rbNow && !this.rbPrev) || this.touch?.consume('bomb')) this.placeBomb();
     // Poción (T49): su tecla, pulsar el stick izquierdo (L3) o el botón táctil (el clic va en el HUD)
-    const l3Now = hasPad && !!pad!.buttons[10]?.pressed;
+    const l3Now = hasPad && !this.tutPanel && !!pad!.buttons[10]?.pressed; // en el tutorial, L3 salta la guía
     if (Phaser.Input.Keyboard.JustDown(this.potionKey) || (l3Now && !this.l3Prev) || this.touch?.consume('potion')) this.drinkPotion();
     this.l3Prev = l3Now;
     // T65: Poké Ball con su tecla, pulsando el stick derecho (R3) o con clic en la del HUD
-    const r3Now = hasPad && !!pad!.buttons[11]?.pressed;
+    const r3Now = hasPad && !this.tutPanel && !!pad!.buttons[11]?.pressed; // en el tutorial, R3 avanza la guía
     if (Phaser.Input.Keyboard.JustDown(this.ballKey) || (r3Now && !this.r3Prev)) this.throwBall();
     this.r3Prev = r3Now;
     // T74: megaevolución con su tecla, la cruceta arriba (botón 12, libre en partida) o clic en la Mega Piedra del HUD
@@ -11749,6 +11836,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   /** Disparo básico. Los pasivos cambian cuántos salen, cuánto daño hacen y hasta dónde llegan. */
   private fireTear(dir: Phaser.Math.Vector2, charged = false) {
+    this.tutPanel?.event('shoot');
     sfx(shotSfx(this.shotType()));
     this.lastShotAt = this.time.now;
     const s = this.stats;
@@ -12193,7 +12281,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * el suceso no sale en CAP_RELEASE_MS de retención, el umbral se da por consumido.
    */
   private enemyHpAfter(e: Sprite, dmg: number): number {
-    return this.enemyHpCore(e, this.absorbBossShield(e, dmg));
+    const hp = this.enemyHpCore(e, this.absorbBossShield(e, dmg));
+    // Tutorial: Arceus no cae hasta el último paso de la guía
+    const floor = this.tutPanel && e.getData('arceus') ? bossHpFloor(this.tutPanel.progress) : 0;
+    return floor > 0 ? Math.max(hp, Math.ceil((e.getData('maxHp') as number) * floor)) : hp;
   }
 
   /** ¿Es un jefe de los que ganan escudo al 33 %? (no ayudantes ni minijefes). */
@@ -13275,6 +13366,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.onRoomClearedT48();
 
     if (this.mode === 'tower') return this.towerCleared(room);
+    if (this.tutMode && room.kind === 'boss') return this.tutEnd(true);
 
     if (room.kind === 'boss') {
       // Récord: pisos completados (Normal, Infinito) o jefes vencidos (Rush)
@@ -13566,6 +13658,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    */
   private playerDown(message: string) {
     if (this.ended) return;
+    // Tutorial: no se cae nunca
+    if (this.tutMode) return void (this.hp = this.stats.maxHp);
     const balances = { candies: loadCandies(), tickets: loadTickets() };
     if (!this.scene.manager.keys['SecondChance'] || this.scene.isActive('SecondChance') || !canOfferRevive(this.secondChanceUsed, balances, this.floorNum)) {
       this.finish(false, message);
@@ -13613,6 +13707,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Una sola vez: un enemigo que cae después de ti (p. ej. por el Casco Dentado, con un delayedCall) no puede
     // convertir la derrota en victoria ni apuntar la partida dos veces en el historial
     if (this.ended) return;
+    if (this.tutMode) return this.tutEnd(won);
     // Como en Isaac: al morir o ganar, la partida guardada se borra
     clearRun(this.slot);
     // Desafío diario: la partida que cuenta apunta los pisos completados
