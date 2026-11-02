@@ -5,12 +5,12 @@
 import Phaser from 'phaser';
 import { dashEnd } from '../data/bossBlitz';
 import {
-  laneHits, laneState, waveHits, zoneHits, COMBO_ACT_MS, chaseOrder, closingRadius, creepStep, homingStep,
-  type CascadePlan, type ChaseKind, type ChaseSpec, type ComboSpec, type ComboStep, type Pt,
+  laneHits, laneState, strikeHits, aimStrike, zoneHits, COMBO_ACT_MS, LIGHTNING_ON_MS, chaseOrder, creepStep, homingStep,
+  type CascadePlan, type ChaseKind, type ChaseSpec, type ComboSpec, type ComboStep, type Pt, type Strike,
 } from '../data/bossFrenzy';
 import type { Bounds } from '../level/bounds';
 import type { Hazard } from '../data/autoMove';
-import { drawRingBeam, drawRingFade, drawRingWarn, drawDashWarn, drawLaneBeam, drawLaneFade, drawLaneWarn, drawWave, drawWaveWarn, drawZoneBlast, drawZoneWarn } from '../ui/art/frenzyFx';
+import { drawDashWarn, drawLaneBeam, drawLaneFade, drawLaneWarn, drawStrikeBolt, drawStrikeFade, drawStrikeWarn, drawZoneBlast, drawZoneWarn } from '../ui/art/frenzyFx';
 
 export interface FrenzyHost {
   scene: Phaser.Scene;
@@ -38,11 +38,9 @@ export function frenzyHazards(): Hazard[] {
   return out;
 }
 
-/** Línea o anillo de la cascada como zona de peligro. */
+/** Línea de la cascada como zona de peligro. */
 function laneHazard(l: CascadePlan['lanes'][number]): Hazard {
-  const r = l.ring;
-  if (!r) return { kind: 'seg', x1: l.x1, y1: l.y1, x2: l.x2, y2: l.y2, w: l.width };
-  return { kind: 'ring', cx: r.cx, cy: r.cy, rMin: Math.min(r.r0, r.r1) - l.width / 2, rMax: Math.max(r.r0, r.r1) + l.width / 2, gapAng: r.gapAng, gapW: r.gapW };
+  return { kind: 'seg', x1: l.x1, y1: l.y1, x2: l.x2, y2: l.y2, w: l.width };
 }
 
 /** Bucle por fotograma con un Graphics propio; para cuando `step` devuelve false, se corta o acaba la pelea. */
@@ -78,27 +76,58 @@ export function runCascade(h: FrenzyHost, plan: Pick<CascadePlan, 'lanes' | 'tot
     for (let i = 0; i < plan.lanes.length; i++) {
       const l = plan.lanes[i];
       const st = laneState(l, t);
-      if (st.s === 'warn') {
-        if (l.ring) drawRingWarn(g, l, st.k, t, h.arena, h.low);
-        else drawLaneWarn(g, l, st.k, t, h.low);
-      } else if (st.s === 'on') {
-        if (l.ring) drawRingBeam(g, l, t, h.color, h.arena, h.low);
-        else drawLaneBeam(g, l, st.k, h.color, h.low);
+      if (st.s === 'warn') drawLaneWarn(g, l, st.k, t, h.low);
+      else if (st.s === 'on') {
+        drawLaneBeam(g, l, st.k, h.color, h.low);
         if (!boomed) {
           boomed = true;
           h.sfx('hit');
         }
-        if (!hit.has(i) && laneHits(l, h.player.x, h.player.y, 12, t)) {
+        if (!hit.has(i) && laneHits(l, h.player.x, h.player.y, 12)) {
           hit.add(i);
           h.hurt();
         }
-      } else if (st.s === 'fade') {
-        if (l.ring) drawRingFade(g, l, st.k, h.color, h.arena);
-        else drawLaneFade(g, l, st.k, h.color);
-      }
+      } else if (st.s === 'fade') drawLaneFade(g, l, st.k, h.color);
     }
     return t < plan.totalMs + 160;
   }, 4, (t) => plan.lanes.filter((l) => { const s = laneState(l, t).s; return s === 'warn' || s === 'on'; }).map(laneHazard));
+}
+
+/**
+ * Rayos: cada círculo avisa (se rellena y parpadea) y al acabar el aviso cae un rayo que solo daña dentro (una vez por
+ * rayo, como las líneas). Los apuntados se recolocan sobre el jugador al sacar su aviso (aimStrike): basta con moverse.
+ * Un Graphics para todos; temblor y sonido al caer (sin temblor en low).
+ */
+export function runLightning(h: FrenzyHost, plan: { strikes: readonly Strike[]; totalMs: number }) {
+  const ks: Strike[] = plan.strikes.map((k) => ({ ...k }));
+  const aimed = new Set<number>();
+  const hit = new Set<number>();
+  const fell = new Set<number>();
+  const live = (t: number) => ks.filter((k) => t >= k.warnAt && t < k.offAt);
+  run(h, (g, t) => {
+    for (let i = 0; i < ks.length; i++) {
+      let k = ks[i];
+      if (k.aimed && !aimed.has(i) && t >= k.warnAt) {
+        aimed.add(i);
+        k = ks[i] = aimStrike(k, h.player, h.arena);
+      }
+      const st = laneState(k, t, 160);
+      if (st.s === 'warn') drawStrikeWarn(g, k, st.k, t, h.low);
+      else if (st.s === 'on') {
+        drawStrikeBolt(g, k, st.k, h.color, h.low);
+        if (!fell.has(i)) {
+          fell.add(i);
+          h.sfx('boom');
+          if (!h.low) h.shake(90, 0.004);
+        }
+        if (!hit.has(i) && strikeHits(k, h.player.x, h.player.y)) {
+          hit.add(i);
+          h.hurt();
+        }
+      } else if (st.s === 'fade') drawStrikeFade(g, k, st.k, h.color);
+    }
+    return t < plan.totalMs + 200;
+  }, 4, (t) => live(t).map((k): Hazard => ({ kind: 'circle', x: k.x, y: k.y, r: k.r + 12 })));
 }
 
 /** Combo retardado: cada golpe apunta al sacar su aviso (te sigue entre golpes) y golpea al acabar el aviso. */
@@ -106,8 +135,8 @@ export function runCombo(h: FrenzyHost, steps: ComboStep[], spec: ComboSpec, das
   const sc = h.scene;
   const b = h.boss;
   const bodyHalf = Math.min(70, ((b.body as Phaser.Physics.Arcade.Body | null)?.width ?? 120) / 2);
-  type Live = { st: ComboStep; from: Pt; to: Pt; gapAng: number; hit: boolean; done: boolean; aimed: boolean; sounded: boolean };
-  const live: Live[] = steps.map((st) => ({ st, from: { x: 0, y: 0 }, to: { x: 0, y: 0 }, gapAng: 0, hit: false, done: false, aimed: false, sounded: false }));
+  type Live = { st: ComboStep; from: Pt; to: Pt; hit: boolean; done: boolean; aimed: boolean; sounded: boolean };
+  const live: Live[] = steps.map((st) => ({ st, from: { x: 0, y: 0 }, to: { x: 0, y: 0 }, hit: false, done: false, aimed: false, sounded: false }));
   const total = steps[steps.length - 1].endAt;
   h.holdAi(sc.time.now + total + 300);
   run(h, (g, t) => {
@@ -121,18 +150,15 @@ export function runCombo(h: FrenzyHost, steps: ComboStep[], spec: ComboSpec, das
         if (st.kind === 'dash') {
           s.from = { x: b.x, y: b.y };
           s.to = dashEnd(s.from, p, h.arena, bodyHalf);
-        } else if (st.kind === 'wave') {
-          s.from = { x: b.x, y: b.y };
-          // El hueco de la onda: hacia un lado del jugador (no detrás del jefe), para que haya que moverse
-          s.gapAng = Math.atan2(p.y - b.y, p.x - b.x) + (Math.random() < 0.5 ? 1 : -1) * (0.7 + Math.random() * 0.9);
-        } else s.from = p;
+        } else if (st.kind === 'bolt') s.from = aimStrike({ x: p.x, y: p.y, r: spec.boltR, warnAt: 0, fireAt: 0, offAt: 0, aimed: true }, p, h.arena);
+        else s.from = p;
       }
       const warnK = (t - st.warnAt) / Math.max(1, st.fireAt - st.warnAt);
       // Amago: pasado el aviso normal, el aviso se queda y late (el golpe llega más tarde)
       const held = st.feint && t - st.warnAt > spec.warnMs;
       if (t < st.fireAt) {
         if (st.kind === 'dash') drawDashWarn(g, s.from, s.to, dashWidth, warnK, t, held, h.low);
-        else if (st.kind === 'wave') drawWaveWarn(g, s.from.x, s.from.y, spec.waveR, s.gapAng, spec.waveGap, warnK, t, held, h.low);
+        else if (st.kind === 'bolt') drawStrikeWarn(g, { x: s.from.x, y: s.from.y, r: spec.boltR }, warnK, t, h.low, held);
         else drawZoneWarn(g, s.from.x, s.from.y, spec.zoneR, warnK, t, held, h.low);
         if (st.kind === 'dash') b.setVelocity(0, 0);
         continue;
@@ -154,10 +180,10 @@ export function runCombo(h: FrenzyHost, steps: ComboStep[], spec: ComboSpec, das
           s.hit = true;
           h.hurt();
         }
-      } else if (st.kind === 'wave') {
-        const r = spec.waveR * k;
-        drawWave(g, s.from.x, s.from.y, r, spec.waveThick, s.gapAng, spec.waveGap, h.color, h.low);
-        if (!s.hit && waveHits(s.from.x, s.from.y, r, spec.waveThick, s.gapAng, spec.waveGap, h.player.x, h.player.y)) {
+      } else if (st.kind === 'bolt') {
+        const z = { x: s.from.x, y: s.from.y, r: spec.boltR };
+        drawStrikeBolt(g, z, k, h.color, h.low);
+        if (!s.hit && strikeHits(z, h.player.x, h.player.y)) {
           s.hit = true;
           h.hurt();
         }
@@ -179,7 +205,7 @@ export function runCombo(h: FrenzyHost, steps: ComboStep[], spec: ComboSpec, das
     for (const s of live) {
       if (s.done || !s.aimed || t < s.st.warnAt) continue;
       if (s.st.kind === 'dash') out.push({ kind: 'seg', x1: s.from.x, y1: s.from.y, x2: s.to.x, y2: s.to.y, w: dashWidth + 20 });
-      else if (s.st.kind === 'wave') out.push({ kind: 'ring', cx: s.from.x, cy: s.from.y, rMin: 0, rMax: spec.waveR + spec.waveThick, gapAng: s.gapAng, gapW: spec.waveGap });
+      else if (s.st.kind === 'bolt') out.push({ kind: 'circle', x: s.from.x, y: s.from.y, r: spec.boltR + 12 });
       else out.push({ kind: 'circle', x: s.from.x, y: s.from.y, r: spec.zoneR });
     }
     return out;
@@ -190,17 +216,17 @@ export function runCombo(h: FrenzyHost, steps: ComboStep[], spec: ComboSpec, das
  * Acoso (fase 2): cada `everyMs` aparece algo que se ACERCA a ti, siempre con aviso y esquivable:
  * - zona que se arrastra hacia ti (más lenta que tú), late al final y estalla en área dejando un charco que dura;
  * - orbe teledirigido desde el jefe con giro limitado y vida corta (si giras cerca, se pasa de largo);
- * - anillo que se cierra sobre tu posición con un hueco por el que salir.
+ * - rayo en un círculo sobre tu posición (aviso y luego cae): sal del círculo.
  * Un Graphics; como mucho `spec.maxLive` objetos vivos (charcos incluidos).
  */
 export function runChase(h: FrenzyHost, spec: ChaseSpec) {
   const sc = h.scene;
   const order = chaseOrder(spec, Math.random);
-  type O = { kind: ChaseKind | 'puddle'; t0: number; x: number; y: number; ang: number; gap: number; hit: boolean; last: number; done: boolean };
+  type O = { kind: ChaseKind | 'puddle'; t0: number; x: number; y: number; ang: number; snd?: boolean; hit: boolean; last: number; done: boolean };
   const live: O[] = [];
   let next = 0;
   let idx = 0;
-  const total = Math.min(spec.durMs, order.length * spec.everyMs) + spec.warnMs + Math.max(spec.creepLife + 400, spec.ringMs, spec.homerLife) + spec.puddleMs;
+  const total = Math.min(spec.durMs, order.length * spec.everyMs) + spec.warnMs + Math.max(spec.creepLife + 400, LIGHTNING_ON_MS, spec.homerLife) + spec.puddleMs;
   const P = h.player;
   const far = (x: number, y: number) => Math.hypot(x - P.x, y - P.y);
   const B = h.arena;
@@ -216,8 +242,8 @@ export function runChase(h: FrenzyHost, spec: ChaseSpec) {
         const a = Math.random() * Math.PI * 2;
         const r = 220 + Math.random() * 140;
         ({ x, y } = inArena(P.x + Math.cos(a) * r, P.y + Math.sin(a) * r));
-      } else if (kind === 'ring') ({ x, y } = { x: P.x, y: P.y });
-      live.push({ kind, t0: t, x, y, ang: Math.atan2(P.y - y, P.x - x), gap: Math.random() * Math.PI * 2, hit: false, last: t, done: false });
+      } else if (kind === 'bolt') ({ x, y } = aimStrike({ x: P.x, y: P.y, r: spec.boltR, warnAt: 0, fireAt: 0, offAt: 0, aimed: true }, P, B));
+      live.push({ kind, t0: t, x, y, ang: Math.atan2(P.y - y, P.x - x), hit: false, last: t, done: false });
     }
     for (const o of live) {
       if (o.done) continue;
@@ -237,7 +263,7 @@ export function runChase(h: FrenzyHost, spec: ChaseSpec) {
       if (lt < spec.warnMs) {
         const k = lt / spec.warnMs;
         if (o.kind === 'creep') drawZoneWarn(g, o.x, o.y, spec.creepR, k, t, false, h.low);
-        else if (o.kind === 'ring') drawWaveWarn(g, o.x, o.y, spec.ringR0, o.gap, spec.ringGap, k, t, false, h.low);
+        else if (o.kind === 'bolt') drawStrikeWarn(g, { x: o.x, y: o.y, r: spec.boltR }, k, t, h.low);
         else drawZoneWarn(g, o.x, o.y, 22, k, t, false, h.low);
         continue;
       }
@@ -263,7 +289,7 @@ export function runChase(h: FrenzyHost, spec: ChaseSpec) {
           // Charco persistente donde estalló (se acumulan unos segundos)
           o.done = true;
           h.sfx('boom');
-          if (live.filter((q) => !q.done).length < spec.maxLive) live.push({ kind: 'puddle', t0: t, x: o.x, y: o.y, ang: 0, gap: 0, hit: false, last: t, done: false });
+          if (live.filter((q) => !q.done).length < spec.maxLive) live.push({ kind: 'puddle', t0: t, x: o.x, y: o.y, ang: 0, hit: false, last: t, done: false });
         }
       } else if (o.kind === 'homer') {
         if (at > spec.homerLife) {
@@ -279,13 +305,17 @@ export function runChase(h: FrenzyHost, spec: ChaseSpec) {
         }
         if (o.x < B.x0 || o.x > B.x1 || o.y < B.y0 || o.y > B.y1) o.done = true;
       } else {
-        if (at > spec.ringMs) {
+        if (at > LIGHTNING_ON_MS) {
           o.done = true;
           continue;
         }
-        const r = closingRadius(spec.ringR0, at, spec.ringMs);
-        drawWave(g, o.x, o.y, r, 26, o.gap, spec.ringGap, h.color, h.low);
-        if (!o.hit && r > 20 && waveHits(o.x, o.y, r, 26, o.gap, spec.ringGap, P.x, P.y)) {
+        const z = { x: o.x, y: o.y, r: spec.boltR };
+        drawStrikeBolt(g, z, at / LIGHTNING_ON_MS, h.color, h.low);
+        if (!o.snd) {
+          o.snd = true;
+          h.sfx('boom');
+        }
+        if (!o.hit && strikeHits(z, P.x, P.y)) {
           o.hit = true;
           h.hurt();
         }
@@ -293,8 +323,7 @@ export function runChase(h: FrenzyHost, spec: ChaseSpec) {
     }
     return t < total && (idx < order.length || live.some((o) => !o.done));
   }, 4, (t) => live.filter((o) => !o.done).map((o): Hazard => {
-    if (o.kind === 'ring') return { kind: 'ring', cx: o.x, cy: o.y, rMin: 0, rMax: closingRadius(spec.ringR0, Math.max(0, t - o.t0 - spec.warnMs), spec.ringMs) + 20, gapAng: o.gap, gapW: spec.ringGap };
-    const r = o.kind === 'puddle' ? spec.puddleR : o.kind === 'homer' ? 40 : spec.blastR;
+    const r = o.kind === 'puddle' ? spec.puddleR : o.kind === 'homer' ? 40 : o.kind === 'bolt' ? spec.boltR + 12 : spec.blastR;
     return { kind: 'circle', x: o.x, y: o.y, r };
   }));
   return total;
