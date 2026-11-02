@@ -229,6 +229,7 @@ import { buildHazards, buildLightColumn, buildSupplyStall, buildTowerAltar, buil
 import {
   iceVelocity, isTowerFinale, TOWER_ALTAR_COUNT, TOWER_REST_LAYOUT, TOWER_SHOP_SOLD, towerAltarItems, towerCheckpointKit, towerMinibossItem, towerShopOffer,
 } from '../level/towerExtras';
+import { ADAPT_WARN_MS, adaptEveryMs, adaptText, arceusAttacks, arceusCanSummon, arceusDamage, arceusHelperIds, arceusHp, ARCEUS_ID, ARCEUS_SUPREME, adaptType, isArceus, pickArceusCompanions, recordAttack, type AttackHistory } from '../data/arceus';
 import { FINALE_BONUS, GIANT_HP_MUL, GIANT_RAGE_AT, GIANT_SIZE, isFinalFloor, isFinaleGate, pickFinale, TRIO_HP_MUL, type Finale } from '../data/finale';
 import type { FinalChoice } from './FinalPromptScene';
 import { castPattern, setMotion, updateShots, type AttackHost, type ShootOpts, type Side } from './attacks';
@@ -641,6 +642,9 @@ export class GameScene extends Phaser.Scene {
   private finaleBigUntil = 0;
   /** Ayudantes que invocan los jefes: de su tipo. */
   private summonKinds: FoeKind[] = [];
+  /** Arceus (arceus.ts): ayudantes legendarios/ultraentes y si es el Supremo del piso 100 de la Torre. */
+  private arceusKinds: FoeKind[] = [];
+  private arceusSupreme = false;
   /** Sala del minijefe de este piso (si hay). */
   private minibossRoom?: number;
   /** Curación por golpes (Drenar, Concha Campana): tope por segundo y una vez por lanzamiento. */
@@ -1191,6 +1195,8 @@ export class GameScene extends Phaser.Scene {
       if (this.physics.world.isPaused) this.physics.resume();
     }
     this.summonKinds = [];
+    this.arceusKinds = [];
+    this.arceusSupreme = false;
     this.minibossRoom = undefined;
     this.healBudget = 0;
     this.drainReadyAt = 0;
@@ -1446,7 +1452,13 @@ export class GameScene extends Phaser.Scene {
     if (this.adminPick?.bossId === undefined && isFinalFloor(this.mode, this.floorNum) || isTowerFinale(this.mode, this.floorNum)) {
       // Reto final: trío legendario o legendario gigante, al azar (también en el piso 100 de la Torre, T72)
       const okIds = bundled;
-      this.finale = pickFinale(this.rng(RNG.boss), (id) => !okIds || okIds.has(id));
+      const okF = (id: number) => !okIds || okIds.has(id);
+      // Arceus: Supremo en el piso 100 de la Torre; en Normal, con dos legendarios típicos de alguna región
+      if (!okF(ARCEUS_ID)) this.finale = pickFinale(this.rng(RNG.boss), okF);
+      else if (isTowerFinale(this.mode, this.floorNum)) {
+        this.finale = { kind: 'giant', name: '', ids: [ARCEUS_ID] };
+        this.arceusSupreme = true;
+      } else this.finale = { kind: 'trio', name: 'Arceus y sus aliados', ids: [ARCEUS_ID, ...pickArceusCompanions(this.rng(RNG.boss), okF)] };
       bossId = this.finale.ids[0];
     } else if (bossId === undefined) {
       // T64: sale de todos los legendarios y singulares; el tipo del bioma solo le da peso ×3
@@ -1496,6 +1508,7 @@ export class GameScene extends Phaser.Scene {
     if (foes.length === 0) foes = [await fetchPokemonCard(FALLBACK_ENEMIES[0])];
     this.foeKinds = this.toFoeKinds(foes, index);
     this.summonKinds = this.toFoeKinds(summonCards, index);
+    if (isArceus(bossId) || this.finale?.ids.includes(ARCEUS_ID)) await this.loadArceusHelpers((id) => !bundled || bundled.has(id), index);
     this.bossType = boss.types[0] ?? 'normal';
     this.bossName = boss.name;
     this.bossTypes = boss.types.length > 0 ? boss.types : ['normal'];
@@ -1547,7 +1560,7 @@ export class GameScene extends Phaser.Scene {
         }
       }
       // Sprites animados de 8 direcciones (T31). El shiny usa la hoja shiny de SpriteCollab (o la normal recoloreada)
-      const pmdIds = [bossId!, ...this.finaleMembers.map((m) => m.id), ...foes.map((c) => c.id), ...summonCards.map((c) => c.id), ...(legendCard ? [legendCard.id] : []), ...[miniCard, guardCard].flatMap((c) => (c ? [c.id] : [])), this.playerPmdId()];
+      const pmdIds = [bossId!, ...this.finaleMembers.map((m) => m.id), ...foes.map((c) => c.id), ...summonCards.map((c) => c.id), ...(legendCard ? [legendCard.id] : []), ...[miniCard, guardCard].flatMap((c) => (c ? [c.id] : [])), ...this.arceusKinds.map((k) => Number(k.key.slice(4))), this.playerPmdId()];
       loadPmd(this, pmdIds)
         .catch(() => new Map<number, PmdSheet>())
         .then((m) => {
@@ -7714,8 +7727,19 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const hp = Math.round(ms.hp * (trio ? TRIO_HP_MUL : GIANT_HP_MUL));
       b.setData('hp', hp).setData('maxHp', hp).setData('speed', ms.speed * (trio ? 0.9 : 0.8)).setData('dmg', ms.damage);
       b.setData('bname', m.name).setData('btypes', m.types).setData('finale', true).setData('speciesId', m.id);
+      if (isArceus(m.id)) {
+        // Supremo: vida y daño propios (arceus.ts); en el trío de Normal, un poco por encima del resto
+        const sup = this.arceusSupreme;
+        const ahp = arceusHp(ms.hp, sup);
+        b.setData('hp', ahp).setData('maxHp', ahp).setData('dmg', arceusDamage(ms.damage, sup));
+        if (sup) b.setData('speed', ms.speed * ARCEUS_SUPREME.speedMul).setDisplaySize(ARCEUS_SUPREME.size, ARCEUS_SUPREME.size).setData('size', ARCEUS_SUPREME.size);
+        if (sup) this.applyPmd(b, m.id, ARCEUS_SUPREME.size);
+        if (sup) b.setData('bname', `${m.name} Supremo`);
+        b.setData('arceus', true).setData('arceusSupreme', sup);
+        this.finaleMaxSum += ahp - hp;
+      }
       const ai = this.newAI(behaviorFor([m.types[0]]), m.types[0], true);
-      ai.attacks = [...new Set([...bossAttacksFor(m.types, this.biome.types), ...blitzAttacksFor(m.types), 'summon' as const])];
+      ai.attacks = b.getData('arceus') ? arceusAttacks(m.types[0], this.biome.types, this.arceusSupreme) : [...new Set([...bossAttacksFor(m.types, this.biome.types), ...blitzAttacksFor(m.types), 'summon' as const])];
       ai.moves = bossStyles(m.types, m.id);
       ai.nextAttack = Number.POSITIVE_INFINITY; // los activa la intro al acabar
       ai.phase = 1;
@@ -7726,7 +7750,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       group.push(b);
     });
     void st;
-    const label = trio ? f.name : this.finaleMembers[0].name;
+    const label = trio ? f.name : this.arceusSupreme ? `${this.finaleMembers[0].name} Supremo` : this.finaleMembers[0].name;
     this.buildBossBar(group[0], label, this.finaleMembers[0].types[0], group);
     this.notify(trio ? `¡Reto final: ${f.name}!` : `¡Reto final: ${label}, más fuerte que nunca!`, { kind: 'danger', icon: 'star' });
     this.finaleMembers.forEach((m) => void cry(m.id));
@@ -7737,7 +7761,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       boss: { ...fighter(this.finaleMembers[0]), name: label },
       extra: trio ? this.finaleMembers.slice(1).map(fighter) : undefined,
       tier: 'final',
-      subtitle: trio ? 'Tres legendarios a la vez' : 'Legendario gigante',
+      subtitle: this.arceusSupreme ? `Dios de la Creación · Piso ${this.floorNum}` : f.ids.includes(ARCEUS_ID) ? 'Arceus y dos legendarios' : trio ? 'Tres legendarios a la vez' : 'Legendario gigante',
     });
   }
 
@@ -7784,6 +7808,69 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.scene.pause();
   }
 
+  /** Carga los ayudantes de Arceus (legendarios/singulares y ultraentes). */
+  private async loadArceusHelpers(ok: (id: number) => boolean, index: readonly SpeciesFact[]) {
+    const ids = arceusHelperIds(mulberry32((this.floorSeed ^ 0x493a7c15) >>> 0), 6, ok);
+    const cards = (await Promise.all(ids.map((id) => fetchPokemonCard(id).catch(() => null)))).filter((c) => c !== null);
+    // Sus sprites (como en adminBossHere): se cargan aquí para no tocar la carga del piso
+    await new Promise<void>((done) => {
+      let n = 0;
+      for (const c of cards) {
+        const urls = pickSprites(c.sprites, false);
+        for (const side of ['front', 'back'] as const) {
+          if (!this.textures.exists(`foe-${c.id}-${side}`)) (this.load.image(`foe-${c.id}-${side}`, urls[side]), n++);
+        }
+      }
+      if (n === 0) return done();
+      this.load.once(Phaser.Loader.Events.COMPLETE, () => done());
+      this.load.start();
+    });
+    this.arceusKinds = this.toFoeKinds(cards.filter((c) => this.textures.exists(`foe-${c.id}-front`)), index);
+  }
+
+  /**
+   * Multitipo: cada pocos segundos (y en cada fase) Arceus cambia al tipo que peor le sientan tus ataques, con aviso y
+   * aura del color nuevo, y cambia sus ataques y movimientos a los de ese tipo. Devuelve true mientras avisa.
+   */
+  private updateArceus(b: Sprite, ai: EnemyAI, time: number): boolean {
+    const sup = !!b.getData('arceusSupreme');
+    const at = b.getData('adaptAt') as number | undefined;
+    if (at === undefined) { b.setData('adaptAt', time + adaptEveryMs(sup)); return false; }
+    const until = b.getData('adaptUntil') as number | undefined;
+    if (until !== undefined) {
+      if (time < until) return true;
+      b.setData('adaptUntil', undefined);
+      return false;
+    }
+    if (time < at || time < (ai.castUntil ?? 0)) return false;
+    const cur = ((b.getData('btypes') as string[] | undefined) ?? [ai.type])[0];
+    const next = adaptType((b.getData('arceusHist') as AttackHistory | undefined) ?? {}, cur, Math.random);
+    b.setData('adaptAt', time + adaptEveryMs(sup));
+    if (next === cur) return false;
+    const col = typeColor(next);
+    b.setData('flashUntil', time + ADAPT_WARN_MS).setTintFill(col);
+    b.setData('adaptUntil', time + ADAPT_WARN_MS);
+    b.setVelocity(0, 0);
+    this.time.delayedCall(ADAPT_WARN_MS, () => {
+      if (!b.active || this.ended) return;
+      b.setData('btypes', [next]);
+      ai.type = next;
+      ai.attacks = arceusAttacks(next, this.biome.types, sup);
+      ai.moves = bossStyles([next], ARCEUS_ID);
+      if (b.getData('finale')) b.setData('fbase', ai.attacks).setData('fattacks', finaleAttacks(this.finalePh, ai.attacks));
+      b.setTint(Phaser.Display.Color.ValueToColor(col).lighten(40).color);
+      const feet = () => { const q = b.body as Body | null; return q ? q.bottom : b.y + b.displayHeight / 2; };
+      if (!lowFx()) {
+        pixRing(this, b.x, b.y, 70, col, 380, 9, 0.85);
+        bossAura(this, b, col, feet);
+      }
+      phaseShock(this, b.x, feet(), col, sup ? 1.4 : 1.1);
+      this.notify(adaptText(next), { kind: 'danger', icon: 'star' });
+      ai.nextAttack = Math.max(ai.nextAttack ?? 0, this.time.now + 500);
+    });
+    return true;
+  }
+
   private spawnBoss() {
     if (this.finale && this.finaleMembers.length > 0) return this.spawnFinale();
     // Nunca en la casilla del jugador ni dentro de una estructura (en una sala grande, en la casilla más lejana)
@@ -7808,6 +7895,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     ai.attacks = [...new Set([...bossAttacksFor(this.bossTypes, this.biome.types), ...blitzAttacksFor(this.bossTypes), 'summon' as const])];
     // Movimientos de su tipo (Lanzallamas, Hidrobomba, Terremoto…) además de sus ataques de jefe
     ai.moves = bossStyles(this.bossTypes, this.bossId);
+    if (isArceus(this.bossId)) {
+      b.setData('arceus', true).setData('hp', arceusHp(st.hp, false)).setData('maxHp', arceusHp(st.hp, false)).setData('dmg', arceusDamage(st.damage, false));
+      ai.attacks = arceusAttacks(this.bossTypes[0] ?? 'normal', this.biome.types, false);
+    }
     ai.nextAttack = this.time.now + 2200;
     ai.phase = 1;
     b.setData('ai', ai);
@@ -8011,6 +8102,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const ratio = (b.getData('hp') as number) / (b.getData('maxHp') as number);
     // T66: megaevolución / forma furia (una vez por jefe, a la vez que la fase 2). Durante el aviso no ataca.
     // Reto final: sus 4 fases van aparte (sin megaevolución ni fases de arena de los jefes normales)
+    if (b.getData('arceus') && this.updateArceus(b, ai, time)) return;
     if (b.getData('finale') && this.updateFinale(b, ai, time)) return;
     if (!b.getData('finale') && this.updateMegaEvolution(b, ai, ratio, time)) return;
     // T78: la arena cambia al 67 % (desperfectos) y al 34 % (caída a otra arena), nunca a la vez que la megaevolución.
@@ -8164,6 +8256,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       mai.nextAttack = time + FINALE_BEAT_MS + FINALE_AFTER_BEAT_MS;
       m.setData('volleyAt', time + FINALE_BEAT_MS + FINALE_AFTER_BEAT_MS + 600);
       m.setData('fattacks', finaleAttacks(next, (m.getData('fbase') as typeof mai.attacks) ?? mai.attacks ?? []));
+      if (m.getData('arceus')) m.setData('adaptAt', time + FINALE_BEAT_MS + 200); // en cada fase se adapta
       const col = typeColor(((m.getData('btypes') as string[] | undefined) ?? this.bossTypes)[0] ?? this.bossType);
       const bb = m.body as Body | null;
       const feet = () => { const q = m.body as Body | null; return q ? q.bottom : m.y + m.displayHeight / 2; };
@@ -8716,6 +8809,12 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       godMode: (on = true) => { this.adminGod(on); return `modo dios ${on ? 'activado' : 'desactivado'}`; },
       goFloor: (n: number) => this.adminGoFloor(n),
       bossHere: (id: number) => this.adminBossHere(id),
+      /** Arceus adaptable en la sala actual (en la Torre, goFloor(100) para el Supremo). */
+      arceus: async () => {
+        const r = await this.adminBossHere(ARCEUS_ID);
+        await this.loadArceusHelpers(() => true, await loadSpeciesIndex().catch(() => []));
+        return `${r} · se adapta a tus ataques e invoca legendarios/ultraentes`;
+      },
       panel: () => (this.openAdminPanel() ? 'panel abierto' : 'panel no disponible'),
       /** Pone en la ranura 1 el ataque `estilo` (nombre del catálogo) de `tipo` y lo lanza (auditoría de ataques). */
       castStyle: (tipo: string, estilo: string) => this.adminTestCast(debugStyleMove(tipo, estilo)),
@@ -9127,10 +9226,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private bossSummon(b: Sprite, ai: EnemyAI) {
     const alive = this.enemies.getChildren().filter((c) => c.active && (c as Sprite).getData('helper')).length;
     // T66: megaevolucionado invoca más (y con un tope algo mayor)
-    const n = megaHelpersToSummon(helpersToSummon(ai.phase ?? 1, 0), MAX_HELPERS, alive, !!b.getData('mega'));
-    // Ayudantes de su tipo (si no hay, de los del piso)
+    const arc = !!b.getData('arceus') && this.arceusKinds.length > 0;
+    const n = arc ? arceusCanSummon(alive, !!b.getData('arceusSupreme')) : megaHelpersToSummon(helpersToSummon(ai.phase ?? 1, 0), MAX_HELPERS, alive, !!b.getData('mega'));
+    // Ayudantes de su tipo (si no hay, de los del piso). Arceus: solo legendarios y ultraentes
     const own = this.summonKinds.filter((k) => k.types.includes(ai.type));
-    const kinds = own.length ? own : this.summonKinds.length ? this.summonKinds : this.foeKinds;
+    const kinds = arc ? this.arceusKinds : own.length ? own : this.summonKinds.length ? this.summonKinds : this.foeKinds;
     if (n === 0 || kinds.length === 0) return this.bossRing(b, ai);
     const i = this.arena();
     const color = typeColor(ai.type);
@@ -10497,7 +10597,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (isLastStage(this.mode, this.floorNum)) {
       this.mission({ kind: 'win' });
       this.giveTickets(FINALE_BONUS);
-      this.finish(true, `¡Has subido los 100 pisos de la Torre!\n+${this.earned} tickets en total\nPulsa R, Start o haz clic para ver el resumen`);
+      const sup = this.arceusSupreme ? this.giveTickets(ARCEUS_SUPREME.bonusTickets) : 0;
+      if (sup) this.notify(`¡Arceus Supremo derrotado!\n+${sup} tickets`, { kind: 'reward', icon: 'star' });
+      this.finish(true, `${sup ? '¡Has vencido al Arceus Supremo!\n' : ''}¡Has subido los 100 pisos de la Torre!\n+${this.earned} tickets en total\nPulsa R, Start o haz clic para ver el resumen`);
       return;
     }
     const i = this.interior(room);
@@ -11997,6 +12099,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const shAi = enemy.getData('ai') as EnemyAI | undefined;
     // Eficacia de tipos (como en Pokémon): súper eficaz, no muy eficaz o casi sin efecto
     const defTypes = this.foeTypesOf(enemy);
+    // Arceus apunta qué tipos le lanzas para adaptarse (arceus.ts)
+    if (status && enemy.getData('arceus')) enemy.setData('arceusHist', recordAttack((enemy.getData('arceusHist') as AttackHistory | undefined) ?? {}, status, base));
     dmg *= damageMul(status, defTypes);
     // T56: sala de un solo tipo: los demás tipos pegan la mitad
     const rule = this.activeRule();
