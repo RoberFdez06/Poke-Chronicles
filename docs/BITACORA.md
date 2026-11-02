@@ -2167,3 +2167,21 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   botones tienen el tamaño nuevo y se pueden tocar. Consola: `__POKEISAAC_DEBUG__.mobileView()` (aplica lo guardado y
   dice el estado) y `mobileView(150, 125)` (guarda y aplica).
 - **Tests**: `tests/columns.test.ts`.
+
+## Mega Piedra: altar siempre en su sitio y la piedra baja al vencer al guardián (2026-11-02)
+
+- **Fallo**: en la guarida del guardián no se ponía el altar (solo salía el jefe) y, al caer, la piedra se soltaba
+  como objeto del suelo donde moría (`spawnPickup`), con su disco de arena y sin altar.
+- **Ahora**: la sala tiene SIEMPRE el altar (`placeMegaAltar`). Estado puro en `src/level/megaAltar.ts`
+  (`megaAltarMode`): `guarded` (guardián vivo, engaste vacío y runas que laten, «Vence a su guardián»), `stone` (la
+  piedra flota sobre el altar) y `off` (apagado: «Ya la llevas» o «Vacío»). Al caer el guardián se apunta
+  `megaGuardianBeatenKey(sala)` en `eventsDone` y la piedra **desciende**: haz de luz que baja del techo, la piedra cae
+  y se posa con destello (`megaDescentFrame`, pixel art en `buildMegaShrine`), sonidos `evolve` y `levelup`. Se coge
+  del altar con Enter / A / clic / toque o pisándola (solo cuando ya se ha posado). Si ya la llevabas, cae un objeto
+  como antes y el altar se apaga. Ya no hay piedra suelta en el suelo.
+- **Guardar/cargar**: no cambia RunSave; las dos marcas van en `eventsDone`. Guardián vivo → altar vacío y vuelve el
+  guardián; vencido sin coger → la piedra está sobre el altar al entrar; cogida → apagado. La reserva sin enemigos y
+  la Torre marcan «vencido» al poner el altar, así la piedra está ya encima.
+- **Probar** (consola): `__POKEISAAC_DEBUG__.megaRoom()` (te lleva a la sala), `weakGuardian()` (guardián a 1 PS),
+  `megaAltar()` (estado). Sal y vuelve a entrar, o recarga la partida, en cada estado.
+- **Tests**: `tests/megaAltar.test.ts`.

@@ -191,6 +191,7 @@ import { arenaBackdrop, arenaChasm, arenaFallFx, fallStyleOf, arenaCrack, arenaL
 import { zImpactFx, zMoveFx } from '../ui/art/formsFx';
 import { darkAura, darkBurst } from '../ui/art/darkFx';
 import { darkBossEnrages, darkCooldown, darkEnemyStats, darkName, darkOdds, darkPlayerStats, darkTickets, darkWarning, darkProgress, decideDark, DARK_BOSS_RAGE, DARK_COLORS, DARK_ITEM_CHANCE, DARK_REWARD, rollDark, type DarkWho } from '../data/darkMon';
+import { guardianReward, MEGA_DESCENT_MS, megaAltarMode, megaGuardianBeatenKey } from '../level/megaAltar';
 import { guardianKindLabel, MEGA_GUARDIAN, pickGuardian } from '../data/guardians';
 import { drawMegaCine, drawMegaStoneHud, drawPowerMeterFill, drawPowerSelHud, megaCineBurst, playerFormAura } from '../ui/art/megaFx';
 import { megaCamRestore, megaCineFrame, megaCinePlan, megaTypeStyle, type MegaCamHome } from './megaCinematic';
@@ -222,7 +223,7 @@ import {
 } from '../level/tower';
 import { towerArrive, towerAscend } from '../ui/art/towerFx';
 import { buildLegendLair, legendReveal } from '../ui/art/lairArt';
-import { buildMegaShrine, buildStoryArt, coinsStolenFx, fishLeap, legendAura, thiefGear } from '../ui/art/storyArt';
+import { buildMegaShrine, type MegaShrineView, buildStoryArt, coinsStolenFx, fishLeap, legendAura, thiefGear } from '../ui/art/storyArt';
 import { buildHazards, buildLightColumn, buildSupplyStall, buildTowerAltar, buildTowerStall } from '../ui/art/towerArt';
 import {
   iceVelocity, isTowerFinale, TOWER_ALTAR_COUNT, TOWER_REST_LAYOUT, TOWER_SHOP_SOLD, towerAltarItems, towerCheckpointKit, towerMinibossItem, towerShopOffer,
@@ -783,6 +784,8 @@ export class GameScene extends Phaser.Scene {
   private tiredRooms = 0;
   /** Lo dibujado del evento de la sala actual y los sitios donde se usa con Enter / A / clic. */
   private eventObjs: Phaser.GameObjects.GameObject[] = [];
+  /** Altar de la Mega Piedra de la sala actual (para que la piedra baje sobre él al caer el guardián). */
+  private megaAltar?: { roomId: number; x: number; y: number; art: Phaser.GameObjects.Graphics; drop: () => void };
   /** T68: tiradas hechas en cada sala de juegos del piso (sala -> tiradas). */
   private slotSpins = new Map<number, number>();
   /** T69: lanzamientos hechos en cada laguna y la caña echada (cuándo pica; `token` invalida los avisos viejos). */
@@ -1875,6 +1878,7 @@ export class GameScene extends Phaser.Scene {
     if (kind === 'megaStone') {
       // Sin enemigos ni puertas cerradas: solo el altar (ver placeMegaAltar)
       this.cleared.add(room.id);
+      this.eventsDone.add(megaGuardianBeatenKey(room.id)); // sin guardián: la piedra ya está sobre el altar
       this.placeMegaAltar(room, i.cx, i.cy);
       return;
     }
@@ -5931,8 +5935,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /**
-   * Altar de la Mega Piedra (una sola vez por piso). Si ya la llevas, el altar sale apagado y no la vuelve a dar.
-   * Usa su propia marca en eventsDone (megaStoneDoneKey) para convivir con la forja de la Torre.
+   * Altar de la Mega Piedra (una sola vez por piso). Está SIEMPRE en su sitio; lo que muestra sale de megaAltarMode:
+   * vacío mientras vive el guardián, con la piedra encima cuando ha caído (se coge con Enter/A/clic/toque o pisándola)
+   * y apagado cuando ya se cogió o ya la llevabas. Marcas en eventsDone (megaStoneDoneKey y megaGuardianBeatenKey),
+   * así guardar/cargar y entrar/salir dan siempre el mismo estado sin duplicar la piedra.
    */
   private placeMegaAltar(room: Room, x: number, y: number) {
     const mine: Phaser.GameObjects.GameObject[] = [];
@@ -5941,57 +5947,126 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       this.eventObjs.push(o);
       return o;
     };
-    const have = this.passives.includes(MEGA_STONE_ID);
-    keep(buildMegaShrine(this, x, y, have));
-    keep(
-      this.add
-        .text(x, y + 58, have ? 'Santuario de la Mega Piedra\nYa la llevas' : 'Santuario de la Mega Piedra', { fontFamily: FONT, fontSize: '15px', color: have ? '#9aa3b4' : '#c8ecff', stroke: '#101828', strokeThickness: 4, align: 'center' })
-        .setOrigin(0.5)
-        .setDepth(4),
-    );
-    const spot = { x, y, prompt: () => (have ? 'Ya llevas la Mega Piedra' : 'Enter / A / clic: coger la Mega Piedra'), use: () => take() };
+    const facts = () => ({
+      taken: this.eventsDone.has(megaStoneDoneKey(room.id)),
+      guardianBeaten: this.eventsDone.has(megaGuardianBeatenKey(room.id)),
+      have: this.passives.includes(MEGA_STONE_ID),
+    });
+    const view: MegaShrineView = { mode: megaAltarMode(facts()) };
+    let art = keep(buildMegaShrine(this, x, y, view));
+    const caption = (): [string, string] => {
+      if (view.mode === 'guarded') return ['Santuario de la Mega Piedra\nVence a su guardián', '#ffb3a8'];
+      if (view.mode === 'stone') return ['Santuario de la Mega Piedra', '#c8ecff'];
+      return [this.passives.includes(MEGA_STONE_ID) ? 'Santuario de la Mega Piedra\nYa la llevas' : 'Santuario de la Mega Piedra\nVacío', '#9aa3b4'];
+    };
+    const [t0, c0] = caption();
+    const text = keep(this.add.text(x, y + 58, t0, { fontFamily: FONT, fontSize: '15px', color: c0, stroke: '#101828', strokeThickness: 4, align: 'center' }).setOrigin(0.5).setDepth(4));
+    const redraw = () => {
+      // Con pocos efectos el dibujo no se repinta solo: se rehace
+      const fresh = buildMegaShrine(this, x, y, view);
+      this.eventObjs = this.eventObjs.map((o) => (o === art ? fresh : o));
+      mine[mine.indexOf(art)] = fresh;
+      art.destroy();
+      art = fresh;
+      if (this.megaAltar?.roomId === room.id) this.megaAltar.art = art;
+      const [tt, cc] = caption();
+      text.setText(tt).setColor(cc);
+    };
+    let ready = false; // la piedra solo se coge cuando ya está sobre el altar (no a media bajada)
+    const spot = { x, y, prompt: () => 'Enter / A / clic: coger la Mega Piedra', use: () => take() };
     const take = () => {
       const key = megaStoneDoneKey(room.id);
-      if (have || this.ended || this.transitioning || this.eventsDone.has(key) || this.itemChoiceOpen || this.current?.id !== room.id) return;
+      if (!ready || view.mode !== 'stone' || this.ended || this.transitioning || this.eventsDone.has(key) || this.itemChoiceOpen || this.current?.id !== room.id) return;
+      ready = false;
       this.eventsDone.add(key);
       const item = passiveById(MEGA_STONE_ID);
       if (item) this.gainItem({ kind: 'passive', item });
       this.refreshInventory();
       this.eventSpots = this.eventSpots.filter((sp) => sp !== spot);
       this.prompt.setText('');
-      this.eventObjs = this.eventObjs.filter((o) => !mine.includes(o));
-      this.tweens.add({ targets: mine, alpha: 0, duration: 500, onComplete: () => mine.forEach((o) => o.destroy()) });
+      view.mode = 'off';
+      view.dropAt = undefined;
+      redraw();
       this.drawMap();
       this.saveNow();
     };
-    if (!have) {
-      const z = keep(this.add.zone(x, y + 10, 120, 80));
-      z.setInteractive({ useHandCursor: true });
-      z.on('pointerover', () => (this.overHud = true));
-      z.on('pointerout', () => (this.overHud = false));
-      z.on('pointerdown', () => this.current?.id === room.id && take());
-    }
-    this.eventSpots.push(spot);
+    const arm = () => {
+      ready = true;
+      if (!this.eventSpots.includes(spot)) this.eventSpots.push(spot);
+    };
+    // Clic o toque sobre el altar
+    const z = keep(this.add.zone(x, y - 20, 120, 120));
+    z.setInteractive({ useHandCursor: true });
+    z.on('pointerover', () => (this.overHud = true));
+    z.on('pointerout', () => (this.overHud = false));
+    z.on('pointerdown', () => this.current?.id === room.id && take());
+    // Pisarla también la coge (como un objeto del suelo)
+    const step = this.time.addEvent({
+      delay: 100,
+      loop: true,
+      callback: () => {
+        if (!z.active) return step.remove();
+        if (ready && this.player && Phaser.Math.Distance.Between(this.player.x, this.player.y, x, y - 10) < 44) take();
+      },
+    });
+    z.once(Phaser.GameObjects.Events.DESTROY, () => step.remove());
+    if (view.mode === 'stone') arm();
+    this.megaAltar = {
+      roomId: room.id,
+      x,
+      y,
+      art,
+      drop: () => {
+        if (view.mode === 'stone' || !art.active) return;
+        if (megaAltarMode(facts()) === 'off') {
+          // Ya la llevabas: el altar se apaga y queda vacío (el objeto cae aparte)
+          view.mode = 'off';
+          redraw();
+          return;
+        }
+        view.mode = 'stone';
+        view.dropAt = this.time.now;
+        redraw();
+        sfx('evolve');
+        this.cameras.main.flash(180, 180, 230, 255);
+        this.time.delayedCall(Math.round(MEGA_DESCENT_MS * 0.8), () => art.active && sfx('levelup'));
+        this.time.delayedCall(MEGA_DESCENT_MS, () => {
+          if (!art.active) return;
+          view.dropAt = undefined;
+          if (lowFx()) redraw();
+          arm();
+        });
+      },
+    };
   }
 
   /**
-   * Cae el guardián de la Mega Piedra: suelta la piedra (o, si ya la llevas, un objeto) donde ha caído y la sala queda
-   * resuelta (megaStoneDoneKey). La piedra se coge como cualquier objeto del suelo: pisándola, Enter/A o clic.
+   * Cae el guardián de la Mega Piedra: la piedra desciende sobre el altar (o, si ya la llevas, cae un objeto y el
+   * altar queda vacío). Desde ese momento la marca megaGuardianBeatenKey hace que, al volver o al cargar, la piedra
+   * siga sobre el altar hasta cogerla. Ya no se suelta como objeto del suelo.
    */
   private guardianDefeated(roomId: number, x: number, y: number, tickets: number) {
-    this.eventsDone.add(megaStoneDoneKey(roomId));
+    this.eventsDone.add(megaGuardianBeatenKey(roomId));
     const have = this.passives.includes(MEGA_STONE_ID);
-    const stone = passiveById(MEGA_STONE_ID);
+    const reward = guardianReward(have);
+    if (reward === 'item') this.eventsDone.add(megaStoneDoneKey(roomId));
+    this.saveNow();
     this.time.delayedCall(900, () => {
       if (this.ended) return;
-      if (!have && stone) {
-        const p = this.freeSpot(x, y);
-        this.spawnPickup(roomId, p.x, p.y, { kind: 'passive', item: stone }, this.current?.id === roomId);
-      } else this.dropItem(roomId, x, y);
+      if (reward === 'item') this.dropItem(roomId, x, y);
+      if (this.current?.id === roomId) {
+        const alt = this.megaAltar;
+        if (alt && alt.roomId === roomId && alt.art.active) alt.drop();
+        else if (reward === 'stone') {
+          // Si el altar se hubiera perdido (no debería), se vuelve a poner ya con la piedra
+          const ri = this.interior(this.current);
+          this.placeMegaAltar(this.current, ri.cx, ri.cy);
+        }
+      }
       this.drawMap();
       this.saveNow();
     });
-    this.notify(have ? `¡Guardián derrotado! +${tickets} tickets\nYa llevabas la Mega Piedra: ha caído un objeto` : `¡Guardián derrotado! +${tickets} tickets\n¡Ha soltado la Mega Piedra!`, { kind: 'reward', icon: 'star' });
+    this.notify(have ? `¡Guardián derrotado! +${tickets} tickets\nYa llevabas la Mega Piedra: ha caído un objeto` : `¡Guardián derrotado! +${tickets} tickets\n¡La Mega Piedra desciende sobre el altar!`, { kind: 'reward', icon: 'star' });
   }
 
   private forgeUsable(room: Room) {
@@ -6758,9 +6833,16 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     } else if (this.megaRoomId === room.id && !this.eventsDone.has(megaStoneDoneKey(room.id))) {
       // Guarida del guardián: un pseudolegendario o ultraente custodia la Mega Piedra y la suelta al caer. Si no se
       // pudiera sacar (sin enemigos cargados) o la sala ya estuviera limpia, queda el altar de antes como reserva.
-      if (!this.cleared.has(room.id) && this.spawnMiniboss(true)) {
+      // El altar está SIEMPRE: vacío mientras vive el guardián; con la piedra encima si ya cayó (al volver o al cargar)
+      const beaten = this.eventsDone.has(megaGuardianBeatenKey(room.id));
+      const ri = this.interior(room);
+      if (!beaten && !this.cleared.has(room.id) && this.spawnMiniboss(true)) {
         this.setGroupDoorsLocked(room, true, true);
         sfx('door');
+        this.placeMegaAltar(room, ri.cx, ri.cy);
+      } else if (beaten) {
+        this.cleared.add(room.id);
+        this.placeMegaAltar(room, ri.cx, ri.cy);
       } else this.startEvent(room, 'megaStone');
     } else if (this.roomEvent?.roomId === room.id && !this.eventsDone.has(room.id) && !this.cleared.has(room.id) && (this.roomEvent.kind !== 'thief' || thiefCanAppear(this.coins))) {
       // T70: sin monedas el ladrón no aparece y la sala se juega como una de combate normal (rama de abajo)
@@ -8586,6 +8668,31 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         this.megaEvolve();
         return megaFormName(this.formId) ? 'megaevolución del jugador' : `especie ${this.formId} sin mega`;
       },
+      /** Te lleva a la sala de la Mega Piedra del piso (su guardián sale al entrar si sigue vivo). */
+      megaRoom: () => {
+        const room = this.floor?.rooms.find((r) => r.id === this.megaRoomId);
+        if (!room || this.ended || this.transitioning) return 'Este piso no tiene sala de la Mega Piedra.';
+        this.adminCheat();
+        const i = this.interior(room);
+        (this.player.body as Body).reset((i.x0 + i.x1) / 2, i.y1 - 60);
+        this.showRooms([room.id]);
+        this.cameras.main.stopFollow();
+        this.enterRoom(room);
+        return `En la sala de la Mega Piedra (${megaAltarMode({ taken: this.eventsDone.has(megaStoneDoneKey(room.id)), guardianBeaten: this.eventsDone.has(megaGuardianBeatenKey(room.id)), have: this.passives.includes(MEGA_STONE_ID) })}).`;
+      },
+      /** Deja al guardián de la Mega Piedra a 1 PS (un golpe y cae). */
+      weakGuardian: () => {
+        const g = this.enemies.getChildren().find((c) => (c as Sprite).active && (c as Sprite).getData('megaGuardian')) as Sprite | undefined;
+        if (!g) return 'No hay guardián en la sala.';
+        g.setData('hp', 1);
+        return 'guardián a 1 PS: dale un golpe';
+      },
+      /** Estado del altar de la Mega Piedra del piso. */
+      megaAltar: () => {
+        const id = this.megaRoomId;
+        if (id === undefined) return 'sin sala de Mega Piedra';
+        return megaAltarMode({ taken: this.eventsDone.has(megaStoneDoneKey(id)), guardianBeaten: this.eventsDone.has(megaGuardianBeatenKey(id)), have: this.passives.includes(MEGA_STONE_ID) });
+      },
       /** Saca el jefe del piso en la sala actual (megaevoluciona al bajar del 50 % si su especie tiene mega). */
       spawnBoss: () => { this.spawnBoss(); return `jefe ${this.bossId} (${this.bossName})`; },
       /** Modo admin (también en el panel, F9): modo dios, ir al piso N y sacar el jefe de la especie X aquí. */
@@ -10171,6 +10278,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // (guardados viejos: la Mega Piedra del descanso se apuntaba siempre en la casilla 0)
     if ((spec.kind === 'rest' || spec.kind === 'supply') && !this.eventsDone.has(megaStoneDoneKey(mr.id)) && !this.eventsDone.has(megaStoneDoneKey(room.id))) {
       const mi = this.interior(mr);
+      this.eventsDone.add(megaGuardianBeatenKey(mr.id)); // en la Torre no hay guardián: la piedra espera en el altar
       if (mr === room) this.placeMegaAltar(room, i.cx + L.mega.x, i.cy + L.mega.y);
       else this.placeMegaAltar(mr, mi.cx, mi.cy);
     }

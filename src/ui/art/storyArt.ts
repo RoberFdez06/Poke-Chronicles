@@ -2,6 +2,7 @@
 // el santuario de la Mega Piedra, el ladrón (antifaz y saco de monedas), las monedas que te roba, el pez que salta al
 // pescar y el aura de la cacería legendaria. Todo en píxel gordo (PX) y con una pequeña animación en reposo; con pocos
 // efectos (lowFx) se dibuja quieto y no se lanzan efectos sueltos. Solo dibujo: la lógica sigue en GameScene.
+import { MEGA_DESCENT_HEIGHT, megaDescentFrame, type MegaAltarMode } from '../../level/megaAltar';
 import Phaser from 'phaser';
 import { lowFx } from '../theme';
 import { starBurst } from './combatFx';
@@ -216,40 +217,87 @@ export function buildStoryArt(scene: Phaser.Scene, storyId: string, x: number, y
 
 // --- Santuario de la Mega Piedra ---
 
-/** Pedestal con runas que se encienden en ronda y la Mega Piedra flotando con su hélice y destellos. `have`: apagado. */
-export function buildMegaShrine(scene: Phaser.Scene, x: number, y: number, have: boolean): G {
-  const RUNE = have ? 0x555566 : 0x8fd3ff;
+/** Lo que muestra el santuario (la escena lo cambia en vivo). `dropAt`: hora (scene.time.now) en que empezó la bajada. */
+export interface MegaShrineView {
+  mode: MegaAltarMode;
+  dropAt?: number;
+}
+
+/**
+ * Altar de la Mega Piedra: pedestal con runas y un engaste en lo alto. `guarded`: engaste vacío y runas que laten
+ * (el guardián lo defiende) · `stone`: la piedra flota sobre él con su hélice y destellos (si `dropAt`, primero baja
+ * desde arriba dentro de un haz de luz) · `off`: apagado y vacío.
+ */
+export function buildMegaShrine(scene: Phaser.Scene, x: number, y: number, view: MegaShrineView): G {
   return live(scene, 2, (g, t) => {
+    const off = view.mode === 'off';
+    const RUNE = off ? 0x555566 : 0x8fd3ff;
     shadow(g, x, y + 40, 64);
-    slab(g, x - 56, y + 18, 112, 18, have ? 0x4a4a56 : 0x5d6a86);
-    slab(g, x - 42, y - 8, 84, 28, have ? 0x55555f : 0x6e7c9c);
-    slab(g, x - 50, y - 20, 100, 14, have ? 0x5f5f6a : 0x8592b0);
-    const lit = have ? -1 : Math.floor(t / 260) % 5;
+    slab(g, x - 56, y + 18, 112, 18, off ? 0x4a4a56 : 0x5d6a86);
+    slab(g, x - 42, y - 8, 84, 28, off ? 0x55555f : 0x6e7c9c);
+    slab(g, x - 50, y - 20, 100, 14, off ? 0x5f5f6a : 0x8592b0);
+    // Engaste: dos garras de piedra y un hueco oscuro donde se posa la Mega Piedra
+    slab(g, x - 22, y - 30, PX * 2, 12, off ? 0x55555f : 0x6e7c9c);
+    slab(g, x + 22 - PX * 2, y - 30, PX * 2, 12, off ? 0x55555f : 0x6e7c9c);
+    box(g, x - 14, y - 26, 28, PX * 2, off ? 0x2c2c34 : 0x26304a);
+    const guarded = view.mode === 'guarded';
+    const lit = off ? -1 : guarded ? -2 : Math.floor(t / 260) % 5;
+    const pulse = guarded && t ? 0.35 + 0.3 * Math.abs(Math.sin(t / 520)) : 1;
     for (let k = 0; k < 5; k++) {
       const rx = x - 34 + k * 16;
-      const on = k === lit || !t;
-      box(g, rx, y - 2, PX, PX * 2, on && !have ? 0xffffff : RUNE, have ? 0.5 : on ? 1 : 0.55);
-      box(g, rx + (k % 2 ? PX : -PX), y + 4, PX, PX, RUNE, have ? 0.4 : 0.6);
+      const on = k === lit || (!t && !guarded);
+      box(g, rx, y - 2, PX, PX * 2, on && !off ? 0xffffff : RUNE, off ? 0.5 : guarded ? pulse : on ? 1 : 0.55);
+      box(g, rx + (k % 2 ? PX : -PX), y + 4, PX, PX, RUNE, off ? 0.4 : 0.6);
     }
-    if (have) return;
+    if (view.mode !== 'stone') return;
+    const f = view.dropAt !== undefined && t ? megaDescentFrame(t - view.dropAt) : undefined;
+    const anim = f && !f.done ? f : undefined;
+    if (anim && anim.beam > 0) {
+      // Haz de luz que baja del techo hasta el engaste: núcleo blanco y bordes celestes, a franjas
+      const top = y - 62 - MEGA_DESCENT_HEIGHT - 40;
+      const reach = top + (y - 26 - top) * Math.min(1, anim.beam * 1.6);
+      for (let yy = top; yy < reach; yy += PX * 2) {
+        const flick = (Math.floor((yy + t / 6) / (PX * 2)) % 3) * 0.08;
+        box(g, x - 18, yy, 36, PX * 2, 0x8fd3ff, (0.22 + flick) * anim.beam);
+        box(g, x - 8, yy, 16, PX * 2, 0xe8f7ff, (0.45 + flick) * anim.beam);
+      }
+      for (let k = 0; k < 4; k++) {
+        const p = ((t / 500) + k / 4) % 1;
+        box(g, x - 16 + k * 10, top + p * (reach - top), PX, PX, 0xffffff, anim.beam * (1 - p * 0.5));
+      }
+    }
+    const sa = anim ? anim.stone : 1;
+    if (sa <= 0) return;
     // Luz que sube del pedestal
-    for (let k = 0; k < 3; k++) {
-      const p = ((t / 1400) + k / 3) % 1;
-      box(g, x - 24 + k * 22, y - 26 - p * 40, PX, PX, 0xb3e5fc, 1 - p);
+    if (!anim) {
+      for (let k = 0; k < 3; k++) {
+        const p = ((t / 1400) + k / 3) % 1;
+        box(g, x - 24 + k * 22, y - 26 - p * 40, PX, PX, 0xb3e5fc, 1 - p);
+      }
     }
-    const by = y - 62 + (t ? Math.round(Math.sin(t / 450) * 1.5) * PX : 0);
-    blob(g, x, by, 22, 22, 0x6ec6ff);
-    blob(g, x - 4, by - 4, 13, 13, 0xa8e2ff, 1, false);
+    const by = y - 62 + (anim ? anim.dy : t ? Math.round(Math.sin(t / 450) * 1.5) * PX : 0);
+    blob(g, x, by, 22, 22, 0x6ec6ff, sa);
+    blob(g, x - 4, by - 4, 13, 13, 0xa8e2ff, sa, false);
     // Hélice del símbolo mega: dos hebras que se cruzan y giran
     for (let s = -2; s <= 2; s++) {
       const ph = t / 300 + s;
-      box(g, x + Math.round(Math.sin(ph) * 1.5) * PX - PX / 2, by + s * PX - PX / 2, PX, PX, 0xff7043);
-      box(g, x - Math.round(Math.sin(ph) * 1.5) * PX - PX / 2, by + s * PX - PX / 2, PX, PX, 0xfff3d6);
+      box(g, x + Math.round(Math.sin(ph) * 1.5) * PX - PX / 2, by + s * PX - PX / 2, PX, PX, 0xff7043, sa);
+      box(g, x - Math.round(Math.sin(ph) * 1.5) * PX - PX / 2, by + s * PX - PX / 2, PX, PX, 0xfff3d6, sa);
     }
-    box(g, x - 12, by - 14, PX, PX, 0xffffff);
+    box(g, x - 12, by - 14, PX, PX, 0xffffff, sa);
+    if (anim && anim.flash > 0) {
+      // Destello al posarse: cruz de cuatro puntas y anillo de chispas
+      const r = Math.round((1 - anim.flash) * 40);
+      box(g, x - 2, by - 30, 4, 60, 0xffffff, anim.flash);
+      box(g, x - 30, by - 2, 60, 4, 0xffffff, anim.flash);
+      for (let k = 0; k < 8; k++) {
+        const ang = (k / 8) * Math.PI * 2;
+        box(g, x + Math.round(Math.cos(ang) * (16 + r)) - PX / 2, by + Math.round(Math.sin(ang) * (16 + r)) - PX / 2, PX, PX, 0xb3e5fc, anim.flash);
+      }
+    }
     twinkle(g, x + 20, by - 18, (t / 1100) % 1);
     twinkle(g, x - 24, by + 10, (t / 1100 + 0.5) % 1, 0xb3e5fc);
-  });
+  }, 50);
 }
 
 // --- Ladrón ---
