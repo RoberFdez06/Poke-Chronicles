@@ -98,7 +98,13 @@ test('cámaras de los paneles: dentro de la pantalla, sin pisar la sala ni entre
         const c = cams.find((c) => Math.abs(c.src.y - g.y0) < 1e-9);
         assert.ok(c && c.src.h >= (g.minSrc ?? 0) - 1e-6, 'se ve lo mínimo del recortable');
       }
-      if (lw > 1920) assert.ok(Math.abs((side === 'left' ? cams[0].dst.x + cams[0].dst.w : cams[0].dst.x) - (side === 'left' ? off + 240 : off + 1680)) < 1e-6, 'pegado a la sala');
+      if (lw > 1920) {
+        // centrado en la banda: mismo margen al borde de la ventana y a la sala
+        const d = cams[0].dst;
+        const outer = side === 'left' ? d.x : lw - (d.x + d.w);
+        const inner = side === 'left' ? off + 240 - (d.x + d.w) : d.x - (off + 1680);
+        assert.ok(Math.abs(outer - inner) < 1e-6, `margen simétrico ${lw} ${side}`);
+      }
     }
   }
   // 16:9: el reparto de siempre
@@ -123,4 +129,23 @@ test('pantalla → diseño con los paneles escalados (ratón y botones del HUD)'
   const c = hudPanelSlices(lw, 'left', 240, HUD_LEFT_SEGS)[0];
   const p = screenToHud(c.dst.x + 48 * c.zoom, 48 * c.zoom, lw, 240, 240, HUD_LEFT_SEGS, HUD_RIGHT_SEGS);
   assert.ok(Math.abs(p.x - 48) < 1e-6 && Math.abs(p.y - 48) < 1e-6);
+});
+
+test('sin franjas vacías: el panel llena su banda (margen exterior pequeño) cuando el alto lo deja', () => {
+  const margins = (lw: number) =>
+    (['left', 'right'] as const).map((side) => {
+      const d = hudPanelSlices(lw, side, 240, side === 'left' ? HUD_LEFT_SEGS : HUD_RIGHT_SEGS)[0].dst;
+      return side === 'left' ? d.x : lw - (d.x + d.w);
+    });
+  // 1920×950 (lienzo 2182): los dos paneles casi llenan la banda
+  for (const m of margins(lwOf(1920, 950, false))) assert.ok(m <= 16, `1920×950: ${m}`);
+  // más anchas: manda el alto; el sobrante se reparte a los dos lados, nunca todo fuera
+  for (const [w, h] of [[2560, 1080], [3440, 1440]]) {
+    const lw = lwOf(w, h, false);
+    const off = (lw - 1920) / 2;
+    for (const m of margins(lw)) assert.ok(m <= (off + 240) / 2, `${w}×${h}: ${m}`);
+  }
+  // 16:9 y táctil: factor 1 y sin margen
+  assert.deepEqual(margins(1920), [0, 0]);
+  assert.equal(hudBandScale(lwOf(2560, 1080, true), 240, HUD_RIGHT_SEGS), 1);
 });
