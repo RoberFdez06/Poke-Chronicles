@@ -446,12 +446,18 @@ class BandLayer {
     // Bandas reales: del borde de la caja al borde del lienzo
     this.band = Math.max(0, c.left - r.left);
     const lay = bandLayout(this.band, r.height, this.ui);
-    const place = (d: HTMLDivElement, left: number) => Object.assign(d.style, { left: `${left}px`, top: `${r.top}px`, width: `${this.band}px`, height: `${r.height}px` });
-    place(this.sides.move, r.left);
-    place(this.sides.aim, c.right);
+    // Zona táctil de cada lado: toda la banda y además la zona segura hasta el borde de la ventana (se puede tocar
+    // ahí, pero los botones se dibujan solo dentro de la banda). `dx`: lo que se desplaza el dibujo en la izquierda.
+    const vw = typeof window !== 'undefined' ? window.innerWidth : c.right + this.band;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : r.bottom;
+    const dx = Math.max(0, r.left);
+    const place = (d: HTMLDivElement, left: number, width: number) => Object.assign(d.style, { left: `${left}px`, top: '0px', width: `${width}px`, height: `${vh}px` });
+    place(this.sides.move, 0, dx + this.band);
+    place(this.sides.aim, c.right, Math.max(this.band, vw - c.right));
+    const sh = (side: 'move' | 'aim', pt: { x: number; y: number }) => ({ x: pt.x + (side === 'move' ? dx : 0), y: pt.y + r.top });
     for (const st of this.sticks) {
       st.r = lay.stickR;
-      const h = st.side === 'move' ? lay.move : lay.aim;
+      const h = sh(st.side, st.side === 'move' ? lay.move : lay.aim);
       this.circle(st.hint, h.x, h.y, st.r * 2);
       this.circle(st.base, h.x, h.y, st.r * 2);
       this.circle(st.knob, h.x, h.y, st.r * (STICK_KNOB / STICK_R) * 2);
@@ -459,7 +465,8 @@ class BandLayer {
     }
     const spots: Record<TouchButton, BandSpot> = { ...lay.left, ...lay.right };
     for (const b of this.btns) {
-      b.spot = spots[b.id];
+      const sideOf: 'move' | 'aim' = ['active', 'bomb', 'use', 'potion'].includes(b.id) ? 'move' : 'aim';
+      b.spot = { ...spots[b.id], ...sh(sideOf, spots[b.id]) };
       Object.assign(b.el.style, { left: `${b.spot.x}px`, top: `${b.spot.y}px`, width: `${b.spot.size}px`, height: `${b.spot.size}px` });
     }
     return mode;
