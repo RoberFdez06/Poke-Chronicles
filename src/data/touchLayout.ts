@@ -1,3 +1,5 @@
+import { HUD_LEFT_SEGS, HUD_LEFT_SEGS_TOUCH_CANVAS, HUD_RIGHT_SEGS_TOUCH, HUD_RIGHT_SEGS_TOUCH_CANVAS, hudBandScale, type HudSeg } from './wideLayout.ts';
+
 // Dónde van los controles táctiles: dentro del lienzo (como siempre) o en las bandas laterales que deja Scale.FIT
 // en pantallas más anchas que 16:9. Parte pura (sin Phaser ni DOM): se prueba con node --test.
 
@@ -140,4 +142,46 @@ export function touchScreen(cssW: number, cssH: number, lw: number, roomW = 1440
   const f = fitCanvas(cssW, cssH, lw, baseH);
   const mode = f.band >= MIN_BAND_CSS ? 'bands' : 'canvas';
   return { lw, mode, scale: f.scale, band: f.band, canvas: f.w, room: roomW * f.scale, hudSide: ((lw - roomW) / 2) * f.scale };
+}
+
+// --- HUD más grande sin bandas (rama `movilhud`) ----------------------------------------------------------------
+// A ≈2,0–2,6:1 (iPhone sin barras, Galaxy S, Pixel, Safari con barras en partida) la banda a 16:9 no llega a lo que
+// piden los botones de banda (116 px CSS × interfaz), así que touchLogicalWidth deja el lienzo en 1920: franjas
+// muertas de 36–104 px y HUD a ×1. Aquí el lienzo ocupa TODO el ancho (sin bandas) y los controles se quedan en el
+// lienzo (modo «lienzo» de siempre); los paneles del HUD crecen con hudBandScale usando tramos que dejan las filas
+// de botones enteras (HUD_*_SEGS_TOUCH_CANVAS). La sala no cambia (manda el alto). Interruptor de seguridad:
+
+/** Poner a false devuelve exactamente el comportamiento anterior (touchLogicalWidth). */
+export const TOUCH_HUD_SCALE_ENABLED = true;
+/** Ganancia mínima del panel izquierdo para ensanchar (por debajo no compensa un zoom no entero). */
+export const TOUCH_HUD_MIN_GAIN = 1.1;
+
+/**
+ * Ancho lógico táctil con el HUD ampliado: igual que touchLogicalWidth salvo cuando esta deja 1920 en modo «lienzo»
+ * en una caja más ancha que 16:9; entonces el lienzo llena la caja (par, hasta TOUCH_MAX_W) si el panel izquierdo gana ≥ ×1,1.
+ */
+export function touchWideWidth(cssW: number, cssH: number, ui = 1, enabled = TOUCH_HUD_SCALE_ENABLED, baseW = 1920, baseH = 1080): number {
+  const old = touchLogicalWidth(cssW, cssH, ui, baseW, baseH);
+  if (!enabled || old !== baseW || !(cssW > 0 && cssH > 0)) return old;
+  // Solo donde ya se jugaba en modo «lienzo» (banda < MIN_BAND_CSS): con bandas DOM (p. ej. Safari con barras a
+  // 667×258, banda 104) pasar los botones al lienzo los haría más pequeños (< 44 px CSS), así que no se toca.
+  if (touchScreen(cssW, cssH, baseW).mode !== 'canvas') return old;
+  const want = Math.floor((baseH * cssW) / cssH);
+  let w = Math.min(TOUCH_MAX_W, want);
+  w -= w % 2;
+  if (w <= baseW) return old;
+  if (hudBandScale(w, 240, HUD_LEFT_SEGS_TOUCH_CANVAS, baseH) < TOUCH_HUD_MIN_GAIN) return old;
+  // Sin bandas: el lienzo ocupa la caja y los controles siguen dentro (modo «lienzo»)
+  if (touchScreen(cssW, cssH, w).mode !== 'canvas') return old;
+  return w;
+}
+
+/** ¿Lienzo táctil ensanchado SIN bandas (controles dentro del lienzo y paneles escalados)? */
+export function touchCanvasWide(cssW: number, cssH: number, lw: number, baseW = 1920): boolean {
+  return lw > baseW && touchScreen(cssW, cssH, lw).mode === 'canvas';
+}
+
+/** Tramos de los paneles del HUD táctil: con los botones dentro del lienzo ensanchado, o los de siempre. */
+export function touchHudSegs(canvasWide: boolean): { left: HudSeg[]; right: HudSeg[] } {
+  return canvasWide ? { left: HUD_LEFT_SEGS_TOUCH_CANVAS, right: HUD_RIGHT_SEGS_TOUCH_CANVAS } : { left: HUD_LEFT_SEGS, right: HUD_RIGHT_SEGS_TOUCH };
 }

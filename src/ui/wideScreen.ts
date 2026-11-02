@@ -3,7 +3,7 @@
 import Phaser from 'phaser';
 import { touchOnlyDevice } from '../data/controls';
 import { logicalWidth } from '../data/wideLayout';
-import { touchLogicalWidth } from '../data/touchLayout';
+import { touchCanvasWide, touchWideWidth } from '../data/touchLayout';
 import { loadMobileView, MOBILE_VIEW_CHANGED } from '../data/mobileView';
 import { fitDesign, H, LW, OFF, setLogicalWidth, U } from './layout';
 
@@ -26,14 +26,26 @@ function parentBox(): { w: number; h: number } {
 /** Ancho lógico para una caja: escritorio (wideLayout) o táctil (touchLayout, con bandas justas para los botones). */
 function widthFor(w: number, h: number): number {
   if (!touchOnlyDevice()) return logicalWidth(w, h, false);
-  return touchLogicalWidth(w, h, loadMobileView().uiSize / 100);
+  return touchWideWidth(w, h, loadMobileView().uiSize / 100);
+}
+
+/** Ancho para la banda de los menús: en táctil con el lienzo ensanchado solo para el HUD, la de 1920 (no se mueven). */
+function menuWidthFor(w: number, h: number, lw: number): number {
+  return touchOnlyDevice() && touchCanvasWide(w, h, lw) ? 1920 : lw;
+}
+
+/** ¿Lienzo táctil ensanchado sin bandas ahora mismo? (paneles del HUD con los botones táctiles dentro) */
+export function touchCanvasWideNow(): boolean {
+  if (!touchOnlyDevice()) return false;
+  const { w, h } = parentBox();
+  return touchCanvasWide(w, h, LW);
 }
 
 /** Ancho lógico para la ventana actual (antes de crear el juego). */
 export function initialWideWidth(): number {
   const { w, h } = parentBox();
   const lw = widthFor(w, h);
-  setLogicalWidth(lw);
+  setLogicalWidth(lw, menuWidthFor(w, h, lw));
   return lw;
 }
 
@@ -60,7 +72,7 @@ export function installWideScreen(game: Phaser.Game) {
     const { w, h } = parentBox();
     const lw = widthFor(w, h);
     if (lw === LW && game.scale.gameSize.width === lw) return;
-    setLogicalWidth(lw);
+    setLogicalWidth(lw, menuWidthFor(w, h, lw));
     game.scale.setGameSize(lw, H);
     for (const scene of game.scene.getScenes(true)) relayoutScene(scene);
     game.events.emit(WIDE_RESIZED, lw);
