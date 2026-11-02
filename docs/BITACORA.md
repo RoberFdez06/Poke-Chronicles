@@ -2185,3 +2185,10 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
 - **Probar** (consola): `__POKEISAAC_DEBUG__.megaRoom()` (te lleva a la sala), `weakGuardian()` (guardián a 1 PS),
   `megaAltar()` (estado). Sal y vuelve a entrar, o recarga la partida, en cada estado.
 - **Tests**: `tests/megaAltar.test.ts`.
+
+## 2026-11-02 · Arceus adaptable y Arceus Supremo
+- `src/data/arceus.ts` (tests en `tests/arceus.test.ts`): Multitipo (cambia al tipo que menos daño recibe de tu historial de tipos de ataque, con la tabla de `typeChart.ts`), ataques de jefe del tipo actual (`bossAttacksFor` + blitz + frenesí en el Supremo + invocar), ayudantes solo legendarios/singulares/ultraentes (tope 3, 4 en el Supremo), acompañantes por región y escalado.
+- Torre piso 100: el jefe final ya no es un trío/gigante al azar, es **Arceus Supremo** (vida ×6 y daño ×1,5 sobre el jefe del piso, 4 fases del reto final, se adapta cada 7 s y en cada fase; +250 tickets extra al vencerlo).
+- Normal, reto final (piso 6): Arceus + 2 legendarios típicos de regiones distintas (barra compartida del trío).
+- Si Arceus sale como jefe normal en cualquier modo: misma adaptación (cada 10 s), ataques e invocaciones, sin el escalado supremo.
+- Depuración: `__POKEISAAC_DEBUG__.arceus()` lo saca en la sala; `goFloor(100)` en la Torre para el Supremo.
