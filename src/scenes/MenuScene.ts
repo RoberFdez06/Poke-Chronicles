@@ -70,6 +70,7 @@ export class MenuScene extends Phaser.Scene {
       { label: 'Huerto', action: () => goTo(this, 'Garden') },
       { label: 'Controles', action: () => openControls(this) },
       { label: 'Ajustes', action: () => goTo(this, 'Settings') },
+      { label: 'Créditos y legal', action: () => goTo(this, 'Legal', { from: 'Menu' }) },
     ];
     this.rows = [];
     this.walkers = [];

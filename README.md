@@ -150,6 +150,13 @@ que crear un proyecto de Firebase y poner sus claves en un `.env.local` (que no 
 - *Pokémon* y todos sus nombres y personajes son de Nintendo, Game Freak y The Pokémon Company. Este proyecto no
   está afiliado a ellos.
 
+## Legal
+
+- [Créditos y aviso legal](public/aviso-legal.html) y [Privacidad](public/privacidad.html). En la web publicada: `aviso-legal.html` y `privacidad.html` junto al juego (p. ej. https://roberfdez06.github.io/Poke-Chronicles/aviso-legal.html).
+- En el juego: menú principal → «Créditos y legal» (dos apartados, con desplazamiento; teclado, ratón y mando).
+- El texto vive en `src/data/legal.ts`; las páginas HTML se generan con `node scripts/genLegal.ts` (un test comprueba que coinciden).
+- Contacto, retirada de contenido y derechos de privacidad: [incidencias de GitHub](https://github.com/RoberFdez06/Poke-Chronicles/issues) (sin datos personales: son públicas).
+
 ## Licencia
 
 **Todos los derechos reservados** © 2026 Roberto Fernández Mañero. El código es visible para consulta, pero no se
