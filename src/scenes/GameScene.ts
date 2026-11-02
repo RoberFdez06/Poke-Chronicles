@@ -4445,7 +4445,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
 
   private openPause() {
     this.cancelCharges();
-    if (this.ended || this.transitioning || !this.player || this.scene.isPaused()) return;
+    if (this.ended || this.transitioning || !this.player || !this.player.body || this.scene.isPaused()) return;
     this.player.setVelocity(0, 0);
     this.overHud = false;
     const counts = new Map<string, number>();
