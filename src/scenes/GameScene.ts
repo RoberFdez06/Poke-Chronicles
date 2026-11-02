@@ -202,7 +202,7 @@ import { heavyPose, MAX_GAIT, maxFitSize, maxFitSizePmd, stomped } from '../data
 import { alphaBox } from '../data/procLoco';
 import { exhaustedFx, finaleShiftFx, judgmentRects, judgmentStrike, judgmentWarn, drawNovaWave, novaWarn } from '../ui/art/finaleFx';
 import { bossShieldAbsorb, bossShieldAmount, grantBossShield, shouldGrantBossShield } from '../data/bossShield';
-import { clampBossHp, pendingThresholds, trackHold, type BossThresholdState, type CapHold } from '../data/bossThreshold';
+import { clampBossHp, clampSharedHp, finalePending, pendingThresholds, trackHold, type BossThresholdState, type CapHold } from '../data/bossThreshold';
 import { clampFinaleHp, FINALE_AFTER_BEAT_MS, FINALE_ATTACK_LABEL, FINALE_BEAT_MS, finaleAttacks, finaleHpFloor, finaleIntervalMul, finalePhaseText, judgmentHits, judgmentPlan, judgmentSpec, NOVA, nextFinalePhase, novaDurationMs, novaGapAt, pickFinaleAttack, type FinaleAttack, type FinalePhase } from '../data/finalePhases';
 import { chargedShotFx, chargeGlow } from '../ui/art/shotFx';
 import { megaBlastFx, reactionChain, reactionFx } from '../ui/art/reactionFx';
@@ -642,6 +642,10 @@ export class GameScene extends Phaser.Scene {
   private finaleMaxSum = 0;
   private finaleSinceNova = 0;
   private finaleBigUntil = 0;
+  /** Tope de umbral del trío (barra compartida): umbrales consumidos por el seguro, retención y escudo dado. */
+  private finaleCapSkip: number[] = [];
+  private finaleCapHold?: CapHold;
+  private finaleShieldDone = false;
   /** Ayudantes que invocan los jefes: de su tipo. */
   private summonKinds: FoeKind[] = [];
   /** Arceus (arceus.ts): ayudantes legendarios/ultraentes y si es el Supremo del piso 100 de la Torre. */
@@ -1187,6 +1191,9 @@ export class GameScene extends Phaser.Scene {
     this.finaleMaxSum = 0;
     this.finaleSinceNova = 0;
     this.finaleBigUntil = 0;
+    this.finaleCapSkip = [];
+    this.finaleCapHold = undefined;
+    this.finaleShieldDone = false;
     this.bossFx = undefined;
     this.cineUntil = 0;
     this.bossHot = false;
@@ -7722,6 +7729,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const group: Sprite[] = [];
     this.finalePh = 1;
     this.finaleMaxSum = 0;
+    this.finaleCapSkip = [];
+    this.finaleCapHold = undefined;
+    this.finaleShieldDone = false;
     this.finaleMembers.forEach((m, k) => {
       const size = trio ? 160 : GIANT_SIZE;
       const x0 = trio ? room.cx + (k - 1) * 220 : room.cx;
@@ -8778,6 +8788,10 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         const b = boss();
         if (!b) return 'No hay jefe.';
         this.hitEnemy(b, dmg, undefined, b.x, b.y, 0xffffff);
+        if (this.isTrioMember(b)) {
+          const sum = this.finaleBosses().reduce((n, m) => n + Math.max(0, m.getData('hp') as number), 0);
+          return `Barra del trío: ${Math.round((sum / Math.max(1, this.finaleMaxSum)) * 1000) / 10} % (fase ${this.finalePh}, vivos ${this.finaleBosses().length})`;
+        }
         const max = b.getData('maxHp') as number;
         return b.active ? `Vida del jefe: ${Math.round(((b.getData('hp') as number) / max) * 1000) / 10} %` : 'Jefe derrotado.';
       },
@@ -12168,6 +12182,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** Concede (una vez) el escudo de jefe al bajar al 33 %, sin pisar la caída de arena del 34 % ni otros sucesos. */
   private maybeGrantBossShield(b: Sprite, force = false) {
     if (!this.isShieldBoss(b) || this.ended) return;
+    if (this.isTrioMember(b)) return this.maybeGrantTrioShield(b, force);
     const ai = b.getData('ai') as EnemyAI;
     const maxHp = b.getData('maxHp') as number;
     if (!force) {
@@ -12181,6 +12196,29 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.popup(b.x, b.y - size * 0.7, '¡Escudo de jefe!', 0x8ecbff);
     pixRing(this, b.x, b.y, size * 0.9, 0x8ecbff, 420);
     pixRing(this, b.x, b.y, size * 0.6, 0xcfeaff, 300);
+    sfx('summon');
+  }
+
+  /**
+   * Escudo del trío: UNO para la barra compartida (no uno por miembro al bajar cada uno al 33 %). Sale cuando la suma
+   * baja al 33 % y ya no queda el umbral del 50 %; se reparte entre los vivos según su vida máxima (total = 33 % de
+   * la barra, con el multiplicador de dificultad).
+   */
+  private maybeGrantTrioShield(b: Sprite, force: boolean) {
+    if (this.finaleShieldDone) return;
+    const group = this.finaleBosses();
+    if (!force) {
+      const sum = group.reduce((a, m) => a + Math.max(0, m.getData('hp') as number), 0);
+      if (this.bossProtected(b) || !shouldGrantBossShield(sum, Math.max(1, this.finaleMaxSum), false, finalePending(this.finalePh, this.finaleCapSkip))) return;
+    }
+    this.finaleShieldDone = true;
+    for (const m of group) {
+      m.setData('bossShieldDone', true);
+      const g = grantBossShield(m.getData('shieldHp') as number | undefined, m.getData('shieldMax') as number | undefined, bossShieldAmount(m.getData('maxHp') as number, this.diff));
+      m.setData('shieldHp', g.shield).setData('shieldMax', g.shieldMax);
+      pixRing(this, m.x, m.y, ((m.getData('size') as number | undefined) ?? 80) * 0.9, 0x8ecbff, 420);
+    }
+    this.popup(b.x, b.y - ((b.getData('size') as number | undefined) ?? 80) * 0.7, '¡Escudo del trío!', 0x8ecbff);
     sfx('summon');
   }
 
@@ -12218,6 +12256,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private enemyHpCore(e: Sprite, dmg: number): number {
     const hp = e.getData('hp') as number;
     const ai = e.getData('ai') as EnemyAI | undefined;
+    if (ai?.boss && this.isTrioMember(e)) return this.trioHpCore(e, dmg);
     const st = ai ? this.bossThresholdState(e, ai) : null;
     if (!st) return hp - dmg;
     const r = clampBossHp(hp, dmg, e.getData('maxHp') as number, pendingThresholds(st));
@@ -12229,6 +12268,32 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (!h.release) return r.hp;
     e.setData('capSkip', [...st.skipped ?? [], r.threshold]).setData('capHold', undefined);
     return this.enemyHpCore(e, dmg);
+  }
+
+  /** ¿Es uno de los miembros del trío del reto final (barra compartida)? */
+  private isTrioMember(e: Sprite): boolean {
+    return !!e.getData('finale') && this.finale?.kind === 'trio' && !e.getData('helper');
+  }
+
+  /**
+   * Tope de umbral del trío (data/bossThreshold.ts, clampSharedHp): la suma de las vidas no se salta el 75/50/25 %
+   * pendiente y ningún miembro cae de un golpe mientras quede alguno. Mismo seguro de CAP_RELEASE_MS que los demás.
+   */
+  private trioHpCore(e: Sprite, dmg: number): number {
+    const hp = e.getData('hp') as number;
+    if (this.ended) return hp - dmg;
+    const pending = finalePending(this.finalePh, this.finaleCapSkip);
+    const sum = this.finaleBosses().reduce((a, m) => a + Math.max(0, m.getData('hp') as number), 0);
+    const r = clampSharedHp(hp, dmg, sum, Math.max(1, this.finaleMaxSum), pending);
+    if (!r.shared || r.threshold === undefined) return r.hp;
+    const now = this.time.now;
+    const waiting = now < this.finaleBeatUntil + EVENT_GAP_MS || this.bossProtected(e) || now < ((e.getData('adaptUntil') as number | undefined) ?? 0);
+    const h = trackHold(this.finaleCapHold, r.threshold, now, waiting);
+    this.finaleCapHold = h.hold;
+    if (!h.release) return r.hp;
+    this.finaleCapSkip = [...this.finaleCapSkip, r.threshold];
+    this.finaleCapHold = undefined;
+    return this.trioHpCore(e, dmg);
   }
 
   private hitEnemy(enemy: Sprite, base: number, status: string | undefined, sx: number, sy: number, color: number, push?: Phaser.Math.Vector2): number | undefined {
@@ -12405,6 +12470,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Reto final: no cae hasta su última fase (ni durante la pausa de un cambio de fase)
     if (enemy.getData('finale') && this.finale?.kind === 'giant' && (this.finalePh < 4 || this.time.now < this.finaleBeatUntil)) {
       enemy.setData('hp', Math.max(1, finaleHpFloor(this.finalePh, enemy.getData('maxHp') as number), (enemy.getData('beatHp') as number | undefined) ?? 0));
+      return;
+    }
+    // Trío: ningún miembro cae mientras a la barra compartida le queden umbrales por superar
+    if (this.isTrioMember(enemy) && !this.ended && finalePending(this.finalePh, this.finaleCapSkip).length > 0) {
+      enemy.setData('hp', Math.max(1, (enemy.getData('beatHp') as number | undefined) ?? 1));
       return;
     }
     if (enemy.getData('finale') && this.time.now < this.finaleBeatUntil) {

@@ -82,3 +82,34 @@ export function trackHold(hold: CapHold | undefined, t: number, now: number, wai
   if (!hold || hold.t !== t || waiting) return { hold: { t, since: waiting && hold?.t === t ? Math.max(hold.since, now - CAP_RELEASE_MS / 2) : now }, release: false };
   return { hold, release: now - hold.since >= CAP_RELEASE_MS };
 }
+
+// Trío del reto final (pedido de Roberto, 02/11: «le hice instakill a Arceus y sus aliados»). Los tres comparten UNA
+// barra (la suma de sus vidas) y sus fases salen al 75/50/25 % de esa suma. Un golpe a un miembro no puede llevar la
+// suma por debajo del umbral pendiente, y mientras quede algún umbral ningún miembro cae de un golpe (se queda a 1 PS).
+// En la fase 4 (sin umbrales) el daño es normal. El seguro de CAP_RELEASE_MS sigue valiendo (umbrales consumidos).
+
+/** Umbrales pendientes del reto final en su fase `phase` (sin los consumidos por el seguro). */
+export const finalePending = (phase: FinalePhase, skipped: readonly number[] = []): number[] =>
+  pendingThresholds({ arena: false, arenaDone: 2, mega: false, megaDone: true, phase1: false, finalePhase: phase, skipped });
+
+export interface SharedClampResult extends ClampResult {
+  /** El golpe lo ha frenado la barra compartida (cuenta para el seguro); si solo es el mínimo de 1 PS, no. */
+  shared: boolean;
+}
+
+/**
+ * Vida de un miembro del trío tras `dmg`. `sum` = suma actual de las vidas de los vivos (incluido este miembro),
+ * `maxSum` = vida total de la barra. La suma no baja del tope del primer umbral pendiente y el miembro no baja de 1
+ * mientras quede alguno (nunca sube por esto: si ya estaba por debajo se queda igual).
+ */
+export function clampSharedHp(hpBefore: number, dmg: number, sum: number, maxSum: number, pending: readonly number[]): SharedClampResult {
+  const raw = hpBefore - dmg;
+  const t = pending[0];
+  if (t === undefined || dmg <= 0) return { hp: raw, clamped: false, shared: false };
+  const room = Math.max(0, sum - thresholdCap(maxSum, t)); // daño que aún admite la barra
+  const sharedFloor = hpBefore - room;
+  const floor = Math.min(hpBefore, Math.max(sharedFloor, 1));
+  if (raw >= floor) return { hp: raw, clamped: false, shared: false };
+  const shared = sharedFloor >= 1;
+  return { hp: floor, clamped: true, threshold: shared ? t : undefined, shared };
+}
