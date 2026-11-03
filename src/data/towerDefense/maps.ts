@@ -84,33 +84,65 @@ export const LAYOUTS: readonly Layout[] = [
     ],
     blocked: [c(2, 7), c(14, 9), c(3, 0), c(14, 1)],
   },
+  // Mapas avanzados: bucles que se cruzan, bifurcaciones y cuatro entradas
+  { shape: 'Un camino con un bucle que se cruza', paths: [[c(0, 3), c(10, 3), c(10, 8), c(6, 8), c(6, 1), c(14, 1), c(14, 9)]], blocked: [c(2, 8), c(12, 5), c(3, 0), c(8, 10)] },
+  {
+    shape: 'Una entrada que se bifurca',
+    paths: [
+      [c(0, 5), c(4, 5), c(4, 1), c(11, 1), c(11, 5), c(15, 5)],
+      [c(0, 5), c(4, 5), c(4, 9), c(11, 9), c(11, 5), c(15, 5)],
+    ],
+    blocked: [c(2, 2), c(13, 8), c(7, 0), c(7, 10)],
+  },
+  {
+    shape: 'Cuatro entradas que confluyen',
+    paths: [
+      [c(0, 1), c(5, 1), c(5, 5), c(15, 5)],
+      [c(0, 9), c(5, 9), c(5, 5), c(15, 5)],
+      [c(10, 0), c(10, 2), c(8, 2), c(8, 5), c(15, 5)],
+      [c(10, 10), c(10, 8), c(8, 8), c(8, 5), c(15, 5)],
+    ],
+    blocked: [c(2, 5), c(12, 2), c(12, 8), c(2, 7)],
+  },
+  {
+    shape: 'Un bucle doble con dos entradas',
+    paths: [
+      [c(0, 2), c(7, 2), c(7, 8), c(3, 8), c(3, 5), c(12, 5), c(12, 9), c(15, 9)],
+      [c(10, 0), c(10, 5), c(12, 5), c(12, 9), c(15, 9)],
+    ],
+    blocked: [c(1, 0), c(13, 7), c(5, 0), c(9, 9)],
+  },
 ];
 
-/** Los 16 mapas, de principiante a experto: nombre, bioma, plantilla y si va volteada. */
+/**
+ * Los 16 mapas, de principiante a experto: nombre, bioma, plantilla y si va volteada. Ningún mapa repite la plantilla
+ * del anterior y los últimos usan las más enrevesadas (bucles, bifurcaciones, cuatro entradas). Los ids y el orden no
+ * cambian (el guardado va por id). Cada nivel además cambia el mapa (variants.ts).
+ */
 const MAP_LIST: readonly [string, string, string, number, boolean][] = [
   ['pradera', 'Pradera Verde', 'bosque', 0, false],
   ['gruta', 'Gruta Honda', 'cueva', 1, false],
-  ['arboleda', 'Arboleda Brisa', 'bosque', 0, true],
+  ['arboleda', 'Arboleda Brisa', 'bosque', 3, false],
   ['costa', 'Costa Coral', 'mar', 2, false],
-  ['cantera', 'Cantera Roja', 'cueva', 1, true],
-  ['nevada', 'Ladera Nevada', 'nieve', 3, false],
-  ['ciudad', 'Ciudad Voltio', 'ciudad', 2, true],
-  ['cienaga', 'Ciénaga Turbia', 'pantano', 4, false],
-  ['glaciar', 'Glaciar Eterno', 'nieve', 3, true],
-  ['volcan', 'Cráter Ígneo', 'volcan', 5, false],
-  ['arrecife', 'Arrecife Hondo', 'mar', 4, true],
-  ['torre', 'Torre Espectral', 'torre', 6, false],
-  ['fundicion', 'Fundición', 'ciudad', 5, true],
-  ['lodazal', 'Lodazal Negro', 'pantano', 7, false],
-  ['caldera', 'Caldera Final', 'volcan', 6, true],
-  ['cumbre', 'Cumbre Celeste', 'cumbre', 7, true],
+  ['cantera', 'Cantera Roja', 'cueva', 9, false],
+  ['nevada', 'Ladera Nevada', 'nieve', 8, false],
+  ['ciudad', 'Ciudad Voltio', 'ciudad', 4, false],
+  ['cienaga', 'Ciénaga Turbia', 'pantano', 5, false],
+  ['glaciar', 'Glaciar Eterno', 'nieve', 6, false],
+  ['volcan', 'Cráter Ígneo', 'volcan', 7, false],
+  ['arrecife', 'Arrecife Hondo', 'mar', 9, true],
+  ['torre', 'Torre Espectral', 'torre', 8, true],
+  ['fundicion', 'Fundición', 'ciudad', 10, false],
+  ['lodazal', 'Lodazal Negro', 'pantano', 11, false],
+  ['caldera', 'Caldera Final', 'volcan', 10, true],
+  ['cumbre', 'Cumbre Celeste', 'cumbre', 11, true],
 ];
 
 const flip = (q: Cell, m: boolean): Cell => (m ? c(TD_COLS - 1 - q.x, q.y) : q);
 
 export const TD_MAPS: readonly TdMap[] = MAP_LIST.map(([id, name, biome, layout, mirrored], tier) => {
   const L = LAYOUTS[layout];
-  const n = L.paths.length;
+  const n = new Set(L.paths.map((p) => `${p[0].x},${p[0].y}`)).size;
   return {
     id, name, biome, tier, layout, mirrored,
     startMoney: 240 + tier * 10,
@@ -148,7 +180,11 @@ export function pathCells(path: readonly Cell[]): Cell[] {
 
 /** La base: el final común de todos los caminos. */
 export const baseCell = (m: TdMap): Cell => m.paths[0][m.paths[0].length - 1];
-export const entryCells = (m: TdMap): Cell[] => m.paths.map((p) => p[0]);
+/** Entradas distintas (una bifurcación comparte entrada entre dos caminos). */
+export const entryCells = (m: TdMap): Cell[] => {
+  const seen = new Set<string>();
+  return m.paths.map((p) => p[0]).filter((q) => !seen.has(key(q.x, q.y)) && !!seen.add(key(q.x, q.y)));
+};
 
 /** Todas las casillas de camino (de cualquier entrada). */
 export function roadSet(m: TdMap): Set<string> {

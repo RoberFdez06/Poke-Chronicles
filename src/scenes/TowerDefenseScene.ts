@@ -45,6 +45,12 @@ import { STORM_RADIUS, STORM_WARN, WAVE_EVENT_INFO, type WaveEventId } from '../
 import { PERK_ICON, TOWER_PERKS, perkDesc, perkName, type Perk } from '../data/towerDefense/perks';
 import { BRANCH_LEVEL, MAX_TOWER_LEVEL, MEGA_LEVEL, STYLE_LABEL, branchInfo, levelLabel, megaMoveOf, megaSpriteName, specialMoveOf, towerCost, towerStats } from '../data/towerDefense/towers';
 import { drawMegaAura, towerMegaFx } from '../ui/art/tdMegaArt';
+import { drawGate, drawLink, drawSynergyGem, drawTerrain, drawTrap, drawTrickMark } from '../ui/art/tdRetoArt';
+import { TERRAIN_INFO, isLevelMap } from '../data/towerDefense/variants';
+import { TRAP_INFO, TRAP_KINDS, type TrapKind } from '../data/towerDefense/live';
+import { TRICK_INFO } from '../data/towerDefense/tricks';
+import { comboById } from '../data/towerDefense/synergy';
+import { TRICK_KINDS, type TrickKind } from '../data/towerDefense/species';
 import { ENEMY_KIND_LABEL, MAP_FOES, TRIAL_TEAM, type EnemyKind } from '../data/towerDefense/species';
 import { waveSpawns } from '../data/towerDefense/waves';
 import { isLevelUnlocked, loadTdProgress, starsFor, submitTdOutcome, type TdRewards } from '../data/towerDefense/progress';
@@ -152,6 +158,12 @@ export class TowerDefenseScene extends Phaser.Scene {
   private loadingText!: Phaser.GameObjects.Text;
   /** Habilidad de zona que se está apuntando. */
   private aiming: AbilityId | null = null;
+  /** Torre que se está moviendo (se elige la casilla nueva con el cursor). */
+  private moving: number | null = null;
+  /** Casilla del camino abierta (trampas y barricada). */
+  private roadSel: { x: number; y: number } | null = null;
+  /** Último «¡Esquiva!» enseñado (para no llenar el mapa de textos). */
+  private lastDodge = 0;
   /** Elección de mejora abierta. */
   private perkUi: { c: Phaser.GameObjects.Container; g: Phaser.GameObjects.Graphics; i: number; cards: { x: number; y: number; w: number; h: number }[]; keys: GlyphText[] } | null = null;
   private eventIcon!: Phaser.GameObjects.Image;
@@ -195,6 +207,9 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.panelTexts = [];
     this.cdTexts = [];
     this.aiming = null;
+    this.moving = null;
+    this.roadSel = null;
+    this.lastDodge = 0;
     this.perkUi = null;
     this.eventIconKey = '';
   }
@@ -213,7 +228,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     onFocusLost(this, () => this.scene.isActive() && this.openPause());
     const kb = this.input.keyboard!;
     const add = (k: string) => kb.addKey(k, false);
-    const names = ['ONE', 'TWO', 'THREE', 'FOUR', 'Z', 'X', 'C', 'V', 'N', 'F', 'Q', 'E', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'W', 'A', 'S', 'D'];
+    const names = ['ONE', 'TWO', 'THREE', 'FOUR', 'FIVE', 'Z', 'X', 'C', 'V', 'N', 'F', 'Q', 'E', 'UP', 'DOWN', 'LEFT', 'RIGHT', 'W', 'A', 'S', 'D'];
     this.keys = Object.fromEntries(names.map((n) => [n, add(n)]));
     this.input.mouse?.disableContextMenu();
     this.loadingText = this.add.text(480, 320, 'Preparando el mapa…', { fontFamily: UI.FONT, fontSize: '24px', color: '#ffffff' }).setOrigin(0.5);
@@ -281,10 +296,14 @@ export class TowerDefenseScene extends Phaser.Scene {
     }
     if (!this.scene.isActive()) return;
     this.td = new TdGame({ map: this.map, level: this.args.level, team, seed: Date.now() % 100000 });
+    // El mapa de este nivel (rutas, rocas y terreno propios: variants.ts)
+    this.map = this.td.map;
     this.loadingText.destroy();
     this.build();
     this.ready = true;
     showTdTip(this, 'td_place');
+    const v = this.td.map.variant;
+    this.toast(`${v.name}: ${v.desc.charAt(0).toLowerCase()}${v.desc.slice(1)}`, v.id >= 3 ? 'warning' : 'info');
   }
 
   // --- Montaje ---
@@ -302,6 +321,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     const ground = this.add.graphics().setDepth(0.2);
     drawPads(ground, buildableCells(this.map), biome.colors.floor, GEO);
     drawRoad(ground, this.map, this.map.biome, GEO);
+    if (isLevelMap(this.map)) drawTerrain(ground, this.map.terrain, GEO);
     bakeLayer(this, ground, OX - 32, OY - 32, W + 64, H + 64, 0.2);
     for (const b of this.map.blocked) {
       this.add.image(sx(b.x) + CELL / 2, sy(b.y) + CELL / 2 + 2, tiles.rock).setDisplaySize(CELL, CELL).setDepth(10 + b.y);
@@ -461,6 +481,8 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.placing = i;
     this.teamSel = i;
     this.selected = null;
+    this.moving = null;
+    this.roadSel = null;
     this.focus = { zone: 'grid' };
     sfx('select');
   }
@@ -476,21 +498,31 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.placing = null;
     this.selected = null;
     this.aiming = null;
+    this.moving = null;
+    this.roadSel = null;
     this.focus = { zone: 'grid' };
   }
 
   /** Esc o B: cierra la torre, suelta el Pokémon o, si no hay nada elegido, abre la pausa. */
   private back() {
-    if (this.placing !== null || this.selected !== null || this.aiming !== null) return this.cancel();
+    if (this.moving !== null) {
+      // Cancelar el movimiento vuelve a la torre abierta
+      this.moving = null;
+      this.focus = { zone: 'panel', i: 0 };
+      return;
+    }
+    if (this.placing !== null || this.selected !== null || this.aiming !== null || this.roadSel !== null) return this.cancel();
     this.openPause();
   }
 
   /** Aceptar sobre una casilla (Enter, Espacio, A, clic o toque). */
   private activateCell(x: number, y: number) {
     if (this.aiming) return this.castAt(this.aiming, x, y);
+    if (this.moving !== null) return this.moveTo(x, y);
     const t = this.td.towerAt(x, y);
     if (t) {
       this.placing = null;
+      this.roadSel = null;
       this.selected = t.id;
       this.focus = { zone: 'panel', i: 0 };
       sfx('select');
@@ -513,8 +545,15 @@ export class TowerDefenseScene extends Phaser.Scene {
       if (this.td.placedOf(this.placing) >= this.td.limitOf(this.placing)) this.placing = null;
       return;
     }
-    // Con una torre abierta, aceptar fuera la cierra
-    if (this.selected !== null) return this.cancel();
+    // Con una torre o el camino abiertos, aceptar fuera los cierra
+    if (this.selected !== null || (this.roadSel && (this.roadSel.x !== x || this.roadSel.y !== y))) return this.cancel();
+    // Camino: trampas y barricada en el panel
+    if (this.td.isRoad(x, y)) {
+      this.roadSel = { x, y };
+      this.focus = { zone: 'panel', i: 0 };
+      sfx('select');
+      return;
+    }
     // Casilla libre sin nada elegido: se elige el último Pokémon usado (el siguiente aceptar lo coloca)
     if (this.freeCells.some((c) => c.x === x && c.y === y) && this.td.team.length) this.setPlacing(Math.min(this.teamSel, this.td.team.length - 1));
   }
@@ -568,6 +607,63 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (this.focus.zone === 'panel') this.focus = { zone: 'grid' };
   }
 
+  /** Empieza a mover la torre abierta: el cursor elige la casilla nueva. */
+  private startMove() {
+    const t = this.selectedTower();
+    if (!t) return;
+    this.moving = t.id;
+    this.cursor = { x: t.x, y: t.y };
+    this.focus = { zone: 'grid' };
+  }
+
+  private moveTo(x: number, y: number) {
+    const t = this.td.towers.find((q) => q.id === this.moving);
+    if (!t) return this.cancel();
+    // Pulsar la propia torre cancela (en táctil no hay otra forma fácil)
+    if (t.x === x && t.y === y) {
+      this.moving = null;
+      this.focus = { zone: 'panel', i: 0 };
+      return;
+    }
+    const err = this.td.moveError(t.id, x, y);
+    if (err) {
+      sfx('warn');
+      this.toast(err, 'warning');
+      return;
+    }
+    this.td.moveTower(t.id, x, y);
+    sfx('buy');
+    this.moving = null;
+    this.focus = { zone: 'panel', i: 0 };
+  }
+
+  private doTrap(kind: TrapKind) {
+    const c = this.roadSel;
+    if (!c) return;
+    const err = this.td.trapError(kind, c.x, c.y);
+    if (err) {
+      sfx('warn');
+      this.toast(err, 'warning');
+      return;
+    }
+    this.td.placeTrap(kind, c.x, c.y);
+    sfx('buy');
+    pixRing(this, sx(c.x) + CELL / 2, sy(c.y) + CELL / 2, 26, TRAP_INFO[kind].color, 320, 44);
+    this.cancel();
+  }
+
+  private doBarricade(route: number) {
+    const err = this.td.barricadeError(route);
+    if (err) {
+      sfx('warn');
+      this.toast(err, 'warning');
+      return;
+    }
+    this.td.closeRoute(route);
+    sfx('door');
+    this.cancel();
+  }
+
   private callWave() {
     if (this.td.callNextWave()) sfx('door');
   }
@@ -599,6 +695,8 @@ export class TowerDefenseScene extends Phaser.Scene {
     }
     this.placing = null;
     this.selected = null;
+    this.moving = null;
+    this.roadSel = null;
     this.focus = { zone: 'grid' };
     this.aiming = id;
     sfx('select');
@@ -830,7 +928,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     const J = Phaser.Input.Keyboard.JustDown;
     const k = this.keys;
     // Se leen siempre (si no, una pulsación vieja saltaría al abrir una torre)
-    const num = [k.ONE, k.TWO, k.THREE, k.FOUR].findIndex((key) => J(key));
+    const num = [k.ONE, k.TWO, k.THREE, k.FOUR, k.FIVE].findIndex((key) => J(key));
     if (this.perkUi) {
       const d = this.heldDir();
       const st = this.repeat.update(d.dx, d.dy, delta);
@@ -863,7 +961,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     const f = this.focus;
     if (f.zone === 'panel') {
       const m = this.panelBtns.length;
-      if (!m || !this.selectedTower()) {
+      if (!m || (!this.selectedTower() && !this.roadSel)) {
         this.focus = { zone: 'grid' };
         return;
       }
@@ -952,7 +1050,9 @@ export class TowerDefenseScene extends Phaser.Scene {
         sfx(e.boss ? 'roar' : 'door');
         this.toast(e.boss ? `Oleada ${e.wave}: ¡jefe legendario!` : e.chief ? `Oleada ${e.wave}: ¡jefe!` : `Oleada ${e.wave}`, e.boss || e.chief ? 'danger' : 'info');
         if (e.event) this.eventStartFx(e.event);
-        for (const c of entryCells(this.map)) pixRing(this, sx(c.x) + CELL / 2, sy(c.y) + CELL / 2, 36, 0xb08aff, 500, 5);
+        if (e.theme) this.toast(TRICK_INFO[e.theme as TrickKind].tip, 'warning');
+        if (e.adapt) this.toast(`Los Adaptables resisten ${typeNameEs(e.adapt)} en esta oleada`, 'danger');
+        for (const c of this.openEntries()) pixRing(this, sx(c.x) + CELL / 2, sy(c.y) + CELL / 2, 36, 0xb08aff, 500, 5);
         if (e.wave >= 2) showTdTip(this, 'td_skills');
         break;
       case 'waveEnd':
@@ -1075,6 +1175,72 @@ export class TowerDefenseScene extends Phaser.Scene {
       case 'mega':
         this.onMega(e.towerId);
         break;
+      case 'dodge':
+        if (this.time.now - this.lastDodge > 450) {
+          this.lastDodge = this.time.now;
+          this.floatText(X(e.x), Y(e.y) - 30, '¡Esquiva!', '#f0f0ff', 11);
+        }
+        break;
+      case 'sabWarn': {
+        const t = this.td.towers.find((q) => q.id === e.towerId);
+        if (t) this.floatText(sx(t.x) + CELL / 2, sy(t.y) - 10, '¡Sabotaje!', '#ff8a7a', 12);
+        sfx('warn');
+        break;
+      }
+      case 'split':
+        pixRing(this, X(e.x), Y(e.y) - 6, 22, 0x7cf07a, 260, 31);
+        if (!lowFx()) pixDebris(this, X(e.x), Y(e.y) - 6, 0x7cf07a, 6, 0.8, 31);
+        break;
+      case 'trap':
+        if (e.kind === 'mina') {
+          sfx('boom');
+          pixBlast(this, X(e.x), Y(e.y) - 6, e.r * CELL, 0xff7a3a, 45);
+          if (!lowFx()) pixDebris(this, X(e.x), Y(e.y), 0x6a7080, 10, 1.2, 44);
+          this.cameras.main.shake(160, 0.006);
+        } else {
+          pixRing(this, X(e.x), Y(e.y), 22, 0xe8ecf4, 300, 44);
+        }
+        break;
+      case 'routeOpen':
+        sfx('enrage');
+        phaseShock(this, X(e.x), Y(e.y), 0xb08aff, 1.2, 30);
+        pixDebris(this, X(e.x), Y(e.y), 0x6a7080, 14, 1.4, 44);
+        this.cameras.main.shake(260, 0.008);
+        this.toast(`¡Se abre ${e.label === 'Entrada nueva' ? 'una entrada nueva' : e.label === 'Atajo' ? 'un atajo' : 'un camino alternativo'}!`, 'danger');
+        break;
+      case 'routeClosed':
+        pixRing(this, X(e.x), Y(e.y), 30, 0xb8864a, 360, 44);
+        this.toast(`Ruta cerrada con barricada (${this.td.barricades[e.path] ?? 0} oleadas)`, 'reward');
+        break;
+      case 'routeReopen':
+        pixDebris(this, X(e.x), Y(e.y), 0xb8864a, 10, 1, 44);
+        this.toast('La barricada se rompe: la ruta vuelve a abrirse', 'warning');
+        break;
+      case 'move': {
+        const t = this.td.towers.find((q) => q.id === e.towerId);
+        if (t) {
+          pixRing(this, sx(e.fromX) + CELL / 2, sy(e.fromY) + CELL / 2 + 10, 26, 0x8a90a0, 300, 44);
+          pixRing(this, sx(t.x) + CELL / 2, sy(t.y) + CELL / 2 + 10, 30, RARITY_COLORS[t.mon.rarity], 360, 44);
+        }
+        break;
+      }
+      case 'duo': {
+        const a = this.td.towers.find((q) => q.id === e.a);
+        const b = this.td.towers.find((q) => q.id === e.b);
+        if (a && b) {
+          const ax = sx(a.x) + CELL / 2;
+          const ay = sy(a.y) + CELL / 2 - 12;
+          const bx = sx(b.x) + CELL / 2;
+          const by = sy(b.y) + CELL / 2 - 12;
+          pixBolt(this, ax, ay, X(e.x), Y(e.y) - 8, typeColor(a.mon.types[0]), 46);
+          pixBolt(this, bx, by, X(e.x), Y(e.y) - 8, typeColor(b.mon.types[0]), 46);
+          pixBlast(this, X(e.x), Y(e.y) - 8, 40, 0xffd34d, 46);
+          if (!lowFx()) starBurst(this, (ax + bx) / 2, (ay + by) / 2, 0xffd34d, 6, 1, 46);
+          this.floatText((ax + bx) / 2, Math.min(ay, by) - 22, `¡${e.name}!`, '#ffd34d', 13);
+          sfx('boom');
+        }
+        break;
+      }
       default:
         break;
     }
@@ -1309,7 +1475,7 @@ export class TowerDefenseScene extends Phaser.Scene {
 
   private makeEnemyView(e: TdEnemy): EnemyView {
     const boss = e.def.kind === 'boss' || e.def.kind === 'chief';
-    const size = e.def.kind === 'boss' ? 78 : e.def.kind === 'chief' ? 64 : e.def.kind === 'tank' ? 50 : e.def.kind === 'fast' ? 36 : 42;
+    const size = e.def.kind === 'boss' ? 78 : e.def.kind === 'chief' ? 64 : e.def.kind === 'tank' ? 50 : e.def.kind === 'brood' ? 28 : e.def.kind === 'fast' || e.def.kind === 'dodger' ? 36 : 42;
     const sheet = this.sheets.get(e.def.species);
     let spr: Phaser.GameObjects.Sprite;
     const row = dir8Row(e.dx, e.dy, 2);
@@ -1418,22 +1584,59 @@ export class TowerDefenseScene extends Phaser.Scene {
   private drawAmbient(t: number) {
     const g = this.ambient;
     g.clear();
-    drawFlow(g, this.map, this.map.biome, GEO, t);
+    // Huellas solo por las rutas abiertas (las selladas o con barricada, quietas)
+    const open = this.td.openRoutes();
+    drawFlow(g, open.length === this.map.paths.length ? this.map : { ...this.map, paths: open.map((i) => this.map.paths[i]) }, this.map.biome, GEO, t);
     drawDecor(g, this.map.biome, this.decor, t);
-    for (const c of entryCells(this.map)) drawPortal(g, sx(c.x) + CELL / 2, sy(c.y) + CELL / 2, 0xb08aff, t);
+    for (const c of this.openEntries()) drawPortal(g, sx(c.x) + CELL / 2, sy(c.y) + CELL / 2, 0xb08aff, t);
     const b = this.basePos();
     drawBase(g, b.x, b.y, t, this.td.hp / this.td.maxHp, this.baseFlash, this.map.biome);
+  }
+
+  /** Entradas de las rutas abiertas ahora (las selladas no tienen portal). */
+  private openEntries() {
+    const seen = new Set<string>();
+    const out: { x: number; y: number }[] = [];
+    this.td.map.paths.forEach((p, i) => {
+      const k = `${p[0].x},${p[0].y}`;
+      if (!this.td.routeOpen(i) || seen.has(k)) return;
+      seen.add(k);
+      out.push(p[0]);
+    });
+    return out.length ? out : entryCells(this.map);
   }
 
   private drawTowersLayer(t: number) {
     const g = this.towerG;
     g.clear();
+    // Rutas selladas (se abren más adelante) o cerradas con barricada
+    const wave = Math.max(1, this.td.phase === 'prep' ? this.td.wave + 1 : this.td.wave);
+    this.td.map.routes.forEach((r, i) => {
+      if (!r.gate) return;
+      const cx = sx(r.gate.x) + CELL / 2;
+      const cy = sy(r.gate.y) + CELL / 2;
+      if (r.opensAt > wave) drawGate(g, cx, cy, 'sealed', 0, t);
+      else if (this.td.barricades[i]) drawGate(g, cx, cy, 'barricade', this.td.barricades[i], t);
+    });
+    for (const tr of this.td.traps) drawTrap(g, sx(tr.x) + CELL / 2, sy(tr.y) + CELL / 2 + 4, tr.kind, tr.uses, t);
     for (const tw of this.td.towers) {
       const cx = sx(tw.x) + CELL / 2;
       const cy = sy(tw.y) + CELL / 2 + 10;
       drawPedestal(g, cx, cy, RARITY_COLORS[tw.mon.rarity], tw.level, tw.branch, tw.id === this.selected, t);
       if (tw.level >= MEGA_LEVEL) drawMegaAura(g, cx, cy - 2, typeColor(tw.mon.types[0]), t);
       else if (tw.level >= MAX_TOWER_LEVEL) drawAura(g, cx, cy - 2, typeColor(tw.mon.types[0]), t, tw.evolved !== null);
+    }
+    // Sinergias: enlaces entre torres vecinas y una gema en cada torre con combo
+    const byId = new Map(this.td.towers.map((q) => [q.id, q]));
+    for (const l of this.td.synergyLinks()) {
+      const a = byId.get(l.a);
+      const b = byId.get(l.b);
+      if (!a || !b) continue;
+      const color = l.kind === 'same' ? typeColor(l.key) : l.color;
+      drawLink(g, sx(a.x) + CELL / 2, sy(a.y) + CELL / 2 + 10, sx(b.x) + CELL / 2, sy(b.y) + CELL / 2 + 10, color, l.duo, t);
+      if (l.kind === 'combo') {
+        for (const q of [a, b]) drawSynergyGem(g, sx(q.x) + 7, sy(q.y) + CELL - 6, color, l.duo);
+      }
     }
   }
 
@@ -1466,6 +1669,19 @@ export class TowerDefenseScene extends Phaser.Scene {
         }
       } else if (k === 'shielded' && e.shield > 0) {
         g.lineStyle(2, 0x8fd0ff, 0.5 + (still ? 0 : 0.3 * Math.sin(t / 150))).strokeEllipse(v.spr.x, v.spr.y - 2, 40, 44);
+      } else if ((TRICK_KINDS as readonly string[]).includes(k) && k !== 'soarer') {
+        const color = k === 'adapter' && e.def.resist ? typeColor(e.def.resist) : TRICK_INFO[k as TrickKind].color;
+        drawTrickMark(g, k, x + w + 14, y, v.spr.x, v.spr.y, t, color);
+      }
+      // Saboteador avisando: línea roja hasta la torre y zona que se llena
+      if (e.sabWarn) {
+        const tw = this.td.towers.find((q) => q.id === e.sabWarn!.towerId);
+        if (tw) {
+          const tx = sx(tw.x) + CELL / 2;
+          const ty = sy(tw.y) + CELL / 2;
+          g.lineStyle(2, 0xff5a4a, still ? 0.7 : 0.4 + 0.4 * Math.sin(t / 60)).lineBetween(v.spr.x, v.spr.y, tx, ty);
+          drawWarnZone(g, tx, ty, 0.6 * CELL, 0xff5a4a, 1 - e.sabWarn.left / e.sabWarn.total, t);
+        }
       }
       if (e.def.air) {
         g.fillStyle(0x18202c, 1).fillRect(x - 12, y - 3, 10, 9);
@@ -1512,6 +1728,26 @@ export class TowerDefenseScene extends Phaser.Scene {
         g.fillStyle(ok ? 0x7cf07a : 0xff5a4a, 0.35).fillRect(sx(target.x), sy(target.y), CELL, CELL);
       }
     }
+    // Moviendo una torre: casillas libres y la de destino con su alcance
+    const mv = this.moving !== null ? this.td.towers.find((q) => q.id === this.moving) : undefined;
+    if (mv && !this.ended) {
+      for (const c of this.freeCells) {
+        if (this.td.towerAt(c.x, c.y)) continue;
+        g.fillStyle(0x8fd0ff, 0.08 + (still ? 0 : 0.05 * Math.sin(t / 220))).fillRect(sx(c.x) + 3, sy(c.y) + 3, CELL - 6, CELL - 6);
+      }
+      g.lineStyle(2, 0x8fd0ff, 0.8).strokeRect(sx(mv.x) + 2, sy(mv.y) + 2, CELL - 4, CELL - 4);
+      if (target) {
+        const ok = !this.td.moveError(mv.id, target.x, target.y);
+        drawRange(g, sx(target.x) + CELL / 2, sy(target.y) + CELL / 2, this.td.statsOf(mv).range * CELL, ok, t);
+        g.fillStyle(ok ? 0x8fd0ff : 0xff5a4a, 0.35).fillRect(sx(target.x), sy(target.y), CELL, CELL);
+      }
+    }
+    // Casilla del camino abierta (trampas y barricada): marco y la ruta que se cerraría
+    if (this.roadSel && !this.ended) {
+      const r = this.td.routeAt(this.roadSel.x, this.roadSel.y);
+      if (r >= 0) for (const c of this.td.map.routes[r].own) g.fillStyle(0xb8864a, 0.22).fillRect(sx(c.x) + 4, sy(c.y) + 4, CELL - 8, CELL - 8);
+      g.lineStyle(3, 0xffd34d, 0.9).strokeRect(sx(this.roadSel.x) + 1, sy(this.roadSel.y) + 1, CELL - 2, CELL - 2);
+    }
     if (this.aiming && target && !this.ended) {
       const info = ABILITY_INFO[this.aiming];
       const cx = sx(target.x) + CELL / 2;
@@ -1519,7 +1755,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       g.fillStyle(info.color, 0.16).fillCircle(cx, cy, info.radius * CELL);
       drawRange(g, cx, cy, info.radius * CELL, true, t);
     }
-    if (!touch && this.focus.zone === 'grid' && !this.overlay && !this.ended) drawCursor(g, sx(this.cursor.x), sy(this.cursor.y), CELL, this.aiming ? ABILITY_INFO[this.aiming].color : this.placing !== null ? 0x7cf07a : 0xffd34d, t);
+    if (!touch && this.focus.zone === 'grid' && !this.overlay && !this.ended) drawCursor(g, sx(this.cursor.x), sy(this.cursor.y), CELL, this.aiming ? ABILITY_INFO[this.aiming].color : this.moving !== null ? 0x8fd0ff : this.placing !== null ? 0x7cf07a : 0xffd34d, t);
   }
 
   private drawUi(t: number) {
@@ -1633,11 +1869,16 @@ export class TowerDefenseScene extends Phaser.Scene {
   /** Teclas de los botones, cabecera del equipo y barra de ayuda (solo se reescriben si cambian). */
   private updateHelp(dev: TdDevice) {
     const tw = this.selectedTower();
+    const mv = this.moving !== null ? this.td.towers.find((q) => q.id === this.moving) : undefined;
     const ctx: TdHelpContext = this.perkUi
       ? { kind: 'perks' }
       : this.aiming
         ? { kind: 'aiming', name: ABILITY_INFO[this.aiming].name }
-        : tw
+        : mv
+          ? { kind: 'moving', name: mv.mon.name, cost: this.td.moveCost(mv) }
+          : this.roadSel
+            ? { kind: 'road', actions: this.panelBtns.length }
+            : tw
       ? { kind: 'tower', actions: this.panelBtns.length }
       : this.placing !== null
         ? { kind: 'placing', name: this.td.team[this.placing].name, cost: towerCost(this.td.team[this.placing]), canPlace: this.td.money >= towerCost(this.td.team[this.placing]) }
@@ -1657,10 +1898,21 @@ export class TowerDefenseScene extends Phaser.Scene {
 
   private updatePanel(g: Phaser.GameObjects.Graphics) {
     const tw = this.selectedTower();
-    const key = tw ? `t${tw.id}-${tw.level}-${tw.branch}-${tw.targeting}-${tw.evolved}-${tw.mega}` : this.placing !== null ? `p${this.placing}` : `i${this.td.wave}-${this.td.phase}`;
+    const rs = this.roadSel;
+    const key = tw
+      ? `t${tw.id}-${tw.level}-${tw.branch}-${tw.targeting}-${tw.evolved}-${tw.mega}-${this.td.phase}-${tw.x},${tw.y}`
+      : rs
+        ? `r${rs.x},${rs.y}-${this.td.traps.length}-${JSON.stringify(this.td.barricades)}-${this.td.phase}-${this.td.wave}`
+        : this.placing !== null
+          ? `p${this.placing}`
+          : `i${this.td.wave}-${this.td.phase}`;
     if (key !== this.panelKey) {
       this.panelKey = key;
       this.rebuildPanel(tw);
+    }
+    if (this.placing !== null && !tw) {
+      const c = currentInput() === 'touch' ? this.hover ?? this.cursor : this.cursor;
+      this.placePreview(this.td.terrainAt(c.x, c.y), this.td.previewSynergy(this.placing, c.x, c.y));
     }
     g.fillStyle(0x18202c, 0.1).fillRect(PANEL_X + 8, 264, 148, 322);
     this.panelBtns.forEach((b, i) => {
@@ -1672,10 +1924,21 @@ export class TowerDefenseScene extends Phaser.Scene {
     });
     if (tw && this.panelTexts[1]) {
       const s = this.td.statsOf(tw);
+      const syn = this.td.synergyOf(tw).names;
+      const ter = this.td.terrainAt(tw.x, tw.y);
       this.panelTexts[1].setText(
-        `${STYLE_LABEL[s.style]} · ${tw.mon.types.map(typeNameEs).join('/')}\nDaño ${s.damage}  Cad. ${s.rate}/s\nAlcance ${s.range.toFixed(1)}${s.air ? ' · aéreo' : ''}\n${s.income ? `Granja: +${s.income} $/oleada\n` : ''}Derrotados: ${tw.kills}`,
+        `${STYLE_LABEL[s.style]} · ${tw.mon.types.map(typeNameEs).join('/')}\nDaño ${s.damage}  Cad. ${s.rate}/s\nAlcance ${s.range.toFixed(1)}${s.air ? ' · aéreo' : ''}\n${
+          s.income ? `Granja: +${s.income} $/oleada` : syn.length ? shorten(syn.join(', '), 22) : ter ? shorten(`${TERRAIN_INFO[ter].name}: ${TERRAIN_INFO[ter].desc}`, 22) : `Derrotados: ${tw.kills}`
+        }`,
       );
     }
+  }
+
+  /** Vista previa al colocar: terreno de la casilla del cursor y sinergias que activaría. */
+  private placePreview(ter: string | null, syn: string[]) {
+    const t = this.panelTexts.find((o) => o.getData('preview') !== undefined);
+    const text = previewText(ter, syn);
+    if (t && t.text !== text) t.setText(text);
   }
 
   private rebuildPanel(tw: TdTower | undefined) {
@@ -1701,11 +1964,11 @@ export class TowerDefenseScene extends Phaser.Scene {
       txt(y0, `${shorten(name, 13)}\n${levelLabel(tw.level, tw.evolved !== null)}`, 15, NAVY, true);
       showTdTip(this, 'td_upgrade');
       txt(y0 + 40, '', 12);
-      let by = y0 + 130;
-      // Acciones numeradas: la tecla 1-4 hace la de su número
-      const btn = (label: string, act: () => void, en: () => boolean, color?: number, h = 34) => {
-        this.panelBtns.push(this.makeBtn(x, by, 140, h, `${this.panelBtns.length + 1} · ${label}`, act, en, 12, color));
-        by += h + 8;
+      let by = y0 + 124;
+      // Acciones numeradas: la tecla 1-5 hace la de su número
+      const btn = (label: string, act: () => void, en: () => boolean, color?: number, h = 34, w = 140, bx = x, gap = 8) => {
+        this.panelBtns.push(this.makeBtn(bx, by, w, h, `${this.panelBtns.length + 1} · ${label}`, act, en, w < 100 ? 11 : 12, color));
+        by += h + gap;
       };
       const cost = this.td.upgradeCost(tw);
       if (cost === null) {
@@ -1716,15 +1979,53 @@ export class TowerDefenseScene extends Phaser.Scene {
         const a = branchInfo(style, 'a');
         const bb = branchInfo(style, 'b');
         txt(by - 18, `Rama (${cost} $):`, 12, NAVY, true);
-        btn(`${a.name}\n${a.desc}`, () => this.doUpgrade('a'), () => this.td.money >= cost, 0xffb0a8, 50);
-        btn(`${bb.name}\n${bb.desc}`, () => this.doUpgrade('b'), () => this.td.money >= cost, 0xa8d0ff, 50);
+        btn(`${a.name}\n${a.desc}`, () => this.doUpgrade('a'), () => this.td.money >= cost, 0xffb0a8, 46, 140, x, 6);
+        btn(`${bb.name}\n${bb.desc}`, () => this.doUpgrade('b'), () => this.td.money >= cost, 0xa8d0ff, 46, 140, x, 6);
         for (const b of this.panelBtns) b.text?.setWordWrapWidth(132).setFontSize(10);
       } else {
         const evo = tw.level + 1 === MEGA_LEVEL ? '\nMegaevoluciona' : tw.level + 1 === MAX_TOWER_LEVEL ? (tw.mon.evolveId ? '\nEvoluciona' : '\nAura final') : '';
         btn(`Mejorar · ${cost} $${evo}`, () => this.doUpgrade(), () => this.td.money >= cost, 0xb8f0c8, evo ? 40 : 34);
       }
-      btn(`Objetivo: ${TARGETING_LABEL[tw.targeting]}`, () => this.td.cycleTargeting(tw.id), () => true);
-      btn(`Vender · +${this.td.sellValue(tw)} $`, () => this.doSell(), () => true, 0xffe0a0);
+      btn(`Objetivo: ${TARGETING_LABEL[tw.targeting]}`, () => this.td.cycleTargeting(tw.id), () => true, undefined, 30, 140, x, 6);
+      // Mover y vender en la misma fila (en plena oleada cuesta más mover y vender da menos)
+      const rowY = by;
+      const mc = this.td.moveCost(tw);
+      btn(`Mover\n${mc} $`, () => this.startMove(), () => this.td.money >= mc, 0xa8d0ff, 34, 68, x);
+      by = rowY;
+      btn(`Vender\n+${this.td.sellValue(tw)} $`, () => this.doSell(), () => true, 0xffe0a0, 34, 68, x + 72);
+      if (this.focus.zone === 'panel') this.focus.i = Math.min(this.focus.i, this.panelBtns.length - 1);
+      return;
+    }
+    if (this.roadSel) {
+      const { x: rx, y: ry } = this.roadSel;
+      const trap = this.td.trapAt(rx, ry);
+      const ter = this.td.terrainAt(rx, ry);
+      txt(y0, 'Camino', 16, NAVY, true);
+      txt(
+        y0 + 24,
+        `${trap ? `Aquí: ${TRAP_INFO[trap.kind].name}\n` : ''}${ter ? `${TERRAIN_INFO[ter].name}: ${TERRAIN_INFO[ter].desc.toLowerCase()}\n` : ''}Trampas: ${this.td.traps.length}/4. Las pisan los de tierra.`,
+        11,
+      );
+      let by = y0 + 112;
+      const btn = (label: string, act: () => void, en: () => boolean, color: number, h = 44) => {
+        this.panelBtns.push(this.makeBtn(x, by, 140, h, `${this.panelBtns.length + 1} · ${label}`, act, en, 11, color));
+        by += h + 8;
+      };
+      for (const k of TRAP_KINDS) {
+        const info = TRAP_INFO[k];
+        btn(`${info.name} · ${this.td.trapCost(k)} $\n${info.desc}`, () => this.doTrap(k), () => !this.td.trapError(k, rx, ry), k === 'mina' ? 0xffc8a0 : 0xe8ecf4);
+      }
+      const route = this.td.routeAt(rx, ry);
+      if (route >= 0 && this.td.map.routes.length > 1) {
+        const left = this.td.barricades[route];
+        btn(
+          left ? `Barricada puesta\n(${left} oleada${left > 1 ? 's' : ''})` : `Barricada · ${this.td.barricadeCost()} $\nCierra esta ruta 2 oleadas`,
+          () => this.doBarricade(route),
+          () => !this.td.barricadeError(route),
+          0xd8b080,
+        );
+      } else txt(by, 'Pulsa en el tramo propio de una ruta (no compartido) para cerrarla con una barricada.', 10, '#5a6070');
+      for (const b of this.panelBtns) b.text?.setWordWrapWidth(132);
       if (this.focus.zone === 'panel') this.focus.i = Math.min(this.focus.i, this.panelBtns.length - 1);
       return;
     }
@@ -1735,9 +2036,20 @@ export class TowerDefenseScene extends Phaser.Scene {
       txt(y0, shorten(m.name, 14), 16, NAVY, true);
       txt(
         y0 + 24,
-        `${STYLE_LABEL[s.style]} · ${m.types.map(typeNameEs).join('/')}\nCoste ${towerCost(m)} $\nDaño ${s.damage}  Cad. ${s.rate}/s\nAlcance ${s.range.toFixed(1)}${s.air ? ' · aéreo' : ''}${s.income ? `\nGranja: +${s.income} $/oleada` : ''}\n\nColocados ${this.td.placedOf(this.placing)}/${this.td.limitOf(this.placing)}\n\nElige una casilla libre: mira la ayuda de abajo.`,
+        `${STYLE_LABEL[s.style]} · ${m.types.map(typeNameEs).join('/')}\nCoste ${towerCost(m)} $\nDaño ${s.damage}  Cad. ${s.rate}/s\nAlcance ${s.range.toFixed(1)}${s.air ? ' · aéreo' : ''}${s.income ? `\nGranja: +${s.income} $/oleada` : ''}\n\nColocados ${this.td.placedOf(this.placing)}/${this.td.limitOf(this.placing)}`,
         12,
       );
+      // Lo que daría la casilla del cursor: terreno y sinergias con las vecinas
+      const c = this.cursor;
+      const ter = this.td.terrainAt(c.x, c.y);
+      const syn = this.td.previewSynergy(this.placing, c.x, c.y);
+      this.panelTexts.push(
+        this.add
+          .text(x, y0 + 150, '', { fontFamily: UI.FONT, fontSize: '11px', fontStyle: 'bold', color: '#2e6a2c', wordWrap: { width: 140 }, lineSpacing: 2 })
+          .setDepth(62)
+          .setData('preview', this.placing),
+      );
+      this.placePreview(ter, syn);
       return;
     }
     // Sin nada elegido: lo que trae la oleada
@@ -1751,11 +2063,22 @@ export class TowerDefenseScene extends Phaser.Scene {
     const up = this.td.phase === 'prep' ? this.td.upcomingEvent : this.td.waveEvent;
     if (up) lines.push(`Evento: ${WAVE_EVENT_INFO[up].name}`);
     txt(y0 + 24, lines.join('\n'), 13);
-    if (count.get('flying')) {
+    const trick = [...count.keys()].find((k) => (TRICK_KINDS as readonly string[]).includes(k)) as TrickKind | undefined;
+    if (trick) {
+      txt(y0 + 34 + lines.length * 17, TRICK_INFO[trick].tip, 11, '#7a3aa0');
+    } else if (count.get('flying')) {
       showTdTip(this, 'td_air');
       txt(y0 + 34 + lines.length * 17, '¡Voladores! Solo los alcanzan Volador, Eléctrico, Psíquico, Dragón, Fantasma, Hada y Hielo (o la rama Táctica).', 11, '#a04040');
     }
   }
+}
+
+/** Texto de la vista previa al colocar (terreno de la casilla y sinergias que activaría). */
+function previewText(ter: string | null, syn: string[]): string {
+  const parts: string[] = [];
+  if (ter) parts.push(`Casilla: ${TERRAIN_INFO[ter as keyof typeof TERRAIN_INFO].name} (${TERRAIN_INFO[ter as keyof typeof TERRAIN_INFO].desc})`);
+  if (syn.length) parts.push(`Sinergia: ${syn.join(', ')}`);
+  return parts.join('\n');
 }
 
 function fromBst(bst: number): BaseStats {

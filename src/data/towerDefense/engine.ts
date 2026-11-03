@@ -15,15 +15,23 @@ import {
   detourPath, stormDamage, waveEventFor, type WaveEventId,
 } from './events.ts';
 import { TOWER_PERKS, addRelic, draftPerks, freshRelics, interestOf, perkValue, type Perk, type Relics } from './perks.ts';
-import { isBuildable, pathCells, pathPoints, pointAt, polyLength, roadSet, type TdMap } from './maps.ts';
+import { baseCell, isBuildable, pathCells, pathPoints, pointAt, polyLength, roadSet, type TdMap } from './maps.ts';
 import { MAP_FOES, type TdMon } from './species.ts';
+import {
+  MUD_SPEED, STREAM_SPEED, TERRAIN_DAMAGE, TERRAIN_RANGE, TERRAIN_RATE, mapForLevel, routeAtCell, routeLabel, terrainAt, type LevelMap, type TerrainKind,
+} from './variants.ts';
+import { ADAPT_MUL, DODGE_CHANCE, SAB_EVERY, SAB_FIRST, SAB_RANGE, SAB_STUN, SAB_WARN, SPLIT_COUNT, adaptType } from './tricks.ts';
+import { DUO_DAMAGE, DUO_SPLASH, applySynergy, synergyBonus, synergyLinks, type SynergyBonus, type SynergyLink } from './synergy.ts';
+import {
+  BARRICADE_WAVES, MAX_TRAPS, MINE_RADIUS, MOVE_STUN, TRAP_INFO, WEB_SLOW, WEB_TIME, barricadeCost, mineDamage, moveCost, sellInWave, trapCost, type TrapKind,
+} from './live.ts';
 import { decideDark, darkProgress, TD_DARK_MUL } from '../darkMon.ts';
 import { takeAdminNextDark } from '../admin.ts';
 import {
-  BRANCH_LEVEL, MAX_TOWER_LEVEL, MEGA_LEVEL, bestTypeMul, megaCostFor, megaSpeciesOf, sellValue, towerCost, towerStats, upgradeCostFor, type Branch, type TowerStats,
+  BRANCH_LEVEL, MAX_TOWER_LEVEL, MEGA_LEVEL, bestTypeMul, megaCostFor, tdTypeMul, megaSpeciesOf, sellValue, towerCost, towerStats, upgradeCostFor, type Branch, type TowerStats,
 } from './towers.ts';
 import {
-  earlyCallBonus, enemyDef, isBossWave, isChiefWave, isEndless, prepTime, stagePower, waveBonus, waveSpawns, wavesInLevel,
+  earlyCallBonus, enemyDef, foeList, isBossWave, isChiefWave, isEndless, prepTime, stagePower, waveBonus, waveSpawns, waveThemeOf, wavesInLevel,
   type EnemyDef, type Spawn, type Stage,
 } from './waves.ts';
 
@@ -112,6 +120,22 @@ export interface TdEnemy {
   rush: number;
   /** Pokémon oscuro (darkMon.ts): más vida, escudo, velocidad y recompensa. */
   dark?: boolean;
+  /** Saboteador: espera hasta el próximo sabotaje y aviso en curso (torre a la que apunta). */
+  sabCd: number;
+  sabWarn: { towerId: number; left: number; total: number } | null;
+  /** Última trampa que ha pisado (una telaraña no frena dos veces al mismo). */
+  trapHit: number;
+  /** Ruta por la que va. */
+  route: number;
+}
+
+/** Trampa colocada en el camino. */
+export interface TdTrap {
+  id: number;
+  kind: TrapKind;
+  x: number;
+  y: number;
+  uses: number;
 }
 
 /** Rayo de la tormenta avisado en una casilla. */
@@ -134,6 +158,8 @@ export interface TdShot {
   damage: number;
   special: boolean;
   stats: TowerStats;
+  /** Ataque combinado de un Dúo. */
+  duo?: boolean;
 }
 
 export type TdEvent =
@@ -146,7 +172,7 @@ export type TdEvent =
   | { t: 'heal'; x: number; y: number; amount: number; base?: boolean }
   | { t: 'shieldBreak'; x: number; y: number }
   | { t: 'bossPhase'; x: number; y: number; phase: number }
-  | { t: 'waveStart'; wave: number; boss: boolean; chief: boolean; event: WaveEventId | null }
+  | { t: 'waveStart'; wave: number; boss: boolean; chief: boolean; event: WaveEventId | null; theme: string | null; adapt: string | null }
   | { t: 'waveEnd'; wave: number; bonus: number; farm: number; perfect: boolean; interest: number }
   | { t: 'chiefIntro'; id: number; species: number; skills: ChiefSkill[] }
   | { t: 'chiefWarn'; id: number; skill: ChiefSkill; x: number; y: number; r: number; time: number }
@@ -161,6 +187,15 @@ export type TdEvent =
   | { t: 'evolve'; towerId: number }
   | { t: 'mega'; towerId: number }
   | { t: 'ability'; id: AbilityId; x: number; y: number; hits: { x: number; y: number }[] }
+  | { t: 'dodge'; x: number; y: number }
+  | { t: 'sabWarn'; id: number; towerId: number; time: number }
+  | { t: 'split'; x: number; y: number; n: number }
+  | { t: 'trap'; kind: TrapKind; x: number; y: number; r: number; gone: boolean }
+  | { t: 'routeOpen'; path: number; x: number; y: number; label: string }
+  | { t: 'routeClosed'; path: number; x: number; y: number }
+  | { t: 'routeReopen'; path: number; x: number; y: number }
+  | { t: 'move'; towerId: number; fromX: number; fromY: number }
+  | { t: 'duo'; a: number; b: number; x: number; y: number; name: string }
   | { t: 'won' }
   | { t: 'lost' };
 
@@ -186,7 +221,8 @@ export interface TdGameOptions {
 }
 
 export class TdGame {
-  readonly map: TdMap;
+  /** Mapa del nivel (variants.ts): rutas, rocas y terreno de este nivel. */
+  readonly map: LevelMap;
   readonly stage: Stage;
   readonly team: readonly TeamMon[];
   /** Oleadas del nivel (Infinity en el infinito). */
@@ -217,6 +253,15 @@ export class TdGame {
   waveEvent: WaveEventId | null = null;
   eventLeft = 0;
   storms: StormMark[] = [];
+  /** Trampas en el camino. */
+  traps: TdTrap[] = [];
+  /** Rutas cerradas con barricada: índice → oleadas que le quedan. */
+  barricades: Record<number, number> = {};
+  /** Tipo que resisten los Adaptables en esta oleada. */
+  adaptType: string | null = null;
+  private typeDmg: Record<string, number> = {};
+  private lastTypeDmg: Record<string, number> = {};
+  private links: SynergyLink[] | null = null;
   private stormCd = 0;
   private queue: Spawn[] = [];
   private waveTime = 0;
@@ -230,7 +275,7 @@ export class TdGame {
   private groundPts: { x: number; y: number }[][];
 
   constructor(o: TdGameOptions) {
-    this.map = o.map;
+    this.map = mapForLevel(o.map, o.level);
     this.stage = { tier: o.map.tier, level: Math.max(0, Math.min(o.map.levels, Math.floor(o.level))), levels: o.map.levels };
     this.team = o.team;
     this.totalWaves = isEndless(this.stage) ? Infinity : wavesInLevel(this.stage.level, this.stage.levels);
@@ -238,8 +283,8 @@ export class TdGame {
     this.prepLeft = prepTime(1);
     this.rng = mulberry(o.seed ?? 12345);
     this.darkRng = mulberry(((o.seed ?? 12345) ^ 0x5d4c) >>> 0);
-    this.road = roadSet(o.map);
-    this.groundPts = o.map.paths.map((p) => pathPoints(p));
+    this.road = roadSet(this.map);
+    this.groundPts = this.map.paths.map((p) => pathPoints(p));
   }
 
   get endless(): boolean {
@@ -292,12 +337,44 @@ export class TdGame {
       facing: Math.PI / 2, stunned: 0, boost: 0,
     };
     this.towers.push(t);
+    this.links = null;
     return t;
+  }
+
+  // --- Sinergias y terreno ---
+
+  /** Enlaces de sinergia entre torres vecinas (se recalculan al colocar, mover, mejorar o vender). */
+  synergyLinks(): SynergyLink[] {
+    if (!this.links) {
+      this.links = synergyLinks(this.towers.map((t) => ({ id: t.id, x: t.x, y: t.y, types: t.mon.types, level: t.level })));
+    }
+    return this.links;
+  }
+
+  synergyOf(t: TdTower): SynergyBonus {
+    return synergyBonus(t.id, this.synergyLinks());
+  }
+
+  /** Sinergias que activaría colocar el Pokémon `slot` en x, y (para enseñarlo antes de colocar). */
+  previewSynergy(slot: number, x: number, y: number): string[] {
+    const mon = this.team[slot];
+    if (!mon) return [];
+    const fake = { id: -1, x, y, types: mon.types, level: 1 };
+    const links = synergyLinks([...this.towers.map((t) => ({ id: t.id, x: t.x, y: t.y, types: t.mon.types, level: t.level })), fake]);
+    return synergyBonus(-1, links).names;
+  }
+
+  terrainAt(x: number, y: number): TerrainKind | null {
+    return terrainAt(this.map, x, y);
   }
 
   /** Estadísticas reales (con el aura de las torres de apoyo cercanas). */
   statsOf(t: TdTower): TowerStats {
-    const s = towerStats(t.mon, t.level, t.branch);
+    let s = applySynergy(towerStats(t.mon, t.level, t.branch), this.synergyOf(t));
+    const ter = this.terrainAt(t.x, t.y);
+    if (ter === 'alto') s = { ...s, range: Math.round(s.range * TERRAIN_RANGE * 100) / 100 };
+    else if (ter === 'cristal') s = { ...s, damage: Math.round(s.damage * TERRAIN_DAMAGE * 10) / 10 };
+    else if (ter === 'lodo') s = { ...s, rate: Math.round(s.rate * TERRAIN_RATE * 100) / 100 };
     let aura = 1;
     for (const o of this.towers) {
       if (o === t) continue;
@@ -363,6 +440,7 @@ export class TdGame {
       this.money -= cost;
       t.mega = this.megaSpecies(t);
       t.level = MEGA_LEVEL;
+      this.links = null;
       this.events.push({ t: 'mega', towerId: t.id });
       return 'ok';
     }
@@ -370,6 +448,7 @@ export class TdGame {
     if (this.money < cost) return 'poor';
     this.money -= cost;
     t.level++;
+    this.links = null;
     if (t.level === BRANCH_LEVEL && !t.branch) t.branch = branch ?? 'a';
     if (t.level === MAX_TOWER_LEVEL) {
       t.evolved = t.mon.evolveId ?? null;
@@ -378,8 +457,9 @@ export class TdGame {
     return 'ok';
   }
 
+  /** Lo que da vender: en plena oleada, menos (live.ts). */
   sellValue(t: TdTower): number {
-    return sellValue(t.mon, t.level);
+    return this.phase === 'wave' ? sellInWave(t.mon, t.level) : sellValue(t.mon, t.level);
   }
 
   sell(towerId: number): number {
@@ -388,7 +468,116 @@ export class TdGame {
     const v = this.sellValue(this.towers[i]);
     this.money += v;
     this.towers.splice(i, 1);
+    this.links = null;
     return v;
+  }
+
+  // --- Decisiones en vivo: mover torres, trampas y barricadas ---
+
+  moveCost(t: TdTower): number {
+    return moveCost(t.mon, t.level, this.phase === 'wave');
+  }
+
+  /** Por qué no se puede mover la torre a x, y (null si se puede). */
+  moveError(towerId: number, x: number, y: number): string | null {
+    const t = this.towers.find((q) => q.id === towerId);
+    if (!t || this.over) return 'No disponible';
+    if (t.x === x && t.y === y) return 'Ya está ahí';
+    if (!isBuildable(this.map, x, y, this.road)) return 'Ahí no se puede colocar';
+    if (this.towerAt(x, y)) return 'Casilla ocupada';
+    if (this.money < this.moveCost(t)) return 'No tienes bastante dinero';
+    return null;
+  }
+
+  /** Mueve una torre pagando; en plena oleada queda aturdida un momento. */
+  moveTower(towerId: number, x: number, y: number): boolean {
+    if (this.moveError(towerId, x, y)) return false;
+    const t = this.towers.find((q) => q.id === towerId)!;
+    this.money -= this.moveCost(t);
+    const from = { x: t.x, y: t.y };
+    t.x = x;
+    t.y = y;
+    if (this.phase === 'wave') t.stunned = Math.max(t.stunned, MOVE_STUN);
+    this.links = null;
+    this.events.push({ t: 'move', towerId: t.id, fromX: from.x, fromY: from.y });
+    return true;
+  }
+
+  trapCost(kind: TrapKind): number {
+    return trapCost(kind, this.wave);
+  }
+
+  /** ¿Es casilla de camino donde cabe una trampa? (no en la base). */
+  isRoad(x: number, y: number): boolean {
+    return this.road.has(`${x},${y}`);
+  }
+
+  trapAt(x: number, y: number): TdTrap | undefined {
+    return this.traps.find((q) => q.x === x && q.y === y);
+  }
+
+  trapError(kind: TrapKind, x: number, y: number): string | null {
+    if (this.over) return 'No disponible';
+    const b = baseCell(this.map);
+    if (!this.isRoad(x, y) || (b.x === x && b.y === y)) return 'Las trampas van en el camino';
+    if (this.trapAt(x, y)) return 'Ya hay una trampa ahí';
+    if (this.traps.length >= MAX_TRAPS) return `Máximo ${MAX_TRAPS} trampas a la vez`;
+    if (this.money < this.trapCost(kind)) return 'No tienes bastante dinero';
+    return null;
+  }
+
+  placeTrap(kind: TrapKind, x: number, y: number): TdTrap | null {
+    if (this.trapError(kind, x, y)) return null;
+    this.money -= this.trapCost(kind);
+    const tr: TdTrap = { id: this.nextId++, kind, x, y, uses: TRAP_INFO[kind].uses };
+    this.traps.push(tr);
+    return tr;
+  }
+
+  /** ¿Está abierta la ruta i ahora? (ya abierta en esta oleada y sin barricada). */
+  routeOpen(i: number, wave = Math.max(1, this.phase === 'prep' ? this.wave + 1 : this.wave)): boolean {
+    const r = this.map.routes[i];
+    return !!r && r.opensAt <= wave && !this.barricades[i];
+  }
+
+  /** Rutas que usan los enemigos ahora mismo. */
+  openRoutes(wave?: number): number[] {
+    return this.map.routes.map((_, i) => i).filter((i) => this.routeOpen(i, wave));
+  }
+
+  /** Ruta que se elige pulsando en esa casilla del camino (-1 si es compartida). */
+  routeAt(x: number, y: number): number {
+    return routeAtCell(this.map, x, y);
+  }
+
+  routeLabel(i: number): string {
+    return routeLabel(this.map, i);
+  }
+
+  barricadeCost(): number {
+    return barricadeCost(this.wave);
+  }
+
+  barricadeError(i: number): string | null {
+    const r = this.map.routes[i];
+    if (!r || !r.gate || this.over) return 'Esta ruta no se puede cerrar';
+    if (this.barricades[i]) return `Ya está cerrada (${this.barricades[i]} oleada${this.barricades[i] > 1 ? 's' : ''})`;
+    const wave = Math.max(1, this.phase === 'prep' ? this.wave + 1 : this.wave);
+    if (r.opensAt > wave) return 'Esta ruta aún no se ha abierto';
+    if (this.openRoutes(wave).filter((j) => j !== i).length === 0) return 'No puedes cerrar la última ruta';
+    if (this.money < this.barricadeCost()) return 'No tienes bastante dinero';
+    return null;
+  }
+
+  /** Cierra una ruta con una barricada: los que iban a salir por ella salen por otra. */
+  closeRoute(i: number): boolean {
+    if (this.barricadeError(i)) return false;
+    this.money -= this.barricadeCost();
+    // Puesta en la preparación cubre las dos próximas oleadas; en plena oleada, esta y la siguiente
+    this.barricades[i] = BARRICADE_WAVES;
+    const g = this.map.routes[i].gate!;
+    this.events.push({ t: 'routeClosed', path: i, x: g.x + 0.5, y: g.y + 0.5 });
+    return true;
   }
 
   cycleTargeting(towerId: number): Targeting | null {
@@ -422,6 +611,19 @@ export class TdGame {
       q = [...q.map((s) => ({ ...s, hpMul: DOUBLE_HP })), ...q.map((s) => ({ ...s, at: Math.round((s.at + 0.45) * 100) / 100, hpMul: DOUBLE_HP, path: (s.path + 1) % this.map.paths.length }))];
       q.sort((a, b) => a.at - b.at);
     }
+    // Rutas: las que se abren en esta oleada lo avisan; los que iban por una ruta cerrada salen por otra abierta
+    this.map.routes.forEach((r, i) => {
+      if (r.opensAt === this.wave && this.wave > 1 && r.gate) {
+        this.events.push({ t: 'routeOpen', path: i, x: r.gate.x + 0.5, y: r.gate.y + 0.5, label: this.routeLabel(i) });
+      }
+    });
+    const open = this.openRoutes(this.wave);
+    if (open.length) q = q.map((s) => (open.includes(s.path) ? s : { ...s, path: open[s.path % open.length] }));
+    // Adaptables: resisten el tipo que más daño hizo en la oleada anterior (o el más repetido entre tus torres)
+    const counts: Record<string, number> = {};
+    for (const t of this.towers) counts[t.mon.types[0]] = (counts[t.mon.types[0]] ?? 0) + 1;
+    this.adaptType = adaptType(this.lastTypeDmg) ?? adaptType(counts);
+    this.typeDmg = {};
     this.queue = q;
     this.waveEvent = ev;
     this.eventLeft = ev ? WAVE_EVENT_INFO[ev].duration : 0;
@@ -430,7 +632,9 @@ export class TdGame {
     this.waveTime = 0;
     this.leakedThisWave = false;
     this.phase = 'wave';
-    this.events.push({ t: 'waveStart', wave: this.wave, boss: isBossWave(this.stage, this.wave), chief: isChiefWave(this.stage, this.wave), event: ev });
+    const theme = waveThemeOf(this.map, this.stage.level, this.wave);
+    const adapt = q.some((s) => s.kind === 'adapter') ? this.adaptType : null;
+    this.events.push({ t: 'waveStart', wave: this.wave, boss: isBossWave(this.stage, this.wave), chief: isChiefWave(this.stage, this.wave), event: ev, theme, adapt });
   }
 
   private spawn(s: Spawn, distOffset = 0, kindOverride?: EnemyDef) {
@@ -443,14 +647,15 @@ export class TdGame {
       def = { ...def, maxHp: Math.max(1, Math.round(def.maxHp * TD_DARK_MUL.hp)), shield: Math.round(def.shield * TD_DARK_MUL.hp), speed: def.speed * TD_DARK_MUL.speed, bounty: Math.round(def.bounty * TD_DARK_MUL.bounty) };
     }
     const path = Math.min(s.path, this.map.paths.length - 1);
-    // Los voladores siguen el mismo camino (solo los alcanzan las torres con alcance aéreo)
-    const pts = this.groundPts[path];
+    if (def.kind === 'adapter') def = { ...def, resist: this.adaptType };
+    // Los voladores siguen el mismo camino (solo los alcanzan las torres con alcance aéreo); los planeadores van recto a la base
+    const pts = def.kind === 'soarer' ? [this.groundPts[path][0], this.groundPts[path][this.groundPts[path].length - 1]] : this.groundPts[path];
     const len = polyLength(pts);
     const p = pointAt(pts, distOffset);
     const e: TdEnemy = {
       id: this.nextId++, def, hp: def.maxHp, shield: def.shield, maxShield: def.shield, pts, len, dist: distOffset,
       x: p.x, y: p.y, dx: p.dx, dy: p.dy, slowMul: 1, slowLeft: 0, frozen: 0, haste: 0, healCd: HEAL_EVERY, phase: 1,
-      skills: [], skillCd: CHIEF_FIRST, skillIdx: 0, warn: null, rush: 0, dark,
+      skills: [], skillCd: CHIEF_FIRST, skillIdx: 0, warn: null, rush: 0, dark, sabCd: SAB_FIRST, sabWarn: null, trapHit: 0, route: path,
     };
     this.enemies.push(e);
     this.events.push({ t: 'spawn', id: e.id });
@@ -479,6 +684,16 @@ export class TdGame {
     this.waveEvent = null;
     this.eventLeft = 0;
     this.storms = [];
+    this.lastTypeDmg = this.typeDmg;
+    for (const k of Object.keys(this.barricades)) {
+      const i = Number(k);
+      this.barricades[i]--;
+      if (this.barricades[i] <= 0) {
+        delete this.barricades[i];
+        const g = this.map.routes[i]?.gate;
+        if (g) this.events.push({ t: 'routeReopen', path: i, x: g.x + 0.5, y: g.y + 0.5 });
+      }
+    }
     if (this.wave >= this.totalWaves) {
       this.phase = 'won';
       this.shots = [];
@@ -534,6 +749,7 @@ export class TdGame {
         }
       }
     } else this.relics = addRelic(this.relics, p);
+    this.links = null;
     this.events.push({ t: 'perk', perk: p, towerIds: ids });
     return true;
   }
@@ -659,6 +875,7 @@ export class TdGame {
       this.tickEvent(dt);
     }
     this.tickChiefs(dt);
+    this.tickSaboteurs(dt);
     this.moveEnemies(dt);
     if (this.over) return;
     this.fireTowers(dt);
@@ -739,6 +956,43 @@ export class TdGame {
     }
   }
 
+  /** Saboteadores: eligen la torre más cercana, la avisan y, si siguen vivos, la aturden. */
+  private tickSaboteurs(dt: number) {
+    for (const e of this.enemies) {
+      if (e.def.kind !== 'saboteur' || e.frozen > 0) continue;
+      if (e.sabWarn) {
+        const w = e.sabWarn;
+        w.left -= dt;
+        if (w.left > 0) continue;
+        e.sabWarn = null;
+        e.sabCd = SAB_EVERY;
+        const t = this.towers.find((q) => q.id === w.towerId);
+        if (t && Math.hypot(t.x + 0.5 - e.x, t.y + 0.5 - e.y) <= SAB_RANGE + 1) {
+          t.stunned = Math.max(t.stunned, SAB_STUN);
+          this.events.push({ t: 'stun', towerIds: [t.id], x: t.x + 0.5, y: t.y + 0.5, r: 0.6 });
+        }
+        continue;
+      }
+      e.sabCd -= dt;
+      if (e.sabCd > 0) continue;
+      let best: TdTower | null = null;
+      let bd = SAB_RANGE;
+      for (const t of this.towers) {
+        const d = Math.hypot(t.x + 0.5 - e.x, t.y + 0.5 - e.y);
+        if (d <= bd && t.stunned <= 0) {
+          bd = d;
+          best = t;
+        }
+      }
+      if (!best) {
+        e.sabCd = 0.5;
+        continue;
+      }
+      e.sabWarn = { towerId: best.id, left: SAB_WARN, total: SAB_WARN };
+      this.events.push({ t: 'sabWarn', id: e.id, towerId: best.id, time: SAB_WARN });
+    }
+  }
+
   private chiefAct(e: TdEnemy, w: ChiefWarn) {
     e.warn = null;
     e.skillCd = CHIEF_GAP;
@@ -813,6 +1067,11 @@ export class TdGame {
       if (e.def.kind === 'boss' && e.phase >= 3) speed *= 1.25;
       if (e.rush > 0) speed *= RUSH_MUL;
       if (this.waveEvent === 'veloces') speed *= FAST_MUL;
+      if (!e.def.air) {
+        const ter = this.terrainAt(Math.floor(e.x), Math.floor(e.y));
+        if (ter === 'barro') speed *= MUD_SPEED;
+        else if (ter === 'corriente') speed *= STREAM_SPEED;
+      }
       e.dist += speed * dt;
       if (e.dist >= e.len) {
         this.removeEnemy(e);
@@ -831,6 +1090,33 @@ export class TdGame {
       e.y = p.y;
       e.dx = p.dx;
       e.dy = p.dy;
+      if (!e.def.air && this.traps.length) this.stepOnTrap(e);
+    }
+  }
+
+  /** Un enemigo de tierra pisa una trampa: la mina explota (área) y la telaraña frena. */
+  private stepOnTrap(e: TdEnemy) {
+    const tr = this.trapAt(Math.floor(e.x), Math.floor(e.y));
+    if (!tr || e.trapHit === tr.id) return;
+    e.trapHit = tr.id;
+    tr.uses--;
+    const gone = tr.uses <= 0;
+    if (gone) this.traps.splice(this.traps.indexOf(tr), 1);
+    const cx = tr.x + 0.5;
+    const cy = tr.y + 0.5;
+    if (tr.kind === 'mina') {
+      this.events.push({ t: 'trap', kind: tr.kind, x: cx, y: cy, r: MINE_RADIUS, gone });
+      const dmg = mineDamage(this.wave);
+      for (const o of this.enemiesIn({ x: cx, y: cy }, MINE_RADIUS)) {
+        if (o.def.air) continue;
+        const big = o.def.kind === 'boss' || o.def.kind === 'chief';
+        this.damage(o, big ? dmg / 2 : dmg, null, { type: 'fire', mul: 1, crit: false, special: true, splash: 0 });
+      }
+    } else {
+      this.events.push({ t: 'trap', kind: tr.kind, x: cx, y: cy, r: 0.5, gone });
+      const big = e.def.kind === 'boss' || e.def.kind === 'chief';
+      e.slowMul = Math.min(e.slowLeft > 0 ? e.slowMul : 1, big ? 0.7 : WEB_SLOW);
+      e.slowLeft = Math.max(e.slowLeft, WEB_TIME);
     }
   }
 
@@ -877,10 +1163,18 @@ export class TdGame {
       const cy = t.y + 0.5;
       t.facing = Math.atan2(target.y - cy, target.x - cx);
       const { type } = bestTypeMul(t.mon.types, target.def.types);
+      // Dúo: el ataque especial sale combinado con su pareja (más daño y área)
+      const duoWith = special ? this.synergyOf(t).duoWith : null;
+      const partner = duoWith !== null ? this.towers.find((q) => q.id === duoWith) : undefined;
+      const duo = !!partner && partner.stunned <= 0;
       const shot: TdShot = {
-        id: this.nextId++, towerId: t.id, targetId: target.id, x: cx, y: cy, tx: target.x, ty: target.y, type, types: t.mon.types,
-        damage: s.damage * (special ? 3 : 1), special, stats: s,
+        id: this.nextId++, towerId: t.id, targetId: target.id, x: cx, y: cy, tx: target.x, ty: target.y, type, types: duo ? [...new Set([...t.mon.types, ...partner!.mon.types])] : t.mon.types,
+        damage: s.damage * (special ? 3 : 1) * (duo ? DUO_DAMAGE : 1), special, stats: s, duo,
       };
+      if (duo) {
+        const name = this.synergyOf(t).names.find((n) => n.startsWith('Dúo')) ?? 'Dúo';
+        this.events.push({ t: 'duo', a: t.id, b: partner!.id, x: target.x, y: target.y, name });
+      }
       this.shots.push(shot);
       this.events.push({ t: 'fire', towerId: t.id, shotId: shot.id, special });
     }
@@ -908,11 +1202,16 @@ export class TdGame {
   private impact(sh: TdShot, target: TdEnemy | null) {
     const s = sh.stats;
     const tower = this.towers.find((t) => t.id === sh.towerId) ?? null;
-    const splash = sh.special ? Math.max(s.splash, 1.2) : s.splash;
+    const splash = sh.special ? Math.max(s.splash, 1.2) * (sh.duo ? DUO_SPLASH : 1) : s.splash;
+    // Esquivo: esquiva los disparos sueltos si no va frenado ni congelado
+    if (target && target.def.kind === 'dodger' && splash <= 0 && s.chain <= 0 && target.slowLeft <= 0 && target.frozen <= 0 && this.rng() < DODGE_CHANCE) {
+      this.events.push({ t: 'dodge', x: target.x, y: target.y });
+      return;
+    }
     const crit = this.rng() < s.crit;
     const air = target ? target.def.air : false;
     if (target) {
-      const { mul, type } = bestTypeMul(sh.types, target.def.types);
+      const { mul, type } = this.typeMul(sh.types, target);
       this.damage(target, sh.damage * mul * (crit ? 2 : 1), tower, { type, mul, crit, special: sh.special, splash });
       if (s.slowTime > 0) {
         target.slowMul = Math.min(target.slowLeft > 0 ? target.slowMul : 1, s.slow);
@@ -927,7 +1226,7 @@ export class TdGame {
     if (splash > 0) {
       for (const e of [...this.enemies]) {
         if (e === target || e.def.air !== air || (e.def.air && !s.air) || Math.hypot(e.x - sh.tx, e.y - sh.ty) > splash) continue;
-        const { mul, type } = bestTypeMul(sh.types, e.def.types);
+        const { mul, type } = this.typeMul(sh.types, e);
         this.damage(e, sh.damage * 0.6 * mul, tower, { type, mul, crit: false, special: false, splash: 0 });
       }
     }
@@ -951,12 +1250,24 @@ export class TdGame {
         hit.add(next.id);
         pts.push({ x: next.x, y: next.y });
         from = { x: next.x, y: next.y };
-        const { mul, type } = bestTypeMul(sh.types, next.def.types);
+        const { mul, type } = this.typeMul(sh.types, next);
         this.damage(next, dmg * mul, tower, { type, mul, crit: false, special: false, splash: 0 });
         dmg *= 0.7;
       }
       if (pts.length > 1) this.events.push({ t: 'chain', pts, type: sh.type });
     }
+  }
+
+  /** Mejor tipo de la torre contra el enemigo; el Adaptable resiste su tipo (la torre usa otro si tiene). */
+  private typeMul(types: readonly string[], e: TdEnemy): { mul: number; type: string } {
+    const resist = e.def.resist;
+    if (!resist || !types.includes(resist)) return bestTypeMul(types, e.def.types);
+    let best = { mul: -1, type: types[0] ?? 'normal' };
+    for (const t of types) {
+      const mul = tdTypeMul(t, e.def.types) * (t === resist ? ADAPT_MUL : 1);
+      if (mul > best.mul) best = { mul, type: t };
+    }
+    return best;
   }
 
   private damage(e: TdEnemy, raw: number, tower: TdTower | null, o: { type: string; mul: number; crit: boolean; special: boolean; splash: number }) {
@@ -970,6 +1281,7 @@ export class TdGame {
       if (e.shield <= 0) this.events.push({ t: 'shieldBreak', x: e.x, y: e.y });
     }
     e.hp -= dmg;
+    if (tower) this.typeDmg[o.type] = (this.typeDmg[o.type] ?? 0) + dmg;
     this.events.push({ t: 'hit', x: e.x, y: e.y, dmg: Math.max(1, Math.round(raw)), mul: o.mul, crit: o.crit, type: o.type, special: o.special, shielded: hadShield, enemyId: e.id, splash: o.splash });
     if (e.def.kind === 'boss' && e.hp > 0) this.bossPhases(e);
     if (e.def.kind === 'chief' && e.hp > 0) this.chiefPhases(e);
@@ -985,7 +1297,24 @@ export class TdGame {
       if (chief) this.chiefsBeaten++;
       if (tower) tower.kills++;
       this.events.push({ t: 'kill', x: e.x, y: e.y, money, boss: e.def.kind === 'boss', chief, species: e.def.species, air: e.def.air });
+      if (e.def.kind === 'splitter') this.splitInto(e);
     }
+  }
+
+  /** Divisor: al caer suelta crías rápidas en su sitio, por su mismo camino. */
+  private splitInto(e: TdEnemy) {
+    const foes = MAP_FOES[this.map.biome] ?? MAP_FOES.bosque;
+    const species = foeList(foes, 'brood')[0] ?? e.def.species;
+    for (let i = 0; i < SPLIT_COUNT; i++) {
+      const def = enemyDef('brood', species, this.wave, stagePower(this.stage));
+      const kid = this.spawn({ at: 0, kind: 'brood', species, path: e.route }, 0, def);
+      kid.pts = e.pts;
+      kid.len = e.len;
+      kid.dist = Math.max(0, e.dist - i * 0.35);
+      const p = pointAt(kid.pts, kid.dist);
+      [kid.x, kid.y, kid.dx, kid.dy] = [p.x, p.y, p.dx, p.dy];
+    }
+    this.events.push({ t: 'split', x: e.x, y: e.y, n: SPLIT_COUNT });
   }
 
   /** Jefe de oleada con Coraza: escudo al bajar del 66 % y del 33 %. */

@@ -65,7 +65,7 @@ test('los caminos son tramos rectos dentro de la rejilla, entran por el borde y 
     assert.ok(buildableCells(m).length > 60);
     for (const b of m.blocked) assert.ok(!isBuildable(m, b.x, b.y));
   }
-  assert.equal(LAYOUTS.length, 8);
+  assert.equal(LAYOUTS.length, 12);
 });
 
 test('los puntos del camino se recorren a lo largo', () => {

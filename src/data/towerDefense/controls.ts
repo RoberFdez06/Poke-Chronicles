@@ -48,6 +48,10 @@ export type TdHelpContext =
   | { kind: 'idle' }
   | { kind: 'placing'; name: string; cost: number; canPlace: boolean }
   | { kind: 'tower'; actions: number }
+  /** Casilla del camino abierta: trampas y barricada. */
+  | { kind: 'road'; actions: number }
+  /** Moviendo una torre: elegir la casilla nueva. */
+  | { kind: 'moving'; name: string; cost: number }
   | { kind: 'aiming'; name: string }
   | { kind: 'perks' };
 
@@ -65,6 +69,20 @@ export function tdHelp(d: TdDevice, c: TdHelpContext): [string, string] {
     if (d === 'keyboard') return [`Flechas/WASD: apuntar ${c.name} · ${K.ok}: lanzar`, `${K.back}: cancelar`];
     return [`${d === 'touch' ? 'Toca' : 'Clic en'} el mapa: lanzar ${c.name}`, d === 'touch' ? 'Toca otra vez el botón: cancelar' : 'Clic derecho: cancelar'];
   }
+  if (c.kind === 'moving') {
+    if (d === 'gamepad') return [`Cruceta: elegir casilla · ${P.ok}: mover ${c.name} aquí (${c.cost} $)`, `${P.back}: cancelar`];
+    if (d === 'keyboard') return [`Flechas/WASD: elegir casilla · ${K.ok}: mover ${c.name} aquí (${c.cost} $)`, `${K.back}: cancelar`];
+    const clic = d === 'touch' ? 'Toca' : 'Clic en';
+    return [`${clic} una casilla libre: mover ${c.name} (${c.cost} $)`, d === 'touch' ? 'Toca la torre otra vez: cancelar' : 'Clic derecho: cancelar'];
+  }
+  if (c.kind === 'road') {
+    if (d === 'gamepad') return [`Cruceta: elegir trampa o barricada · ${P.ok}: ponerla`, `${P.back}: cerrar`];
+    if (d === 'keyboard') {
+      const nums = Array.from({ length: Math.max(1, c.actions) }, (_, i) => i + 1).join(' ');
+      return [`${nums}: trampa o barricada (o flechas y ${K.ok})`, `${K.back}: cerrar`];
+    }
+    return [`${d === 'touch' ? 'Toca' : 'Clic en'} una trampa o la barricada del panel`, d === 'touch' ? 'Toca fuera: cerrar' : 'Clic derecho o fuera: cerrar'];
+  }
   if (d === 'gamepad') {
     if (c.kind === 'placing')
       return [`${P.ok}: colocar ${c.name} (${c.cost} $) · Cruceta: mover`, `${P.prev}/${P.next}: otro Pokémon · ${P.back}: cancelar`];
@@ -81,7 +99,7 @@ export function tdHelp(d: TdDevice, c: TdHelpContext): [string, string] {
       return [`${clic} una casilla libre: colocar ${c.name} (${c.cost} $)`, d === 'touch' ? cancel : `Rueda: otro Pokémon · ${cancel}`];
     if (c.kind === 'tower')
       return [`${clic} una acción del panel de la derecha`, d === 'touch' ? 'Toca fuera de la torre: cerrar' : 'Clic derecho o fuera: cerrar'];
-    return [`${clic} un Pokémon del equipo y luego en una casilla`, `${clic} una torre: mejorar, objetivo o vender`];
+    return [`${clic} un Pokémon del equipo y luego en una casilla`, `${clic} una torre (mejorar, mover, vender) o el camino (trampas)`];
   }
   if (c.kind === 'placing')
     return [`${K.ok}: colocar ${c.name} (${c.cost} $) · Flechas/WASD: mover`, `${K.prev}/${K.next}: otro Pokémon · ${K.back}: cancelar`];

@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { TD_MAPS, buildableCells, pathCells } from '../src/data/towerDefense/maps.ts';
+import { mapForLevel } from '../src/data/towerDefense/variants.ts';
 import type { TdMon } from '../src/data/towerDefense/species.ts';
 import { isChiefWave, isBossWave, waveSpawns, wavesInLevel } from '../src/data/towerDefense/waves.ts';
 import { CHIEF_SKILL_INFO, CHIEF_SPECIES, STUN_TIME, chiefSkillsFor, chiefSpecies } from '../src/data/towerDefense/chiefs.ts';
@@ -146,14 +147,14 @@ test('eventos: fijos por mapa, nivel y oleada; ninguno en la 1 ni con jefe; el d
 
 /** Busca una oleada de un mapa/nivel con ese evento. */
 function waveWith(map: typeof MAP, level: number, id: string): number {
-  for (let w = 2; w < 200; w++) if (waveEventFor(map.id, level, w, map.paths.length, false) === id && w % 5) return w;
+  for (let w = 2; w < 200; w++) if (waveEventFor(map.id, level, w, mapForLevel(map, level).paths.length, false) === id && w % 5) return w;
   throw new Error(`sin ${id}`);
 }
 
 test('niebla recorta el alcance, oleada doble duplica, el desvío lleva a todos por una entrada', () => {
   const g = new TdGame({ map: MAP, level: 0, team: TEAM });
   g.money = 10_000;
-  const c = buildableCells(MAP)[10];
+  const c = buildableCells(g.map)[10];
   const t = g.place(0, c.x, c.y)!;
   const r0 = g.statsOf(t).range;
   const fogW = waveWith(MAP, 0, 'niebla');
@@ -197,7 +198,7 @@ test('mejoras: 3 distintas, las épicas tras un jefe, y se aplican', () => {
   // En el motor: tras una oleada se ofrecen; la vida sube la base; la fusión junta 2 torres
   const g = new TdGame({ map: MAP, level: 2, team: TEAM });
   g.money = 10_000;
-  const cells = buildableCells(MAP);
+  const cells = buildableCells(g.map);
   const a = g.place(0, cells[0].x, cells[0].y)!;
   g.place(0, cells[1].x, cells[1].y);
   const dmg = g.statsOf(a).damage;

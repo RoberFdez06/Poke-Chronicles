@@ -3,7 +3,8 @@
 // los enemigos por papel. Lógica pura, sin Phaser.
 import { shieldPoolFor } from '../enemies.ts';
 import type { TdMap } from './maps.ts';
-import { MAP_FOES, tdTypesOf, type EnemyKind } from './species.ts';
+import { MAP_FOES, TRICK_KINDS, tdTypesOf, type EnemyKind, type MapFoes } from './species.ts';
+import { waveTheme } from './tricks.ts';
 import { CHIEF_EVERY, chiefSpecies } from './chiefs.ts';
 
 /** Escala de referencia del equilibrio: los niveles de cada mapa se reparten sobre 12 «niveles de dificultad». */
@@ -60,6 +61,14 @@ export const KIND_STATS: Readonly<Record<EnemyKind, KindStats>> = {
   healer: { hp: 1.2, speed: 0.85, bounty: 11, leak: 1 },
   shielded: { hp: 1, speed: 0.85, bounty: 12, leak: 1 },
   hastener: { hp: 1, speed: 1.05, bounty: 10, leak: 1 },
+  // Con truco (tricks.ts)
+  dodger: { hp: 0.75, speed: 1.45, bounty: 8, leak: 1 },
+  // Planeador: va recto a la base (recorrido mucho más corto), así que va despacio
+  soarer: { hp: 1, speed: 0.55, bounty: 10, leak: 1 },
+  saboteur: { hp: 1.3, speed: 0.8, bounty: 13, leak: 1 },
+  splitter: { hp: 1.3, speed: 0.85, bounty: 9, leak: 2 },
+  adapter: { hp: 1.4, speed: 0.9, bounty: 12, leak: 1 },
+  brood: { hp: 0.3, speed: 1.45, bounty: 2, leak: 1 },
   // Jefe de oleada (cada 5): mucha vida y sus habilidades (chiefs.ts)
   chief: { hp: 13, speed: 0.5, bounty: 0, leak: 5 },
   boss: { hp: 34, speed: 0.42, bounty: 160, leak: 10 },
@@ -87,6 +96,8 @@ export interface EnemyDef {
   bounty: number;
   leak: number;
   air: boolean;
+  /** Adaptable: tipo que resiste (lo pone el motor al aparecer). */
+  resist?: string | null;
 }
 
 export function enemyDef(kind: EnemyKind, species: number, wave: number, power: number): EnemyDef {
@@ -102,7 +113,7 @@ export function enemyDef(kind: EnemyKind, species: number, wave: number, power: 
     speed: BASE_SPEED * k.speed * (1 + Math.min(0.3, 0.01 * wave + 0.012 * power)),
     bounty: Math.round(k.bounty * (1 + 0.03 * (wave - 1))),
     leak: k.leak,
-    air: kind === 'flying',
+    air: kind === 'flying' || kind === 'soarer',
   };
 }
 
@@ -118,14 +129,19 @@ export interface Spawn {
 }
 
 /** Desde qué «rango» aparece cada papel (rango = 3 por mapa + nivel + oleada/3): los mapas difíciles los traen antes. */
-const FIRST_RANK: Record<Exclude<EnemyKind, 'normal' | 'boss' | 'chief'>, number> = {
+const FIRST_RANK: Record<Exclude<EnemyKind, 'normal' | 'boss' | 'chief' | 'brood'>, number> = {
   fast: 2, flying: 3.3, tank: 5, shielded: 7, healer: 10, hastener: 14,
+  dodger: 3.5, soarer: 5.5, splitter: 7.5, saboteur: 9, adapter: 11,
 };
 
 export const stageRank = (s: Stage, wave: number): number => s.tier * 3 + refLevel(s) + wave / 3;
 
 export const kindUnlocked = (kind: EnemyKind, s: Stage, wave: number): boolean =>
-  kind === 'normal' || kind === 'boss' || kind === 'chief' || stageRank(s, wave) >= FIRST_RANK[kind];
+  kind === 'normal' || kind === 'boss' || kind === 'chief' || kind === 'brood' || stageRank(s, wave) >= FIRST_RANK[kind];
+
+/** Especies de un papel en un bioma (las crías salen de los divisores). */
+export const foeList = (foes: MapFoes, kind: EnemyKind): readonly number[] =>
+  (foes as unknown as Record<string, readonly number[]>)[kind === 'brood' ? 'splitter' : kind] ?? foes.normal;
 
 /** Composición de una oleada: lista ordenada de apariciones. Siempre la misma para un mapa, nivel y oleada. */
 export function waveSpawns(map: TdMap, level: number, wave: number): Spawn[] {
@@ -142,7 +158,7 @@ export function waveSpawns(map: TdMap, level: number, wave: number): Spawn[] {
         ? foes.bosses[isEndless(stage) && Math.floor(w / BOSS_EVERY) % 2 === 1 ? 0 : 1]
         : kind === 'chief'
           ? chiefSpecies(map.biome, w)
-          : foes[kind][seq % foes[kind].length];
+          : foeList(foes, kind)[seq % foeList(foes, kind).length];
     out.push({ at: Math.round(t * 100) / 100, kind, species, path: seq % nPaths });
     seq++;
     t += gap;
@@ -150,14 +166,17 @@ export function waveSpawns(map: TdMap, level: number, wave: number): Spawn[] {
   const lvl = Math.round(refLevel(stage));
   const count = Math.min(46, 5 + w + Math.floor(lvl / 3) + Math.floor(map.tier / 2) + (w > 12 ? Math.floor((w - 12) / 2) : 0));
   const gap = Math.max(0.35, 1.05 - w * 0.03 - map.tier * 0.015);
-  const special: EnemyKind[] = (['fast', 'flying', 'tank', 'shielded', 'healer', 'hastener'] as const).filter((k) => kindUnlocked(k, stage, w));
+  const special: EnemyKind[] = (['fast', 'flying', 'tank', 'shielded', 'healer', 'hastener', ...TRICK_KINDS] as const).filter((k) => kindUnlocked(k, stage, w));
+  const theme = waveThemeOf(map, level, w);
   for (let i = 0; i < count; i++) {
     let kind: EnemyKind = 'normal';
     if (special.length && i % 3 === 2) kind = special[(i + w) % special.length];
     // Oleadas temáticas: rápidos en grupo o voladores en bandada
     if (w % 5 === 3 && kindUnlocked('fast', stage, w) && i % 2 === 0) kind = 'fast';
     if (w % 4 === 2 && kindUnlocked('flying', stage, w) && i % 2 === 1) kind = 'flying';
-    add(kind, kind === 'tank' ? gap * 1.6 : kind === 'fast' ? gap * 0.6 : gap);
+    // Truco protagonista de la oleada: uno de cada cuatro (mezclado con lo demás)
+    if (theme && i % 4 === 1) kind = theme;
+    add(kind, kind === 'tank' ? gap * 1.6 : kind === 'fast' || kind === 'dodger' ? gap * 0.6 : gap);
   }
   if (isBossWave(stage, w)) {
     t += 2;
@@ -169,6 +188,13 @@ export function waveSpawns(map: TdMap, level: number, wave: number): Spawn[] {
     for (let i = 0; i < 2; i++) add(kindUnlocked('shielded', stage, w) ? 'shielded' : 'normal', gap);
   }
   return out;
+}
+
+/** Truco protagonista de una oleada (o null). */
+export function waveThemeOf(map: TdMap, level: number, wave: number) {
+  const stage: Stage = { tier: map.tier, level, levels: map.levels };
+  if (isBossWave(stage, wave)) return null;
+  return waveTheme(map.id, level, wave, TRICK_KINDS.filter((k) => kindUnlocked(k, stage, wave)));
 }
 
 /** Segundos de preparación antes de cada oleada (si no la llamas antes). */
