@@ -56,6 +56,10 @@ export const CHIEF_NAMES: Readonly<Record<number, string>> = {
   3: 'Venusaur', 127: 'Pinsir', 76: 'Golem', 248: 'Tyranitar', 130: 'Gyarados', 134: 'Vaporeon', 460: 'Abomasnow', 87: 'Dewgong',
   454: 'Toxicroak', 110: 'Weezing', 59: 'Arcanine', 6: 'Charizard', 477: 'Dusknoir', 94: 'Gengar', 466: 'Electivire', 82: 'Magneton',
   149: 'Dragonite', 373: 'Salamence',
+  // Jefes de los niveles temáticos (themes.ts)
+  128: 'Tauros', 289: 'Slaking', 135: 'Jolteon', 465: 'Tangrowth', 471: 'Glaceon', 68: 'Machamp', 448: 'Lucario', 105: 'Marowak',
+  112: 'Rhydon', 18: 'Pidgeot', 398: 'Staraptor', 65: 'Alakazam', 196: 'Espeon', 212: 'Scizor', 214: 'Heracross', 197: 'Umbreon',
+  359: 'Absol', 306: 'Aggron', 376: 'Metagross', 700: 'Sylveon', 282: 'Gardevoir',
 };
 
 export const CHIEF_TYPES: Readonly<Record<number, readonly string[]>> = {

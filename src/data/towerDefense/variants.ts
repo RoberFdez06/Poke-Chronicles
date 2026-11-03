@@ -5,6 +5,7 @@
 import { hashStr } from './chiefs.ts';
 import { TD_COLS, TD_ROWS, buildableCells, pathCells, polyLength, pathPoints, type Cell, type TdMap } from './maps.ts';
 import { wavesInLevel } from './waves.ts';
+import { levelTheme } from './themes.ts';
 
 const c = (x: number, y: number): Cell => ({ x, y });
 const key = (x: number, y: number) => `${x},${y}`;
@@ -77,24 +78,119 @@ export interface RouteInfo {
   own: Cell[];
 }
 
-/** Terreno especial: para torres (colina, cristal, lodo) o en el camino (barro frena, corriente acelera). */
-export type TerrainKind = 'alto' | 'cristal' | 'lodo' | 'barro' | 'corriente';
+/**
+ * Terreno especial: para torres (colina, cristal, lodo) o en el camino (barro frena, corriente acelera), y uno propio
+ * de cada tipo tema (themes.ts) con su efecto: lava y charco tóxico queman, la niebla de almas esconde, la placa de
+ * acero protege del aturdimiento…
+ */
+export const BASE_TERRAINS = ['alto', 'cristal', 'lodo', 'barro', 'corriente'] as const;
+export const THEME_TERRAINS = [
+  'entreno', 'lava', 'charca', 'generador', 'hierba', 'hielo', 'dojo', 'toxico', 'arenas',
+  'termica', 'runa', 'seda', 'losas', 'almas', 'escamas', 'penumbra', 'placa', 'hadas',
+] as const;
+export type TerrainKind = (typeof BASE_TERRAINS)[number] | (typeof THEME_TERRAINS)[number];
 export interface TerrainCell extends Cell {
   kind: TerrainKind;
 }
 
-export const TERRAIN_INFO: Readonly<Record<TerrainKind, { name: string; desc: string; color: number; road: boolean }>> = {
-  alto: { name: 'Colina', desc: '+20 % de alcance', color: 0x8fd06a, road: false },
-  cristal: { name: 'Cristal', desc: '+20 % de daño', color: 0x8fe0ff, road: false },
-  lodo: { name: 'Lodazal', desc: '−20 % de cadencia', color: 0x8a6a3a, road: false },
-  barro: { name: 'Barro', desc: 'Los enemigos van un 30 % más lentos', color: 0x6a4a2a, road: true },
-  corriente: { name: 'Corriente', desc: 'Los enemigos van un 30 % más rápido', color: 0xc8f0ff, road: true },
+export interface TerrainInfo {
+  name: string;
+  desc: string;
+  color: number;
+  road: boolean;
+  /** Bueno (verde) o malo (rojo) para ti, para el color del texto. */
+  good: boolean;
+}
+
+export const TERRAIN_INFO: Readonly<Record<TerrainKind, TerrainInfo>> = {
+  alto: { name: 'Colina', desc: '+20 % de alcance', color: 0x8fd06a, road: false, good: true },
+  cristal: { name: 'Cristal', desc: '+20 % de daño', color: 0x8fe0ff, road: false, good: true },
+  lodo: { name: 'Lodazal', desc: '−20 % de cadencia', color: 0x8a6a3a, road: false, good: false },
+  barro: { name: 'Barro', desc: 'Los enemigos van un 30 % más lentos', color: 0x6a4a2a, road: true, good: true },
+  corriente: { name: 'Corriente', desc: 'Los enemigos van un 30 % más rápido', color: 0xc8f0ff, road: true, good: false },
+  // Terrenos de los niveles temáticos (uno por tipo)
+  entreno: { name: 'Campo de entreno', desc: '+20 % de cadencia', color: 0xd8d0a8, road: false, good: true },
+  lava: { name: 'Lava', desc: 'Quema a los de tierra (no Fuego)', color: 0xff6a20, road: true, good: true },
+  charca: { name: 'Charca', desc: 'Frena un 35 % (no Agua)', color: 0x5aa0e0, road: true, good: true },
+  generador: { name: 'Generador', desc: '+25 % de cadencia', color: 0xffe14a, road: false, good: true },
+  hierba: { name: 'Hierba curativa', desc: 'Los enemigos se curan', color: 0x6ad05a, road: true, good: false },
+  hielo: { name: 'Hielo', desc: 'Patinan: un 35 % más rápido (no Hielo)', color: 0xbfeaff, road: true, good: false },
+  dojo: { name: 'Tatami', desc: '+25 % de daño', color: 0xe08a50, road: false, good: true },
+  toxico: { name: 'Charco tóxico', desc: 'Envenena (no Veneno ni Acero)', color: 0xb060d0, road: true, good: true },
+  arenas: { name: 'Arenas movedizas', desc: 'Frena un 40 %', color: 0xd8b070, road: true, good: true },
+  termica: { name: 'Corriente térmica', desc: '+25 % de alcance', color: 0xc8b8ff, road: false, good: true },
+  runa: { name: 'Círculo psíquico', desc: '+15 % de daño y de alcance', color: 0xff7aa8, road: false, good: true },
+  seda: { name: 'Seda', desc: 'Frena un 25 % (no Bicho)', color: 0xe8e8d0, road: true, good: true },
+  losas: { name: 'Losas', desc: 'Reciben un 25 % menos de daño', color: 0xa89a70, road: true, good: false },
+  almas: { name: 'Niebla de almas', desc: 'No se les apunta (el área sí les da)', color: 0x9a80d0, road: true, good: false },
+  escamas: { name: 'Escamas', desc: '+30 % de daño', color: 0x8a60f0, road: false, good: true },
+  penumbra: { name: 'Penumbra', desc: '−25 % de alcance', color: 0x4a3a50, road: false, good: false },
+  placa: { name: 'Placa de acero', desc: 'La torre no se puede aturdir', color: 0xc8c8e0, road: false, good: true },
+  hadas: { name: 'Círculo de hadas', desc: '+20 % de daño y +10 % de crítico', color: 0xff9ad0, road: false, good: true },
 };
+
+/** Efecto de cada terreno: en la torre (alcance, daño, cadencia, crítico, sin aturdir) o en el enemigo de tierra. */
+export interface TerrainFx {
+  range?: number;
+  damage?: number;
+  rate?: number;
+  crit?: number;
+  noStun?: boolean;
+  /** Velocidad del enemigo de tierra. */
+  speed?: number;
+  /** Daño por segundo (parte de su vida máxima) y tipos a los que no les hace nada. */
+  burn?: number;
+  /** Cura por segundo (parte de su vida máxima). */
+  heal?: number;
+  /** Daño que recibe el enemigo encima. */
+  armor?: number;
+  /** No se le puede apuntar. */
+  hide?: boolean;
+  /** Tipos a los que no les afecta (velocidad o quemadura). */
+  immune?: readonly string[];
+}
+
 export const TERRAIN_RANGE = 1.2;
 export const TERRAIN_DAMAGE = 1.2;
 export const TERRAIN_RATE = 0.8;
 export const MUD_SPEED = 0.7;
 export const STREAM_SPEED = 1.3;
+/** Lava y charco tóxico: parte de la vida máxima por segundo (al jefe, la cuarta parte). */
+export const BURN_RATE = 0.04;
+export const HEAL_RATE = 0.025;
+
+export const TERRAIN_FX: Readonly<Record<TerrainKind, TerrainFx>> = {
+  alto: { range: TERRAIN_RANGE },
+  cristal: { damage: TERRAIN_DAMAGE },
+  lodo: { rate: TERRAIN_RATE },
+  barro: { speed: MUD_SPEED },
+  corriente: { speed: STREAM_SPEED },
+  entreno: { rate: 1.2 },
+  lava: { burn: BURN_RATE, immune: ['fire'] },
+  charca: { speed: 0.65, immune: ['water'] },
+  generador: { rate: 1.25 },
+  hierba: { heal: HEAL_RATE },
+  hielo: { speed: 1.35, immune: ['ice'] },
+  dojo: { damage: 1.25 },
+  toxico: { burn: BURN_RATE, immune: ['poison', 'steel'] },
+  arenas: { speed: 0.6 },
+  termica: { range: 1.25 },
+  runa: { damage: 1.15, range: 1.15 },
+  seda: { speed: 0.75, immune: ['bug'] },
+  losas: { armor: 0.75 },
+  almas: { hide: true },
+  escamas: { damage: 1.3 },
+  penumbra: { range: 0.75 },
+  placa: { noStun: true },
+  hadas: { damage: 1.2, crit: 0.1 },
+};
+
+/** Terreno propio de cada tipo tema. */
+export const THEME_TERRAIN: Readonly<Record<string, TerrainKind>> = {
+  normal: 'entreno', fire: 'lava', water: 'charca', electric: 'generador', grass: 'hierba', ice: 'hielo', fighting: 'dojo',
+  poison: 'toxico', ground: 'arenas', flying: 'termica', psychic: 'runa', bug: 'seda', rock: 'losas', ghost: 'almas',
+  dragon: 'escamas', dark: 'penumbra', steel: 'placa', fairy: 'hadas',
+};
 
 export interface VariantInfo {
   id: number;
@@ -119,8 +215,10 @@ export interface LevelMap extends TdMap {
   routes: RouteInfo[];
   terrain: TerrainCell[];
   variant: VariantInfo;
-  /** Rocas añadidas en este nivel (además de las del mapa). */
+  /** Rocas añadidas en este nivel (además de las del mapa); se dibujan como obstáculos del tipo tema. */
   rocks: Cell[];
+  /** Tipo tema del nivel (themes.ts). */
+  theme: string;
 }
 
 export const isLevelMap = (m: TdMap): m is LevelMap => Array.isArray((m as LevelMap).routes);
@@ -182,7 +280,7 @@ export function mapForLevel(m: TdMap, level: number): LevelMap {
     const own = pathCells(r.path).filter((q) => !cellSets.some((s, j) => j !== i && s.has(key(q.x, q.y))));
     return { kind: r.kind, opensAt: r.opensAt, gate: own[0] ?? null, own };
   });
-  const lm: LevelMap = { ...m, paths, routes, terrain: [], rocks: [], level: lv, variant: VARIANTS[vid], blocked: [...m.blocked] };
+  const lm: LevelMap = { ...m, paths, routes, terrain: [], rocks: [], level: lv, variant: VARIANTS[vid], blocked: [...m.blocked], theme: levelTheme(m, lv) };
   // Rocas nuevas (ninguna en el nivel 1) y terreno; nunca junto a la base ni a las entradas
   const r = rng(hashStr(`${m.id}|${lv}|terreno`));
   const road = new Set(cellSets.flatMap((s) => [...s]));
@@ -222,8 +320,47 @@ export function mapForLevel(m: TdMap, level: number): LevelMap {
   };
   if (lv >= 2 || lv === 0) patch(hashStr(`${m.id}|${lv}|tramo`) % 2 === 0 || m.tier < 3 ? 'barro' : 'corriente');
   if ((lv >= 4 || lv === 0) && m.tier >= 4) patch('corriente');
+  addThemeTerrain(lm, free, road, nearEnd);
   return lm;
 }
+
+/**
+ * Terreno del tipo tema (con su propia tirada para no cambiar el resto): si es de torre, 2 casillas junto al camino
+ * (3 en niveles altos); si es de camino, un tramo de 3 casillas en una ruta (2 tramos en niveles altos), sin pisar
+ * otro terreno, la base ni las entradas.
+ */
+function addThemeTerrain(lm: LevelMap, freeNearRoad: Cell[], road: Set<string>, nearEnd: (q: Cell) => boolean) {
+  const kind = THEME_TERRAIN[lm.theme];
+  if (!kind) return;
+  const r = rng(hashStr(`${lm.id}|${lm.level}|tema`));
+  const taken = (q: Cell) => lm.terrain.some((t) => t.x === q.x && t.y === q.y);
+  const high = lm.level === 0 || lm.level > lm.levels / 2;
+  if (!TERRAIN_INFO[kind].road) {
+    const free = freeNearRoad.filter((q) => !taken(q));
+    for (let i = 0; i < (high ? 3 : 2) && free.length; i++) {
+      const q = free.splice(Math.floor(r() * free.length), 1)[0];
+      lm.terrain.push({ ...q, kind });
+    }
+    return;
+  }
+  // Los de camino que te perjudican (curan, aceleran, protegen o esconden), un solo tramo
+  for (let n = 0; n < (high && TERRAIN_INFO[kind].good ? 2 : 1); n++) {
+    const segs: Cell[][] = [];
+    for (const p of lm.paths) {
+      const cells = pathCells(p).slice(2, -3).filter((q) => road.has(key(q.x, q.y)) && !nearEnd(q));
+      for (let i = 0; i + 3 <= cells.length; i++) {
+        const seg = cells.slice(i, i + 3);
+        // Tres casillas seguidas de verdad (sin saltos al quitar las de junto a la base o las entradas)
+        const joined = seg.every((q, j) => j === 0 || Math.abs(q.x - seg[j - 1].x) + Math.abs(q.y - seg[j - 1].y) === 1);
+        if (joined && !seg.some(taken)) segs.push(seg);
+      }
+    }
+    if (!segs.length) break;
+    for (const q of segs[Math.floor(r() * segs.length)]) lm.terrain.push({ ...q, kind });
+  }
+}
+
+export const terrainFx = (kind: TerrainKind | null): TerrainFx | null => (kind ? TERRAIN_FX[kind] : null);
 
 export const terrainAt = (m: TdMap, x: number, y: number): TerrainKind | null =>
   isLevelMap(m) ? m.terrain.find((t) => t.x === x && t.y === y)?.kind ?? null : null;

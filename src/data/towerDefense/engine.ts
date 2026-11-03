@@ -17,9 +17,8 @@ import {
 import { TOWER_PERKS, addRelic, draftPerks, freshRelics, interestOf, perkValue, type Perk, type Relics } from './perks.ts';
 import { baseCell, isBuildable, pathCells, pathPoints, pointAt, polyLength, roadSet, type TdMap } from './maps.ts';
 import { MAP_FOES, type TdMon } from './species.ts';
-import {
-  MUD_SPEED, STREAM_SPEED, TERRAIN_DAMAGE, TERRAIN_RANGE, TERRAIN_RATE, mapForLevel, routeAtCell, routeLabel, terrainAt, type LevelMap, type TerrainKind,
-} from './variants.ts';
+import { mapForLevel, routeAtCell, routeLabel, terrainAt, terrainFx, type LevelMap, type TerrainFx, type TerrainKind } from './variants.ts';
+import { themeBoost, type ThemeBoost } from './themes.ts';
 import { ADAPT_MUL, DODGE_CHANCE, SAB_EVERY, SAB_FIRST, SAB_RANGE, SAB_STUN, SAB_WARN, SPLIT_COUNT, adaptType } from './tricks.ts';
 import { DUO_DAMAGE, DUO_SPLASH, applySynergy, synergyBonus, synergyLinks, type SynergyBonus, type SynergyLink } from './synergy.ts';
 import {
@@ -123,6 +122,8 @@ export interface TdEnemy {
   /** Saboteador: espera hasta el próximo sabotaje y aviso en curso (torre a la que apunta). */
   sabCd: number;
   sabWarn: { towerId: number; left: number; total: number } | null;
+  /** Tiempo acumulado sobre lava, charco tóxico o hierba curativa (hace efecto cada medio segundo). */
+  terrainAcc?: number;
   /** Última trampa que ha pisado (una telaraña no frena dos veces al mismo). */
   trapHit: number;
   /** Ruta por la que va. */
@@ -368,13 +369,50 @@ export class TdGame {
     return terrainAt(this.map, x, y);
   }
 
+  /** Tipo tema del nivel (themes.ts). */
+  get theme(): string {
+    return this.map.theme;
+  }
+
+  /** Bonus del nivel temático para esta torre (tema, Ventaja o nada). */
+  themeBoostOf(t: Pick<TdTower, 'mon'>): ThemeBoost {
+    return themeBoost(this.map.theme, t.mon.types);
+  }
+
+  /** Efecto del terreno bajo un enemigo de tierra (los voladores no lo pisan), o null. */
+  private groundFx(e: TdEnemy): TerrainFx | null {
+    if (e.def.air) return null;
+    const fx = terrainFx(this.terrainAt(Math.floor(e.x), Math.floor(e.y)));
+    if (!fx || (fx.immune && e.def.types.some((ty) => fx.immune!.includes(ty)))) return null;
+    return fx;
+  }
+
+  /** ¿Va escondido en la Niebla de almas? (no se le puede apuntar). */
+  isHidden(e: TdEnemy): boolean {
+    return !!this.groundFx(e)?.hide;
+  }
+
+  /** ¿La torre está en una Placa de acero (no se puede aturdir)? */
+  stunProof(t: TdTower): boolean {
+    return !!terrainFx(this.terrainAt(t.x, t.y))?.noStun;
+  }
+
   /** Estadísticas reales (con el aura de las torres de apoyo cercanas). */
   statsOf(t: TdTower): TowerStats {
     let s = applySynergy(towerStats(t.mon, t.level, t.branch), this.synergyOf(t));
-    const ter = this.terrainAt(t.x, t.y);
-    if (ter === 'alto') s = { ...s, range: Math.round(s.range * TERRAIN_RANGE * 100) / 100 };
-    else if (ter === 'cristal') s = { ...s, damage: Math.round(s.damage * TERRAIN_DAMAGE * 10) / 10 };
-    else if (ter === 'lodo') s = { ...s, rate: Math.round(s.rate * TERRAIN_RATE * 100) / 100 };
+    const fx = terrainFx(this.terrainAt(t.x, t.y));
+    if (fx && (fx.range || fx.damage || fx.rate || fx.crit)) {
+      s = {
+        ...s,
+        range: Math.round(s.range * (fx.range ?? 1) * 100) / 100,
+        damage: Math.round(s.damage * (fx.damage ?? 1) * 10) / 10,
+        rate: Math.round(s.rate * (fx.rate ?? 1) * 100) / 100,
+        crit: Math.min(0.6, s.crit + (fx.crit ?? 0)),
+      };
+    }
+    // Nivel temático: las torres del tipo tema (y las súper eficaces contra él) ganan daño y alcance
+    const tb = this.themeBoostOf(t);
+    if (tb.kind) s = { ...s, damage: Math.round(s.damage * tb.damage * 10) / 10, range: Math.round(s.range * tb.range * 100) / 100 };
     let aura = 1;
     for (const o of this.towers) {
       if (o === t) continue;
@@ -608,7 +646,7 @@ export class TdGame {
       const p = detourPath(this.map.id, this.wave, this.map.paths.length);
       q = q.map((s) => ({ ...s, path: p }));
     } else if (ev === 'doble') {
-      q = [...q.map((s) => ({ ...s, hpMul: DOUBLE_HP })), ...q.map((s) => ({ ...s, at: Math.round((s.at + 0.45) * 100) / 100, hpMul: DOUBLE_HP, path: (s.path + 1) % this.map.paths.length }))];
+      q = [...q.map((s) => ({ ...s, hpMul: (s.hpMul ?? 1) * DOUBLE_HP })), ...q.map((s) => ({ ...s, at: Math.round((s.at + 0.45) * 100) / 100, hpMul: (s.hpMul ?? 1) * DOUBLE_HP, path: (s.path + 1) % this.map.paths.length }))];
       q.sort((a, b) => a.at - b.at);
     }
     // Rutas: las que se abren en esta oleada lo avisan; los que iban por una ruta cerrada salen por otra abierta
@@ -907,7 +945,7 @@ export class TdGame {
       this.storms.splice(this.storms.indexOf(m), 1);
       this.events.push({ t: 'storm', x: m.x, y: m.y, r: STORM_RADIUS });
       for (const e of this.enemiesIn(m, STORM_RADIUS)) this.damage(e, stormDamage(this.wave), null, { type: 'electric', mul: 1, crit: false, special: false, splash: 0 });
-      const hitT = this.towersIn(m, STORM_RADIUS);
+      const hitT = this.towersIn(m, STORM_RADIUS).filter((t) => !this.stunProof(t));
       for (const t of hitT) t.stunned = Math.max(t.stunned, STORM_STUN);
       if (hitT.length) this.events.push({ t: 'stun', towerIds: hitT.map((t) => t.id), x: m.x, y: m.y, r: STORM_RADIUS });
     }
@@ -967,7 +1005,7 @@ export class TdGame {
         e.sabWarn = null;
         e.sabCd = SAB_EVERY;
         const t = this.towers.find((q) => q.id === w.towerId);
-        if (t && Math.hypot(t.x + 0.5 - e.x, t.y + 0.5 - e.y) <= SAB_RANGE + 1) {
+        if (t && !this.stunProof(t) && Math.hypot(t.x + 0.5 - e.x, t.y + 0.5 - e.y) <= SAB_RANGE + 1) {
           t.stunned = Math.max(t.stunned, SAB_STUN);
           this.events.push({ t: 'stun', towerIds: [t.id], x: t.x + 0.5, y: t.y + 0.5, r: 0.6 });
         }
@@ -998,7 +1036,7 @@ export class TdGame {
     e.skillCd = CHIEF_GAP;
     let ok = true;
     if (w.skill === 'aturdir') {
-      const hit = this.towersIn(w, w.r);
+      const hit = this.towersIn(w, w.r).filter((t) => !this.stunProof(t));
       for (const t of hit) t.stunned = Math.max(t.stunned, STUN_TIME);
       if (hit.length) this.events.push({ t: 'stun', towerIds: hit.map((t) => t.id), x: w.x, y: w.y, r: w.r });
     } else if (w.skill === 'invocar') {
@@ -1067,11 +1105,10 @@ export class TdGame {
       if (e.def.kind === 'boss' && e.phase >= 3) speed *= 1.25;
       if (e.rush > 0) speed *= RUSH_MUL;
       if (this.waveEvent === 'veloces') speed *= FAST_MUL;
-      if (!e.def.air) {
-        const ter = this.terrainAt(Math.floor(e.x), Math.floor(e.y));
-        if (ter === 'barro') speed *= MUD_SPEED;
-        else if (ter === 'corriente') speed *= STREAM_SPEED;
-      }
+      const gfx = this.groundFx(e);
+      if (gfx?.speed) speed *= gfx.speed;
+      if (gfx && (gfx.burn || gfx.heal)) this.terrainTick(e, gfx, dt);
+      if (!this.enemies.includes(e)) continue;
       e.dist += speed * dt;
       if (e.dist >= e.len) {
         this.removeEnemy(e);
@@ -1091,6 +1128,22 @@ export class TdGame {
       e.dx = p.dx;
       e.dy = p.dy;
       if (!e.def.air && this.traps.length) this.stepOnTrap(e);
+    }
+  }
+
+  /** Lava y charco tóxico queman (cada medio segundo, para no llenar el mapa de números); la hierba curativa cura. */
+  private terrainTick(e: TdEnemy, fx: TerrainFx, dt: number) {
+    e.terrainAcc = (e.terrainAcc ?? 0) + dt;
+    if (e.terrainAcc < 0.5) return;
+    const k = e.terrainAcc;
+    e.terrainAcc = 0;
+    const big = e.def.kind === 'boss' || e.def.kind === 'chief' ? 0.25 : 1;
+    if (fx.burn) {
+      this.damage(e, e.def.maxHp * fx.burn * k * big, null, { type: fx.immune?.includes('poison') ? 'poison' : 'fire', mul: 1, crit: false, special: false, splash: 0 });
+    } else if (fx.heal && e.hp < e.def.maxHp) {
+      const amount = Math.min(e.def.maxHp - e.hp, Math.ceil(e.def.maxHp * fx.heal * k * big));
+      e.hp += amount;
+      this.events.push({ t: 'heal', x: e.x, y: e.y, amount });
     }
   }
 
@@ -1135,7 +1188,7 @@ export class TdGame {
     let best: TdEnemy | null = null;
     let score = -Infinity;
     for (const e of this.enemies) {
-      if (!this.canHit(s, e) || Math.hypot(e.x - cx, e.y - cy) > s.range) continue;
+      if (!this.canHit(s, e) || Math.hypot(e.x - cx, e.y - cy) > s.range || this.groundFx(e)?.hide) continue;
       const v = t.targeting === 'strong' ? e.hp + e.shield : t.targeting === 'last' ? -e.dist / e.len : e.dist / e.len;
       if (v > score) {
         score = v;
@@ -1272,6 +1325,9 @@ export class TdGame {
 
   private damage(e: TdEnemy, raw: number, tower: TdTower | null, o: { type: string; mul: number; crit: boolean; special: boolean; splash: number }) {
     if (!this.enemies.includes(e)) return;
+    // Losas: el enemigo encima recibe menos daño
+    const armor = this.groundFx(e)?.armor;
+    if (armor) raw *= armor;
     let dmg = Math.max(1, Math.round(raw));
     const hadShield = e.shield > 0;
     if (hadShield) {

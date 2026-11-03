@@ -35,7 +35,32 @@ export const TD_TYPES: Readonly<Record<number, readonly string[]>> = {
   696: ['rock', 'dragon'], 715: ['flying', 'dragon'], 621: ['dragon'], 704: ['dragon'], 330: ['ground', 'dragon'],
 };
 
-export const tdTypesOf = (id: number): readonly string[] => TD_TYPES[id] ?? CHIEF_TYPES[id] ?? ['normal'];
+/** Tipos de los Pokémon de los niveles temáticos (themes.ts) que no estén ya en TD_TYPES (tipos reales de PokeAPI). */
+export const THEME_MON_TYPES: Readonly<Record<number, readonly string[]>> = {
+  161: ['normal'], 263: ['normal'], 399: ['normal'], 396: ['normal', 'flying'], 20: ['normal'], 217: ['normal'], 128: ['normal'], 289: ['normal'],
+  4: ['fire'], 37: ['fire'], 59: ['fire'], 6: ['fire', 'flying'],
+  7: ['water'], 54: ['water'], 60: ['water'], 8: ['water'], 61: ['water'], 130: ['water', 'flying'], 134: ['water'],
+  25: ['electric'], 179: ['electric'], 180: ['electric'], 466: ['electric'], 135: ['electric'],
+  1: ['grass', 'poison'], 152: ['grass'], 191: ['grass'], 357: ['grass', 'flying'], 2: ['grass', 'poison'], 3: ['grass', 'poison'], 465: ['grass'],
+  478: ['ice', 'ghost'], 131: ['water', 'ice'], 460: ['grass', 'ice'], 471: ['ice'],
+  66: ['fighting'], 56: ['fighting'], 236: ['fighting'], 296: ['fighting'], 701: ['fighting', 'flying'], 67: ['fighting'], 297: ['fighting'],
+  68: ['fighting'], 448: ['fighting', 'steel'],
+  29: ['poison'], 24: ['poison'], 454: ['poison', 'fighting'], 110: ['poison'],
+  104: ['ground'], 111: ['ground', 'rock'], 232: ['ground'], 105: ['ground'], 112: ['ground', 'rock'],
+  821: ['flying'], 84: ['normal', 'flying'], 276: ['normal', 'flying'], 17: ['normal', 'flying'], 22: ['normal', 'flying'], 822: ['flying'],
+  85: ['normal', 'flying'], 823: ['flying', 'steel'], 18: ['normal', 'flying'], 398: ['normal', 'flying'],
+  63: ['psychic'], 79: ['water', 'psychic'], 177: ['psychic', 'flying'], 178: ['psychic', 'flying'], 97: ['psychic'], 80: ['water', 'psychic'],
+  65: ['psychic'], 196: ['psychic'],
+  13: ['bug', 'poison'], 48: ['bug', 'poison'], 265: ['bug'], 193: ['bug', 'flying'], 127: ['bug'], 168: ['bug', 'poison'], 212: ['bug', 'steel'], 214: ['bug', 'fighting'],
+  337: ['rock', 'psychic'], 76: ['rock', 'ground'], 248: ['rock', 'dark'],
+  426: ['ghost', 'flying'], 711: ['ghost', 'grass'], 477: ['ghost'],
+  261: ['dark'], 509: ['dark'], 430: ['dark', 'flying'], 262: ['dark'], 229: ['dark', 'fire'], 197: ['dark'], 359: ['dark'],
+  374: ['steel', 'psychic'], 305: ['steel', 'rock'], 208: ['steel', 'ground'], 306: ['steel', 'rock'], 376: ['steel', 'psychic'],
+  35: ['fairy'], 39: ['normal', 'fairy'], 173: ['fairy'], 209: ['fairy'], 176: ['fairy', 'flying'], 682: ['fairy'], 36: ['fairy'], 210: ['fairy'],
+  700: ['fairy'], 282: ['psychic', 'fairy'],
+};
+
+export const tdTypesOf = (id: number): readonly string[] => TD_TYPES[id] ?? THEME_MON_TYPES[id] ?? CHIEF_TYPES[id] ?? ['normal'];
 
 /** Papeles de los enemigos. */
 export const ENEMY_KINDS = [

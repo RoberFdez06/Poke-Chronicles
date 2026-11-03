@@ -46,7 +46,9 @@ import { PERK_ICON, TOWER_PERKS, perkDesc, perkName, type Perk } from '../data/t
 import { BRANCH_LEVEL, MAX_TOWER_LEVEL, MEGA_LEVEL, STYLE_LABEL, branchInfo, levelLabel, megaMoveOf, megaSpriteName, specialMoveOf, towerCost, towerStats } from '../data/towerDefense/towers';
 import { drawMegaAura, towerMegaFx } from '../ui/art/tdMegaArt';
 import { drawGate, drawLink, drawSynergyGem, drawTerrain, drawTrap, drawTrickMark } from '../ui/art/tdRetoArt';
-import { TERRAIN_INFO, isLevelMap } from '../data/towerDefense/variants';
+import { TERRAIN_INFO, TERRAIN_FX, isLevelMap } from '../data/towerDefense/variants';
+import { levelTheme, themeBanner, themeHint, themeSpeciesIds, type ThemeBoost } from '../data/towerDefense/themes';
+import { bakeTypeIcons, drawThemeAmbient, drawThemeGround, drawThemeProp, hasThemeProp, pickMotes, typeIcon, type Mote } from '../ui/art/tdThemeArt';
 import { TRAP_INFO, TRAP_KINDS, type TrapKind } from '../data/towerDefense/live';
 import { TRICK_INFO } from '../data/towerDefense/tricks';
 import { comboById } from '../data/towerDefense/synergy';
@@ -127,6 +129,11 @@ export class TowerDefenseScene extends Phaser.Scene {
   private overG!: Phaser.GameObjects.Graphics;
   private uiG!: Phaser.GameObjects.Graphics;
   private decor: Decor[] = [];
+  /** Ambiente del tipo tema: motas y casillas de niebla de almas (para que suban almas). */
+  private motes: Mote[] = [];
+  private soulCells: { x: number; y: number }[] = [];
+  /** Insignias del tipo tema en las casillas del equipo (torres potenciadas). */
+  private themeBadges: (Phaser.GameObjects.Image | null)[] = [];
   private freeCells: { x: number; y: number }[] = [];
   private enemyViews = new Map<number, EnemyView>();
   private towerViews = new Map<number, TowerView>();
@@ -212,6 +219,9 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.lastDodge = 0;
     this.perkUi = null;
     this.eventIconKey = '';
+    this.motes = [];
+    this.soulCells = [];
+    this.themeBadges = [];
   }
 
   create() {
@@ -222,6 +232,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     bakeTypeFx(this);
     bakeProjectiles(this);
     bakeCombatFx(this);
+    bakeTypeIcons(this);
     this.nav = new NavInput(this);
     this.pad = new PadButtons(this);
     // Al perder el foco la ventana o la pestaña, se abre la pausa (openPause ya ignora si hay pausa, confirmación o fin)
@@ -273,7 +284,9 @@ export class TowerDefenseScene extends Phaser.Scene {
     const foes = MAP_FOES[this.map.biome] ?? MAP_FOES.bosque;
     const evoIds = team.map((t) => t.evolveId).filter((n): n is number => !!n);
     const chiefs = CHIEF_SPECIES[this.map.biome] ?? CHIEF_SPECIES.bosque;
-    const ids = [...new Set([...team.map((t) => t.id), ...evoIds, ...Object.values(foes).flat(), ...chiefs])];
+    // Nivel temático: sus Pokémon, los contra-tipos y sus jefes de oleada (themes.ts)
+    const themed = themeSpeciesIds(levelTheme(this.map, this.args.level));
+    const ids = [...new Set([...team.map((t) => t.id), ...evoIds, ...Object.values(foes).flat(), ...chiefs, ...themed])];
     for (const id of evoIds) void fetchSpeciesName(id).then((n) => this.names.set(id, n)).catch(() => undefined);
     try {
       this.sheets = await withTimeout(loadPmd(this, ids), 15000, 'sprites');
@@ -304,6 +317,26 @@ export class TowerDefenseScene extends Phaser.Scene {
     showTdTip(this, 'td_place');
     const v = this.td.map.variant;
     this.toast(`${v.name}: ${v.desc.charAt(0).toLowerCase()}${v.desc.slice(1)}`, v.id >= 3 ? 'warning' : 'info');
+    this.showThemeBanner();
+  }
+
+  /** Aviso del nivel temático arriba a la derecha del mapa (nunca en el centro): insignia, bonus y contra-tipos. */
+  private showThemeBanner() {
+    const theme = this.td.theme;
+    const W = 330;
+    const x = OX + TD_COLS * CELL - W - 8;
+    const y = OY + 8;
+    const c = this.add.container(0, 0).setDepth(72);
+    const g = this.add.graphics();
+    const head = this.add.text(x + 44, y + 8, themeBanner(theme), { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: NAVY, wordWrap: { width: W - 54 } });
+    const sub = this.add.text(x + 44, y + 12 + head.height, themeHint(theme), { fontFamily: UI.FONT, fontSize: '11px', color: '#3a4560', wordWrap: { width: W - 54 }, lineSpacing: 1 });
+    const h = Math.max(50, 20 + head.height + sub.height);
+    drawBox(g, x, y, W, h, { radius: 8 });
+    g.fillStyle(typeColor(theme), 1).fillRect(x + 4, y + 6, 4, h - 12);
+    c.add([g, typeIcon(this, x + 26, y + h / 2, theme, 2.4), head, sub]);
+    c.setAlpha(0);
+    this.tweens.add({ targets: c, alpha: 1, duration: 260 });
+    this.tweens.add({ targets: c, alpha: 0, delay: 5200, duration: 500, onComplete: () => c.destroy() });
   }
 
   // --- Montaje ---
@@ -319,12 +352,25 @@ export class TowerDefenseScene extends Phaser.Scene {
     frame.fillStyle(biome.colors.wall, 1).fillRect(OX - 4, OY - 4, W + 8, H + 8);
     this.add.tileSprite(OX, OY, W, H, tiles.floor).setOrigin(0).setTileScale(1.5).setDepth(0.1);
     const ground = this.add.graphics().setDepth(0.2);
+    // Nivel temático: suelo teñido con las marcas del tipo (themes.ts, tdThemeArt.ts)
+    if (isLevelMap(this.map)) drawThemeGround(ground, this.map.theme, buildableCells(this.map), GEO, this.args.mapIdx * 977 + this.args.level * 31);
     drawPads(ground, buildableCells(this.map), biome.colors.floor, GEO);
     drawRoad(ground, this.map, this.map.biome, GEO);
     if (isLevelMap(this.map)) drawTerrain(ground, this.map.terrain, GEO);
     bakeLayer(this, ground, OX - 32, OY - 32, W + 64, H + 64, 0.2);
+    // Las rocas nuevas del nivel salen como obstáculos del tipo tema (lápidas, bloques de hielo, rocas de magma…)
+    const lm = isLevelMap(this.map) ? this.map : null;
+    const themed = lm && hasThemeProp(lm.theme) ? lm : null;
     for (const b of this.map.blocked) {
+      if (themed && themed.rocks.some((r) => r.x === b.x && r.y === b.y)) {
+        drawThemeProp(this.add.graphics().setDepth(10 + b.y), themed.theme, sx(b.x) + CELL / 2, sy(b.y) + CELL - 4);
+        continue;
+      }
       this.add.image(sx(b.x) + CELL / 2, sy(b.y) + CELL / 2 + 2, tiles.rock).setDisplaySize(CELL, CELL).setDepth(10 + b.y);
+    }
+    if (lm) {
+      this.motes = pickMotes(this.args.mapIdx * 131 + this.args.level, GEO, W, H);
+      this.soulCells = lm.terrain.filter((q) => TERRAIN_FX[q.kind].hide).map((q) => ({ x: sx(q.x) + CELL / 2, y: sy(q.y) + CELL / 2 }));
     }
     this.freeCells = buildableCells(this.map);
     this.decor = pickDecor(this.map, this.freeCells, GEO);
@@ -400,6 +446,8 @@ export class TowerDefenseScene extends Phaser.Scene {
       this.add.text(x, 30, '', { fontFamily: UI.FONT, fontSize: `${size}px`, fontStyle: 'bold', color }).setOrigin(0, 0.5).setDepth(62);
     this.hud = { hp: st(150, 15), money: st(252, 20, '#8a6a00'), wave: st(340), next: st(470, 15), title: st(612, 12) };
     this.hud.title.setText(shorten(`${this.map.name} · ${this.td.endless ? 'Infinito' : `Nv. ${this.args.level}`}`, 26));
+    // Insignia del tipo tema a la izquierda del nombre del mapa
+    typeIcon(this, 600, 30, this.td.theme, 1.8).setDepth(62);
     const side = this.add.graphics().setDepth(55);
     drawBox(side, PANEL_X, 4, 164, 588, { radius: 10 });
     this.teamHead = new GlyphText(this, PANEL_X + 82, 24, 'Tu equipo', { size: 15, color: NAVY, originX: 0.5, auto: false, maxWidth: 156 }).setDepth(62);
@@ -425,6 +473,11 @@ export class TowerDefenseScene extends Phaser.Scene {
       b.icon.setScale(tex.pmd ? Math.min(2.2, fit * 1.5) : tex.key === tdIconKey('ball') ? 2.6 : fit * 1.3);
       b.text = this.add.text(x + 33, y + 56, `${towerCost(m)} $`, { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: NAVY }).setOrigin(0.5).setDepth(62);
       this.teamBtns.push(b);
+      // Potenciada en este nivel: insignia del tipo tema (o flecha de Ventaja) arriba a la derecha de la casilla
+      const boost = this.td.themeBoostOf({ mon: m }).kind;
+      this.themeBadges.push(
+        boost === 'tema' ? typeIcon(this, x + 56, y + 11, this.td.theme, 1.4).setDepth(63) : boost === 'ventaja' ? this.add.image(x + 57, y + 10, tdIconKey('pkUp')).setScale(1.2).setDepth(63) : null,
+      );
     });
   }
 
@@ -1463,6 +1516,8 @@ export class TowerDefenseScene extends Phaser.Scene {
       if (e.frozen > 0) v.spr.setTint(0x9fe0ff);
       else if (e.slowLeft > 0) v.spr.setTint(0xb8c8ff);
       else v.spr.clearTint();
+      // En la niebla de almas: casi invisible (no se le puede apuntar)
+      v.spr.setAlpha(this.td.isHidden(e) ? 0.4 : 1);
     }
     for (const [id, v] of this.enemyViews) {
       if (alive.has(id)) continue;
@@ -1588,6 +1643,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     const open = this.td.openRoutes();
     drawFlow(g, open.length === this.map.paths.length ? this.map : { ...this.map, paths: open.map((i) => this.map.paths[i]) }, this.map.biome, GEO, t);
     drawDecor(g, this.map.biome, this.decor, t);
+    if (isLevelMap(this.map)) drawThemeAmbient(g, this.map.theme, this.motes, { x: OX, y: OY, w: TD_COLS * CELL, h: TD_ROWS * CELL }, t, this.soulCells);
     for (const c of this.openEntries()) drawPortal(g, sx(c.x) + CELL / 2, sy(c.y) + CELL / 2, 0xb08aff, t);
     const b = this.basePos();
     drawBase(g, b.x, b.y, t, this.td.hp / this.td.maxHp, this.baseFlash, this.map.biome);
@@ -2036,7 +2092,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       txt(y0, shorten(m.name, 14), 16, NAVY, true);
       txt(
         y0 + 24,
-        `${STYLE_LABEL[s.style]} · ${m.types.map(typeNameEs).join('/')}\nCoste ${towerCost(m)} $\nDaño ${s.damage}  Cad. ${s.rate}/s\nAlcance ${s.range.toFixed(1)}${s.air ? ' · aéreo' : ''}${s.income ? `\nGranja: +${s.income} $/oleada` : ''}\n\nColocados ${this.td.placedOf(this.placing)}/${this.td.limitOf(this.placing)}`,
+        `${STYLE_LABEL[s.style]} · ${m.types.map(typeNameEs).join('/')}\nCoste ${towerCost(m)} $\nDaño ${s.damage}  Cad. ${s.rate}/s\nAlcance ${s.range.toFixed(1)}${s.air ? ' · aéreo' : ''}${s.income ? `\nGranja: +${s.income} $/oleada` : ''}\n${boostLine(this.td.themeBoostOf({ mon: m }))}\nColocados ${this.td.placedOf(this.placing)}/${this.td.limitOf(this.placing)}`,
         12,
       );
       // Lo que daría la casilla del cursor: terreno y sinergias con las vecinas
@@ -2062,6 +2118,8 @@ export class TowerDefenseScene extends Phaser.Scene {
     const lines = [...count.entries()].map(([k, n]) => `${ENEMY_KIND_LABEL[k]}: ${n}`);
     const up = this.td.phase === 'prep' ? this.td.upcomingEvent : this.td.waveEvent;
     if (up) lines.push(`Evento: ${WAVE_EVENT_INFO[up].name}`);
+    const contra = spawns.filter((q) => q.contra).length;
+    if (contra) lines.push(`Contra-tipos: ${contra}`);
     txt(y0 + 24, lines.join('\n'), 13);
     const trick = [...count.keys()].find((k) => (TRICK_KINDS as readonly string[]).includes(k)) as TrickKind | undefined;
     if (trick) {
@@ -2071,6 +2129,13 @@ export class TowerDefenseScene extends Phaser.Scene {
       txt(y0 + 34 + lines.length * 17, '¡Voladores! Solo los alcanzan Volador, Eléctrico, Psíquico, Dragón, Fantasma, Hada y Hielo (o la rama Táctica).', 11, '#a04040');
     }
   }
+}
+
+/** Línea del bonus del nivel temático para el panel de colocar (vacía si no tiene). */
+function boostLine(b: ThemeBoost): string {
+  if (b.kind === 'tema') return `Tipo tema: +${Math.round((b.damage - 1) * 100)} % daño`;
+  if (b.kind === 'ventaja') return `Ventaja: +${Math.round((b.damage - 1) * 100)} % daño`;
+  return '';
 }
 
 /** Texto de la vista previa al colocar (terreno de la casilla y sinergias que activaría). */
