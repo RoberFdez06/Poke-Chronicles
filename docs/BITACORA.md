@@ -2432,3 +2432,23 @@ Sin verificar a ojo (Vite no corre en la VM): el aviso del tipo (que quepa en su
 del HUD entre «Llega en…» y el nombre del mapa, las insignias del equipo, los terrenos y obstáculos nuevos horneados, el ambiente
 (almas, niebla, motas), la transparencia de los enemigos en la niebla de almas, las insignias del menú y la línea del tipo bajo la
 descripción del nivel. Se cargan más sprites al empezar (los del tema y los contra-tipos). El HUD móvil y `layout.ts` no se tocan.
+
+## 2026-11-03 · Defensa de torres: aviso previo de emparejamiento (rama `tdaviso`)
+Motivo: con los niveles temáticos algunos equipos pierden sin saber por qué (p. ej. Fuego/Eléctrico/Normal en Cráter Ígneo, de
+tipo Roca, nv. 7 y 13). Roberto quería un aviso antes de empezar. Lógica pura en `src/data/towerDefense/matchupWarning.ts`, tests en
+`tests/tdAviso.test.ts`, arte en `src/ui/art/tdWarnArt.ts`.
+- **Veredicto** (`matchupWarning`, `matchupForLevel`): Bien / Justo / Arriesgado. Por cada torre se toma su mejor tipo contra cada
+  enemigo que de verdad sale (los del tema, `THEME_FOES`, y los contra-tipos, `contraFoes`, que pesan del 10 % al 45 % según el
+  nivel) con la tabla real (`tdTypeMul`) y el bonus de tema/Ventaja (`themeBoost`). Puntuación del equipo = mitad media, mitad media de
+  su mejor mitad. Umbrales `RISKY_BELOW` 0,95 y `FAIR_BELOW` 1,10, algo más suaves en los niveles 1-6. Motivo: «Tu equipo hace poco
+  daño a Roca: Fuego, Eléctrico y Normal.»; sugerencia: «Lleva Agua, Tierra, Planta o Acero.» (los 4 tipos que mejor funcionan, sin
+  los que ya llevas). Ese equipo sale Arriesgado en los niveles Roca 7 y 13 de Cráter Ígneo y con Agua y Roca, Bien; el bot lo
+  confirma (pierde con el primero y gana con el segundo, test).
+- **Pantalla «Elige tu equipo»**: caja de aviso a la izquierda, bajo la ficha de la torre (color, icono pixel art propio de visto,
+  rayas o exclamación, título y motivo + sugerencia). Cambia al añadir o quitar torres (ratón, teclado y mando pasan por
+  `togglePick`) y con el equipo de prueba. No bloquea: «¡A jugar!» funciona igual. La letra baja hasta que el texto quepa.
+- **Lista de niveles**: bajo la línea del tipo, «Lleva Agua, … para el nivel Roca».
+- Nota de diseño: un equipo solo del tipo tema puede salir Arriesgado (los enemigos de su mismo tipo lo resisten), como en el juego.
+Sin verificar a ojo (Vite no corre en la VM): que la caja del aviso (y su texto con muchos tipos) no pise la ficha de la torre ni la
+barra de ayuda, los tres iconos, el color de cada veredicto y la segunda línea en la lista de niveles. El HUD móvil y `layout.ts` no
+se tocan.
