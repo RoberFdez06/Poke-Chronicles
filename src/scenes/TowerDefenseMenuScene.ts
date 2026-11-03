@@ -20,6 +20,8 @@ import { TD_MAPS } from '../data/towerDefense/maps';
 import { variantSummary } from '../data/towerDefense/variants';
 import { levelTheme, themeSummary, themesOf } from '../data/towerDefense/themes';
 import { bakeTypeIcons, typeIcon, typeIconKey } from '../ui/art/tdThemeArt';
+import { bakeWarnIcons, warnIconKey, WARN_FILL, WARN_TEXT } from '../ui/art/tdWarnArt';
+import { levelHint, matchupForLevel, VERDICT_LABEL } from '../data/towerDefense/matchupWarning';
 import { TD_GUIDE } from '../data/towerDefense/guide';
 import { wavesInLevel } from '../data/towerDefense/waves';
 import {
@@ -349,7 +351,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
           : `Nivel ${i + 1} de ${L}: ${wavesInLevel(i + 1, L)} oleadas${i === L - 1 ? ' y un jefe legendario al final' : ''}. Estrellas según la vida de la base que conserves (3: 90 % o más).\nMapa: ${variantSummary(m, i + 1)}`,
       );
       const theme = levelTheme(m, i === L ? 0 : i + 1);
-      themeText.setText(themeSummary(theme)).setY(info.y + info.height + 6);
+      themeText.setText(`${themeSummary(theme)}\n${levelHint(theme, i === L ? L : i + 1)}`).setY(info.y + info.height + 6);
       themeBadge.setTexture(typeIconKey(theme)).setPosition(themeText.x - themeText.width / 2 - 16, themeText.y + 9);
     };
     this.redraw();
@@ -498,6 +500,14 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
       this.add.text(x0 + cell * COLS - 20, 446, '▶', { fontFamily: UI.FONT, fontSize: '24px', color: '#ffd34d' }).setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.turnPage(1)),
     ];
     this.layer.add(arrows);
+    // Aviso previo de emparejamiento (no bloquea): caja bajo la ficha, a la izquierda del botón «¡A jugar!»
+    bakeWarnIcons(this);
+    const warn = { x: x0, y: 538, w: 520, h: 64 };
+    const warnG = this.add.graphics();
+    const warnIcon = this.add.image(warn.x + 30, warn.y + warn.h / 2, warnIconKey('justo')).setScale(3.4);
+    const warnTitle = this.add.text(warn.x + 60, warn.y + 7, '', { fontFamily: UI.FONT, fontSize: '15px', fontStyle: 'bold', color: NAVY });
+    const warnBody = this.add.text(warn.x + 60, warn.y + 26, '', { fontFamily: UI.FONT, fontSize: '13px', color: NAVY, wordWrap: { width: warn.w - 72 }, lineSpacing: 1 });
+    this.layer.add([warnG, warnIcon, warnTitle, warnBody]);
     // Ficha de la torre enfocada
     const infoIcon = this.add.image(x0 + 10, 482, classIconKey('single')).setScale(3).setOrigin(0, 0.5);
     const infoText = this.add.text(x0 + 46, 464, '', { fontFamily: UI.FONT, fontSize: '15px', color: '#ffffff', wordWrap: { width: 460 }, lineSpacing: 3 }).setStroke('#18202c', 4);
@@ -625,6 +635,22 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
       } else {
         infoIcon.setVisible(false);
         infoText.setText(this.trial ? 'Equipo de prueba: para probar el modo. Juega con tus Pokémon del gacha para ir más lejos.' : '');
+      }
+      // Aviso previo: el veredicto cambia al elegir o quitar torres (y con el equipo de prueba)
+      {
+        const lm = TD_MAPS[this.mapSel];
+        const lv = this.levelSel === lm.levels ? 0 : this.levelSel + 1;
+        const w = matchupForLevel(lm, lv, (this.trial ? this.trialPicks() : this.team).map((t) => t.types));
+        warnG.clear();
+        drawBox(warnG, warn.x, warn.y, warn.w, warn.h, { radius: 10, fill: WARN_FILL[w.verdict] });
+        warnIcon.setTexture(warnIconKey(w.verdict));
+        warnTitle.setText(`${VERDICT_LABEL[w.verdict]} · nivel ${typeNameEs(w.theme)}`).setColor(WARN_TEXT[w.verdict]);
+        warnBody.setText(w.tip ? `${w.reason} ${w.tip}` : w.reason).setColor(WARN_TEXT[w.verdict]);
+        // Que quepa en su caja aunque salgan muchos tipos: baja la letra hasta que entre
+        for (let fs = 13; fs >= 10; fs--) {
+          warnBody.setFontSize(fs);
+          if (warnBody.height <= warn.h - 32) break;
+        }
       }
       // Equipo
       sideG.clear();
