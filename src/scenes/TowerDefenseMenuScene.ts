@@ -21,7 +21,7 @@ import { variantSummary } from '../data/towerDefense/variants';
 import { levelTheme, themeSummary, themesOf } from '../data/towerDefense/themes';
 import { bakeTypeIcons, typeIcon, typeIconKey } from '../ui/art/tdThemeArt';
 import { bakeWarnIcons, warnIconKey, WARN_FILL, WARN_TEXT } from '../ui/art/tdWarnArt';
-import { levelHint, matchupForLevel, VERDICT_LABEL } from '../data/towerDefense/matchupWarning';
+import { levelFoesLine, levelHint, matchupForLevel, VERDICT_LABEL } from '../data/towerDefense/matchupWarning';
 import { TD_GUIDE } from '../data/towerDefense/guide';
 import { wavesInLevel } from '../data/towerDefense/waves';
 import {
@@ -209,10 +209,15 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
   private buildMaps() {
     const total = TD_MAPS.length;
     this.title('Defensa de torres', `${TD_MAPS.filter((_, i) => isMapUnlocked(this.progress, i)).length}/${total} mapas abiertos`);
+    // 4 columnas; con más de 16 mapas (18: una fase por tipo) las fichas se encogen para que quepan 5 filas
     const cw = 214;
-    const ch = 118;
+    const compact = total > 16;
+    const ch = compact ? 96 : 118;
     const x0 = 52;
     const y0 = 98;
+    // Posiciones dentro de la ficha (miniatura más pequeña en modo compacto)
+    const cell = compact ? 4 : 5;
+    const L = compact ? { thumbY: 28, stars: 50, bar: 66, inf: 74, icons: 82, lock: 48 } : { thumbY: 30, stars: 63, bar: 84, inf: 94, icons: 102, lock: 57 };
     const cards: { g: Phaser.GameObjects.Graphics; i: number }[] = [];
     TD_MAPS.forEach((m, i) => {
       const cx = x0 + (i % 4) * cw;
@@ -220,27 +225,29 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
       const open = isMapUnlocked(this.progress, i);
       const g = this.add.graphics();
       const thumb = this.add.graphics();
-      drawMapThumb(thumb, m, biomeById(m.biome).colors, cx + 12, cy + 30, 5, !open);
-      const name = this.add.text(cx + 12, cy + 10, `${i + 1}. ${m.name}`, { fontFamily: UI.FONT, fontSize: '16px', fontStyle: 'bold', color: NAVY });
+      drawMapThumb(thumb, m, biomeById(m.biome).colors, cx + 12, cy + L.thumbY, cell, !open);
+      const name = this.add.text(cx + 12, cy + (compact ? 7 : 10), `${i + 1}. ${m.name}`, { fontFamily: UI.FONT, fontSize: compact ? '15px' : '16px', fontStyle: 'bold', color: NAVY });
       const cleared = levelsCleared(this.progress, m.id);
-      const info = this.add.text(cx + 100, cy + 32, open ? `Niveles ${cleared}/${m.levels}\n${mapStars(this.progress, m.id)}/${m.levels * 3}` : `Supera ${levelsNeeded(TD_MAPS[i - 1]?.levels ?? 0)}\nniveles del\nmapa ${i}`, {
-        fontFamily: UI.FONT, fontSize: '13px', color: open ? NAVY : '#6a7080', lineSpacing: 2,
+      const info = this.add.text(cx + (compact ? 86 : 100), cy + (compact ? 28 : 32), open ? `Niveles ${cleared}/${m.levels}\n${mapStars(this.progress, m.id)}/${m.levels * 3}` : `Supera ${levelsNeeded(TD_MAPS[i - 1]?.levels ?? 0)}\nniveles del\nmapa ${i}`, {
+        fontFamily: UI.FONT, fontSize: compact ? '12px' : '13px', color: open ? NAVY : '#6a7080', lineSpacing: compact ? 0 : 2,
       });
+      const ix = cx + (compact ? 86 : 100);
       const parts: Phaser.GameObjects.GameObject[] = [g, thumb, name, info];
       // Tipos tema del mapa (el suyo primero) debajo de la miniatura
-      themesOf(m).forEach((ty, k) => parts.push(typeIcon(this, cx + 21 + k * 22, cy + 102, ty, 1.6).setAlpha(open ? 1 : 0.5)));
+      themesOf(m).forEach((ty, k) => parts.push(typeIcon(this, cx + 21 + k * 22, cy + L.icons, ty, compact ? 1.4 : 1.6).setAlpha(open ? 1 : 0.5)));
       if (open) {
         info.setText(`Niveles ${cleared}/${m.levels}`);
-        parts.push(tdIcon(this, cx + 108, cy + 63, 'star', 1.8));
-        parts.push(this.add.text(cx + 120, cy + 63, `${mapStars(this.progress, m.id)}/${m.levels * 3}`, { fontFamily: UI.FONT, fontSize: '13px', color: NAVY }).setOrigin(0, 0.5));
+        parts.push(tdIcon(this, ix + 8, cy + L.stars, 'star', 1.8));
+        parts.push(this.add.text(ix + 20, cy + L.stars, `${mapStars(this.progress, m.id)}/${m.levels * 3}`, { fontFamily: UI.FONT, fontSize: '13px', color: NAVY }).setOrigin(0, 0.5));
         // Barra de niveles superados
         const bar = this.add.graphics();
-        bar.fillStyle(0x18202c, 1).fillRect(cx + 100, cy + 84, 98, 8);
-        bar.fillStyle(cleared >= m.levels ? 0xffd34d : 0x2ecc71, 1).fillRect(cx + 101, cy + 85, (96 * cleared) / m.levels, 6);
+        const bw = compact ? 110 : 98;
+        bar.fillStyle(0x18202c, 1).fillRect(ix, cy + L.bar, bw, 8);
+        bar.fillStyle(cleared >= m.levels ? 0xffd34d : 0x2ecc71, 1).fillRect(ix + 1, cy + L.bar + 1, ((bw - 2) * cleared) / m.levels, 6);
         parts.push(bar);
-        if (isEndlessUnlocked(this.progress, m.id)) parts.push(this.add.text(cx + 100, cy + 94, '∞ abierto', { fontFamily: UI.FONT, fontSize: '12px', color: '#b8860b' }));
+        if (isEndlessUnlocked(this.progress, m.id)) parts.push(this.add.text(ix, cy + L.inf, '∞ abierto', { fontFamily: UI.FONT, fontSize: '12px', color: '#b8860b' }));
       } else {
-        parts.push(tdIcon(this, cx + 52, cy + 57, 'lock', 3));
+        parts.push(tdIcon(this, cx + (compact ? 44 : 52), cy + L.lock, 'lock', compact ? 2.4 : 3));
       }
       const zone = this.add.zone(cx, cy, cw - 8, ch).setOrigin(0).setInteractive({ useHandCursor: true });
       zone.on('pointerover', () => {
@@ -295,7 +302,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
       parts.push(typeIcon(this, x + 16, y + 15, levelTheme(m, i + 1), 1.8).setAlpha(open ? 1 : 0.55));
       if (open) {
         for (let s = 0; s < 3; s++) parts.push(tdIcon(this, mid + (s - 1) * 24, y + 38, s < mp.stars[i] ? 'star' : 'starOff', 2));
-        parts.push(this.add.text(mid, y + 60, i === L - 1 ? `${wavesInLevel(i + 1, L)} oleadas + jefe` : `${wavesInLevel(i + 1, L)} oleadas`, { fontFamily: UI.FONT, fontSize: '12px', color: NAVY }).setOrigin(0.5));
+        parts.push(this.add.text(mid, y + 60, `${wavesInLevel(i + 1, L)} oleadas + jefe${i === L - 1 ? ' final' : ''}`, { fontFamily: UI.FONT, fontSize: '12px', color: NAVY }).setOrigin(0.5));
       } else parts.push(tdIcon(this, mid, y + 46, 'lock', 2.4));
       if (i === L - 1) parts.push(tdIcon(this, x + bw - 24, y + 14, 'skull', 2));
       const zone = this.add.zone(x, y, bw - 10, bh).setOrigin(0).setInteractive({ useHandCursor: true });
@@ -347,8 +354,8 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
       const i = this.levelSel;
       info.setText(
         i === L
-          ? 'Oleadas sin fin cada vez más duras, con un jefe legendario cada 10. Guarda tu mejor oleada.'
-          : `Nivel ${i + 1} de ${L}: ${wavesInLevel(i + 1, L)} oleadas${i === L - 1 ? ' y un jefe legendario al final' : ''}. Estrellas según la vida de la base que conserves (3: 90 % o más).\nMapa: ${variantSummary(m, i + 1)}`,
+          ? `Oleadas sin fin cada vez más duras. Guarda tu mejor oleada.\n${levelFoesLine(m, 0)}`
+          : `Nivel ${i + 1} de ${L} · ${wavesInLevel(i + 1, L)} oleadas y jefe ${i === L - 1 ? 'final' : 'legendario'} · 3 estrellas con el 90 % de la base\n${levelFoesLine(m, i + 1)}\nMapa: ${variantSummary(m, i + 1)}`,
       );
       const theme = levelTheme(m, i === L ? 0 : i + 1);
       themeText.setText(`${themeSummary(theme)}\n${levelHint(theme, i === L ? L : i + 1)}`).setY(info.y + info.height + 6);

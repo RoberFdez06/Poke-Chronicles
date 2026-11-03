@@ -1,12 +1,14 @@
-// Defensa de torres: cada mapa tiene de 10 a 15 niveles (TdMap.levels, crecen con el mapa) (partidas cortas con oleadas fijas) y el último trae un
-// jefe legendario. En el modo infinito las oleadas siguen creciendo (jefe cada 10) hasta que caes. Estadísticas de
-// los enemigos por papel. Lógica pura, sin Phaser.
+// Defensa de torres: cada mapa tiene de 10 a 15 niveles (TdMap.levels, crecen con el mapa) (partidas cortas con oleadas
+// fijas). Cada nivel acaba con un jefe legendario (el del último nivel, el del mapa y a plena vida) y trae minijefes
+// (pseudolegendarios y ultraentes) cada 5 oleadas. En el modo infinito las oleadas siguen creciendo (jefe cada 10,
+// minijefe en las de 5) hasta que caes. Pokémon oscuros desde media partida. Estadísticas de los enemigos por papel.
+// Lógica pura, sin Phaser.
 import { shieldPoolFor } from '../enemies.ts';
 import type { TdMap } from './maps.ts';
 import { MAP_FOES, TRICK_KINDS, tdTypesOf, type EnemyKind, type MapFoes } from './species.ts';
 import { waveTheme } from './tricks.ts';
-import { CHIEF_EVERY, chiefSpecies } from './chiefs.ts';
-import { CONTRA_HP, foeSource, levelTheme, themeSpecies } from './themes.ts';
+import { CHIEF_EVERY } from './chiefs.ts';
+import { CONTRA_HP, MAP_FINAL_BOSS, foeSource, levelBossFor, levelSeed, levelTheme, minibossFor, themeCtx, themeSpecies, unitRoll } from './themes.ts';
 
 /** Escala de referencia del equilibrio: los niveles de cada mapa se reparten sobre 12 «niveles de dificultad». */
 export const REF_LEVELS = 12;
@@ -30,12 +32,22 @@ export interface Stage {
 }
 export const isEndless = (s: Stage): boolean => s.level <= 0;
 
+/** Jefe (legendario): la última oleada de cada nivel; en el infinito, cada 10. */
 export function isBossWave(s: Stage, wave: number): boolean {
   if (isEndless(s)) return wave > 0 && wave % BOSS_EVERY === 0;
-  return s.level >= s.levels && wave === wavesInLevel(s.level, s.levels);
+  return wave === wavesInLevel(s.level, s.levels);
 }
 
-/** Jefe de oleada: cada 5 oleadas, salvo si ya toca el jefe legendario. */
+/** ¿Es el jefe final del mapa (último nivel, a plena vida)? */
+export const isFinalBoss = (s: Stage, wave: number): boolean => !isEndless(s) && s.level >= s.levels && isBossWave(s, wave);
+
+/**
+ * Vida del jefe de un nivel que no es el último (parte de la del jefe final): de 0,4 en el primer nivel a 0,75 en el
+ * penúltimo, para que acabar cada nivel con un legendario no rompa los niveles fáciles.
+ */
+export const levelBossHp = (s: Stage): number => (isEndless(s) || s.level >= s.levels ? 1 : 0.22 + (0.38 * (refLevel(s) - 1)) / (REF_LEVELS - 1));
+
+/** Minijefe (pseudolegendario o ultraente): cada 5 oleadas, salvo si ya toca el jefe. */
 export const isChiefWave = (s: Stage, wave: number): boolean => wave > 0 && wave % CHIEF_EVERY === 0 && !isBossWave(s, wave);
 
 /** Nivel equivalente en la escala de 12 (1..12; el infinito, 12): así la dificultad no depende de cuántos niveles tenga el mapa. */
@@ -129,6 +141,8 @@ export interface Spawn {
   hpMul?: number;
   /** Contra-tipo del nivel temático (resiste el tipo tema). */
   contra?: boolean;
+  /** Pokémon oscuro (darkMon.ts): sale con ojos rojos, más vida y velocidad. */
+  dark?: boolean;
 }
 
 /** Desde qué «rango» aparece cada papel (rango = 3 por mapa + nivel + oleada/3): los mapas difíciles los traen antes. */
@@ -155,18 +169,22 @@ export function waveSpawns(map: TdMap, level: number, wave: number): Spawn[] {
   const nPaths = map.paths.length;
   let t = 0;
   let seq = 0;
-  // Nivel temático (themes.ts): la mayoría de los enemigos son del tipo tema, 1 de cada 4 del bioma y, en las
-  // oleadas altas, contra-tipos que lo resisten; el jefe de oleada es del tema y el legendario, el del mapa
+  // Nivel temático (themes.ts): cada hueco se sortea (tirada fija con la semilla del nivel): el tipo tema es lo más
+  // probable, pero salen también del bioma y de otros tipos; en las oleadas altas, contra-tipos que lo resisten
   const typeTheme = levelTheme(map, level);
+  const seed = levelSeed(map.id, level);
+  const ctx = themeCtx(typeTheme, seed);
   const total = isEndless(stage) ? Infinity : wavesInLevel(stage.level, stage.levels);
-  const add = (kind: EnemyKind, gap: number, slot = seq) => {
+  const add = (kind: EnemyKind, gap: number, slot = seq, hpMul = 1) => {
     const species =
       kind === 'boss'
-        ? foes.bosses[isEndless(stage) && Math.floor(w / BOSS_EVERY) % 2 === 1 ? 0 : 1]
-        : themeSpecies(typeTheme, kind, slot, w, total, seq) ??
-          (kind === 'chief' ? chiefSpecies(map.biome, w) : foeList(foes, kind)[seq % foeList(foes, kind).length]);
-    const contra = kind !== 'boss' && kind !== 'chief' && foeSource(slot, w, total, kind) === 'contra';
-    out.push({ at: Math.round(t * 100) / 100, kind, species, path: seq % nPaths, ...(contra ? { hpMul: CONTRA_HP, contra: true } : {}) });
+        ? bossSpecies(map, level, w)
+        : kind === 'chief'
+          ? minibossFor(typeTheme, seed, w)
+          : themeSpecies(ctx, kind, slot, w, total, seq) ?? foeList(foes, kind)[seq % foeList(foes, kind).length];
+    const contra = kind !== 'boss' && kind !== 'chief' && foeSource(slot, w, total, kind, seed) === 'contra';
+    const mul = hpMul * (contra ? CONTRA_HP : 1);
+    out.push({ at: Math.round(t * 100) / 100, kind, species, path: seq % nPaths, ...(mul !== 1 ? { hpMul: mul } : {}), ...(contra ? { contra: true } : {}) });
     seq++;
     t += gap;
   };
@@ -187,14 +205,68 @@ export function waveSpawns(map: TdMap, level: number, wave: number): Spawn[] {
   }
   if (isBossWave(stage, w)) {
     t += 2;
-    add('boss', 1.5);
-    for (let i = 0; i < 4; i++) add(i % 2 ? 'healer' : 'shielded', gap);
+    const final = isFinalBoss(stage, w) || isEndless(stage);
+    add('boss', 1.5, seq, levelBossHp(stage));
+    // El jefe final trae 4 escoltas; el de un nivel cualquiera, 2
+    for (let i = 0; i < (final ? 4 : 2); i++) add(i % 2 ? 'healer' : 'shielded', gap);
   } else if (isChiefWave(stage, w)) {
     t += 1.5;
     add('chief', 1.2);
     for (let i = 0; i < 2; i++) add(kindUnlocked('shielded', stage, w) ? 'shielded' : 'normal', gap);
   }
+  markDarks(out, map, stage, w, typeTheme);
   return out;
+}
+
+/**
+ * Jefe legendario de una oleada: en el infinito, los dos del bioma alternos; en el último nivel, el del mapa
+ * (MAP_FINAL_BOSS o el del bioma); en los demás, un legendario o singular del tipo tema (themes.ts).
+ */
+export function bossSpecies(map: TdMap, level: number, wave: number): number {
+  const foes = MAP_FOES[map.biome] ?? MAP_FOES.bosque;
+  const stage: Stage = { tier: map.tier, level, levels: map.levels };
+  if (isEndless(stage)) return foes.bosses[Math.floor(wave / BOSS_EVERY) % 2 === 1 ? 0 : 1];
+  const final = MAP_FINAL_BOSS[map.id] ?? foes.bosses[1];
+  if (stage.level >= stage.levels) return final;
+  return levelBossFor(map, level, final);
+}
+
+// --- Pokémon oscuros (darkMon.ts): ojos rojos, más vida y velocidad ---
+
+/**
+ * Probabilidad de que un enemigo salga oscuro. Nada en la primera mitad del nivel (ni antes de la oleada 4; en el
+ * infinito, antes de la 5); luego sube con la oleada y con la dificultad del mapa. Minijefes y jefes, algo más. En
+ * los niveles de tipo Siniestro, ×1,5 (es su fase).
+ */
+export const TD_DARK = { minStart: 4, startFrac: 0.5, enemy: [0.03, 0.08, 0.04], miniboss: [0.12, 0.1, 0.1], boss: [0.08, 0.06, 0.14], darkTheme: 1.5, max: 0.35 } as const;
+
+export function darkChance(s: Stage, wave: number, who: 'enemy' | 'miniboss' | 'boss', theme = ''): number {
+  const total = isEndless(s) ? Infinity : wavesInLevel(s.level, s.levels);
+  const start = Number.isFinite(total) ? Math.max(TD_DARK.minStart, Math.ceil(total * TD_DARK.startFrac)) : 5;
+  if (wave < start) return 0;
+  const p = Number.isFinite(total) ? (wave - start) / Math.max(1, total - start) : Math.min(1, (wave - start) / 15);
+  const hard = ((refLevel(s) - 1) / (REF_LEVELS - 1)) * 0.6 + Math.min(1, s.tier / 17) * 0.4;
+  const [base, perWave, perHard] = TD_DARK[who];
+  const c = base + perWave * p + perHard * hard;
+  return Math.min(TD_DARK.max, c * (theme === 'dark' ? TD_DARK.darkTheme : 1));
+}
+
+/** Máximo de enemigos normales oscuros por oleada: 1, y más en los mapas y niveles difíciles (hasta 4). */
+export const darkWaveCap = (s: Stage): number => Math.min(4, 1 + Math.floor((s.tier * 3 + refLevel(s)) / 16));
+
+/** Marca qué apariciones salen oscuras (tirada fija con la semilla del nivel). Las crías nunca. */
+function markDarks(out: Spawn[], map: TdMap, s: Stage, wave: number, theme: string) {
+  const cap = darkWaveCap(s);
+  let n = 0;
+  out.forEach((sp, i) => {
+    if (sp.kind === 'brood') return;
+    const who = sp.kind === 'boss' ? 'boss' : sp.kind === 'chief' ? 'miniboss' : 'enemy';
+    if (who === 'enemy' && n >= cap) return;
+    if (unitRoll(`${levelSeed(map.id, s.level)}|${wave}|${i}|oscuro`) < darkChance(s, wave, who, theme)) {
+      sp.dark = true;
+      if (who === 'enemy') n++;
+    }
+  });
 }
 
 /** Truco protagonista de una oleada (o null). */
@@ -215,3 +287,12 @@ export function waveBonus(wave: number, perfect: boolean): number {
 
 /** Dinero por llamar antes la oleada: 1 por cada segundo que queda. */
 export const earlyCallBonus = (secondsLeft: number): number => Math.max(0, Math.floor(secondsLeft));
+
+/** Todas las especies que salen en un nivel (para cargar sus sprites antes de empezar). El infinito, sus 40 primeras oleadas. */
+export function levelSpeciesIds(map: TdMap, level: number): number[] {
+  const stage: Stage = { tier: map.tier, level, levels: map.levels };
+  const n = isEndless(stage) ? 40 : wavesInLevel(level, map.levels);
+  const ids = new Set<number>();
+  for (let w = 1; w <= n; w++) for (const s of waveSpawns(map, level, w)) ids.add(s.species);
+  return [...ids];
+}

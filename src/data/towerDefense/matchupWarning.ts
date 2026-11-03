@@ -1,10 +1,13 @@
 // Defensa de torres: AVISO PREVIO de emparejamiento. Antes de empezar un nivel temático, compara los tipos de las
-// torres elegidas con el tipo tema y con los enemigos que de verdad salen (los del tema y los contra-tipos) y da un
+// torres elegidas con el tipo tema y con los enemigos que lo deciden (los del tema, que son los más probables del
+// sorteo, y los contra-tipos; los del bioma y de visita son de cualquier tipo y no inclinan la balanza) y da un
 // veredicto: Bien / Justo / Arriesgado, con el motivo y los tipos que sí funcionan. No bloquea nada. Lógica pura.
 import { tdTypeMul } from './towers.ts';
 import { tdTypesOf } from './species.ts';
 import { ALL_TYPES, THEME_FOES, contraFoes, counterTypes, themeBoost, levelTheme } from './themes.ts';
 import type { TdMap } from './maps.ts';
+import { BOSS_EVERY, darkChance, waveSpawns, wavesInLevel } from './waves.ts';
+import { CHIEF_NAMES } from './chiefs.ts';
 import { typeNameEs } from '../types.ts';
 
 export type Verdict = 'bien' | 'justo' | 'arriesgado';
@@ -33,7 +36,10 @@ export interface MatchupWarning {
 const list = (ts: readonly string[]) => (ts.length <= 1 ? ts.map(typeNameEs).join('') : `${ts.slice(0, -1).map(typeNameEs).join(', ')} y ${typeNameEs(ts[ts.length - 1])}`);
 const listO = (ts: readonly string[]) => (ts.length <= 1 ? ts.map(typeNameEs).join('') : `${ts.slice(0, -1).map(typeNameEs).join(', ')} o ${typeNameEs(ts[ts.length - 1])}`);
 
-/** Enemigos del nivel con su peso: los del tema siempre; los contra-tipos pesan más según avanza el nivel. */
+/**
+ * Enemigos del nivel con su peso: los del tema (lo más probable del sorteo de themes.ts) y los contra-tipos, que pesan
+ * más según avanza el nivel. Los del bioma y de visita no cuentan: con cualquier equipo son, de media, neutros.
+ */
 function foePool(theme: string, level: number): { types: readonly string[]; w: number }[] {
   const f = THEME_FOES[theme] ?? THEME_FOES.normal;
   const themeIds = [...new Set([...f.ground, ...f.air, ...f.big])];
@@ -99,4 +105,30 @@ export function matchupForLevel(m: Pick<TdMap, 'id' | 'levels'>, level: number, 
 export function levelHint(theme: string, level = 8): string {
   const rec = matchupWarning(theme, level, []).suggest;
   return `Lleva ${listO(rec)} para el nivel ${typeNameEs(theme)}`;
+}
+
+/**
+ * Quién manda en el nivel, para la ficha del nivel: «Minijefes: Kartana y Buzzwole · Jefe: Zarude · Oscuros desde la
+ * oleada 4». En el infinito, la regla (minijefe en las oleadas 5, 15… y jefe legendario cada 10).
+ */
+export function levelFoesLine(m: TdMap, level: number): string {
+  const stage = { tier: m.tier, level, levels: m.levels };
+  if (level <= 0) return `Minijefes (pseudolegendarios y ultraentes) en las oleadas 5, 15, 25… y un jefe legendario cada ${BOSS_EVERY}. Oscuros desde la oleada 5.`;
+  const W = wavesInLevel(level, m.levels);
+  const minis: number[] = [];
+  let boss = 0;
+  let dark = 0;
+  for (let w = 1; w <= W; w++) {
+    for (const s of waveSpawns(m, level, w)) {
+      if (s.kind === 'chief' && !minis.includes(s.species)) minis.push(s.species);
+      if (s.kind === 'boss') boss = s.species;
+    }
+    if (!dark && darkChance(stage, w, 'enemy', levelTheme(m, level)) > 0) dark = w;
+  }
+  const name = (id: number) => CHIEF_NAMES[id] ?? '¿?';
+  const parts: string[] = [];
+  if (minis.length) parts.push(`Minijefe${minis.length > 1 ? 's' : ''}: ${minis.map(name).join(' y ')}`);
+  if (boss) parts.push(`${level >= m.levels ? 'Jefe final' : 'Jefe'}: ${name(boss)}`);
+  if (dark) parts.push(`Oscuros desde la oleada ${dark}`);
+  return parts.join(' · ');
 }

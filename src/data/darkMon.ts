@@ -135,6 +135,9 @@ export function eyeSpots(box: { x0: number; y0: number; x1: number; y1: number }
   return { y, xs: [cx - gap, cx + gap] };
 }
 
+/** Lado del ojo rojo (px) según el alto del sprite en pantalla, nunca menos de `min` (en sprites pequeños se pierden). */
+export const eyeSize = (displayHeight: number, min = 2): number => Math.max(min, Math.round((Number.isFinite(displayHeight) ? displayHeight : 0) / 26));
+
 /**
  * Hacia dónde mira un sprite para los ojos. Hojas PMD (fila 0 abajo, 1 abajo-dcha, 2 dcha, 3 arriba-dcha, 4 arriba,
  * 5 arriba-izq, 6 izq, 7 abajo-izq): de espaldas en 3-5. Sin PMD: `facing` del sprite y si la textura es la de espalda.

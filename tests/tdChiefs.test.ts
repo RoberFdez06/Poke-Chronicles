@@ -5,14 +5,14 @@ import { TD_MAPS, buildableCells, pathCells } from '../src/data/towerDefense/map
 import { mapForLevel } from '../src/data/towerDefense/variants.ts';
 import type { TdMon } from '../src/data/towerDefense/species.ts';
 import { isChiefWave, isBossWave, waveSpawns, wavesInLevel } from '../src/data/towerDefense/waves.ts';
-import { CHIEF_SKILL_INFO, CHIEF_SPECIES, STUN_TIME, chiefSkillsFor, chiefSpecies } from '../src/data/towerDefense/chiefs.ts';
+import { CHIEF_SKILL_INFO, STUN_TIME, chiefSkillsFor, isMinibossMon } from '../src/data/towerDefense/chiefs.ts';
 import { WAVE_EVENTS, WAVE_EVENT_INFO, waveEventFor } from '../src/data/towerDefense/events.ts';
 import { EPIC_ONLY, PERKS, addRelic, draftPerks, freshRelics, interestOf, perkDesc, perkName } from '../src/data/towerDefense/perks.ts';
 import { ABILITIES, ABILITY_INFO, densestPoint, isZoneAbility } from '../src/data/towerDefense/abilities.ts';
 import { chiefTicketsFor, rewardsFor } from '../src/data/towerDefense/progress.ts';
 import { TdGame, type TdEnemy } from '../src/data/towerDefense/engine.ts';
 import { tdTypesOf } from '../src/data/towerDefense/species.ts';
-import { levelTheme, themeChief } from '../src/data/towerDefense/themes.ts';
+import { levelSeed, levelTheme, minibossFor } from '../src/data/towerDefense/themes.ts';
 
 const st = (hp: number, attack: number, defense: number, spAttack: number, spDefense: number, speed: number) => ({ hp, attack, defense, spAttack, spDefense, speed });
 const TEAM: TdMon[] = [
@@ -24,21 +24,22 @@ const MAP = TD_MAPS[0];
 type Spawner = { spawn: (s: object, d?: number) => TdEnemy };
 const spawnIn = (g: TdGame, kind: string, species: number, dist = 1) => (g as unknown as Spawner).spawn.call(g, { at: 0, kind, species, path: 0 }, dist);
 
-test('jefes de oleada: cada 5 oleadas, sin pisar al legendario, con especie y 2 habilidades fijas', () => {
+test('minijefes: cada 5 oleadas, sin pisar al legendario, con especie y 2 habilidades fijas', () => {
   const lv = { tier: 0, level: 3, levels: MAP.levels };
   assert.ok(isChiefWave(lv, 5) && !isChiefWave(lv, 4) && !isChiefWave(lv, 6));
   const inf = { tier: 0, level: 0, levels: 10 };
   assert.ok(isChiefWave(inf, 5) && isChiefWave(inf, 15) && !isChiefWave(inf, 10) && isBossWave(inf, 10));
   const sp = waveSpawns(MAP, 3, 5);
   assert.equal(sp.filter((s) => s.kind === 'chief').length, 1);
-  // Nivel temático: el jefe de oleada es del tipo tema (themes.ts); chiefSpecies queda para el bioma
-  assert.equal(sp.find((s) => s.kind === 'chief')!.species, themeChief(levelTheme(MAP, 3), 5));
-  assert.ok(chiefSpecies(MAP.biome, 5) > 0);
+  // Minijefe del nivel temático: un pseudolegendario o ultraente que prefiere el tipo tema (themes.ts)
+  const chief = sp.find((s) => s.kind === 'chief')!;
+  assert.equal(chief.species, minibossFor(levelTheme(MAP, 3), levelSeed(MAP.id, 3), 5));
+  assert.ok(isMinibossMon(chief.species));
+  assert.ok(tdTypesOf(chief.species).length > 0);
   assert.ok(!waveSpawns(MAP, 3, 4).some((s) => s.kind === 'chief'));
-  // El último nivel: jefe de oleada en la 10 y legendario en la última, nunca los dos juntos
+  // El último nivel: minijefe en la 10 y legendario en la última, nunca los dos juntos
   const last = wavesInLevel(MAP.levels, MAP.levels);
   assert.ok(!waveSpawns(MAP, MAP.levels, last).some((s) => s.kind === 'chief'));
-  for (const b of Object.keys(CHIEF_SPECIES)) for (const id of CHIEF_SPECIES[b]) assert.notEqual(tdTypesOf(id)[0], 'normal', `tipos de ${id}`);
   assert.deepEqual(chiefSkillsFor('pradera', 2, 10), chiefSkillsFor('pradera', 2, 10));
   assert.equal(chiefSkillsFor('pradera', 2, 5)[0], 'aturdir', 'el primer jefe siempre aturde');
   for (let w = 5; w <= 60; w += 5) {

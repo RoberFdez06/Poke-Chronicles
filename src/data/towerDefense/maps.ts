@@ -112,12 +112,31 @@ export const LAYOUTS: readonly Layout[] = [
     ],
     blocked: [c(1, 0), c(13, 7), c(5, 0), c(9, 9)],
   },
+  // Fases añadidas (Psíquico y Normal): dos entradas enfrentadas que bajan juntas al centro y una serpentina con tres entradas
+  {
+    shape: 'Dos entradas enfrentadas que bajan juntas al centro',
+    paths: [
+      [c(0, 1), c(6, 1), c(6, 4), c(3, 4), c(3, 8), c(12, 8), c(12, 6), c(8, 6)],
+      [c(15, 1), c(9, 1), c(9, 4), c(3, 4), c(3, 8), c(12, 8), c(12, 6), c(8, 6)],
+    ],
+    blocked: [c(1, 6), c(14, 4), c(7, 10), c(11, 2)],
+  },
+  {
+    shape: 'Una serpentina con tres entradas',
+    paths: [
+      [c(0, 2), c(13, 2), c(13, 5), c(2, 5), c(2, 8), c(15, 8)],
+      [c(7, 0), c(7, 2), c(13, 2), c(13, 5), c(2, 5), c(2, 8), c(15, 8)],
+      [c(15, 6), c(4, 6), c(4, 8), c(15, 8)],
+    ],
+    blocked: [c(4, 0), c(10, 4), c(0, 9), c(14, 10)],
+  },
 ];
 
 /**
- * Los 16 mapas, de principiante a experto: nombre, bioma, plantilla y si va volteada. Ningún mapa repite la plantilla
- * del anterior y los últimos usan las más enrevesadas (bucles, bifurcaciones, cuatro entradas). Los ids y el orden no
- * cambian (el guardado va por id). Cada nivel además cambia el mapa (variants.ts).
+ * Los 18 mapas (una fase por tipo, themes.ts), de principiante a experto: nombre, bioma, plantilla y si va volteada.
+ * Ningún mapa repite la plantilla del anterior y los últimos usan las más enrevesadas (bucles, bifurcaciones, cuatro
+ * entradas, serpentina). Los ids y el orden no cambian (el guardado va por id): los mapas nuevos van al final. Cada
+ * nivel además cambia el mapa (variants.ts).
  */
 const MAP_LIST: readonly [string, string, string, number, boolean][] = [
   ['pradera', 'Pradera Verde', 'bosque', 0, false],
@@ -136,6 +155,8 @@ const MAP_LIST: readonly [string, string, string, number, boolean][] = [
   ['lodazal', 'Lodazal Negro', 'pantano', 11, false],
   ['caldera', 'Caldera Final', 'volcan', 10, true],
   ['cumbre', 'Cumbre Celeste', 'cumbre', 11, true],
+  ['templo', 'Templo Mental', 'ciudad', 12, false],
+  ['origen', 'Sala del Origen', 'cumbre', 13, false],
 ];
 
 const flip = (q: Cell, m: boolean): Cell => (m ? c(TD_COLS - 1 - q.x, q.y) : q);

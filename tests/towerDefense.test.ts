@@ -65,7 +65,7 @@ test('los caminos son tramos rectos dentro de la rejilla, entran por el borde y 
     assert.ok(buildableCells(m).length > 60);
     for (const b of m.blocked) assert.ok(!isBuildable(m, b.x, b.y));
   }
-  assert.equal(LAYOUTS.length, 12);
+  assert.equal(LAYOUTS.length, 14);
 });
 
 test('los puntos del camino se recorren a lo largo', () => {
@@ -158,13 +158,19 @@ test('oleadas: siempre las mismas, más difíciles, jefe legendario en el últim
   assert.equal(refLevel({ tier: 0, level: 0, levels: 15 }), 12);
   assert.ok(baseHp(8, 0) > baseHp(1, 0) && baseHp(1, 5) > baseHp(1, 0));
   assert.ok(waveSpawns(m, 1, 6).length > waveSpawns(m, 1, 1).length);
-  for (let lv = 1; lv < m.levels; lv++) for (let w = 1; w <= wavesInLevel(lv, m.levels); w++) assert.ok(!waveSpawns(m, lv, w).some((s) => s.kind === 'boss'));
+  // Cada nivel acaba con un jefe legendario (solo en su última oleada); el del último nivel es el del mapa y a plena vida
+  for (let lv = 1; lv <= m.levels; lv++) {
+    const W = wavesInLevel(lv, m.levels);
+    for (let w = 1; w < W; w++) assert.ok(!waveSpawns(m, lv, w).some((s) => s.kind === 'boss'), `nv. ${lv}/${w}`);
+    const bosses = waveSpawns(m, lv, W).filter((s) => s.kind === 'boss');
+    assert.equal(bosses.length, 1, `nv. ${lv}: un jefe al final`);
+    if (lv < m.levels) assert.ok((bosses[0].hpMul ?? 1) < 1, 'el jefe de un nivel cualquiera tiene menos vida que el final');
+  }
   const last = waveSpawns(m, m.levels, wavesInLevel(m.levels, m.levels));
-  // El jefe va en el último nivel de cada mapa, tenga los niveles que tenga
   for (const q of TD_MAPS) assert.equal(waveSpawns(q, q.levels, wavesInLevel(q.levels, q.levels)).filter((s) => s.kind === 'boss').length, 1, q.id);
-  assert.ok(!waveSpawns(LAST, 12, wavesInLevel(12, LAST.levels)).some((s) => s.kind === 'boss'), 'el 12 ya no es el último en los mapas largos');
   assert.equal(last.filter((s) => s.kind === 'boss').length, 1);
   assert.equal(last.find((s) => s.kind === 'boss')!.species, MAP_FOES.bosque.bosses[1]);
+  assert.equal(last.find((s) => s.kind === 'boss')!.hpMul ?? 1, 1);
   // Infinito: jefe cada 10
   assert.ok(isBossWave({ tier: 0, level: 0, levels: 10 }, 10) && isBossWave({ tier: 0, level: 0, levels: 10 }, 20) && !isBossWave({ tier: 0, level: 0, levels: 10 }, 15));
   // Los papeles difíciles salen antes en los mapas difíciles

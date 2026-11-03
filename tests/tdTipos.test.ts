@@ -3,13 +3,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { TD_MAPS } from '../src/data/towerDefense/maps.ts';
 import {
-  ALL_TYPES, COUNTER_DAMAGE, CONTRA_HP, MAP_THEMES, THEME_DAMAGE, THEME_FOES, THEME_RANGE, contraFoes, contraTypes, counterTypes, foeSource, levelTheme,
-  resistsTheme, themeBanner, themeBoost, themeChief, themeHint, themeSpeciesIds, themeSummary, themesOf,
+  ALL_TYPES, COUNTER_DAMAGE, CONTRA_HP, MAP_THEMES, THEME_DAMAGE, THEME_FOES, THEME_RANGE, contraFoes, contraTypes, counterTypes, levelTheme,
+  resistsTheme, themeBanner, themeBoost, themeHint, themeSpeciesIds, themeSummary, themesOf,
 } from '../src/data/towerDefense/themes.ts';
 import { THEME_TERRAIN, TERRAIN_FX, TERRAIN_INFO, THEME_TERRAINS, mapForLevel } from '../src/data/towerDefense/variants.ts';
 import { enemyDef, stagePower, waveSpawns, wavesInLevel } from '../src/data/towerDefense/waves.ts';
 import { TD_TYPES, THEME_MON_TYPES, tdTypesOf, type TdMon } from '../src/data/towerDefense/species.ts';
-import { CHIEF_NAMES, CHIEF_TYPES } from '../src/data/towerDefense/chiefs.ts';
+import { CHIEF_TYPES } from '../src/data/towerDefense/chiefs.ts';
 import { TdGame, type TdEnemy } from '../src/data/towerDefense/engine.ts';
 import { towerStats, tdTypeMul } from '../src/data/towerDefense/towers.ts';
 import { autoplay } from '../src/data/towerDefense/autoplay.ts';
@@ -28,10 +28,11 @@ const TEAM: TdMon[] = [
 type Spawner = { spawn: (s: object, d?: number) => TdEnemy };
 const spawnIn = (g: TdGame, kind: string, species: number, dist = 1, path = 0) => (g as unknown as Spawner).spawn.call(g, { at: 0, kind, species, path }, dist);
 
-test('cada mapa tiene sus tipos; entre los 16 salen los 18 y los propios no se repiten', () => {
+test('cada mapa tiene sus tipos; una fase por cada uno de los 18 tipos y los propios no se repiten', () => {
   assert.deepEqual(Object.keys(MAP_THEMES), TD_MAPS.map((m) => m.id));
   const own = TD_MAPS.map((m) => themesOf(m)[0]);
   assert.equal(new Set(own).size, TD_MAPS.length, 'tipo propio distinto en cada mapa');
+  assert.deepEqual([...own].sort(), [...ALL_TYPES].sort(), 'los 18 tipos como tipo principal');
   const used = new Set<string>();
   for (const m of TD_MAPS) for (let l = 0; l <= m.levels; l++) used.add(mapForLevel(m, l).theme);
   assert.deepEqual([...used].sort(), [...ALL_TYPES].sort(), 'se usan los 18 tipos en los niveles');
@@ -79,17 +80,14 @@ test('potenciación: las torres del tipo tema ganan daño y alcance; las súper 
   assert.equal(g.statsOf(w).damage, towerStats(w.mon, 1, null).damage, 'sin bonus');
 });
 
-test('enemigos acordes: sobre todo del tipo tema, jefe del tema y contra-tipos en las oleadas altas', () => {
+test('enemigos acordes: sobre todo del tipo tema (sorteo), también del bioma y de visita, y contra-tipos al final', () => {
   for (const ty of ALL_TYPES) {
     const f = THEME_FOES[ty];
     assert.ok(f, `faltan los Pokémon de ${ty}`);
-    for (const id of [...f.ground, ...f.air, ...f.big, ...f.chiefs]) {
+    for (const id of [...f.ground, ...f.air, ...f.big]) {
       assert.ok(TD_TYPES[id] || THEME_MON_TYPES[id] || CHIEF_TYPES[id], `falta el tipo de ${id}`);
-      if (!f.chiefs.includes(id)) assert.ok(tdTypesOf(id).includes(ty), `${id} no es de tipo ${ty}`);
+      assert.ok(tdTypesOf(id).includes(ty), `${id} no es de tipo ${ty}`);
     }
-    for (const id of f.chiefs) assert.ok(CHIEF_NAMES[id], `falta el nombre del jefe ${id}`);
-    assert.ok(tdTypesOf(themeChief(ty, 5)).includes(ty) && tdTypesOf(themeChief(ty, 10)).includes(ty), `jefe de ${ty}`);
-    assert.notEqual(themeChief(ty, 5), themeChief(ty, 10), 'los dos jefes se alternan');
     const c = contraFoes(ty);
     assert.ok(contraTypes(ty).length >= 1);
     for (const g of ['ground', 'air', 'big'] as const) {
@@ -106,33 +104,26 @@ test('enemigos acordes: sobre todo del tipo tema, jefe del tema y contra-tipos e
       let related = 0;
       let total = 0;
       for (let w = 1; w <= W; w++) {
-        const sp = waveSpawns(m, lv, w).filter((s) => s.kind !== 'boss');
+        const sp = waveSpawns(m, lv, w).filter((s) => s.kind !== 'boss' && s.kind !== 'chief');
         total += sp.length;
         themed += sp.filter((s) => tdTypesOf(s.species).includes(theme)).length;
         related += sp.filter((s) => !s.contra).length;
-        const chief = sp.find((s) => s.kind === 'chief');
-        if (chief) assert.equal(chief.species, themeChief(theme, w), `${m.id}/${lv}: jefe del tema`);
         // Primera mitad sin contra-tipos; en la última oleada, contra-tipos que resisten el tema con vida extra
         if (w <= W / 2) assert.ok(!sp.some((s) => s.contra), `${m.id}/${lv}/${w}: contra-tipos antes de tiempo`);
         if (w === W) {
           const contra = sp.filter((s) => s.contra);
-          assert.ok(contra.length >= 3, `${m.id}/${lv}: pocos contra-tipos al final`);
+          assert.ok(contra.length >= 1, `${m.id}/${lv}: sin contra-tipos al final`);
           for (const s of contra) {
             assert.ok(resistsTheme(theme, s.species), `${m.id}/${lv}: ${s.species} no resiste ${theme}`);
             assert.equal(s.hpMul, CONTRA_HP);
           }
         }
       }
-      // Mayoría del tema y su entorno (bioma); el tipo tema solo, al menos el 40 %
+      // Mayoría del tema y su entorno; el tipo tema solo, al menos el 40 % (es el más probable, no una cuota fija)
       assert.ok(related / total >= 0.6, `${m.id}/${lv}: solo ${Math.round((related / total) * 100)} % del tema y el bioma`);
       assert.ok(themed / total >= 0.4, `${m.id}/${lv}: solo ${Math.round((themed / total) * 100)} % del tipo ${theme}`);
     }
   }
-  assert.equal(foeSource(2, 1, 10), 'entorno', '1 de cada 4 es del bioma');
-  assert.equal(foeSource(0, 1, 10), 'tema');
-  assert.equal(foeSource(3, 9, 10), 'contra');
-  assert.equal(foeSource(0, 9, 10, 'tank'), 'contra', 'los grandes de la segunda mitad son contra-tipos');
-  assert.equal(foeSource(0, 9, 10, 'chief'), 'tema', 'el jefe siempre del tema');
 });
 
 test('mapa enfocado al tipo: terreno propio de cada tipo con efecto real', () => {

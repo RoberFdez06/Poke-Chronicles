@@ -67,8 +67,9 @@ test('mapas: cada nivel es un mapa válido y distinto del anterior; los avanzado
 });
 
 test('los ids, el orden y los niveles de los mapas no cambian (guardados)', () => {
-  assert.deepEqual(TD_MAPS.map((m) => m.id), ['pradera', 'gruta', 'arboleda', 'costa', 'cantera', 'nevada', 'ciudad', 'cienaga', 'glaciar', 'volcan', 'arrecife', 'torre', 'fundicion', 'lodazal', 'caldera', 'cumbre']);
-  assert.deepEqual(TD_MAPS.map((m) => m.levels), [10, 10, 11, 11, 11, 12, 12, 12, 13, 13, 13, 14, 14, 14, 15, 15]);
+  // Los 16 de siempre, igual; las fases nuevas (Psíquico y Normal) van al final
+  assert.deepEqual(TD_MAPS.map((m) => m.id), ['pradera', 'gruta', 'arboleda', 'costa', 'cantera', 'nevada', 'ciudad', 'cienaga', 'glaciar', 'volcan', 'arrecife', 'torre', 'fundicion', 'lodazal', 'caldera', 'cumbre', 'templo', 'origen']);
+  assert.deepEqual(TD_MAPS.map((m) => m.levels), [10, 10, 11, 11, 11, 12, 12, 12, 13, 13, 13, 14, 14, 14, 15, 15, 15, 15]);
 });
 
 test('rutas: las que se abren a mitad del nivel avisan; la barricada cierra una ruta con coste', () => {

@@ -65,6 +65,14 @@ export const LAYOUT_EXTRAS: readonly (readonly Extra[])[] = [
     { kind: 'atajo', path: [c(10, 0), c(10, 3), c(14, 3), c(14, 9), c(15, 9)] },
     { kind: 'rama', path: [c(0, 7), c(3, 7), c(3, 5), c(12, 5), c(12, 9), c(15, 9)] },
   ],
+  [
+    { kind: 'atajo', path: [c(0, 1), c(6, 1), c(6, 6), c(8, 6)] },
+    { kind: 'rama', path: [c(10, 10), c(10, 8), c(12, 8), c(12, 6), c(8, 6)] },
+  ],
+  [
+    { kind: 'atajo', path: [c(0, 2), c(4, 2), c(4, 5), c(2, 5), c(2, 8), c(15, 8)] },
+    { kind: 'rama', path: [c(0, 10), c(8, 10), c(8, 8), c(15, 8)] },
+  ],
 ];
 
 /** Ruta de un mapa de nivel: de dónde sale y desde qué oleada está abierta. */
