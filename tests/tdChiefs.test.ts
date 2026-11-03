@@ -12,6 +12,7 @@ import { ABILITIES, ABILITY_INFO, densestPoint, isZoneAbility } from '../src/dat
 import { chiefTicketsFor, rewardsFor } from '../src/data/towerDefense/progress.ts';
 import { TdGame, type TdEnemy } from '../src/data/towerDefense/engine.ts';
 import { tdTypesOf } from '../src/data/towerDefense/species.ts';
+import { levelTheme, themeChief } from '../src/data/towerDefense/themes.ts';
 
 const st = (hp: number, attack: number, defense: number, spAttack: number, spDefense: number, speed: number) => ({ hp, attack, defense, spAttack, spDefense, speed });
 const TEAM: TdMon[] = [
@@ -30,7 +31,9 @@ test('jefes de oleada: cada 5 oleadas, sin pisar al legendario, con especie y 2 
   assert.ok(isChiefWave(inf, 5) && isChiefWave(inf, 15) && !isChiefWave(inf, 10) && isBossWave(inf, 10));
   const sp = waveSpawns(MAP, 3, 5);
   assert.equal(sp.filter((s) => s.kind === 'chief').length, 1);
-  assert.equal(sp.find((s) => s.kind === 'chief')!.species, chiefSpecies(MAP.biome, 5));
+  // Nivel temático: el jefe de oleada es del tipo tema (themes.ts); chiefSpecies queda para el bioma
+  assert.equal(sp.find((s) => s.kind === 'chief')!.species, themeChief(levelTheme(MAP, 3), 5));
+  assert.ok(chiefSpecies(MAP.biome, 5) > 0);
   assert.ok(!waveSpawns(MAP, 3, 4).some((s) => s.kind === 'chief'));
   // El último nivel: jefe de oleada en la 10 y legendario en la última, nunca los dos juntos
   const last = wavesInLevel(MAP.levels, MAP.levels);

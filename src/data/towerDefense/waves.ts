@@ -6,6 +6,7 @@ import type { TdMap } from './maps.ts';
 import { MAP_FOES, TRICK_KINDS, tdTypesOf, type EnemyKind, type MapFoes } from './species.ts';
 import { waveTheme } from './tricks.ts';
 import { CHIEF_EVERY, chiefSpecies } from './chiefs.ts';
+import { CONTRA_HP, foeSource, levelTheme, themeSpecies } from './themes.ts';
 
 /** Escala de referencia del equilibrio: los niveles de cada mapa se reparten sobre 12 «niveles de dificultad». */
 export const REF_LEVELS = 12;
@@ -124,8 +125,10 @@ export interface Spawn {
   species: number;
   /** Por qué entrada sale. */
   path: number;
-  /** Multiplicador de vida (oleada doble). */
+  /** Multiplicador de vida (oleada doble, contra-tipo). */
   hpMul?: number;
+  /** Contra-tipo del nivel temático (resiste el tipo tema). */
+  contra?: boolean;
 }
 
 /** Desde qué «rango» aparece cada papel (rango = 3 por mapa + nivel + oleada/3): los mapas difíciles los traen antes. */
@@ -152,14 +155,18 @@ export function waveSpawns(map: TdMap, level: number, wave: number): Spawn[] {
   const nPaths = map.paths.length;
   let t = 0;
   let seq = 0;
-  const add = (kind: EnemyKind, gap: number) => {
+  // Nivel temático (themes.ts): la mayoría de los enemigos son del tipo tema, 1 de cada 4 del bioma y, en las
+  // oleadas altas, contra-tipos que lo resisten; el jefe de oleada es del tema y el legendario, el del mapa
+  const typeTheme = levelTheme(map, level);
+  const total = isEndless(stage) ? Infinity : wavesInLevel(stage.level, stage.levels);
+  const add = (kind: EnemyKind, gap: number, slot = seq) => {
     const species =
       kind === 'boss'
         ? foes.bosses[isEndless(stage) && Math.floor(w / BOSS_EVERY) % 2 === 1 ? 0 : 1]
-        : kind === 'chief'
-          ? chiefSpecies(map.biome, w)
-          : foeList(foes, kind)[seq % foeList(foes, kind).length];
-    out.push({ at: Math.round(t * 100) / 100, kind, species, path: seq % nPaths });
+        : themeSpecies(typeTheme, kind, slot, w, total, seq) ??
+          (kind === 'chief' ? chiefSpecies(map.biome, w) : foeList(foes, kind)[seq % foeList(foes, kind).length]);
+    const contra = kind !== 'boss' && kind !== 'chief' && foeSource(slot, w, total, kind) === 'contra';
+    out.push({ at: Math.round(t * 100) / 100, kind, species, path: seq % nPaths, ...(contra ? { hpMul: CONTRA_HP, contra: true } : {}) });
     seq++;
     t += gap;
   };
@@ -176,7 +183,7 @@ export function waveSpawns(map: TdMap, level: number, wave: number): Spawn[] {
     if (w % 4 === 2 && kindUnlocked('flying', stage, w) && i % 2 === 1) kind = 'flying';
     // Truco protagonista de la oleada: uno de cada cuatro (mezclado con lo demás)
     if (theme && i % 4 === 1) kind = theme;
-    add(kind, kind === 'tank' ? gap * 1.6 : kind === 'fast' || kind === 'dodger' ? gap * 0.6 : gap);
+    add(kind, kind === 'tank' ? gap * 1.6 : kind === 'fast' || kind === 'dodger' ? gap * 0.6 : gap, i);
   }
   if (isBossWave(stage, w)) {
     t += 2;

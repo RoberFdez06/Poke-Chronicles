@@ -8,6 +8,7 @@ import { darkOf, lightOf } from './pixelFx';
 import type { MapGeom } from './tdArt';
 import type { TerrainCell } from '../../data/towerDefense/variants';
 import type { TrapKind } from '../../data/towerDefense/live';
+import { drawThemeTerrain } from './tdThemeArt';
 
 type G = Phaser.GameObjects.Graphics;
 const OUT = 0x18202c;
@@ -44,6 +45,9 @@ export function drawTerrain(g: G, cells: readonly TerrainCell[], geo: MapGeom) {
       // Barro en el camino: manchas oscuras y huellas
       g.fillStyle(0x4a3420, 0.75).fillRect(X + P * 2, Y + P * 3, P * 5, P * 4).fillRect(X + P * 9, Y + P * 9, P * 5, P * 4).fillRect(X + P * 4, Y + P * 10, P * 3, P * 3);
       g.fillStyle(0x6a4a2a, 0.9).fillRect(X + P * 10, Y + P * 3, P * 3, P * 2).fillRect(X + P * 3, Y + P * 4, P * 2, P);
+    } else if (q.kind !== 'corriente') {
+      // Terreno propio del tipo tema (lava, charca, niebla de almas, placa de acero…)
+      drawThemeTerrain(g, q, geo);
     } else {
       // Corriente: rayas claras de viento o agua que empujan
       g.fillStyle(0xc8f0ff, 0.8);

@@ -18,6 +18,8 @@ import {
 } from '../data/towerDefense/teamPick';
 import { TD_MAPS } from '../data/towerDefense/maps';
 import { variantSummary } from '../data/towerDefense/variants';
+import { levelTheme, themeSummary, themesOf } from '../data/towerDefense/themes';
+import { bakeTypeIcons, typeIcon, typeIconKey } from '../ui/art/tdThemeArt';
 import { TD_GUIDE } from '../data/towerDefense/guide';
 import { wavesInLevel } from '../data/towerDefense/waves';
 import {
@@ -111,6 +113,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     fitDesign(this);
     addMenuBackdrop(this);
     bakeTdArt(this);
+    bakeTypeIcons(this);
     this.nav = new NavInput(this);
     this.pad = new PadButtons(this);
     const kb = this.input.keyboard!;
@@ -222,6 +225,8 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
         fontFamily: UI.FONT, fontSize: '13px', color: open ? NAVY : '#6a7080', lineSpacing: 2,
       });
       const parts: Phaser.GameObjects.GameObject[] = [g, thumb, name, info];
+      // Tipos tema del mapa (el suyo primero) debajo de la miniatura
+      themesOf(m).forEach((ty, k) => parts.push(typeIcon(this, cx + 21 + k * 22, cy + 102, ty, 1.6).setAlpha(open ? 1 : 0.5)));
       if (open) {
         info.setText(`Niveles ${cleared}/${m.levels}`);
         parts.push(tdIcon(this, cx + 108, cy + 63, 'star', 1.8));
@@ -284,6 +289,8 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
       const parts: Phaser.GameObjects.GameObject[] = [g];
       const mid = x + (bw - 10) / 2;
       parts.push(this.add.text(mid, y + 15, `Nivel ${i + 1}`, { fontFamily: UI.FONT, fontSize: '17px', fontStyle: 'bold', color: open ? NAVY : '#6a7080' }).setOrigin(0.5));
+      // Tipo tema del nivel (themes.ts): su insignia arriba a la izquierda
+      parts.push(typeIcon(this, x + 16, y + 15, levelTheme(m, i + 1), 1.8).setAlpha(open ? 1 : 0.55));
       if (open) {
         for (let s = 0; s < 3; s++) parts.push(tdIcon(this, mid + (s - 1) * 24, y + 38, s < mp.stars[i] ? 'star' : 'starOff', 2));
         parts.push(this.add.text(mid, y + 60, i === L - 1 ? `${wavesInLevel(i + 1, L)} oleadas + jefe` : `${wavesInLevel(i + 1, L)} oleadas`, { fontFamily: UI.FONT, fontSize: '12px', color: NAVY }).setOrigin(0.5));
@@ -325,6 +332,10 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     // Descripción del nivel elegido
     const info = this.add.text(480, 470, '', { fontFamily: UI.FONT, fontSize: '17px', color: '#ffffff', align: 'center', wordWrap: { width: 800 } }).setOrigin(0.5, 0).setStroke('#18202c', 4);
     this.layer.add(info);
+    // Tipo tema del nivel elegido: insignia y bonus (debajo de la descripción, sin pisar la barra de ayuda)
+    const themeText = this.add.text(494, 0, '', { fontFamily: UI.FONT, fontSize: '14px', color: '#ffe9a8', align: 'center', wordWrap: { width: 740 } }).setOrigin(0.5, 0).setStroke('#18202c', 4);
+    const themeBadge = typeIcon(this, 0, 0, levelTheme(m, 1), 1.8);
+    this.layer.add([themeText, themeBadge]);
     this.redraw = () => {
       for (const b of boxes) {
         b.g.clear();
@@ -337,6 +348,9 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
           ? 'Oleadas sin fin cada vez más duras, con un jefe legendario cada 10. Guarda tu mejor oleada.'
           : `Nivel ${i + 1} de ${L}: ${wavesInLevel(i + 1, L)} oleadas${i === L - 1 ? ' y un jefe legendario al final' : ''}. Estrellas según la vida de la base que conserves (3: 90 % o más).\nMapa: ${variantSummary(m, i + 1)}`,
       );
+      const theme = levelTheme(m, i === L ? 0 : i + 1);
+      themeText.setText(themeSummary(theme)).setY(info.y + info.height + 6);
+      themeBadge.setTexture(typeIconKey(theme)).setPosition(themeText.x - themeText.width / 2 - 16, themeText.y + 9);
     };
     this.redraw();
     this.hint('Flechas o cruceta: elegir nivel · Enter, clic o A: elegir equipo · Esc, B o «Volver»: mapas');

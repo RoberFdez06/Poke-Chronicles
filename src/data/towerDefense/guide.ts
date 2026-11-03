@@ -36,6 +36,14 @@ export const TD_GUIDE: readonly GuidePage[] = [
     ],
   },
   {
+    title: 'Niveles por tipo',
+    lines: [
+      'Cada nivel tiene un tipo tema (su insignia sale en la lista de niveles). Tus torres de ese tipo ganan +30 % de daño y +15 % de alcance, y las súper eficaces contra él, +15 % de daño (Ventaja).',
+      'Los enemigos son sobre todo de ese tipo y del bioma; el jefe de cada 5 oleadas también. En la segunda mitad del nivel llegan contra-tipos que resisten el tipo tema: lleva otros tipos para ellos.',
+      'El mapa cambia con el tipo: suelo, obstáculos, ambiente y un terreno propio (Lava y Charco tóxico queman, Charca y Arenas frenan, la Niebla de almas esconde, la Placa de acero evita aturdimientos…).',
+    ],
+  },
+  {
     title: 'Estrellas y desbloqueos',
     lines: [
       'Estrellas: de 1 a 3 según la vida que conserve tu base al ganar (3 estrellas con el 90 % o más).',

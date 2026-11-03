@@ -2396,3 +2396,39 @@ Sin verificar a ojo (Vite no corre en la VM): que el panel de la torre (5 botone
 caja, enlaces y gemas de sinergia, rocas selladas y barricada, minas y telarañas, marcas de los trucos y la línea del saboteador, el
 terreno horneado, el texto del menú de niveles y la página nueva de «Cómo se juega»; mando y táctil en el modo mover y en el panel del
 camino. El HUD móvil y `layout.ts` no se tocan.
+
+## 2026-11-03 · Defensa de torres: niveles temáticos por tipo (rama `tdtipos`)
+Motivo: Roberto quería mapas y niveles enfocados a un tipo («en este nivel vas a potenciar el tipo fantasma, entonces el mapa se
+va a enfocar al fantasma»), como los biomas del modo normal. Lógica pura en `src/data/towerDefense/themes.ts` (y `variants.ts`,
+`waves.ts`, `engine.ts`) con tests en `tests/tdTipos.test.ts`; arte en `src/ui/art/tdThemeArt.ts`.
+- **Tipo tema por nivel** (`MAP_THEMES`, `levelTheme`): cada mapa tiene su tipo (16 distintos) y 1-2 vecinos que rotan en los
+  niveles intermedios; el nivel 1, el último y el infinito son del tipo del mapa. Entre los 16 mapas salen los 18 tipos (Normal y
+  Psíquico, como vecinos). El último mapa es Dragón (el más duro de cubrir). Ids, orden, niveles y guardados iguales (sin RUN_VERSION).
+- **Potenciación** (`themeBoost`): torres del tipo tema +30 % daño y +15 % alcance; las súper eficaces contra él, Ventaja +15 %
+  daño. Aviso al empezar arriba a la derecha del mapa («Nivel Fantasma: tus torres Fantasma +30 % de daño y +15 % de alcance» +
+  Ventaja y contra-tipos), insignia del tipo junto al nombre del mapa en el HUD, insignia (o flecha verde de Ventaja) en las casillas
+  del equipo potenciadas y línea «Tipo tema/Ventaja» en el panel de colocar.
+- **Enemigos acordes** (`THEME_FOES`, `themeSpecies`, `foeSource`): 3 de cada 4 huecos son del tipo tema (tierra, voladores y grandes
+  según el papel) y 1 del bioma; el jefe de cada 5 oleadas es del tema (2 por tipo, alternos; el legendario sigue siendo el del mapa).
+  Estrategia: en la segunda mitad del nivel llegan **contra-tipos** (hasta 3 tipos que resisten el tema, los inmunes primero): 1 de
+  cada 4 y todos los grandes, y 2 de cada 4 en el último cuarto, con +25 % de vida. El panel de la oleada cuenta los contra-tipos.
+  Los trucos de `tdreto` siguen (el papel manda; solo cambia la especie).
+- **Mapa enfocado al tipo**: suelo teñido con marcas del tipo (grietas, escarcha, cenizas, runas, remaches, flores…), las rocas
+  nuevas del nivel salen como obstáculos del tipo (lápidas, bloques de hielo, rocas de magma, cristales, cajas de acero, setas…),
+  ambiente animado (Fantasma: niebla baja y almas que suben; brasas, copos, burbujas, chispas, luciérnagas, destellos…) y un
+  **terreno propio por tipo** con efecto real: Lava y Charco tóxico queman (no a Fuego / Veneno y Acero), Charca, Arenas movedizas y
+  Seda frenan, Hierba curativa cura, Hielo acelera, Losas quitan un 25 % de daño, Niebla de almas esconde (no se apunta; el área y
+  las cadenas sí dan), Generador y Campo de entreno +cadencia, Tatami, Escamas y Círculo de hadas +daño, Corriente térmica y Círculo
+  psíquico +alcance, Penumbra −alcance y Placa de acero evita aturdimientos. 2-3 losas o 1-2 tramos de 3 casillas por nivel (los
+  malos, un tramo). Los efectos del terreno van por una tabla (`TERRAIN_FX`); los cinco de `tdreto` siguen igual.
+- Menú: insignia pixel art del tipo en cada nivel (arriba a la izquierda) y en cada mapa (sus tipos bajo la miniatura), y línea con
+  el tipo y el bonus del nivel elegido. Página nueva «Niveles por tipo» en «Cómo se juega». 18 insignias propias (`bakeTypeIcons`).
+- Equilibrio con el bot (mismo equipo de los tests, `_sim/`): los niveles fáciles igual o mejor; Cráter Ígneo (ahora Roca) se pone
+  duro para ese equipo (Fuego/Eléctrico/Normal resistidos) y se gana llevando Agua/Roca (test); el mapa final sigue sin pasarse sin
+  mejorar. Con 6 torres del tipo tema se gana pero los contra-tipos se notan en las oleadas altas.
+- Tests: `tdTipos.test.ts` (los 18 tipos usados, bonus aplicado, enemigos y jefe acordes, contra-tipos que resisten, terreno con
+  efecto, bot ganable) y `tdChiefs.test.ts` (el jefe de oleada es el del tema).
+Sin verificar a ojo (Vite no corre en la VM): el aviso del tipo (que quepa en su caja con los tipos de muchas Ventajas), la insignia
+del HUD entre «Llega en…» y el nombre del mapa, las insignias del equipo, los terrenos y obstáculos nuevos horneados, el ambiente
+(almas, niebla, motas), la transparencia de los enemigos en la niebla de almas, las insignias del menú y la línea del tipo bajo la
+descripción del nivel. Se cargan más sprites al empezar (los del tema y los contra-tipos). El HUD móvil y `layout.ts` no se tocan.
