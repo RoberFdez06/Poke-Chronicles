@@ -2,7 +2,7 @@
 // el estallido al aparecer y el humo de su intro. Píxel gordo y redibujado a saltos, como formsFx y megaFx.
 import Phaser from 'phaser';
 import { lowFx } from '../theme';
-import { DARK_COLORS, eyeFacing, eyeSpots } from '../../data/darkMon';
+import { DARK_COLORS, eyeFacing, eyeSize, eyeSpots } from '../../data/darkMon';
 import { PX, animate, mixColor, pixRing } from './pixelFx';
 
 const snap = (v: number, s = PX) => Math.round(v / s) * s;
@@ -23,11 +23,11 @@ function oval(g: Phaser.GameObjects.Graphics, x: number, y: number, rx: number, 
  * moradas. Sigue al sprite y se borra sola cuando el sprite deja de estar activo. Devuelve la función para quitarla.
  * Con pocos efectos solo queda la sombra (sin humo).
  */
-export function darkAura(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, feet: () => number): () => void {
+export function darkAura(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, feet: () => number, opts: { eyeMin?: number } = {}): () => void {
   const g = scene.add.graphics();
   let at = 0;
   let alive = true;
-  const stopEyes = darkEyes(scene, s);
+  const stopEyes = darkEyes(scene, s, opts.eyeMin);
   const stop = () => {
     if (!alive) return;
     alive = false;
@@ -150,9 +150,10 @@ function opaqueBox(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite) {
 /**
  * Ojos rojos brillantes de un Pokémon oscuro: dos puntos de píxel rojo con un halo que late, dibujados justo antes de
  * pintar (tras la animación y la pose de locoAnim), con la transformación real del sprite (giro, escala, volteo,
- * elevación), así que no se desfasan. De espaldas no se ven. Devuelve la función para quitarlos.
+ * elevación), así que no se desfasan. De espaldas no se ven. `eyeMin`: tamaño mínimo del ojo en px (los sprites pequeños
+ * de la defensa de torres piden 3 para que se vean). Devuelve la función para quitarlos.
  */
-export function darkEyes(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite): () => void {
+export function darkEyes(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite, eyeMin = 2): () => void {
   const g = scene.add.graphics();
   let alive = true;
   const stop = () => {
@@ -175,7 +176,7 @@ export function darkEyes(scene: Phaser.Scene, s: Phaser.GameObjects.Sprite): () 
     const m = s.getWorldTransformMatrix();
     const t = scene.time.now;
     const pulse = 0.55 + 0.45 * Math.sin(t / 160);
-    const size = Math.max(2, Math.round(s.displayHeight / 26));
+    const size = eyeSize(s.displayHeight, eyeMin);
     for (const u0 of spots.xs) {
       const u = s.flipX ? 1 - u0 : u0;
       const p = m.transformPoint(u * fw - s.displayOriginX, spots.y * fh - s.displayOriginY);

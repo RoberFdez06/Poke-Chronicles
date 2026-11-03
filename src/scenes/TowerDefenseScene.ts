@@ -40,21 +40,21 @@ import { biomeById } from '../level/biomes';
 import { TD_COLS, TD_MAPS, TD_ROWS, baseCell, buildableCells, entryCells, type TdMap } from '../data/towerDefense/maps';
 import { BASE_HP, TARGETING_LABEL, TdGame, type TdEnemy, type TdEvent, type TdTower, type TeamMon } from '../data/towerDefense/engine';
 import { ABILITIES, ABILITY_INFO, isZoneAbility, type AbilityId } from '../data/towerDefense/abilities';
-import { CHIEF_NAMES, CHIEF_SKILL_INFO, CHIEF_SPECIES } from '../data/towerDefense/chiefs';
+import { CHIEF_NAMES, CHIEF_SKILL_INFO, bigMonLabel } from '../data/towerDefense/chiefs';
 import { STORM_RADIUS, STORM_WARN, WAVE_EVENT_INFO, type WaveEventId } from '../data/towerDefense/events';
 import { PERK_ICON, TOWER_PERKS, perkDesc, perkName, type Perk } from '../data/towerDefense/perks';
 import { BRANCH_LEVEL, MAX_TOWER_LEVEL, MEGA_LEVEL, STYLE_LABEL, branchInfo, levelLabel, megaMoveOf, megaSpriteName, specialMoveOf, towerCost, towerStats } from '../data/towerDefense/towers';
 import { drawMegaAura, towerMegaFx } from '../ui/art/tdMegaArt';
 import { drawGate, drawLink, drawSynergyGem, drawTerrain, drawTrap, drawTrickMark } from '../ui/art/tdRetoArt';
 import { TERRAIN_INFO, TERRAIN_FX, isLevelMap } from '../data/towerDefense/variants';
-import { levelTheme, themeBanner, themeHint, themeSpeciesIds, type ThemeBoost } from '../data/towerDefense/themes';
+import { themeBanner, themeHint, type ThemeBoost } from '../data/towerDefense/themes';
 import { bakeTypeIcons, drawThemeAmbient, drawThemeGround, drawThemeProp, hasThemeProp, pickMotes, typeIcon, type Mote } from '../ui/art/tdThemeArt';
 import { TRAP_INFO, TRAP_KINDS, type TrapKind } from '../data/towerDefense/live';
 import { TRICK_INFO } from '../data/towerDefense/tricks';
 import { comboById } from '../data/towerDefense/synergy';
 import { TRICK_KINDS, type TrickKind } from '../data/towerDefense/species';
 import { ENEMY_KIND_LABEL, MAP_FOES, TRIAL_TEAM, type EnemyKind } from '../data/towerDefense/species';
-import { waveSpawns } from '../data/towerDefense/waves';
+import { levelSpeciesIds, waveSpawns } from '../data/towerDefense/waves';
 import { isLevelUnlocked, loadTdProgress, starsFor, submitTdOutcome, type TdRewards } from '../data/towerDefense/progress';
 import { tdMonKey, type TowerDefenseData } from './TowerDefenseMenuScene';
 import { openConfirm } from './ConfirmScene';
@@ -123,6 +123,8 @@ export class TowerDefenseScene extends Phaser.Scene {
   private toasts!: ToastStack;
   private sheets = new Map<number, PmdSheet>();
   private names = new Map<number, string>();
+  /** Oleada del último aviso de «Pokémon oscuro» normal (uno por oleada). */
+  private darkToastWave = -1;
   // Dibujo
   private ambient!: Phaser.GameObjects.Graphics;
   private towerG!: Phaser.GameObjects.Graphics;
@@ -283,10 +285,9 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (!this.scene.isActive()) return;
     const foes = MAP_FOES[this.map.biome] ?? MAP_FOES.bosque;
     const evoIds = team.map((t) => t.evolveId).filter((n): n is number => !!n);
-    const chiefs = CHIEF_SPECIES[this.map.biome] ?? CHIEF_SPECIES.bosque;
-    // Nivel temático: sus Pokémon, los contra-tipos y sus jefes de oleada (themes.ts)
-    const themed = themeSpeciesIds(levelTheme(this.map, this.args.level));
-    const ids = [...new Set([...team.map((t) => t.id), ...evoIds, ...Object.values(foes).flat(), ...chiefs, ...themed])];
+    // Nivel temático: lo que sale de verdad en sus oleadas (tema, bioma, visitas, contra-tipos, minijefes y jefes)
+    const themed = levelSpeciesIds(this.map, this.args.level);
+    const ids = [...new Set([...team.map((t) => t.id), ...evoIds, ...Object.values(foes).flat(), ...themed])];
     for (const id of evoIds) void fetchSpeciesName(id).then((n) => this.names.set(id, n)).catch(() => undefined);
     try {
       this.sheets = await withTimeout(loadPmd(this, ids), 15000, 'sprites');
@@ -1074,7 +1075,7 @@ export class TowerDefenseScene extends Phaser.Scene {
           pixBlast(this, x, y, e.boss ? 70 : 54, 0xffd34d, 31);
           starBurst(this, x, y, 0xffd34d, 10, 1.6, 32);
           this.cameras.main.shake(320, 0.01);
-          this.toast(e.boss ? '¡Has vencido al jefe legendario!' : `¡Jefe vencido! +${e.money} $ y tickets al acabar`, 'reward');
+          this.toast(e.boss ? `¡Has vencido a ${CHIEF_NAMES[e.species] ?? 'el jefe legendario'}!` : `¡Minijefe vencido! +${e.money} $ y tickets al acabar`, 'reward');
         } else sfx('hit');
         break;
       }
@@ -1101,7 +1102,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         break;
       case 'waveStart':
         sfx(e.boss ? 'roar' : 'door');
-        this.toast(e.boss ? `Oleada ${e.wave}: ¡jefe legendario!` : e.chief ? `Oleada ${e.wave}: ¡jefe!` : `Oleada ${e.wave}`, e.boss || e.chief ? 'danger' : 'info');
+        this.toast(e.boss ? `Oleada ${e.wave}: ¡jefe legendario!` : e.chief ? `Oleada ${e.wave}: ¡minijefe!` : `Oleada ${e.wave}`, e.boss || e.chief ? 'danger' : 'info');
         if (e.event) this.eventStartFx(e.event);
         if (e.theme) this.toast(TRICK_INFO[e.theme as TrickKind].tip, 'warning');
         if (e.adapt) this.toast(`Los Adaptables resisten ${typeNameEs(e.adapt)} en esta oleada`, 'danger');
@@ -1123,7 +1124,7 @@ export class TowerDefenseScene extends Phaser.Scene {
           const p = this.enemyPos(c);
           this.floatText(p.x, p.y - 64, `¡${info.name}!`, '#ffe9a8', 14);
         }
-        this.toast(`${CHIEF_NAMES[c?.def.species ?? 0] ?? 'El jefe'} prepara ${info.name}: ${info.desc.toLowerCase()}`, 'danger');
+        this.toast(`${CHIEF_NAMES[c?.def.species ?? 0] ?? 'El minijefe'} prepara ${info.name}: ${info.desc.toLowerCase()}`, 'danger');
         break;
       }
       case 'chiefSkill': {
@@ -1307,10 +1308,10 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (id === 'monedas' && !lowFx()) for (let i = 0; i < 8; i++) this.floatMoney(OX + 60 + Math.random() * (TD_COLS * CELL - 120), OY + 40 + Math.random() * 120, 0);
   }
 
-  /** Presentación corta del jefe de oleada: ficha que entra por la derecha (arriba, nunca en el centro). */
+  /** Presentación corta del minijefe (pseudolegendario o ultraente): ficha que entra por la derecha (arriba, nunca en el centro). */
   private chiefIntro(species: number, skills: string[]) {
     sfx('roar');
-    const name = CHIEF_NAMES[species] ?? 'Jefe';
+    const name = CHIEF_NAMES[species] ?? 'Minijefe';
     const w = 300;
     const h = 62;
     const x = EV_X + EV_W - w;
@@ -1323,8 +1324,8 @@ export class TowerDefenseScene extends Phaser.Scene {
     const tex = this.monTexture(species);
     const mon = this.add.image(x + 36, y + 44, tex.key, tex.frame);
     mon.setScale((28 / Math.max(1, mon.width, mon.height)) * (tex.pmd ? 1.6 : 1.4));
-    const t1 = this.add.text(x + 62, y + 8, `JEFE · ${name}`, { fontFamily: UI.FONT, fontSize: '17px', fontStyle: 'bold', color: '#a01818' });
-    const t2 = this.add.text(x + 62, y + 32, skills.join(' · '), { fontFamily: UI.FONT, fontSize: '12px', color: NAVY, wordWrap: { width: w - 70 } });
+    const t1 = this.add.text(x + 62, y + 8, `MINIJEFE · ${name}`, { fontFamily: UI.FONT, fontSize: '17px', fontStyle: 'bold', color: '#a01818' });
+    const t2 = this.add.text(x + 62, y + 32, `${bigMonLabel(species)} · ${skills.join(' · ')}`, { fontFamily: UI.FONT, fontSize: '12px', color: NAVY, wordWrap: { width: w - 70 } });
     c.add([g, ic, mon, t1, t2]);
     if (!lowFx()) this.tweens.add({ targets: c, x: 0, duration: 260, ease: 'Back.easeOut' });
     this.time.delayedCall(2800, () => {
@@ -1551,9 +1552,14 @@ export class TowerDefenseScene extends Phaser.Scene {
     spr.setData('pmd', !!sheet).setData('row', row);
     if (e.dark) {
       // Oscuro: aura morada y negra con ojos rojos, estallido y aviso
-      darkAura(this, spr, () => OY + e.y * CELL + 8);
+      // Ojos de al menos 3 px: los enemigos de la defensa son pequeños y con 2 px apenas se ven
+      darkAura(this, spr, () => OY + e.y * CELL + 8, { eyeMin: 3 });
       darkBurst(this, OX + e.x * CELL, OY + e.y * CELL);
-      this.toast(darkWarning(boss ? (e.def.kind === 'boss' ? 'boss' : 'miniboss') : 'enemy').split('\n')[0], 'danger');
+      // Un aviso por oleada para los normales (ya salen bastantes); minijefes y jefes, siempre
+      if (boss || this.darkToastWave !== this.td.wave) {
+        if (!boss) this.darkToastWave = this.td.wave;
+        this.toast(darkWarning(boss ? (e.def.kind === 'boss' ? 'boss' : 'miniboss') : 'enemy').split('\n')[0], 'danger');
+      }
     }
     return { spr, shadow, row, pmd: !!sheet, bob: Math.random() * 6 };
   }
@@ -1883,7 +1889,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     const boss = game.enemies.find((e) => e.def.kind === 'boss') ?? game.enemies.find((e) => e.def.kind === 'chief');
     if (boss) {
       drawBossBar(g, EV_X, 68, EV_W, boss.hp / boss.def.maxHp, boss.maxShield ? boss.shield / boss.maxShield : 0, boss.def.kind === 'boss' ? 0xb08aff : 0xe53935);
-      const name = boss.def.kind === 'boss' ? this.names.get(boss.def.species) ?? 'Jefe legendario' : `Jefe · ${CHIEF_NAMES[boss.def.species] ?? ''}`;
+      const name = boss.def.kind === 'boss' ? `Jefe · ${CHIEF_NAMES[boss.def.species] ?? this.names.get(boss.def.species) ?? 'legendario'}` : `Minijefe · ${CHIEF_NAMES[boss.def.species] ?? ''}`;
       this.bossName.setText(`${name}  ${Math.max(0, Math.ceil(boss.hp))}/${boss.def.maxHp}`).setVisible(true);
     } else this.bossName.setVisible(false);
     let ev: WaveEventId | null = null;
@@ -1892,7 +1898,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (game.phase === 'prep' && !this.ended) {
       ev = game.upcomingEvent;
       if (ev) line = `Próxima oleada: ${WAVE_EVENT_INFO[ev].name}\n${WAVE_EVENT_INFO[ev].desc}`;
-      else if (game.upcomingChief) line = '¡La próxima oleada trae un jefe!\nNo amontones todas las torres';
+      else if (game.upcomingChief) line = '¡La próxima oleada trae un minijefe!\nNo amontones todas las torres';
     } else if (game.phase === 'wave' && game.waveEvent) {
       ev = game.waveEvent;
       const info = WAVE_EVENT_INFO[ev];

@@ -24,7 +24,7 @@ import { DUO_DAMAGE, DUO_SPLASH, applySynergy, synergyBonus, synergyLinks, type 
 import {
   BARRICADE_WAVES, MAX_TRAPS, MINE_RADIUS, MOVE_STUN, TRAP_INFO, WEB_SLOW, WEB_TIME, barricadeCost, mineDamage, moveCost, sellInWave, trapCost, type TrapKind,
 } from './live.ts';
-import { decideDark, darkProgress, TD_DARK_MUL } from '../darkMon.ts';
+import { TD_DARK_MUL } from '../darkMon.ts';
 import { takeAdminNextDark } from '../admin.ts';
 import {
   BRANCH_LEVEL, MAX_TOWER_LEVEL, MEGA_LEVEL, bestTypeMul, megaCostFor, tdTypeMul, megaSpeciesOf, sellValue, towerCost, towerStats, upgradeCostFor, type Branch, type TowerStats,
@@ -271,7 +271,6 @@ export class TdGame {
   private events: TdEvent[] = [];
   private rng: () => number;
   /** Tiradas de los oscuros aparte, para no cambiar el resto de la partida con semilla. */
-  private darkRng: () => number;
   private road: Set<string>;
   private groundPts: { x: number; y: number }[][];
 
@@ -283,7 +282,6 @@ export class TdGame {
     this.money = o.map.startMoney;
     this.prepLeft = prepTime(1);
     this.rng = mulberry(o.seed ?? 12345);
-    this.darkRng = mulberry(((o.seed ?? 12345) ^ 0x5d4c) >>> 0);
     this.road = roadSet(this.map);
     this.groundPts = this.map.paths.map((p) => pathPoints(p));
   }
@@ -678,9 +676,8 @@ export class TdGame {
   private spawn(s: Spawn, distOffset = 0, kindOverride?: EnemyDef) {
     let def = kindOverride ?? enemyDef(s.kind, s.species, this.wave, stagePower(this.stage));
     if (s.hpMul && s.hpMul !== 1) def = { ...def, maxHp: Math.max(1, Math.round(def.maxHp * s.hpMul)), shield: Math.round(def.shield * s.hpMul) };
-    const who = def.kind === 'boss' ? 'boss' : def.kind === 'chief' ? 'miniboss' : 'enemy';
-    const inRoom = this.enemies.filter((o) => o.dark && o.def.kind !== 'boss' && o.def.kind !== 'chief').length;
-    const dark = decideDark({ who, floor: darkProgress('towerdef', { wave: this.wave }), inRoom, forced: takeAdminNextDark(), rng: this.darkRng });
+    // Oscuro: lo decide la oleada (waves.ts, tirada fija por nivel; nada al principio); el panel admin puede forzarlo
+    const dark = !!s.dark || (def.kind !== 'brood' && takeAdminNextDark());
     if (dark) {
       def = { ...def, maxHp: Math.max(1, Math.round(def.maxHp * TD_DARK_MUL.hp)), shield: Math.round(def.shield * TD_DARK_MUL.hp), speed: def.speed * TD_DARK_MUL.speed, bounty: Math.round(def.bounty * TD_DARK_MUL.bounty) };
     }

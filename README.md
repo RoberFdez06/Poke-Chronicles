@@ -80,7 +80,7 @@ Es un **fan game gratuito y sin ánimo de lucro** (nunca se cobra dinero real po
 | **Infinito** | Como Normal, pero sin final. |
 | **Rush de jefes** | Solo jefes legendarios, uno tras otro. |
 | **Torre** | 100 pisos de una sola sala: minijefe cada 5, jefe y descanso cada 10. |
-| **Defensa de torres** | Colocas y mejoras los Pokémon de tu colección como torres para frenar oleadas en 16 mapas. Cada nivel cambia el mapa (atajos, entradas nuevas, rocas y terreno), hay enemigos con trucos, sinergias entre torres vecinas, trampas, barricadas y torres que se pueden mover. Cada nivel tiene un **tipo tema** (los 18 tipos repartidos por los mapas): potencia tus torres de ese tipo, cambia el suelo, los obstáculos, el ambiente y el terreno, y trae enemigos y jefe de ese tipo con contra-tipos al final. |
+| **Defensa de torres** | Colocas y mejoras los Pokémon de tu colección como torres para frenar oleadas en 18 mapas (una fase por cada tipo). Cada nivel cambia el mapa (atajos, entradas nuevas, rocas y terreno), hay enemigos con trucos, sinergias entre torres vecinas, trampas, barricadas y torres que se pueden mover. Cada nivel tiene un **tipo tema**: potencia tus torres de ese tipo, cambia el suelo, los obstáculos, el ambiente y el terreno, y sus enemigos salen con más probabilidad (también del bioma y de otros tipos), con contra-tipos al final. Minijefes pseudolegendarios y ultraentes cada 5 oleadas, un jefe legendario al final de cada nivel y Pokémon oscuros (ojos rojos) desde media partida. |
 | **Desafío diario** | La misma partida para todos ese día, con racha. |
 | **Partida con código** | Escribes el código de otra partida y juegas exactamente la misma. |
 

@@ -19,7 +19,7 @@ export const TD_GUIDE: readonly GuidePage[] = [
   {
     title: 'Enemigos y habilidades',
     lines: [
-      'Las oleadas siguen el camino hasta tu base: cada fuga le quita vida. El último nivel de cada mapa trae un jefe legendario.',
+      'Las oleadas siguen el camino hasta tu base: cada fuga le quita vida. Cada nivel acaba con un jefe legendario.',
       'Voladores: siguen el camino; solo los alcanzan las torres aéreas (Volador, Eléctrico, Psíquico, Dragón, Fantasma, Hada y Hielo) o la rama Táctica.',
       'Con truco: Esquivos (esquivan disparos sueltos si no van frenados), Planeadores (vuelan recto a la base), Saboteadores (aturden torres), Divisores (sueltan crías) y Adaptables (resisten tu tipo más usado).',
       'Habilidades (con recarga): Tormenta, Congelación, Bomba y Refuerzo. Las de zona se apuntan con el cursor.',
@@ -38,9 +38,18 @@ export const TD_GUIDE: readonly GuidePage[] = [
   {
     title: 'Niveles por tipo',
     lines: [
-      'Cada nivel tiene un tipo tema (su insignia sale en la lista de niveles). Tus torres de ese tipo ganan +30 % de daño y +15 % de alcance, y las súper eficaces contra él, +15 % de daño (Ventaja).',
-      'Los enemigos son sobre todo de ese tipo y del bioma; el jefe de cada 5 oleadas también. En la segunda mitad del nivel llegan contra-tipos que resisten el tipo tema: lleva otros tipos para ellos.',
+      'Hay una fase (mapa) por cada uno de los 18 tipos y cada nivel tiene un tipo tema (su insignia sale en la lista de niveles). Tus torres de ese tipo ganan +30 % de daño y +15 % de alcance, y las súper eficaces contra él, +15 % de daño (Ventaja).',
+      'Cada enemigo se sortea: el del tipo tema es el más probable (más o menos la mitad), pero también salen del bioma y de otros tipos. En la segunda mitad del nivel llegan contra-tipos que resisten el tipo tema: lleva otros tipos para ellos.',
       'El mapa cambia con el tipo: suelo, obstáculos, ambiente y un terreno propio (Lava y Charco tóxico queman, Charca y Arenas frenan, la Niebla de almas esconde, la Placa de acero evita aturdimientos…).',
+    ],
+  },
+  {
+    title: 'Minijefes, jefes y oscuros',
+    lines: [
+      'Minijefes: cada 5 oleadas llega un pseudolegendario o un ultraente con dos habilidades que avisan antes. Vencerlo da dinero y tickets.',
+      'Jefes: cada nivel acaba con un legendario o singular. El del último nivel es el jefe del mapa, a plena vida y con más escolta. En el infinito, uno cada 10 oleadas.',
+      'Los dos prefieren el tipo tema del nivel: si no hay ninguno de ese tipo, sale uno que le gana (Normal → Lucha).',
+      'Oscuros: desde media partida pueden salir Pokémon oscuros (ojos rojos, más vida y velocidad, el doble de dinero), más cuanto más avanzas y sobre todo en los niveles Siniestro.',
     ],
   },
   {

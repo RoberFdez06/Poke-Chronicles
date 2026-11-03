@@ -2452,3 +2452,39 @@ tipo Roca, nv. 7 y 13). Roberto quería un aviso antes de empezar. Lógica pura 
 Sin verificar a ojo (Vite no corre en la VM): que la caja del aviso (y su texto con muchos tipos) no pise la ficha de la torre ni la
 barra de ayuda, los tres iconos, el color de cada veredicto y la segunda línea en la lista de niveles. El HUD móvil y `layout.ts` no
 se tocan.
+
+## 2026-11-03 · Defensa de torres: una fase por tipo, enemigos por probabilidad, oscuros, minijefes y jefes (rama `tdfases`)
+Motivo: Roberto corrige el diseño de `tdtipos`: quería una fase de cada uno de los 18 tipos (Normal y Psíquico solo salían de
+vecinos), que el tipo tema saliera con más probabilidad como en el modo normal (no «3 de cada 4» fijo), Pokémon oscuros en estos
+niveles y que los minijefes fueran pseudolegendarios/ultraentes y los jefes legendarios/singulares. Lógica pura en
+`themes.ts`, `waves.ts`, `chiefs.ts`, `maps.ts`, `variants.ts` y `matchupWarning.ts`; tests nuevos en `tests/tdFases.test.ts`.
+- **Fases nuevas al final** (ids, orden, niveles y guardados de las 16 de antes intactos; sin migración ni versión nueva): 17.
+  **Templo Mental** (Psíquico, vecinos Hada y Siniestro, bioma ciudad, jefe final Mewtwo) y 18. **Sala del Origen** (Normal,
+  vecinos Dragón y Fantasma, bioma cumbre, jefe final Arceus), 15 niveles cada una, desbloqueo igual (≥50 % del anterior).
+  Dos plantillas nuevas (`LAYOUTS` 12 y 13, con su atajo y su entrada nueva): dos entradas enfrentadas que bajan juntas al centro y
+  una serpentina con tres entradas. El tipo, el terreno, el ambiente y la insignia de Psíquico y Normal ya existían de `tdtipos`.
+  El menú de mapas pasa a fichas compactas (4 columnas × 5 filas) cuando hay más de 16.
+- **Probabilidad, no cuota** (`foeWeights`, `foeSource`, `unitRoll`): cada hueco se sortea con una tirada fija por la semilla del
+  nivel (`mapa|nivel|oleada|hueco`): tema 58 %, bioma 27 %, otros tipos 15 % en la primera mitad; en la segunda, 20 % de
+  contra-tipos (32 % en el último cuarto, ×1,8 para los grandes). «Otros tipos» = 2 tipos de visita por nivel (`visitorTypes`,
+  nunca el tema ni sus contra-tipos). Contra-tipos con +20 % de vida (antes 25 %). Reproducible: misma semilla, mismas oleadas.
+- **Oscuros** (`darkChance`, `markDarks`): los decide la oleada (antes una tirada de la partida en el motor): nada antes de la
+  mitad del nivel ni de la oleada 4 (infinito: 5), luego sube con la oleada y con la dificultad del mapa; minijefes y jefes algo
+  más; ×1,5 en los niveles Siniestro; tope por oleada (1 a 4). El admin puede seguir forzándolos. Ojos rojos de al menos 3 px en
+  los sprites pequeños (`eyeSize` en darkMon.ts, opción `eyeMin` de `darkAura`) y un solo aviso de oscuro normal por oleada.
+- **Minijefes y jefes** (`chiefs.ts`, `minibossFor`, `levelBossFor`, `bossSpecies`): minijefe cada 5 oleadas = pseudolegendario
+  o ultraente (los guardianes del modo normal); jefe legendario o singular en la última oleada de CADA nivel (en el infinito, cada
+  10). El del último nivel es el del mapa a plena vida con 4 escoltas; los demás, del tipo tema, con 22-60 % de su vida y 2
+  escoltas. Prefieren el tipo tema; si no hay ninguno, uno que le gane (Normal → Lucha); no repiten seguidos y el jefe final no
+  sale antes. Ciénaga Turbia cambia su jefe del infinito de Nihilego (ultraente) a Eternatus. Se quitan los jefes de bioma y del
+  tema viejos (`CHIEF_SPECIES`, `themeChief`).
+- **Menú y avisos**: ficha del nivel con «Minijefes: … · Jefe: … · Oscuros desde la oleada N» (`levelFoesLine`), «N oleadas +
+  jefe» en cada nivel; presentación «MINIJEFE · nombre» con «Ultraente/Pseudolegendario», barra «Jefe · nombre». Guía: página
+  «Niveles por tipo» al día y nueva «Minijefes, jefes y oscuros». El aviso de equipo (`matchupWarning`) sigue pesando tema y
+  contra-tipos (bioma y visitas son neutros de media).
+- Equilibrio (bot, equipo de siempre): igual o mejor en casi todo; Cráter Ígneo nv. 7 y Cumbre nv. 14 pasan a ganarse; Lodazal
+  nv. 14 es a cara o cruz con las dos versiones (3/7 antes, 4/7 ahora según la semilla). Con los tipos que sugiere el aviso se
+  ganan el primer y el último nivel de las 18 fases (test).
+Sin verificar a ojo (Vite no corre en la VM): las fichas compactas del menú de mapas (miniatura, textos e insignias en 96 px de
+alto), que la ficha del nivel con la línea de minijefes/jefe no pise la barra de ayuda, las dos plantillas nuevas horneadas, la
+página nueva de la guía, los ojos de 3 px en los enemigos y la ficha del minijefe. El HUD móvil y `layout.ts` no se tocan.
