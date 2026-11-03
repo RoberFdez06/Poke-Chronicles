@@ -23,12 +23,27 @@ export const TD_TYPES: Readonly<Record<number, readonly string[]>> = {
   147: ['dragon'], 371: ['dragon'], 443: ['dragon', 'ground'], 444: ['dragon', 'ground'], 445: ['dragon', 'ground'], 334: ['dragon', 'flying'],
   142: ['rock', 'flying'], 81: ['electric', 'steel'], 100: ['electric'], 239: ['electric'], 101: ['electric'], 462: ['electric', 'steel'],
   528: ['psychic', 'flying'], 587: ['electric', 'flying'], 280: ['psychic', 'fairy'], 599: ['steel'], 125: ['electric'], 243: ['electric'], 649: ['bug', 'steel'], 148: ['dragon'], 372: ['dragon'], 610: ['dragon'], 384: ['dragon', 'flying'], 493: ['normal'],
+  // Enemigos con trucos (esquivos, planeadores, saboteadores, divisores y adaptables)
+  290: ['bug', 'ground'], 15: ['bug', 'poison'], 46: ['bug', 'grass'], 102: ['grass', 'psychic'], 213: ['bug', 'rock'],
+  328: ['ground'], 207: ['ground', 'flying'], 304: ['steel', 'rock'], 524: ['rock'], 185: ['rock'],
+  158: ['water'], 226: ['water', 'flying'], 170: ['water', 'electric'], 592: ['water', 'ghost'], 91: ['water', 'ice'],
+  238: ['ice', 'psychic'], 582: ['ice'], 87: ['water', 'ice'], 613: ['ice'], 362: ['ice'],
+  316: ['poison'], 269: ['bug', 'poison'], 211: ['water', 'poison'], 568: ['poison'], 435: ['poison', 'dark'],
+  155: ['fire'], 663: ['fire', 'flying'], 240: ['fire'], 850: ['fire', 'bug'], 323: ['fire', 'ground'],
+  354: ['ghost'], 425: ['ghost', 'flying'], 429: ['ghost'], 607: ['ghost', 'fire'], 477: ['ghost'],
+  309: ['electric'], 82: ['electric', 'steel'], 479: ['electric', 'ghost'], 137: ['normal'], 436: ['steel', 'psychic'],
+  696: ['rock', 'dragon'], 715: ['flying', 'dragon'], 621: ['dragon'], 704: ['dragon'], 330: ['ground', 'dragon'],
 };
 
 export const tdTypesOf = (id: number): readonly string[] => TD_TYPES[id] ?? CHIEF_TYPES[id] ?? ['normal'];
 
 /** Papeles de los enemigos. */
-export const ENEMY_KINDS = ['normal', 'fast', 'tank', 'flying', 'healer', 'shielded', 'hastener', 'chief', 'boss'] as const;
+export const ENEMY_KINDS = [
+  'normal', 'fast', 'tank', 'flying', 'healer', 'shielded', 'hastener', 'dodger', 'soarer', 'saboteur', 'splitter', 'adapter', 'brood', 'chief', 'boss',
+] as const;
+/** Papeles con truco (tricks.ts): obligan a cambiar de plan. */
+export const TRICK_KINDS = ['dodger', 'soarer', 'splitter', 'saboteur', 'adapter'] as const;
+export type TrickKind = (typeof TRICK_KINDS)[number];
 export type EnemyKind = (typeof ENEMY_KINDS)[number];
 
 export const ENEMY_KIND_LABEL: Record<EnemyKind, string> = {
@@ -39,6 +54,12 @@ export const ENEMY_KIND_LABEL: Record<EnemyKind, string> = {
   healer: 'Curandero',
   shielded: 'Escudado',
   hastener: 'Acelerador',
+  dodger: 'Esquivo',
+  soarer: 'Planeador',
+  saboteur: 'Saboteador',
+  splitter: 'Divisor',
+  adapter: 'Adaptable',
+  brood: 'Cría',
   chief: 'Jefe',
   boss: 'Jefe legendario',
 };
@@ -51,21 +72,26 @@ export interface MapFoes {
   healer: readonly number[];
   shielded: readonly number[];
   hastener: readonly number[];
+  dodger: readonly number[];
+  soarer: readonly number[];
+  saboteur: readonly number[];
+  splitter: readonly number[];
+  adapter: readonly number[];
   /** Jefe de la oleada 10 y jefe final (oleada 20). */
   bosses: readonly [number, number];
 }
 
 /** Salvajes de cada bioma (los mapas del mismo bioma comparten Pokémon). */
 export const MAP_FOES: Readonly<Record<string, MapFoes>> = {
-  bosque: { normal: [10, 43, 69], fast: [19], tank: [114], flying: [16, 12], healer: [182], shielded: [11], hastener: [123], bosses: [640, 251] },
-  cueva: { normal: [74, 27, 50], fast: [51], tank: [95], flying: [41, 42], healer: [299], shielded: [75], hastener: [246], bosses: [377, 383] },
-  mar: { normal: [118, 98, 72], fast: [120], tank: [131], flying: [278, 279], healer: [222], shielded: [90], hastener: [183], bosses: [245, 382] },
-  nieve: { normal: [220, 361], fast: [215], tank: [473], flying: [225], healer: [124], shielded: [615], hastener: [459], bosses: [378, 144] },
-  pantano: { normal: [88, 109, 194], fast: [23], tank: [89], flying: [49, 169], healer: [270], shielded: [339], hastener: [453], bosses: [793, 718] },
-  volcan: { normal: [58, 218, 322], fast: [77], tank: [324], flying: [662, 227], healer: [126], shielded: [219], hastener: [228], bosses: [244, 250] },
-  torre: { normal: [92, 200, 353], fast: [302], tank: [356], flying: [93, 198], healer: [96], shielded: [355], hastener: [94], bosses: [491, 487] },
-  ciudad: { normal: [81, 100, 239], fast: [101], tank: [462], flying: [528, 587], healer: [280], shielded: [599], hastener: [125], bosses: [243, 649] },
-  cumbre: { normal: [147, 371, 443], fast: [444], tank: [445], flying: [334, 142], healer: [148], shielded: [372], hastener: [610], bosses: [384, 493] },
+  bosque: { normal: [10, 43, 69], fast: [19], tank: [114], flying: [16, 12], healer: [182], shielded: [11], hastener: [123], dodger: [290], soarer: [15], saboteur: [46], splitter: [102], adapter: [213], bosses: [640, 251] },
+  cueva: { normal: [74, 27, 50], fast: [51], tank: [95], flying: [41, 42], healer: [299], shielded: [75], hastener: [246], dodger: [328], soarer: [207], saboteur: [304], splitter: [524], adapter: [185], bosses: [377, 383] },
+  mar: { normal: [118, 98, 72], fast: [120], tank: [131], flying: [278, 279], healer: [222], shielded: [90], hastener: [183], dodger: [158], soarer: [226], saboteur: [170], splitter: [592], adapter: [91], bosses: [245, 382] },
+  nieve: { normal: [220, 361], fast: [215], tank: [473], flying: [225], healer: [124], shielded: [615], hastener: [459], dodger: [238], soarer: [582], saboteur: [87], splitter: [613], adapter: [362], bosses: [378, 144] },
+  pantano: { normal: [88, 109, 194], fast: [23], tank: [89], flying: [49, 169], healer: [270], shielded: [339], hastener: [453], dodger: [316], soarer: [269], saboteur: [211], splitter: [568], adapter: [435], bosses: [793, 718] },
+  volcan: { normal: [58, 218, 322], fast: [77], tank: [324], flying: [662, 227], healer: [126], shielded: [219], hastener: [228], dodger: [155], soarer: [663], saboteur: [240], splitter: [850], adapter: [323], bosses: [244, 250] },
+  torre: { normal: [92, 200, 353], fast: [302], tank: [356], flying: [93, 198], healer: [96], shielded: [355], hastener: [94], dodger: [354], soarer: [425], saboteur: [429], splitter: [607], adapter: [477], bosses: [491, 487] },
+  ciudad: { normal: [81, 100, 239], fast: [101], tank: [462], flying: [528, 587], healer: [280], shielded: [599], hastener: [125], dodger: [309], soarer: [82], saboteur: [479], splitter: [137], adapter: [436], bosses: [243, 649] },
+  cumbre: { normal: [147, 371, 443], fast: [444], tank: [445], flying: [334, 142], healer: [148], shielded: [372], hastener: [610], dodger: [696], soarer: [715], saboteur: [621], splitter: [704], adapter: [330], bosses: [384, 493] },
 };
 
 /**

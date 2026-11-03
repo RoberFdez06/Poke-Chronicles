@@ -2363,3 +2363,36 @@ ojo la sensación de dificultad del piso 1, el desatasco en salas grandes y que 
   Sala igual en todas (manda el alto). Botones izquierdos del lienzo ×1,27 (p. ej. 33 → 42 px CSS en el 14 Pro); Parry/Esquiva y ranuras igual.
 - Tests nuevos en `tests/touchWide.test.ts`: interruptor apagado = antes; cajas sin mejora idénticas; sala igual; sin franjas; menús en su sitio; paneles dentro y sin pisar la sala; nada con contenido recortado; letra ≥ ×1,25; botones visibles, dentro de su tramo, sin solapes, no más pequeños, zona ≥ 56 px CSS; pausa, barra de parry, bomba, poción, activo, 4 ranuras y los 6 botones vuelven a su punto con `screenToHud(hudToScreen(p))`; casos 734×372 y 667×258.
 - No verificado (sin vite ni dispositivo): que Phaser resuelva los clics de pausa/ranuras/activo con la cámara táctil encima (no tiene objetos interactivos y se salta en el hit test), el orden de pintado (los controles quedan encima de todo el HUD, también del cartel del tutorial), el cambio en vivo al girar o enseñar barras, y la nitidez con zoom ×1,27 no entero. La letra sigue siendo pequeña (≈6 px CSS): el alto manda; el panel derecho (movimientos) no crece. Probar en iPhone 14 Pro sin barras, Galaxy S y Pixel 7 (debe seguir igual).
+
+## 2026-11-03 · Defensa de torres más retadora: mapas que cambian, enemigos con trucos, sinergias y decisiones en vivo (rama `tdreto`)
+Motivo: el modo seguía siendo aburrido (sin riesgo, siempre igual, solo mirar y mapas repetidos y sencillos). Lógica pura en
+`src/data/towerDefense/` con tests en `tests/tdReto.test.ts`; escena `TowerDefenseScene`; arte nuevo en `src/ui/art/tdRetoArt.ts`.
+- **Mapas** (`maps.ts`, `variants.ts`): 4 plantillas nuevas (bucle que se cruza, bifurcación, cuatro entradas, bucle doble con dos
+  entradas) y reparto nuevo: ningún mapa repite la plantilla del anterior, ya no hay versiones volteadas del mapa de al lado y los 4
+  últimos usan las nuevas. Ids, orden y niveles iguales (guardado intacto, sin subir versión). Cada plantilla tiene un atajo (o camino
+  alternativo) y una entrada nueva. `mapForLevel(mapa, nivel)` elige una de 6 variantes (de siempre, atajo abierto, camino que se abre
+  a mitad del nivel, ruta cortada, cruce de rutas, asalto total): el nivel 1 siempre es el mapa tal cual, nunca dos niveles seguidos
+  con la misma y las complejas salen más en mapas y niveles altos. Además rocas nuevas (0 en el nivel 1, hasta 6) y terreno: Colina
+  (+20 % alcance), Cristal (+20 % daño), Lodazal (−20 % cadencia) junto al camino y tramos de Barro (frena 30 %) o Corriente
+  (acelera 30 %). La entrada sellada se dibuja con rocas que laten y se abre con temblor y aviso. El menú de niveles resume el mapa.
+- **Enemigos con trucos** (`tricks.ts`, `species.ts`, `waves.ts`): Esquivo (esquiva el 40 % de los disparos sueltos; área, cadena,
+  especiales o frenarlo/congelarlo lo anulan), Planeador (aéreo, recto de la entrada a la base), Saboteador (avisa 1 s con línea roja y
+  aturde 2,6 s la torre más cercana), Divisor (suelta 2 crías; fuga de 2) y Adaptable (resiste ×0,35 el tipo que más daño hizo en la
+  oleada anterior; la torre usa su otro tipo si lo tiene). Especies propias por bioma. Cada oleada desde la 2 trae un truco protagonista
+  (1 de cada 4) mezclado con lo demás y un consejo al empezar. El escudado sigue siendo barra extra.
+- **Sinergias** (`synergy.ts`): vecinas del mismo tipo, Resonancia (+8 % por vecina, máx. 3); 14 combos de tipos (Electroagua +1 salto,
+  Incendio +área, Vapor, Glaciar, Sismo, Vendaval, Mente mágica, Sombras, Enjambre, Forja, Plaga, Entrenamiento, Tormenta, Escarcha
+  mental). Con las dos al nivel 5+, **Dúo**: efecto doble y sus especiales salen combinados (×1,6 de daño, más área, dos rayos y
+  nombre en pantalla). Enlaces de puntos animados entre torres, gema del color del combo y vista previa al colocar.
+- **Decisiones en vivo** (`live.ts`): pulsar en el camino abre su panel con Mina (área), Telaraña (frena a 4) y, en el tramo propio de
+  una ruta, Barricada (cierra la ruta 2 oleadas, nunca la última abierta). Botón Mover (8 % de lo gastado en la preparación, 20 % y
+  2 s aturdida en plena oleada) y vender en plena oleada da el 50 % en vez del 70 %. Teclas 1-5, cruceta + A, clic o toque; ayuda
+  nueva para «camino» y «moviendo» y textos de Controles y «Cómo se juega» al día.
+- Simulación del bot (mismo equipo, `_sim/`): los mapas medios pierden más vida que antes (p. ej. Gruta nv. 5: 15 → 9 de 20; Cantera
+  nv. 11: 10 → 5) y siguen ganables; los tests de equilibrio pasan. El bot no usa trampas, barricadas ni mover.
+- Tests: `tdReto.test.ts` (validez de todas las variantes, distintas por nivel, rutas que se abren, barricadas, terreno, trucos,
+  sinergias, trampas, mover y vender) y ajustes en `towerDefense.test.ts`/`tdChiefs.test.ts` (12 plantillas; usar `g.map`).
+Sin verificar a ojo (Vite no corre en la VM): que el panel de la torre (5 botones, fila Mover/Vender) y el del camino quepan en su
+caja, enlaces y gemas de sinergia, rocas selladas y barricada, minas y telarañas, marcas de los trucos y la línea del saboteador, el
+terreno horneado, el texto del menú de niveles y la página nueva de «Cómo se juega»; mando y táctil en el modo mover y en el panel del
+camino. El HUD móvil y `layout.ts` no se tocan.

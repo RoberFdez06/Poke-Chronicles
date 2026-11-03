@@ -17,6 +17,7 @@ import {
   sortPicks, turnPage, CLASS_COLOR, CLASS_TRAITS, SORT_KEYS, SORT_LABEL, START_FOCUS, TRIAL_FOCUS, type GridCursor, type SortKey,
 } from '../data/towerDefense/teamPick';
 import { TD_MAPS } from '../data/towerDefense/maps';
+import { variantSummary } from '../data/towerDefense/variants';
 import { TD_GUIDE } from '../data/towerDefense/guide';
 import { wavesInLevel } from '../data/towerDefense/waves';
 import {
@@ -334,7 +335,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
       info.setText(
         i === L
           ? 'Oleadas sin fin cada vez más duras, con un jefe legendario cada 10. Guarda tu mejor oleada.'
-          : `Nivel ${i + 1} de ${L}: ${wavesInLevel(i + 1, L)} oleadas${i === L - 1 ? ' y un jefe legendario al final' : ''}. Estrellas según la vida de la base que conserves (3: 90 % o más).`,
+          : `Nivel ${i + 1} de ${L}: ${wavesInLevel(i + 1, L)} oleadas${i === L - 1 ? ' y un jefe legendario al final' : ''}. Estrellas según la vida de la base que conserves (3: 90 % o más).\nMapa: ${variantSummary(m, i + 1)}`,
       );
     };
     this.redraw();

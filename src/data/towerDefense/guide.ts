@@ -20,9 +20,19 @@ export const TD_GUIDE: readonly GuidePage[] = [
     title: 'Enemigos y habilidades',
     lines: [
       'Las oleadas siguen el camino hasta tu base: cada fuga le quita vida. El último nivel de cada mapa trae un jefe legendario.',
-      'Voladores: siguen el mismo camino, pero solo los alcanzan las torres aéreas (Volador, Eléctrico, Psíquico, Dragón, Fantasma, Hada y Hielo) o la rama Táctica.',
-      'Habilidades (con tiempo de recarga): Rayo golpea a los 6 enemigos más fuertes, Ventisca congela a todos y Curar base recupera el 25 % de la vida.',
+      'Voladores: siguen el camino; solo los alcanzan las torres aéreas (Volador, Eléctrico, Psíquico, Dragón, Fantasma, Hada y Hielo) o la rama Táctica.',
+      'Con truco: Esquivos (esquivan disparos sueltos si no van frenados), Planeadores (vuelan recto a la base), Saboteadores (aturden torres), Divisores (sueltan crías) y Adaptables (resisten tu tipo más usado).',
+      'Habilidades (con recarga): Tormenta, Congelación, Bomba y Refuerzo. Las de zona se apuntan con el cursor.',
       'Puedes llamar a la siguiente oleada antes de tiempo para cobrar una bonificación.',
+    ],
+  },
+  {
+    title: 'Mapas, combos y decisiones',
+    lines: [
+      'Cada nivel cambia el mapa: atajos, entradas que se abren a mitad del nivel, rutas cerradas, rocas nuevas y terreno (Colina +alcance, Cristal +daño, Lodazal −cadencia; Barro frena y Corriente acelera).',
+      'Sinergias: torres vecinas del mismo tipo resuenan (+daño) y las de tipos complementarios (Agua+Eléctrico, Fuego+Planta…) forman combos. Al nivel 5 las dos, Dúo: ataque combinado.',
+      'En el camino puedes poner Minas y Telarañas, o cerrar una ruta con una barricada pagando.',
+      'Mover una torre cuesta dinero (más en plena oleada, y se queda aturdida un momento). Vender en plena oleada da menos.',
     ],
   },
   {
