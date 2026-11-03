@@ -11304,7 +11304,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     // Esc (teclado) o Select/Back (mando) vuelven al menú en cualquier momento
     const menuPad = this.input.gamepad?.getPad(0);
     const menuPadNow = !!menuPad && menuPad.connected && (!!menuPad.buttons[8]?.pressed || (!this.ended && !!menuPad.buttons[9]?.pressed));
-    if (!this.escKey) return; // create() aún no ha terminado de cargar
+    if (!this.escKey || !this.current || !this.floor) return; // create() aún no ha terminado de cargar
     this.adminTick();
     if (this.towerArrow) this.towerArrowTick();
     this.guideTick();
