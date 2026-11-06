@@ -1,7 +1,7 @@
 // Progresión entre pisos: tamaño, dificultad, recompensas y jefes legendarios.
 // Lógica pura, sin Phaser ni red, para poder testearla.
 // Con extensión .ts para que los tests (node --test) puedan importarlo sin bundler
-import { BOSS_TICKETS, ROOM_TICKETS } from '../data/save.ts';
+import { BOSS_BASE_TICKETS, BOSS_TICKETS, ROOM_TICKETS, ROOM_TICKETS_MAX_EXTRA } from '../data/save.ts';
 
 /** Pisos que hay que completar para ganar la partida (modo Normal). Ajustable. */
 export const FLOOR_COUNT = 5;
@@ -36,10 +36,11 @@ export function difficultyFor(floor: number): FloorDifficulty {
   };
 }
 
-/** Tickets por sala limpiada (igual en todos los pisos). */
-export const roomTicketsFor = (_floor: number): number => ROOM_TICKETS;
-/** Tickets por vencer al jefe: se multiplican por el número de piso. */
-export const bossTicketsFor = (floor: number): number => BOSS_TICKETS * Math.max(1, Math.floor(floor));
+/** Tickets por sala limpiada: 3 y +1 cada dos pisos, hasta +2 (3, 3, 4, 4, 5, 5…). Antes, 3 en todos los pisos. */
+export const roomTicketsFor = (floor: number): number =>
+  ROOM_TICKETS + Math.min(ROOM_TICKETS_MAX_EXTRA, Math.floor((Math.max(1, Math.floor(floor)) - 1) / 2));
+/** Tickets por vencer al jefe: una base y 2 por número de piso (8, 10, 12, 14, 16…). Antes, solo 2 × piso. */
+export const bossTicketsFor = (floor: number): number => BOSS_BASE_TICKETS + BOSS_TICKETS * Math.max(1, Math.floor(floor));
 /** Tickets por vencer al minijefe del piso (uno por piso): lo que dos salas. */
 export const minibossTicketsFor = (floor: number): number => roomTicketsFor(floor) * 2;
 

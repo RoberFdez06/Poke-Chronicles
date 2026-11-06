@@ -4,7 +4,8 @@ import { evolveFloors, pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
 import { GYM_PUZZLE_ENABLED, GYM_PUZZLE_TICKETS, gymPuzzleKind, gymTier, hasGym } from '../level/gymPuzzles';
-import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal, loadCandies, loadDaily, loadDefeated, loadTickets, saveDefeated, spendCandies, spendTickets, submitSeedBest } from '../data/save';
+import { addCandies, addTickets, CANDY_PER_TICKET, claimFirstWin, earnMedal, loadCandies, loadDaily, loadDefeated, loadTickets, saveDefeated, spendCandies, spendTickets, submitSeedBest } from '../data/save';
+import { candyDrop, performanceBonus } from '../data/economy';
 import { buildDexIndex, registerDefeat, type DexIndex } from '../data/runDex';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
 import { dailySeed, seedFloorSeed, seedRng, streakReward } from '../data/daily';
@@ -2897,6 +2898,20 @@ export class GameScene extends Phaser.Scene {
     return n;
   }
 
+  /** Economía (06/11): caramelos que suelta un enemigo; con la dificultad, se suman ya y un caramelo vuela hacia ti. */
+  private dropCandies(x: number, y: number, base: number) {
+    const n = scaleTickets(base, this.diff);
+    if (n <= 0 || this.tutMode) return;
+    addCandies(n);
+    this.counters.candies = (this.counters.candies ?? 0) + n;
+    if (!this.textures.exists(iconKey('candy')) || !this.player?.active) return;
+    const img = this.add.image(x, y, iconKey('candy')).setScale(2).setDepth(8);
+    this.tweens.add({ targets: img, y: y - 40, duration: 220, ease: 'Quad.easeOut', onComplete: () => {
+      this.tweens.add({ targets: img, x: this.player.x, y: this.player.y - 20, scale: 1.2, duration: 380, ease: 'Quad.easeIn', onComplete: () => img.destroy() });
+    } });
+    if (this.fxBudget.take(this.time.now)) this.popup(x, y - 30, `+${n} caramelo${n === 1 ? '' : 's'}`, 0xff7ab8);
+  }
+
   /** Nivel de dificultad: el piso, el jefe por el que vas o, en Oleadas, el que toca a la ronda. */
   private level(): number {
     if (this.mode === 'tower') return towerLevel(this.floorNum); // T72: sube suave (100 pisos)
@@ -5581,7 +5596,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const { completed, expired } = recordMissionEvent(e);
     for (const m of expired) this.notify(`Encargo caducado\n${m.npc}: ${m.text}`, { kind: 'warning', ms: 4000 });
     for (const c of completed) {
-      const reward = rewardText(c.reward, { item: c.reward.item ? passiveById(c.reward.item)?.name : undefined });
+      const reward = rewardText(c.reward, { item: c.reward.item ? passiveById(c.reward.item)?.name : undefined, candies: true });
       sfx('buy');
       if (c.kind === 'daily') this.notify(`¡Misión cumplida!\n${c.text}\n${reward}`, { kind: 'mission', ms: 5000 });
       else if (c.kind === 'npc') this.notify(`¡Encargo cumplido!\n${c.text}\n${reward}`, { kind: 'mission', ms: 5000 });
@@ -5888,6 +5903,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const before = itemSlots(this.bossesBeaten);
     this.bossesBeaten++;
     this.mission({ kind: 'boss' });
+    // Economía (06/11): primera victoria del día (el primer jefe que vences cada día), más con días seguidos
+    if (!this.tutMode) {
+      const fw = claimFirstWin();
+      if (fw.tickets > 0) {
+        const n = this.giveTickets(fw.tickets);
+        this.notify(`¡Primera victoria del día!${fw.streak > 1 ? ` (${fw.streak} días seguidos)` : ''}\n+${n} tickets y ${n * CANDY_PER_TICKET} caramelos`, { kind: 'reward', icon: 'ticket' });
+      }
+    }
     if (itemSlots(this.bossesBeaten) > before) {
       this.notify(`+1 hueco de objeto\nObjetos ${slotsLabel(this.passives, this.bossesBeaten)}`, { kind: 'reward', icon: 'bag' });
       this.refreshInventory();
@@ -12778,6 +12801,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     loot
       .filter((d) => hasShop || d.kind !== 'coin')
       .forEach((d, k) => this.dropLoot(enemy.x + (k - 1) * 26, enemy.y + 10, d));
+    // Economía (06/11): caramelos que caen de verdad (se cobran al momento; los ayudantes no sueltan)
+    if (!enemy.getData('helper')) {
+      const sweets = candyDrop(Math.random, this.level(), {
+        boss, mini: !!enemy.getData('miniboss'), shiny: !!enemy.getData('shiny'), dark: !!enemy.getData('dark'),
+      });
+      if (sweets > 0) this.dropCandies(enemy.x, enemy.y, sweets);
+    }
     (enemy.getData('bar') as Phaser.GameObjects.Graphics | undefined)?.destroy();
     // Trío: la barra sigue mientras quede alguno; los que quedan se enfurecen
     const others = boss ? (this.bossBar?.group ?? []).filter((o) => o !== enemy && o.active) : [];
@@ -13848,8 +13878,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         // También en los tickets de la partida, para que el resumen y el historial cuenten lo ganado de verdad
         this.earned += bonus;
         addTickets(bonus);
+        // Economía (06/11): con sus caramelos, como el resto de premios
+        addCandies(bonus * CANDY_PER_TICKET);
         this.notify(`¡Racha de ${streak} días!\n+${bonus} tickets`, { kind: 'reward', icon: 'ticket' });
       }
+    }
+    // Economía (06/11): premio por rendimiento según lo lejos que has llegado (pisos, rondas, jefes)
+    {
+      const perf = this.giveTickets(performanceBonus(this.mode, won ? this.floorNum : this.floorNum - 1));
+      if (perf > 0) this.notify(`Premio por llegar lejos\n+${perf} tickets y ${perf * CANDY_PER_TICKET} caramelos`, { kind: 'reward', icon: 'ticket' });
     }
     // T81: la partida con código guarda su mejor resultado (pisos, rondas o jefes superados) para comparar
     const code = this.seedCode();
@@ -13883,6 +13920,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       damage: Math.round(this.counters.damage),
       items: [...counts].map(([id, n]) => (passiveById(id)?.name ?? id) + (n > 1 ? ` x${n}` : '')),
       tickets: this.earned,
+      candies: this.earned * CANDY_PER_TICKET + (this.counters.candies ?? 0),
       newRecord: this.counters.newRecord,
       parries: this.counters.parries ?? 0,
       picked: this.counters.picked ?? 0,

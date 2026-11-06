@@ -10,18 +10,19 @@ import { BOSS_PHASE2_AT, MAX_HELPERS, attackInterval, bossAttacks, bossPhase, he
 import { mulberry32 } from '../src/level/floorGen.ts';
 
 test('tickets: una buena partida da para varias tiradas del gacha (x1 = 10), sin pasarse', () => {
-  // Contando salas, minijefe y jefe de cada piso
+  // Contando salas, minijefe y jefe de cada piso. Economía (06/11): rangos subidos (antes 10-20 tiradas la partida
+  // completa y 5-10 hasta el piso 3) porque la gente decía que se ganaban muy pocos
   const full = expectedRunRewards(FLOOR_COUNT).tickets;
   const floor3 = expectedRunRewards(3).tickets;
   const floor1 = expectedRunRewards(1).tickets;
-  assert.ok(floor1 >= 5 && floor1 < PULL_COST * 2.5, `solo el piso 1: ${floor1}`);
-  assert.ok(floor3 / PULL_COST >= 5 && floor3 / PULL_COST <= 10, `hasta el piso 3: ${floor3}`);
-  assert.ok(full / PULL_COST >= 10 && full / PULL_COST <= 20, `partida completa: ${full}`);
-  // Ni con el reto final llega a tres tiradas x10 (ahora se ganan 3 por sala y 2 × piso por jefe)
+  assert.ok(floor1 >= PULL_COST * 2 && floor1 < PULL_COST * 4, `solo el piso 1: ${floor1}`);
+  assert.ok(floor3 / PULL_COST >= 10 && floor3 / PULL_COST <= 15, `hasta el piso 3: ${floor3}`);
+  assert.ok(full / PULL_COST >= 24 && full / PULL_COST <= 32, `partida completa: ${full}`);
+  // Con el reto final no llega a cuatro tiradas x10
   const finale = expectedFinaleRunTickets();
-  assert.ok(finale > full && finale < 3 * PULL10_COST, `con el reto final: ${finale}`);
-  // La simulación (que muere más que un jugador real) da al menos una tirada de media
-  assert.ok(simulateRuns(400, 3).tickets >= PULL_COST, 'simulación');
+  assert.ok(finale > full && finale < 4 * PULL10_COST, `con el reto final: ${finale}`);
+  // La simulación (que muere más que un jugador real) da al menos cinco tiradas de media
+  assert.ok(simulateRuns(400, 3).tickets >= PULL_COST * 5, 'simulación');
 });
 
 test('monedas: la tienda obliga a elegir', () => {

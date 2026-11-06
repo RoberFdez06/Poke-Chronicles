@@ -1,6 +1,10 @@
 // Cuentas del equilibrio: premios esperados por piso y por partida a partir de las constantes del juego.
 // Lo usan los tests (para fijar los rangos) y scripts/simulate.ts. Lógica pura.
-import { BOSS_TICKETS, ROOM_TICKETS } from './save.ts';
+import { BOSS_TICKETS, CANDY_PER_TICKET, ROOM_TICKETS } from './save.ts';
+import { avgFoeCandies, candyDrop, CANDY_DROP, performanceBonus } from './economy.ts';
+import { PULL_COST, PULL10_COST } from './gacha.ts';
+import { noUpgrades, upgradeCost } from './upgrades.ts';
+import { remainingTreeCost } from './upgradeTree.ts';
 import { BERRIES, centerHeal, CLEAR_DROP_CHANCE, LOOT_CHANCE, POTIONS, roomClearCoins, SHOP_PRICES } from './loot.ts';
 import { BASE_STATS } from './items.ts';
 import { BEHAVIORS, EXTRA_BEHAVIORS, enemyBstRange, enemyStats } from './enemies.ts';
@@ -31,14 +35,19 @@ export interface Rewards {
   tickets: number;
   coins: number;
   berries: number;
+  /** Economía (06/11): caramelos (3 por ticket y los que caen de los enemigos, minijefe y jefe). */
+  candies: number;
 }
 
 /** Lo que se gana de media en un piso de Normal limpiándolo entero (salas de combate, minijefe y jefe). */
 export function expectedFloorRewards(floor: number, combatRooms = averageCombatRooms(floor)): Rewards {
   const [lo, hi] = difficultyFor(floor).enemies;
   const enemies = combatRooms * ((lo + hi) / 2);
+  const tickets = combatRooms * roomTicketsFor(floor) + minibossTicketsFor(floor) + bossTicketsFor(floor);
+  const drops = enemies * avgFoeCandies(floor) + candyDrop(() => 1, floor, { mini: true }) + candyDrop(() => 1, floor, { boss: true });
   return {
-    tickets: combatRooms * roomTicketsFor(floor) + minibossTicketsFor(floor) + bossTicketsFor(floor),
+    tickets,
+    candies: tickets * CANDY_PER_TICKET + drops,
     coins: enemies * coinsPerEnemy() + combatRooms * avgRoomClearCoins(floor) + BOSS_COINS_DROP,
     // El jefe siempre suelta una Baya Zidra
     berries: enemies * berriesPerEnemy() + 1,
@@ -50,14 +59,22 @@ export const BOSS_COINS_DROP = 5;
 
 /** Premios medios de una partida Normal que llega hasta el piso `floors` limpiándolo todo. */
 export function expectedRunRewards(floors: number): Rewards {
-  const out: Rewards = { tickets: 0, coins: 0, berries: 0 };
+  const out: Rewards = { tickets: 0, coins: 0, berries: 0, candies: 0 };
   for (let f = 1; f <= floors; f++) {
     const r = expectedFloorRewards(f);
     out.tickets += r.tickets;
     out.coins += r.coins;
     out.berries += r.berries;
+    out.candies += r.candies;
   }
   return out;
+}
+
+/** Como expectedRunRewards, pero con el premio por rendimiento del final (sin la primera victoria del día). */
+export function expectedRunWithBonus(floors: number): Rewards {
+  const r = expectedRunRewards(floors);
+  const perf = performanceBonus('normal', floors);
+  return { ...r, tickets: r.tickets + perf, candies: r.candies + perf * CANDY_PER_TICKET };
 }
 
 /** Tickets de una partida Normal que supera también el reto final (piso 6: su jefe y el premio). */
@@ -113,6 +130,8 @@ export interface FloorSim {
 export interface RunSim {
   floors: FloorSim[];
   tickets: number;
+  /** Caramelos medios por partida (3 por ticket y los que caen). */
+  candies: number;
   coins: number;
   minutes: number;
 }
@@ -125,9 +144,12 @@ export function simulateRuns(runs: number, seed = 1, p: SimParams = SIM_DEFAULTS
     floor: k + 1, reached: 0, cleared: 0, roomSeconds: 0, roomDamage: 0, rooms: 0, bossSeconds: 0, bossDamage: 0, hpAtBoss: 0, bosses: 0,
   }));
   let tickets = 0;
+  let candies = 0;
   let coinsTotal = 0;
   let seconds = 0;
   for (let run = 0; run < runs; run++) {
+    const ticketsBefore = tickets;
+    let clearedFloors = 0;
     let hp = p.maxHp;
     let items = 0;
     let alive = true;
@@ -167,6 +189,7 @@ export function simulateRuns(runs: number, seed = 1, p: SimParams = SIM_DEFAULTS
           t += dt;
           // Los que quedan vivos (este incluido) pegan mientras tanto
           dmg += (n - k) * p.hitsPerSecond * dt * e.damage * between(0.5, 1.5);
+          candies += candyDrop(rng, f);
           if (rng() < LOOT_CHANCE.aranja) heal(BERRIES.aranja.heal);
           if (rng() < LOOT_CHANCE.zidra) heal(BERRIES.zidra.heal);
           if (hasShop && rng() < LOOT_CHANCE.coin) coins += rng() < LOOT_CHANCE.bigCoin ? 5 : 1;
@@ -182,7 +205,10 @@ export function simulateRuns(runs: number, seed = 1, p: SimParams = SIM_DEFAULTS
         }
         tickets += roomTicketsFor(f);
         // El minijefe está en una de las salas de combate (la más lejana: la última que se limpia)
-        if (r === combat - 1) tickets += minibossTicketsFor(f);
+        if (r === combat - 1) {
+          tickets += minibossTicketsFor(f);
+          candies += candyDrop(rng, f, { mini: true });
+        }
         if (hasShop) coins += roomClearCoins(rng, f);
         if (rng() < CLEAR_DROP_CHANCE) items++;
         tryHeal();
@@ -205,10 +231,15 @@ export function simulateRuns(runs: number, seed = 1, p: SimParams = SIM_DEFAULTS
       }
       a.cleared++;
       tickets += bossTicketsFor(f);
+      candies += candyDrop(rng, f, { boss: true });
       heal(BERRIES.zidra.heal);
       items++;
       coinsTotal += coins;
+      clearedFloors++;
     }
+    // Premio por rendimiento al acabar (economy.ts)
+    tickets += performanceBonus('normal', clearedFloors);
+    candies += (tickets - ticketsBefore) * CANDY_PER_TICKET;
   }
   return {
     floors: acc.map((a) => ({
@@ -222,7 +253,59 @@ export function simulateRuns(runs: number, seed = 1, p: SimParams = SIM_DEFAULTS
       hpAtBoss: a.bosses ? a.hpAtBoss / a.bosses : 0,
     })),
     tickets: tickets / runs,
+    candies: candies / runs,
     coins: coinsTotal / runs,
     minutes: seconds / runs / 60,
   };
 }
+
+// --- Informe de la economía (06/11): cuántas partidas hacen falta para cada cosa ---
+
+export interface EconomyReport {
+  /** Tickets y caramelos medios de una partida simulada (con su premio por rendimiento, sin primera victoria). */
+  ticketsPerRun: number;
+  candiesPerRun: number;
+  /** Partidas para: la primera tirada (un Pokémon nuevo casi seguro), una tirada x10 (Épico o mejor asegurado). */
+  runsFirstPokemon: number;
+  runsPull10: number;
+  /** Partidas para la primera mejora (nivel 1 de una estadística) y para subir una estadística al máximo (5). */
+  runsFirstUpgrade: number;
+  runsMaxStat: number;
+  /** Partidas para completar el árbol de mejoras de un Pokémon. */
+  runsFullTree: number;
+  /** Partidas para un legendario de media (1 % por tirada: 100 tiradas). */
+  runsLegendary: number;
+}
+
+/** Caramelos para subir una estadística de las de siempre (Daño, PS…) de 0 al máximo. */
+export const maxStatCost = (): number => {
+  let t = 0;
+  for (let l = 0; l < 5; l++) t += upgradeCost(l, 'damage') ?? 0;
+  return t;
+};
+
+/**
+ * Cuántas partidas hacen falta para cada cosa con la partida media de simulateRuns. `firstWinTickets`: tickets de la
+ * primera victoria del día que se suman a la primera partida (0 = sin ella).
+ */
+export function economyReport(runs = 600, seed = 3, firstWinTickets = 0): EconomyReport {
+  const sim = simulateRuns(runs, seed);
+  const t = sim.tickets;
+  const c = sim.candies;
+  // Lo que hace falta, descontando de la primera partida la primera victoria
+  const runsFor = (need: number, perRun: number, firstExtra: number) => (need <= firstExtra ? 0 : (need - firstExtra) / perRun);
+  const fwC = firstWinTickets * CANDY_PER_TICKET;
+  return {
+    ticketsPerRun: t,
+    candiesPerRun: c,
+    runsFirstPokemon: runsFor(PULL_COST, t, firstWinTickets),
+    runsPull10: runsFor(PULL10_COST, t, firstWinTickets),
+    runsFirstUpgrade: runsFor(upgradeCost(0, 'damage') ?? 0, c, fwC),
+    runsMaxStat: runsFor(maxStatCost(), c, fwC),
+    runsFullTree: runsFor(remainingTreeCost(noUpgrades()), c, fwC),
+    runsLegendary: runsFor(PULL_COST * 100, t, firstWinTickets),
+  };
+}
+
+/** Para el informe: la probabilidad de caramelos de un enemigo normal. */
+export const CANDY_CONSTANTS = CANDY_DROP;

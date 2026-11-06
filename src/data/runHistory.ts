@@ -39,6 +39,8 @@ export interface RunRecord {
   /** Parrys perfectos y esquivas (las partidas antiguas no lo tienen). */
   perfectParries?: number;
   dashes?: number;
+  /** Economía (06/11): caramelos ganados en la partida (las antiguas no lo tienen: se calculan con los tickets). */
+  candies?: number;
 }
 
 /** Cuántas partidas se guardan en el historial. */
@@ -59,7 +61,7 @@ function isRecord(r: unknown): r is RunRecord {
     (o.routes === undefined || (Array.isArray(o.routes) && o.routes.every((x) => typeof x === 'string'))) &&
     (o.seedCode === undefined || typeof o.seedCode === 'string') && (o.fromCode === undefined || typeof o.fromCode === 'boolean') &&
     optNum(o.bestCombo) && (o.comboLevel === undefined || (Number.isInteger(o.comboLevel) && o.comboLevel >= -1)) &&
-    optNum(o.perfectParries) && optNum(o.dashes) && (o.comboRecord === undefined || typeof o.comboRecord === 'boolean')
+    optNum(o.perfectParries) && optNum(o.dashes) && optNum(o.candies) && (o.comboRecord === undefined || typeof o.comboRecord === 'boolean')
   );
 }
 
@@ -109,6 +111,8 @@ export interface RunCounters {
   bestCombo?: number;
   perfectParries?: number;
   dashes?: number;
+  /** Economía (06/11): caramelos que han caído de los enemigos (opcional como los de arriba: sin subir RUN_VERSION). */
+  candies?: number;
 }
 
 export const emptyCounters = (): RunCounters => ({ seconds: 0, kills: 0, damage: 0, newRecord: false });
@@ -117,7 +121,7 @@ export const isCounters = (c: unknown): c is RunCounters => {
   const o = c as RunCounters;
   return !!o && isNum(o.seconds) && isNum(o.kills) && isNum(o.damage) && typeof o.newRecord === 'boolean' &&
     optNum(o.parries) && optNum(o.picked) && optNum(o.fastestRoom) && optNums(o.floorSeconds) && optNum(o.floorStartedAt) &&
-    optNum(o.bestCombo) && optNum(o.perfectParries) && optNum(o.dashes);
+    optNum(o.bestCombo) && optNum(o.perfectParries) && optNum(o.dashes) && optNum(o.candies);
 };
 
 /** Una sala limpiada en menos de esto no cuenta como «sala más rápida» (tienda, objeto… se limpian al entrar). */

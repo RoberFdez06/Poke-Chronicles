@@ -2488,3 +2488,46 @@ niveles y que los minijefes fueran pseudolegendarios/ultraentes y los jefes lege
 Sin verificar a ojo (Vite no corre en la VM): las fichas compactas del menú de mapas (miniatura, textos e insignias en 96 px de
 alto), que la ficha del nivel con la línea de minijefes/jefe no pise la barra de ayuda, las dos plantillas nuevas horneadas, la
 página nueva de la guía, los ojos de 3 px en los enemigos y la ficha del minijefe. El HUD móvil y `layout.ts` no se tocan.
+
+## 2026-11-06 · Economía: más tickets y caramelos, por rendimiento, primera victoria del día y caramelos que caen (rama `economia`)
+Motivo: quienes han probado el juego dicen que dan muy pocos tickets (gacha) y caramelos (mejoras). Lógica pura nueva en
+`src/data/economy.ts`; números en `progression.ts`, `save.ts`, `modes.ts`, `missions.ts` y `towerDefense/progress.ts`;
+informe en `balance.ts` (`economyReport`, `expectedRunWithBonus`, caramelos en `simulateRuns`); tests en `tests/economia.test.ts`
+(y rangos al día en `balance.test.ts`, `progression.test.ts` y `towerDefense.test.ts`). Gacha (10 / 100) y costes de las
+mejoras (15 × nivel; árbol entero 4145 caramelos) sin tocar.
+- **Salas** 3, 3, 4, 4, 5 (+1 cada dos pisos, tope +2; antes 3 siempre). **Jefe** 6 + 2 × piso (8…16; antes 2 × piso). Minijefe
+  = dos salas (6…10). La Torre casi igual en jefes (206 en el piso 100, antes 200), salas con el tope de 5.
+- **Rendimiento** al acabar (`performanceBonus`): 0, 0, 4, 10, 18, 28 tickets por pisos completados, +6 por piso más (tope 60);
+  hitos = cada 5 rondas en Oleadas, cada 2 jefes en el Rush, cada 10 pisos en la Torre.
+- **Primera victoria del día** (`claimFirstWin`, clave `pokeisaac.firstWin`, en `PROGRESS_KEYS`): el primer jefe del día o el
+  primer nivel de la Defensa de torres ganado: 15 tickets, +3 por cada día seguido (tope 30), con sus caramelos.
+- **Caramelos que caen** (`candyDrop`): 12 % de los enemigos 1-2 (+1 cada 4 pisos), minijefe 3 + piso, jefe 6 + 2 × piso,
+  +5 shiny, +3 oscuro; con la dificultad. Se cobran al momento (un caramelo sale volando hacia ti y «+N caramelos»): no
+  quedan en el suelo ni en el guardado.
+- **Misiones/logros/encargos** dan también 3 caramelos por ticket; diarias 3/4/5 → 5/6/8 tickets (logros sin tocar: no se
+  cambia lo ya ganado). La racha del desafío diario da también caramelos. **Oleadas**: 2 + ronda/4 por ronda.
+- **Defensa de torres**: 3 caramelos por ticket de oleadas y victoria (antes un nivel repetido daba 0), 4 por estrella
+  nueva (antes 1), +4 tickets la primera vez de cada nivel, jefe del mapa 20 tickets y 15 caramelos (antes 5); infinito 3
+  caramelos por ticket y +5 por récord.
+- Guardados: nada ganado cambia. `RunCounters.candies` y `RunRecord.candies` son opcionales (como `dashes`): sin subir
+  `RUN_VERSION` (los guardados viejos se leen igual y el resumen calcula los caramelos con los tickets si faltan).
+
+| Simulador (`economyReport`, 600 partidas, semilla 3) | Antes | Ahora |
+|---|---|---|
+| Tickets por partida media (muere en el piso 2-3) | 50,7 | 61,0 (+15-30 con la 1.ª victoria) |
+| Caramelos por partida media | 152 | 213 |
+| Tickets esperados: piso 1 / hasta piso 3 / partida completa / con reto final | 23 / 93 / 196 / 298 | 29 / 122 / 280 (+28 de rendimiento) / 388 (+34) |
+| Partidas para la 1.ª tirada (Pokémon nuevo) | 0,2 | 0,16 (0 con la 1.ª victoria) |
+| Partidas para una x10 (Épico asegurado) | 2,0 | 1,6 (1,4 con la 1.ª victoria) |
+| Partidas para la 1.ª mejora / una estadística al máximo (225) | 0,1 / 1,5 | 0,07 / 1,06 |
+| Partidas para el árbol entero de un Pokémon (4145) | 27 | 19,5 |
+| Partidas para un legendario (100 tiradas de media) | 19,7 | 16,4 |
+| Oleadas hasta la ronda 10 | 17 | 30 |
+| Defensa de torres, nivel repetido (6 oleadas) | 4 tickets, 0 caramelos | 4 tickets, 12 caramelos |
+
+Nota: el simulador ya daba una tirada en la primera partida; que la gente note «muy pocos» apunta a que juega menos
+salas que el modelo, así que el cambio sube sobre todo lo que se gana al llegar lejos y lo que se ve (caramelos al
+caer, avisos de premio). Si sigue corto, lo siguiente es `ROOM_TICKETS` o `CANDY_PER_TICKET`.
+Sin verificar a ojo (Vite no corre en la VM): el caramelo que vuela al jugador y su «+N caramelos», los avisos de primera
+victoria y de premio por llegar lejos, la línea nueva del resultado de la Defensa de torres (que quepa en la caja) y el pie
+más largo de la pantalla de Misiones. El HUD móvil y `layout.ts` no se tocan.
