@@ -31,6 +31,11 @@ export interface Reward {
   item?: string;
 }
 
+/** Caramelos por ticket de premio de misiones, logros y encargos (igual que CANDY_PER_TICKET de save.ts, que importa este módulo). */
+export const MISSION_CANDY_PER_TICKET = 3;
+/** Caramelos que da un premio de misión: al cambio de siempre (antes las misiones solo daban tickets). */
+export const missionCandies = (r: Reward): number => Math.max(0, Math.floor(r.tickets)) * MISSION_CANDY_PER_TICKET;
+
 /** Cuánto suma un suceso a una misión o un logro (0 = no cuenta). */
 type Counter = (e: MissionEvent) => number;
 
@@ -61,7 +66,10 @@ export const MISSION_TYPES: readonly [string, string][] = [
 const reachedNoHeal = (floor: number): Counter => (e) => (e.kind === 'floor' && !e.healed && e.floor >= floor ? 1 : 0);
 const each = (kind: MissionEvent['kind']): Counter => (e) => (e.kind === kind ? 1 : 0);
 
-/** Plantillas de misión diaria: cada una se concreta con un número al azar (con la semilla del día). */
+/**
+ * Plantillas de misión diaria: cada una se concreta con un número al azar (con la semilla del día).
+ * Economía (06/11): premios subidos (3/4/5 → 5/6/8 tickets) y, como todas las misiones, dan caramelos (missionCandies).
+ */
 const DAILY_TEMPLATES: ((rng: () => number) => DailyMission)[] = [
   (rng) => {
     const [type, name] = MISSION_TYPES[Math.floor(rng() * MISSION_TYPES.length)];
@@ -70,37 +78,37 @@ const DAILY_TEMPLATES: ((rng: () => number) => DailyMission)[] = [
       id: `tipo-${type}`,
       text: `Vence a ${goal} enemigos de tipo ${name}`,
       goal,
-      reward: { tickets: 4 },
+      reward: { tickets: 6 },
       count: (e) => (e.kind === 'defeat' && e.types.includes(type) ? 1 : 0),
     };
   },
   (rng) => {
     const goal = 2 + Math.floor(rng() * 2);
-    return { id: 'sin-curar', text: `Llega al piso ${goal} sin curarte`, goal: 1, reward: { tickets: 5 }, count: reachedNoHeal(goal) };
+    return { id: 'sin-curar', text: `Llega al piso ${goal} sin curarte`, goal: 1, reward: { tickets: 8 }, count: reachedNoHeal(goal) };
   },
   (rng) => {
     const goal = 2 + Math.floor(rng() * 2);
-    return { id: 'cofres', text: `Abre ${goal} cofres`, goal, reward: { tickets: 4 }, count: each('chest') };
+    return { id: 'cofres', text: `Abre ${goal} cofres`, goal, reward: { tickets: 6 }, count: each('chest') };
   },
   (rng) => {
     const goal = 30 + Math.floor(rng() * 3) * 10;
-    return { id: 'monedas', text: `Recoge ${goal} monedas`, goal, reward: { tickets: 3 }, count: (e) => (e.kind === 'coins' ? e.amount : 0) };
+    return { id: 'monedas', text: `Recoge ${goal} monedas`, goal, reward: { tickets: 5 }, count: (e) => (e.kind === 'coins' ? e.amount : 0) };
   },
   (rng) => {
     const goal = 1 + Math.floor(rng() * 2);
-    return { id: 'jefes', text: goal === 1 ? 'Derrota a un jefe' : `Derrota a ${goal} jefes`, goal, reward: { tickets: 5 }, count: each('boss') };
+    return { id: 'jefes', text: goal === 1 ? 'Derrota a un jefe' : `Derrota a ${goal} jefes`, goal, reward: { tickets: 8 }, count: each('boss') };
   },
   (rng) => {
     const goal = 8 + Math.floor(rng() * 3) * 2;
-    return { id: 'salas', text: `Limpia ${goal} salas`, goal, reward: { tickets: 3 }, count: each('room') };
+    return { id: 'salas', text: `Limpia ${goal} salas`, goal, reward: { tickets: 5 }, count: each('room') };
   },
   (rng) => {
     const goal = 3 + Math.floor(rng() * 2);
-    return { id: 'objetos', text: `Coge ${goal} objetos`, goal, reward: { tickets: 3 }, count: each('item') };
+    return { id: 'objetos', text: `Coge ${goal} objetos`, goal, reward: { tickets: 5 }, count: each('item') };
   },
   (rng) => {
     const goal = 25 + Math.floor(rng() * 3) * 5;
-    return { id: 'enemigos', text: `Vence a ${goal} enemigos`, goal, reward: { tickets: 3 }, count: each('defeat') };
+    return { id: 'enemigos', text: `Vence a ${goal} enemigos`, goal, reward: { tickets: 5 }, count: each('defeat') };
   },
 ];
 
@@ -319,8 +327,10 @@ export function lockedItems(state: MissionState): Set<string> {
 }
 
 /** Texto corto del premio: "+5 tickets · Eevee". */
-export function rewardText(r: Reward, names: { item?: string } = {}): string {
+export function rewardText(r: Reward, names: { item?: string; candies?: boolean } = {}): string {
   const parts = [`+${r.tickets} tickets`];
+  // Con `candies`, también los caramelos que da (los avisos de la partida; en la pantalla de Misiones no caben)
+  if (names.candies && missionCandies(r) > 0) parts.push(`+${missionCandies(r)} caramelos`);
   if (r.pokemon) parts.push(`desbloquea ${r.pokemonName ?? `#${r.pokemon}`}`);
   if (r.item) parts.push(`nuevo objeto: ${names.item ?? r.item}`);
   return parts.join(' · ');

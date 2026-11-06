@@ -93,7 +93,10 @@ Tres dificultades (Fácil, Normal, Difícil), cada una con sus récords.
   regionales** (Alola, Galar, Hisui y Paldea) y «Todas»; cada uno con su garantía (Épico cada 10, Legendario a las 80)
   y su progreso X/Y. Cambia de banner con las pestañas, deslizando la ficha, Q/E o LB/RB.
 - **Mejoras:** los **caramelos**, que también se ganan jugando, suben las estadísticas de cada Pokémon (daño, PS,
-  velocidad, cadencia, alcance, crítico y defensa).
+  velocidad, cadencia, alcance, crítico y defensa). Caen de los enemigos (siempre del minijefe y del jefe) y se ganan
+  con cada ticket (3 por ticket), también en las misiones y en la Defensa de torres.
+- **Premios extra:** primera victoria del día (el primer jefe o nivel de la Defensa de torres; más con días seguidos) y
+  premio por rendimiento al acabar la partida según lo lejos que llegues.
 - **Pokédex**, misiones y logros, historial de partidas y tutorial.
 - **Cuentas opcionales** (Firebase): el progreso se guarda en la nube. Como invitado se puede jugar, pero no se guarda.
 

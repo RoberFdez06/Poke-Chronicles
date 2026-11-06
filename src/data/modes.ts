@@ -84,8 +84,11 @@ export function waveSpec(round: number): WaveSpec {
 /** Al completar la ronda `round`, ¿cae un objeto? */
 export const waveDropsItem = (round: number): boolean => round > 0 && round % WAVE_ITEM_EVERY === 0;
 
-/** Tickets por ronda completada en Oleadas (menos que una sala, porque son más seguidas). */
-export const waveTickets = (round: number): number => 1 + Math.floor(Math.max(0, Math.floor(round)) / 5);
+/**
+ * Tickets por ronda completada en Oleadas (menos que una sala, porque son más seguidas). Economía (06/11): 2 y +1
+ * cada 4 rondas (antes 1 y +1 cada 5: 17 tickets hasta la ronda 10; ahora 30).
+ */
+export const waveTickets = (round: number): number => 2 + Math.floor(Math.max(0, Math.floor(round)) / 4);
 
 // --- Sala única para Oleadas y Rush de jefes ---
 

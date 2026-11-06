@@ -23,7 +23,7 @@ import { dir8Row, pmdScale } from '../data/pmdAnim';
 import { dressLoose, procAnimate } from '../ui/locoAnim';
 import { fetchFormSprites, fetchNextEvolutions, fetchPokemonCard, fetchSpeciesName } from '../data/pokeapi';
 import { withTimeout } from '../data/offline';
-import { addCandies, addTickets, loadUpgrades } from '../data/save';
+import { addCandies, addTickets, CANDY_PER_TICKET, claimFirstWin, loadUpgrades } from '../data/save';
 import { levelsFor } from '../data/upgrades';
 import { typeColor, typeNameEs } from '../data/types';
 import { bakeBiomeTiles } from '../ui/art/tiles';
@@ -866,6 +866,15 @@ export class TowerDefenseScene extends Phaser.Scene {
     const o = this.td.outcome();
     const stars = starsFor(o.hp, o.maxHp, o.won);
     const rewards = submitTdOutcome({ mapId: this.map.id, level: this.args.level, waves: o.waves, won: o.won, stars, chiefs: o.chiefs });
+    // Economía (06/11): primera victoria del día (superar un nivel; el infinito no cuenta), con sus caramelos
+    if (o.won && !this.td.endless) {
+      const fw = claimFirstWin();
+      if (fw.tickets > 0) {
+        rewards.firstWin = fw.tickets;
+        rewards.tickets += fw.tickets;
+        rewards.candies += fw.tickets * CANDY_PER_TICKET;
+      }
+    }
     // Tickets y caramelos (nunca monedas)
     if (rewards.tickets > 0) addTickets(rewards.tickets);
     if (rewards.candies > 0) addCandies(rewards.candies);
@@ -930,6 +939,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (r.candies) prize.push(`+${r.candies} caramelos`);
     if (prize.length) lines.push(prize.join(' · '));
     if (r.chiefTickets) lines.push(`Jefes vencidos: ${this.td.chiefsBeaten} (+${r.chiefTickets} tickets)`);
+    if (r.firstWin) lines.push(`¡Primera victoria del día! (+${r.firstWin} tickets)`);
     if (r.newStars) lines.push(`¡${r.newStars} ${r.newStars === 1 ? 'estrella nueva' : 'estrellas nuevas'}! (premio extra)`);
     if (accountInfo().mode === 'guest') lines.push('Invitado: el progreso no se guarda al cerrar');
     const body = this.add

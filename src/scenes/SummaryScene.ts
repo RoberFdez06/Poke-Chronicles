@@ -93,7 +93,7 @@ export class SummaryScene extends Phaser.Scene {
       ['pokeball', 'Enemigos vencidos', r.kills, (n) => `${n}`],
       ['sword', 'Daño hecho', r.damage, (n) => `${n}`],
       ['ticket', 'Tickets ganados', r.tickets, (n) => `+${n}`],
-      ['candy', 'Caramelos ganados', r.tickets * CANDY_PER_TICKET, (n) => `+${n}`],
+      ['candy', 'Caramelos ganados', r.candies ?? r.tickets * CANDY_PER_TICKET, (n) => `+${n}`],
     ];
     rows.forEach(([icon, label, value, fmt], i) => {
       const y = 268 + i * 36;
