@@ -14,7 +14,7 @@ import { fitDesign } from '../ui/layout';
 import { NavInput, PadButtons, UI, MenuList } from '../ui/nav';
 import { drawBox, fadeIn, goTo, lowFx, RARITY_COLORS, shorten } from '../ui/theme';
 import { ToastStack } from '../ui/toast';
-import { sfx } from '../ui/audio';
+import { playTdChief, playTdMusic, releaseMusic, sfx } from '../ui/audio';
 import { currentInput } from '../ui/inputMode';
 import { GlyphText } from '../ui/art/keyGlyphs';
 import { HoldRepeat, cycle, stepCursor, tdHelp, tdKeyLabel, type TdDevice, type TdHelpContext, type TdKeyAction } from '../data/towerDefense/controls';
@@ -47,7 +47,7 @@ import { BRANCH_LEVEL, MAX_TOWER_LEVEL, MEGA_LEVEL, STYLE_LABEL, branchInfo, lev
 import { drawMegaAura, towerMegaFx } from '../ui/art/tdMegaArt';
 import { drawGate, drawLink, drawSynergyGem, drawTerrain, drawTrap, drawTrickMark } from '../ui/art/tdRetoArt';
 import { TERRAIN_INFO, TERRAIN_FX, isLevelMap } from '../data/towerDefense/variants';
-import { themeBanner, themeHint, type ThemeBoost } from '../data/towerDefense/themes';
+import { levelTheme, themeBanner, themeHint, type ThemeBoost } from '../data/towerDefense/themes';
 import { bakeTypeIcons, drawThemeAmbient, drawThemeGround, drawThemeProp, hasThemeProp, pickMotes, typeIcon, type Mote } from '../ui/art/tdThemeArt';
 import { TRAP_INFO, TRAP_KINDS, type TrapKind } from '../data/towerDefense/live';
 import { TRICK_INFO } from '../data/towerDefense/tricks';
@@ -226,6 +226,9 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.themeBadges = [];
   }
 
+  /** Tipo tema del nivel para la música. */
+  private musicTheme = 'normal';
+
   create() {
     fadeIn(this);
     fitDesign(this);
@@ -312,6 +315,10 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.td = new TdGame({ map: this.map, level: this.args.level, team, seed: Date.now() % 100000 });
     // El mapa de este nivel (rutas, rocas y terreno propios: variants.ts)
     this.map = this.td.map;
+    // Música del tipo tema del nivel (cada una de las 18 fases suena distinto); al salir, la del menú si aún es la suya
+    this.musicTheme = levelTheme(this.map, this.args.level);
+    playTdMusic(this.musicTheme);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => releaseMusic((k) => k.startsWith('td:') || k === 'td-jefe'));
     this.loadingText.destroy();
     this.build();
     this.ready = true;
@@ -1102,6 +1109,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         break;
       case 'waveStart':
         sfx(e.boss ? 'roar' : 'door');
+        playTdChief(!!(e.boss || e.chief), this.musicTheme);
         this.toast(e.boss ? `Oleada ${e.wave}: ¡jefe legendario!` : e.chief ? `Oleada ${e.wave}: ¡minijefe!` : `Oleada ${e.wave}`, e.boss || e.chief ? 'danger' : 'info');
         if (e.event) this.eventStartFx(e.event);
         if (e.theme) this.toast(TRICK_INFO[e.theme as TrickKind].tip, 'warning');
@@ -1111,6 +1119,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         break;
       case 'waveEnd':
         sfx('clear');
+        playTdChief(false, this.musicTheme);
         this.toast(`Oleada superada: +${e.bonus} $${e.perfect ? ' (sin fugas)' : ''}${e.farm ? ` · granjas +${e.farm} $` : ''}${e.interest ? ` · hucha +${e.interest} $` : ''}`, 'reward');
         break;
       case 'chiefIntro':

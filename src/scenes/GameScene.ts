@@ -155,7 +155,7 @@ import { badgeTexture, discoveryBurst, retaliateWave } from '../ui/art/synergyAr
 import { chainBreak, chainHit, chainOdds, chainVisible, newShinyChain, rollShiny, SHINY_ENEMY, SHINY_ODDS, type ShinyChain } from '../data/shiny';
 import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
-import { cry, playMenuMusic, playTrack, sfx } from '../ui/audio';
+import { cry, musicRoom, playMenuMusic, setMusicMood, sfx, startRunMusic } from '../ui/audio';
 import { setMusicTempo, sfxShift } from '../ui/audio';
 import { FUSION_TYPES, fusableSlots, fusionStyleOf, moveHasType, moveTypes, powerTypes, applyFusion, applyPickupFusion } from '../data/fusion';
 import { SLOT_SWAP_FUSE } from './SlotSwapScene';
@@ -172,7 +172,6 @@ import { bossDeathFlourish, finalBossDeath, finalDeathMs, finaleVictoryBanner } 
 import { ARENA_AT, fallTheme } from '../level/arenaPhase';
 import { BOSS_PHASE2_AT, BOSS_ATTACK_LABEL as PATTERN_LABEL, isPatternAttack, patternMs, patternWarnAngles, patternWaves, type PatternAttack } from '../data/bossPatterns';
 import { shotSfx } from '../data/sounds';
-import { trackForBiome, trackForMood, TRACKS } from '../data/music';
 import { forceMood, initialMood, stepMood, type MoodState, type MusicMood } from '../audio/musicState';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
@@ -3510,7 +3509,7 @@ export class GameScene extends Phaser.Scene {
     // Música del bioma (la del jefe la pone spawnBoss); al salir de la partida, la del menú
     this.musicState = initialMood('calm');
     this.musicAt = 0;
-    playTrack(trackForBiome(this.biome.id));
+    startRunMusic(this.biome.id, this.mode, this.floorNum);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => playMenuMusic());
     // Nada sale del mapa: también justo después de mover la física (embestidas, empujones, teletransportes)
     this.physics.world.on(Phaser.Physics.Arcade.Events.WORLD_STEP, this.keepInside, this);
@@ -6977,6 +6976,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else if (room.kind === 'center') this.tip('center');
     else if (room.kind === 'shop') this.tip('shop');
     if (room.kind === 'center' || room.kind === 'shop') this.npcEncounter(room);
+    // Música: tienda y salas tranquilas con su lista; al cambiar de sala, otra pista si la actual ya lleva un rato
+    musicRoom(room.kind, !this.cleared.has(room.id) && (this.mode === 'waves' || room.kind === 'combat' || room.kind === 'boss' || room.kind === 'challenge'));
     if (room.kind === 'boss' && !this.cleared.has(room.id)) this.gardenBossBerries();
     if (!this.cleared.has(room.id) && (this.mode === 'waves' || room.kind === 'combat' || room.kind === 'boss' || room.kind === 'challenge')) {
       this.tip('shoot');
@@ -7896,7 +7897,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.buildBossBar(group[0], label, this.finaleMembers[0].types[0], group);
     this.notify(trio ? `¡Reto final: ${f.name}!` : `¡Reto final: ${label}, más fuerte que nunca!`, { kind: 'danger', icon: 'star' });
     this.finaleMembers.forEach((m) => void cry(m.id));
-    playTrack(TRACKS.jefeFinal);
+    setMusicMood('final');
     this.musicState = forceMood('final', this.time.now);
     const fighter = (m: (typeof this.finaleMembers)[number]) => ({ texture: `${m.key}-front`, name: m.name, types: m.types });
     this.showBossIntro(group[0].getData('ai') as EnemyAI, {
@@ -8051,7 +8052,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     this.notify(dark ? `¡${darkName(cap(this.bossName))}, jefe legendario oscuro!\nMás fuerte en todo, con un ataque de más y se enfurece a media vida` : `¡${this.bossName}, jefe legendario!`, { kind: 'danger', icon: 'pokeball' });
     void cry(this.bossId);
-    playTrack(TRACKS.jefe);
+    setMusicMood('boss');
     this.musicState = forceMood('boss', this.time.now);
     this.showBossIntro(ai, dark ? { boss: { texture: `${this.bossKey}-front`, name: darkName(cap(this.bossName)), types: this.bossTypes }, dark, subtitle: `Legendario oscuro · ${progressText(this.mode, this.floorNum)}` } : {});
   }
@@ -11243,13 +11244,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (!e.active || e.getData('helper')) continue;
       const ai = e.getData('ai') as EnemyAI | undefined;
       if (e.getData('finale')) { mood = 'final'; break; }
-      if (ai?.boss || e.getData('miniboss')) mood = 'boss';
+      if (ai?.boss) mood = 'boss';
+      else if (e.getData('miniboss')) { if (mood !== 'boss') mood = 'mini'; }
       else if (mood === 'calm') mood = 'combat';
     }
     // Histéresis (audio/musicState.ts): subir a combate casi al instante, volver a la normal tras unos segundos
     const r = stepMood(this.musicState, mood, time);
     this.musicState = r.state;
-    if (r.changed) playTrack(trackForMood(r.state.mood, this.biome.id));
+    if (r.changed) setMusicMood(r.state.mood);
   }
 
   /** ¿Las puertas de la sala (grande) actual están cerradas (combate)? */
@@ -12837,7 +12839,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (boss && others.length === 0) {
       this.bossFx?.destroy();
       this.bossFx = undefined;
-      playTrack(trackForBiome(this.biome.id));
+      setMusicMood('calm');
       // Al caer el jefe se van sus ayudantes
       for (const c of [...this.enemies.getChildren()]) {
         const h = c as Sprite;
