@@ -146,6 +146,7 @@ que crear un proyecto de Firebase y poner sus claves en un `.env.local` (que no 
 - `src/scenes`: las pantallas de Phaser (menús, partida, resumen…).
 - `src/ui`: HUD, arte pixel generado por código, sonido y música sintetizados con Web Audio (sin archivos de audio).
 - `src/data/music.ts` + `src/data/musicGen.ts`: música chiptune propia (128 pistas: 4 por bioma, combate por bioma, minijefe, jefe, jefe final, menú, tienda, salas tranquilas y una familia por tipo en la Defensa de torres); `src/audio/playlist.ts` las mezcla al azar sin repetir.
+- Hitboxes: `src/data/hitbox.ts` (formas y la hitbox pequeña del jugador, en los pies) y `src/data/attackHitboxes.ts` (qué daña cada ataque, siempre dentro de lo que se dibuja). En desarrollo o como admin, `?hitboxes` en la URL (o `localStorage['pokeisaac.hitboxes'] = '1'`) dibuja las hitboxes encima de la partida.
 - La documentación de diseño y la bitácora de desarrollo están en [`docs/`](docs/).
 
 ## Créditos

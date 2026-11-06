@@ -2607,3 +2607,49 @@ caer, avisos de premio). Si sigue corto, lo siguiente es `ROOM_TICKETS` o `CANDY
 Sin verificar a ojo (Vite no corre en la VM): el caramelo que vuela al jugador y su «+N caramelos», los avisos de primera
 victoria y de premio por llegar lejos, la línea nueva del resultado de la Defensa de torres (que quepa en la caja) y el pie
 más largo de la pantalla de Misiones. El HUD móvil y `layout.ts` no se tocan.
+## 2026-11-06 · Auditoría de hitboxes: solo te da lo que se ve (rama `hitbox`)
+Motivo: Roberto: «no están bien las hitbox de algunos ataques, te dan sin estar en el sitio». Causas: casi todos los golpes
+scriptados miraban el **centro del dibujo** del jugador (no sus pies) con márgenes de 14-22 px, y las zonas del suelo se dibujan
+**achatadas** (elipse r × 0,65 r) pero dañaban en un **círculo** de r + 22: por encima y por debajo te daban a casi el doble de lo
+marcado. Lógica pura nueva en `src/data/hitbox.ts` (círculo, elipse, rectángulo rotado, cápsula/rayo, sector/cono, anillo con
+hueco, unión; distancia, contacto, contorno) y `src/data/attackHitboxes.ts` (dibujo y hitbox de cada ataque con los mismos
+números), tests en `tests/hitbox.test.ts` (formas, catálogo de ~300 entradas: hitbox ⊆ dibujo con 2 px de tolerancia y nunca daño
+antes del aviso).
+- **Tu hitbox**: círculo de `PLAYER_HURT_R` = 10 px en el centro del cuerpo (pies); el sprite mide 84 px y el cuerpo de choque con
+  paredes sigue en 16 px (pasar por puertas no cambia). Proyectiles y contacto con enemigos pasan por un filtro (process callback):
+  el círculo inscrito del cuerpo de Arcade contra tu hitbox (las cajas de los sprites PMD tenían aire en las esquinas).
+- **Capa de depuración**: solo en desarrollo o admin, con `?hitboxes` o `localStorage['pokeisaac.hitboxes'] = '1'`: tu hitbox
+  en verde, cuerpos de enemigos y disparos en rojo y las formas que han mirado si te daban, en naranja (160 ms).
+
+| Ataque | Dibujo | Daña antes | Daña ahora |
+|---|---|---|---|
+| Zona genérica de enemigo (`area`) | círculo r | centro del dibujo a ≤ r + 22 | tu hitbox toca el círculo r |
+| Terremoto (tuyo y suyo) | onda elipse r × 0,65 r | círculo r + 22 (enemigos: + radio) | elipse (los dos lados) |
+| Lluvia, bomba, erupción (enemigo) | `pixMarker` r × 0,65 r | círculo r + 22 | elipse de la marca |
+| Mina de patrón (enemigo) | runa r × 0,6 r | **estallaba al momento** (nearestTarget sin alcance) + círculo r + 22 | se arma al pisar el 70 % de la runa; daña la elipse |
+| Remolino (enemigo) | embudo con sombra 0,85 R × 0,275 R | círculo R + 22 | sombra del suelo |
+| Rayo de patrón (enemigo/jefe) | `drawPixBeam` ancho máx(18, w) | ½w + 18 al centro | núcleo 80 % del dibujado |
+| Rayo con barrido (Psicorrayo, Pulso Dragón de jefe) | aviso en el centro | salía girado −½ barrido, sin aviso | el aviso ya marca el inicio y el final |
+| Cadena (enemigo) | rayo hasta ti | — | igual (golpe directo) |
+| Láser giratorio | haz de 22 | 18 al centro | núcleo 8,8 + hitbox |
+| Estallido mega | banda de 44 | 22 al centro | núcleo 17,6 + hitbox |
+| Onda / Nova | bolas de 9 px en r | ±11 al centro | anillo ±6 + hitbox, hueco igual |
+| Zona de peligro, lluvia del jefe, orbes, enemigo mina | círculos | centro dentro (orbes r + 14) | hitbox toca el círculo |
+| Meteoro | aviso elipse R × 0,6 R | círculo R | elipse del aviso |
+| Miasma | nubes ~0,9 R | 0,9 R al centro | círculo 0,75 R + hitbox |
+| Muro, rejilla, minas en cruz | barras/rayos | medio ancho al centro | núcleo + hitbox, desde tus pies |
+| Embestida marcada (asalto y frenesí) | carril de 60 | 50 px al centro | 30 + hitbox |
+| Cruz del juicio | franjas de 72 | margen 10 al centro | margen = hitbox, desde tus pies |
+| Frenesí (líneas, rayos, zonas, charcos) | ya coincidían | centro del dibujo | igual, desde tus pies |
+| Enemigo que cava al salir | montículo 40 × 16 | 70 px alrededor | su cuerpo (0,35 × tamaño) |
+| Proyectiles (tuyos/suyos) | forma 16 px de textura | caja de Arcade vs tu círculo de 16 | círculo inscrito vs hitbox de 10 |
+| Contacto con enemigos/jefes (y carga) | sprite | caja 60 % × 55 % del fotograma | círculo inscrito de esa caja |
+| Tu bomba | círculo 110 | 88 al centro | hitbox toca 88 |
+| Grietas/lava de la arena y peligros de la Torre | casillas | casilla del centro del dibujo | casilla de tus pies |
+| Defensa de torres: salpicadura y «Aturdir» | anillo achatado 60 % | círculo | el anillo se dibuja redondo y centrado |
+
+Sin cambios (revisados): disparo básico y cargado, poderes, fusiones (usan el mismo motor de ataques), orbitales y rastro de las
+sinergias (algo generosos, a tu favor), alcance de las torres y minas/tormenta de la Defensa (ya redondas).
+Sin verificar a ojo (Vite no corre en la VM): la capa de depuración (colores, que no tape el HUD), la segunda línea del aviso del
+rayo con barrido, que el cambio a los pies se sienta bien con los Pokémon de fotogramas grandes y que los rayos del jefe no se noten
+más blandos o duros (el núcleo + hitbox es ±1-7 px de lo de antes). El HUD móvil, `layout.ts` y la economía no se tocan.
