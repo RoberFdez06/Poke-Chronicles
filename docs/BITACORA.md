@@ -2488,3 +2488,31 @@ niveles y que los minijefes fueran pseudolegendarios/ultraentes y los jefes lege
 Sin verificar a ojo (Vite no corre en la VM): las fichas compactas del menú de mapas (miniatura, textos e insignias en 96 px de
 alto), que la ficha del nivel con la línea de minijefes/jefe no pise la barra de ayuda, las dos plantillas nuevas horneadas, la
 página nueva de la guía, los ojos de 3 px en los enemigos y la ficha del minijefe. El HUD móvil y `layout.ts` no se tocan.
+
+## 2026-11-06 · Entrada: teclas que no se quedan pilladas y ratón fiable en los menús (rama `entrada`)
+Motivo: al probar con gente, «los controles en teclado se quedan pillados» y «el ratón cuesta usarlo en el menú». Igual que
+`touchPointers.ts` para el táctil: lógica pura en `src/data/keyHold.ts` y `src/data/menuPointer.ts`, tests en
+`tests/entrada.test.ts`, enganche a Phaser en `src/ui/keyGuard.ts` y `src/ui/menuPointer.ts` (los dos se instalan en `main.ts`).
+- **Teclado** (`keyHold`, `keyGuard`): estado propio por tecla con los keydown/keyup del navegador (fase de captura). Cada
+  fotograma, tras procesar Phaser su cola (`POST_STEP`), se sueltan en TODAS las escenas las teclas que Phaser cree pulsadas y
+  el navegador no (`stuckKeys`): arregla las soltadas mientras la escena estaba parada, en una transición o con el teclado
+  desactivado. Se suelta todo en blur, focus, `visibilitychange`, `pagehide` y menú contextual del navegador; al soltar Cmd
+  (macOS se traga los keyup de las demás); los modificadores se corrigen con el estado real que trae cada evento de teclado o
+  ratón (Alt de un Alt+Tab); una tecla física se suelta aunque suba con otro código (IME/teclas muertas, 229). Al reanudar o
+  despertar una escena se reinician sus teclas (Phaser ya lo hace al pausar). No se suelta nada por tiempo: mantener W y tocar
+  D deja de repetir W y sigue pulsada. El ghosting del teclado (combinaciones que el propio teclado no manda) no tiene arreglo
+  por software; para eso están las teclas configurables.
+- **Ratón en todos los menús** (`menuPointer`, todas las escenas salvo `Game` y `TowerDefense`, y nunca en táctil): los
+  botones (objetos con cursor de mano) aceptan paso y clic en un margen de 6 a 14 px de diseño alrededor de su zona
+  (`hitPad`); un botón tocado de lleno gana al margen de su vecino, entre dos márgenes el más cercano y el fondo de un diálogo
+  sigue tapando lo de debajo (`pickHit`). Clic fiable (`judgeDown`): solo el izquierdo (el derecho solo en TowerDefenseMenu,
+  donde hace algo), nada en los primeros 180 ms de una pantalla o de su vuelta a primer plano, y el segundo clic de un doble
+  clic no «salta» a la pantalla o el botón que abrió el primero (los clics rápidos en el mismo botón sí cuentan). Un clic
+  descartado no pasa a la escena de debajo. Hover = selección: tras usar teclado o mando, en cuanto el ratón se mueve vuelve
+  a seleccionar lo que tiene debajo (`shouldReHover`). `MenuList` sube y baja con la rueda.
+- Técnica: se envuelven `InputManager.pointWithinHitArea` e `InputPlugin.sortGameObjects/processDownEvents/processMoveEvents`
+  de Phaser 3.90 (si se actualiza Phaser, revisar `src/ui/menuPointer.ts`). Teclado, ratón y mando siguen yendo cada uno solo;
+  el táctil y las colisiones no se tocan.
+Sin verificar a ojo (Vite no corre en la VM): el margen de clic en cada menú (sobre todo filas pegadas y botones pequeños
+como ✕ o ◀ ▶), que la selección siga al ratón tras usar teclado, la rueda en las listas y que ningún clic legítimo se pierda
+por los 180 ms de arranque.
