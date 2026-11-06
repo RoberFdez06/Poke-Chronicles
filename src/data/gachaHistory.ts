@@ -11,6 +11,8 @@ export interface HistoryEntry {
   shiny: boolean;
   /** ms desde 1970 */
   at: number;
+  /** Banner en el que salió (gachareg; las tiradas de antes no lo tienen). */
+  banner?: string;
 }
 
 /** El almacenamiento en uso: memoria (invitado), nube (cuenta) o el navegador (pruebas). Ver storage.ts (T45). */
@@ -24,7 +26,7 @@ export function parseHistory(raw: string | null): HistoryEntry[] {
       .filter(
         (e): e is HistoryEntry =>
           !!e && Number.isInteger(e.id) && e.id > 0 && (RARITIES as readonly string[]).includes(e.rarity) &&
-          typeof e.shiny === 'boolean' && Number.isFinite(e.at),
+          typeof e.shiny === 'boolean' && Number.isFinite(e.at) && (e.banner === undefined || typeof e.banner === 'string'),
       )
       .slice(0, HISTORY_MAX);
   } catch {

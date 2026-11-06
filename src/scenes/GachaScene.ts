@@ -4,11 +4,15 @@ import { addHelpBar } from '../ui/helpBar';
 import { DCX, DCY, COVER_W, COVER_H, fitDesign } from '../ui/layout';
 import { fetchPokemonCard, type PokemonCard } from '../data/pokeapi';
 import {
-  buildPools, dayNumber, featuredLegendary, GACHA_RATES, pull, pullMany, PULL10_COST, PULL_COST, RARITIES, RARITY_LABEL,
-  type PullResult, type Rarity, type RarityPools,
+  dayNumber, PULL10_COST, PULL_COST, RARITIES, RARITY_LABEL, type PullResult, type Rarity, type RarityPools,
 } from '../data/gacha';
+import {
+  ALL_BANNER, BANNERS, bannerById, bannerIndex, bannerProgress, bannerTop, buildBannerPools, effectiveRates, featuredOf, FORMS_BANNER,
+  formsProgress, loadBannerState, PITY, pityLeft, pityOf, poolIds, pullBanner, rememberBanner, saveBannerState,
+} from '../data/gachaBanners';
+import { FORM_REGIONS, FORM_REGION_LABEL } from '../data/regionalForms';
 import { loadHistory, pushHistory, type HistoryEntry } from '../data/gachaHistory';
-import { loadCollectionIndex, loadSpeciesIndex } from '../data/speciesIndex';
+import { loadCollectionIndex } from '../data/speciesIndex';
 import { openConfirm } from './ConfirmScene';
 import { confirmText } from '../data/confirm';
 import { addDark, addShiny, addTickets, loadShinies, loadTickets, loadUnlocked, spendTickets, unlockPokemon } from '../data/save';
@@ -19,7 +23,9 @@ import { typeColor, typeNameEs } from '../data/types';
 import { cry, sfx } from '../ui/audio';
 import { ARROW, addTypeChip, drawBox, fadeIn, FONT, goTo, hex, RARITY_COLORS } from '../ui/theme';
 import { addMenuBackdrop } from '../ui/art/landscape';
-import { NavInput } from '../ui/nav';
+import { NavInput, PadButtons } from '../ui/nav';
+import { bakeBannerArt, bannerKey } from '../ui/art/bannerArt';
+import { BANNER_COLORS } from '../ui/art/bannerEmblems';
 import { addBurst, addMachineIdle, addRays, bakeGachaArt, ballKey, CRANK_KEY, MACHINE, MACHINE_KEY } from '../ui/art/gachaMachine';
 
 /** Tickets que devuelve una tirada repetida. */
@@ -31,6 +37,10 @@ const MAC = { x: 190, y: 330, s: 3 };
 const RANK = (r: Rarity) => RARITIES.indexOf(r);
 
 type Phase = 'menu' | 'anim' | 'result';
+/** Ficha del banner (diseño 960×640): arriba a la derecha, con las pestañas de los banners abajo. */
+const CARD = { x: 380, y: 104, w: 564, h: 170, tabY: 252, tabGap: 46 };
+/** Distancia mínima (px) para que un deslizamiento en la ficha cambie de banner (táctil). */
+const SWIPE = 50;
 
 const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -50,7 +60,20 @@ interface Reveal {
  * Teclado, ratón y mando.
  */
 export class GachaScene extends Phaser.Scene {
-  private pools: RarityPools | null = null;
+  private bannerPools: Record<string, RarityPools> | null = null;
+  private bannerId = ALL_BANNER;
+  /** Qué fila manejan el teclado y el mando: la ficha del banner o los botones. */
+  private focus: 'banner' | 'buttons' = 'buttons';
+  private cardBg!: Phaser.GameObjects.Graphics;
+  private cardLayer?: Phaser.GameObjects.Container;
+  private tabs: { img: Phaser.GameObjects.Image; frame: Phaser.GameObjects.Graphics }[] = [];
+  private ratesText!: Phaser.GameObjects.Text;
+  private pad?: PadButtons;
+  private keyQ?: Phaser.Input.Keyboard.Key;
+  private keyE?: Phaser.Input.Keyboard.Key;
+  private swipeX: number | null = null;
+  /** Sube al cambiar de banner: un destacado que llega tarde de otro banner no se pinta. */
+  private cardToken = 0;
   private buttons: { box: Phaser.GameObjects.Container; bg: Phaser.GameObjects.Graphics; arrow: Phaser.GameObjects.Text }[] = [];
   private actions: (() => void)[] = [];
   private selected = 0;
@@ -63,7 +86,6 @@ export class GachaScene extends Phaser.Scene {
   private message!: Phaser.GameObjects.Text;
   private crank!: Phaser.GameObjects.Image;
   private machine!: Phaser.GameObjects.Image;
-  private showcase?: Phaser.GameObjects.Container;
   private historyLayer?: Phaser.GameObjects.Container;
   private overlay?: Phaser.GameObjects.Container;
   private alive = true;
@@ -74,13 +96,17 @@ export class GachaScene extends Phaser.Scene {
 
   create() {
     this.confirmOpen = false;
-    this.pools = null;
+    this.bannerPools = null;
+    this.bannerId = loadBannerState().last;
+    this.focus = 'buttons';
+    this.tabs = [];
+    this.cardLayer = undefined;
+    this.swipeX = null;
     this.buttons = [];
     this.selected = 0;
     this.phase = 'menu';
     this.leaving = false;
     this.overlay = undefined;
-    this.showcase = undefined;
     this.historyLayer = undefined;
     this.alive = true;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => (this.alive = false));
@@ -88,6 +114,7 @@ export class GachaScene extends Phaser.Scene {
     fitDesign(this);
     addMenuBackdrop(this);
     bakeGachaArt(this);
+    bakeBannerArt(this);
     this.tweens.timeScale = 1;
 
     this.add.text(480, 40, 'Gacha', { fontFamily: FONT, fontSize: '48px', fontStyle: 'bold', color: '#ffd34d' }).setOrigin(0.5).setStroke('#2b3a67', 10);
@@ -105,11 +132,12 @@ export class GachaScene extends Phaser.Scene {
     this.ticketsText = this.add.text(924, 40, '', { fontFamily: FONT, fontSize: '24px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(1, 0.5);
     this.ownedText = this.add.text(924, 70, '', { fontFamily: FONT, fontSize: '16px', color: '#4a5578' }).setOrigin(1, 0.5);
 
-    // Escaparate e historial (se rellenan al cargar la lista de especies)
-    drawBox(this.add.graphics(), 380, 104, 564, 150, { radius: 12 });
-    this.add.text(398, 122, 'Destacado de hoy', { fontFamily: FONT, fontSize: '18px', fontStyle: 'bold', color: '#2b3a67' }).setOrigin(0, 0.5);
-    drawBox(this.add.graphics(), 380, 264, 564, 92, { radius: 12 });
-    this.add.text(398, 282, 'Últimas tiradas', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#2b3a67' }).setOrigin(0, 0.5);
+    // Ficha del banner (se rellena al cargar la lista de especies), pestañas e historial
+    this.cardBg = this.add.graphics();
+    this.drawCardBg();
+    this.buildTabs();
+    drawBox(this.add.graphics(), 380, 282, 564, 76, { radius: 12 });
+    this.add.text(398, 296, 'Últimas tiradas', { fontFamily: FONT, fontSize: '16px', fontStyle: 'bold', color: '#2b3a67' }).setOrigin(0, 0.5);
 
     // Mensajes
     drawBox(this.add.graphics(), 380, 366, 564, 64, { radius: 12 });
@@ -124,21 +152,39 @@ export class GachaScene extends Phaser.Scene {
     this.buildButton('Volver', bx(2), () => this.goBack());
     this.actions = [() => this.doPull(1), () => this.doPull(10), () => this.goBack()];
 
-    const rates = RARITIES.map((r) => `${RARITY_LABEL[r]} ${GACHA_RATES[r]}%`).join(' · ');
-    this.add.text(662, 522, rates, { fontFamily: FONT, fontSize: '15px', color: '#ffffff' }).setOrigin(0.5).setShadow(1, 1, '#101828', 0);
+    // Probabilidades del banner elegido (se rellenan al cargar)
+    this.ratesText = this.add.text(662, 522, '', { fontFamily: FONT, fontSize: '15px', color: '#ffffff' }).setOrigin(0.5).setShadow(1, 1, '#101828', 0);
     this.add
       .text(662, 546, `x10: al menos un Épico o mejor · Repetido: +${DUPLICATE_REFUND} tickets`, {
         fontFamily: FONT, fontSize: '14px', color: '#ffd34d',
       })
       .setOrigin(0.5).setShadow(1, 1, '#101828', 0);
-    addHelpBar(this, 480, 616, 'Flechas o ratón para elegir · Enter o clic para tirar · Esc o Retroceso para volver', {
-        fontFamily: FONT, fontSize: '14px', color: '#ffffff',
-      })
-      .setOrigin(0.5).setAlpha(0.6);
+    addHelpBar(
+      this, 480, 616,
+      'Flechas o ratón: elegir · Arriba y luego ←/→, o Q/E: cambiar de banner · Enter o clic: tirar · Esc: volver',
+      { fontFamily: FONT, fontSize: '14px', color: '#ffffff' },
+      'Toca una pestaña o desliza la ficha para cambiar de banner · Toca x1 o x10 para tirar',
+    ).setAlpha(0.6);
 
     this.nav = new NavInput(this);
-    // Clic en cualquier sitio cierra el resultado
-    this.input.on('pointerdown', () => this.phase === 'result' && this.closeResult());
+    this.pad = new PadButtons(this);
+    const kb = this.input.keyboard;
+    this.keyQ = kb?.addKey(Phaser.Input.Keyboard.KeyCodes.Q, false);
+    this.keyE = kb?.addKey(Phaser.Input.Keyboard.KeyCodes.E, false);
+    this.keyQ?.reset();
+    this.keyE?.reset();
+    // Clic en cualquier sitio cierra el resultado; deslizar sobre la ficha cambia de banner (táctil y ratón)
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (this.phase === 'result') return this.closeResult();
+      this.swipeX = this.inCard(p) ? p.x : null;
+    });
+    this.input.on('pointerup', (p: Phaser.Input.Pointer) => {
+      const from = this.swipeX;
+      this.swipeX = null;
+      if (from === null || this.phase !== 'menu') return;
+      const dx = p.x - from;
+      if (Math.abs(dx) >= SWIPE) this.changeBanner(dx < 0 ? 1 : -1);
+    });
     this.select(0);
     this.refreshHud();
     this.loadIndex().catch((err) => {
@@ -147,11 +193,165 @@ export class GachaScene extends Phaser.Scene {
   }
 
   private async loadIndex() {
-    this.pools = buildPools(await loadCollectionIndex());
+    this.bannerPools = buildBannerPools(await loadCollectionIndex());
     if (!this.alive) return;
-    this.message.setText('Gira la manivela: cada Poké Ball es una rareza');
-    void this.buildShowcase();
+    this.message.setText('Elige banner y gira la manivela: cada Poké Ball es una rareza');
+    this.buildBannerCard();
     this.buildHistory();
+  }
+
+  private get pools(): RarityPools | null {
+    return this.bannerPools?.[this.bannerId] ?? null;
+  }
+
+  // --- Banners ---
+
+  private inCard(p: Phaser.Input.Pointer): boolean {
+    // Las coordenadas del puntero están en pantalla; la cámara de fitDesign las pasa a diseño
+    const w = this.cameras.main.getWorldPoint(p.x, p.y);
+    return w.x >= CARD.x && w.x <= CARD.x + CARD.w && w.y >= CARD.y && w.y <= CARD.y + CARD.h;
+  }
+
+  private drawCardBg() {
+    this.cardBg.clear();
+    drawBox(this.cardBg, CARD.x, CARD.y, CARD.w, CARD.h, {
+      radius: 12, selected: this.focus === 'banner', border: BANNER_COLORS[this.bannerId],
+    });
+  }
+
+  /** Pestañas: el emblema pixel art de cada banner; se tocan o se pulsan con el ratón. */
+  private buildTabs() {
+    const x0 = CARD.x + CARD.w / 2 - ((BANNERS.length - 1) * CARD.tabGap) / 2;
+    BANNERS.forEach((b, i) => {
+      const x = x0 + i * CARD.tabGap;
+      const frame = this.add.graphics();
+      const img = this.add.image(x, CARD.tabY, bannerKey(b.id)).setScale(2);
+      // Zona de toque de 44×44 px (la textura mide 16: en sus píxeles, 22)
+      img.setInteractive(new Phaser.Geom.Rectangle(-3, -3, 22, 22), Phaser.Geom.Rectangle.Contains);
+      img.input!.cursor = 'pointer';
+      let downX: number | null = null;
+      img.on('pointerdown', (p: Phaser.Input.Pointer) => (downX = p.x));
+      img.on('pointerup', (p: Phaser.Input.Pointer) => {
+        const from = downX;
+        downX = null;
+        // Si era un deslizamiento lo hace la ficha
+        if (from === null || Math.abs(p.x - from) >= SWIPE || this.phase !== 'menu') return;
+        this.setBanner(b.id);
+      });
+      this.tabs.push({ img, frame });
+    });
+    this.paintTabs();
+  }
+
+  private paintTabs() {
+    const cur = bannerIndex(this.bannerId);
+    this.tabs.forEach(({ img, frame }, i) => {
+      const sel = i === cur;
+      frame.clear();
+      if (sel) {
+        frame.fillStyle(0xffffff, 1).fillRect(img.x - 21, img.y - 21, 42, 42);
+        frame.lineStyle(4, BANNER_COLORS[BANNERS[i].id] ?? 0x2b3a67, 1).strokeRect(img.x - 21, img.y - 21, 42, 42);
+      }
+      img.setScale(sel ? 2.25 : 2).setAlpha(sel ? 1 : 0.75);
+    });
+  }
+
+  private changeBanner(step: number) {
+    const n = BANNERS.length;
+    this.setBanner(BANNERS[(bannerIndex(this.bannerId) + step + n) % n].id);
+  }
+
+  private setBanner(id: string) {
+    if (this.phase !== 'menu' || this.confirmOpen || !bannerById(id) || id === this.bannerId) return;
+    this.bannerId = id;
+    rememberBanner(id);
+    sfx('select');
+    this.drawCardBg();
+    this.paintTabs();
+    this.buildBannerCard();
+    this.message.setText(`Banner ${bannerById(id)!.name}: solo salen Pokémon de este banner`);
+  }
+
+  /** Contenido de la ficha: emblema, nombre, progreso X/Y, garantías, destacado de hoy y probabilidades. */
+  private buildBannerCard() {
+    this.cardLayer?.destroy();
+    const token = ++this.cardToken;
+    const pools = this.pools;
+    const banner = bannerById(this.bannerId)!;
+    const parts: Phaser.GameObjects.GameObject[] = [];
+    const navy = '#2b3a67';
+    const soft = '#4a5578';
+    const midY = 168;
+
+    // Flechas (ratón y táctil): triángulos dibujados con zona de toque alta
+    const arrow = (x: number, dir: -1 | 1) => {
+      const g = this.add.graphics();
+      g.fillStyle(0x2b3a67, 1).fillTriangle(x - 6 * dir, midY, x + 6 * dir, midY - 12, x + 6 * dir, midY + 12);
+      const zone = this.add.zone(x, midY, 40, 100).setInteractive({ cursor: 'pointer' });
+      zone.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
+        ev?.stopPropagation?.();
+        if (this.phase === 'menu') this.changeBanner(dir);
+      });
+      parts.push(g, zone);
+    };
+    arrow(CARD.x + 16, -1);
+    arrow(CARD.x + CARD.w - 16, 1);
+
+    parts.push(this.add.image(452, midY - 4, bannerKey(banner.id)).setScale(4));
+    parts.push(this.add.text(500, 124, banner.name, { fontFamily: FONT, fontSize: '24px', fontStyle: 'bold', color: navy }).setOrigin(0, 0.5));
+    if (!pools) {
+      parts.push(this.add.text(500, 152, 'Cargando…', { fontFamily: FONT, fontSize: '15px', color: soft }).setOrigin(0, 0.5));
+      this.cardLayer = this.add.container(0, 0, parts);
+      return;
+    }
+
+    // Progreso X/Y del banner (cuenta lo que ya tenías de antes)
+    const owned = loadUnlocked();
+    const prog = bannerProgress(pools, owned);
+    const bar = this.add.graphics();
+    const bw = 190;
+    bar.fillStyle(0x2b3a67, 1).fillRect(500, 144, bw + 4, 14);
+    bar.fillStyle(0xe4e4ec, 1).fillRect(502, 146, bw, 10);
+    const frac = prog.total > 0 ? prog.got / prog.total : 0;
+    bar.fillStyle(prog.got === prog.total ? 0xffd34d : 0x58b048, 1).fillRect(502, 146, Math.round(bw * frac), 10);
+    parts.push(bar, this.add.text(702, 151, `${prog.got}/${prog.total} conseguidos`, { fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: navy }).setOrigin(0, 0.5));
+
+    // Garantías de este banner
+    const top = bannerTop(pools);
+    const left = pityLeft(pityOf(loadBannerState(), banner.id), top);
+    const pity = left.top !== null
+      ? `Garantía: ${RARITY_LABEL[top]} en ${left.top} · Épico o mejor en ${left.epic}`
+      : `Garantía: Épico o mejor en ${left.epic} (sin legendarios)`;
+    parts.push(this.add.text(500, 176, pity, { fontFamily: FONT, fontSize: '14px', color: navy }).setOrigin(0, 0.5));
+
+    // Qué hay en el banner
+    let info: string;
+    if (banner.id === FORMS_BANNER) {
+      const fp = formsProgress(pools, owned);
+      info = FORM_REGIONS.map((r) => `${FORM_REGION_LABEL[r]} ${fp[r].got}/${fp[r].total}`).join(' · ');
+    } else if (banner.kind === 'region') info = `Pokédex n.º ${banner.first}-${banner.last} · ${poolIds(pools).length} Pokémon`;
+    else info = `Todas las regiones y formas · ${poolIds(pools).length} Pokémon`;
+    parts.push(this.add.text(500, 220, info, { fontFamily: FONT, fontSize: '13px', color: soft }).setOrigin(0, 0.5));
+    const featText = this.add.text(500, 198, '', { fontFamily: FONT, fontSize: '14px', color: soft }).setOrigin(0, 0.5);
+    parts.push(featText);
+    this.cardLayer = this.add.container(0, 0, parts);
+
+    // Probabilidades reales del banner (sin las rarezas que no tiene)
+    const er = effectiveRates(pools);
+    this.ratesText.setText(RARITIES.filter((r) => er[r] > 0).map((r) => `${RARITY_LABEL[r]} ${er[r]}%`).join(' · '));
+
+    // Destacado de hoy (llega después: sprite de PokeAPI)
+    const id = featuredOf(pools, dayNumber(), banner.id);
+    if (id === null) return;
+    void fetchPokemonCard(id)
+      .then(async (card) => {
+        const key = await this.loadSprite(card, false);
+        if (!this.alive || token !== this.cardToken || !this.cardLayer?.active) return;
+        featText.setText(`Destacado de hoy: ${capitalize(card.name)} (${RARITY_LABEL[top]})`);
+        this.cardLayer.add(addRays(this, 862, midY - 10, RARITY_COLORS[top], 44, 10));
+        if (key) this.cardLayer.add(this.add.image(862, midY - 10, key).setDisplaySize(72, 72));
+      })
+      .catch(() => undefined);
   }
 
   private refreshHud() {
@@ -169,10 +369,17 @@ export class GachaScene extends Phaser.Scene {
     const box = this.add.container(x, BTN.y, [bg, label, arrow]).setSize(BTN.w, BTN.h);
     box.setInteractive(new Phaser.Geom.Rectangle(0, 0, BTN.w, BTN.h), Phaser.Geom.Rectangle.Contains);
     box.input!.cursor = 'pointer';
-    box.on('pointerover', () => this.phase === 'menu' && this.select(i));
+    box.on('pointerover', () => {
+      if (this.phase !== 'menu') return;
+      this.focus = 'buttons';
+      this.drawCardBg();
+      this.select(i);
+    });
     box.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
       if (this.phase !== 'menu') return;
       ev?.stopPropagation?.();
+      this.focus = 'buttons';
+      this.drawCardBg();
       this.select(i);
       action();
     });
@@ -182,7 +389,7 @@ export class GachaScene extends Phaser.Scene {
   private select(i: number) {
     this.selected = i;
     this.buttons.forEach(({ box, bg, arrow }, k) => {
-      const sel = k === i;
+      const sel = k === i && this.focus === 'buttons';
       bg.clear();
       drawBox(bg, -BTN.w / 2, -BTN.h / 2, BTN.w, BTN.h, { selected: sel });
       arrow.setVisible(sel);
@@ -199,37 +406,16 @@ export class GachaScene extends Phaser.Scene {
 
   // --- Escaparate e historial ---
 
-  private async buildShowcase() {
-    if (!this.pools) return;
-    const id = featuredLegendary(this.pools, dayNumber());
-    if (id === null) return;
-    const card = await fetchPokemonCard(id).catch(() => null);
-    if (!card || !this.alive) return;
-    const key = await this.loadSprite(card, false);
-    if (!this.alive) return;
-    const parts: Phaser.GameObjects.GameObject[] = [];
-    const rays = addRays(this, 470, 190, RARITY_COLORS.legendary, 70, 10);
-    parts.push(rays);
-    if (key) parts.push(this.add.image(470, 190, key).setDisplaySize(112, 112));
-    parts.push(
-      this.add.text(540, 160, capitalize(card.name), { fontFamily: FONT, fontSize: '26px', fontStyle: 'bold', color: '#2b3a67' }).setOrigin(0, 0.5),
-      this.add.text(540, 192, `Legendario · ${card.types.map(typeNameEs).join(' / ')}`, { fontFamily: FONT, fontSize: '17px', color: hex(RARITY_COLORS.legendary) }).setOrigin(0, 0.5).setStroke('#2b3a67', 2),
-      this.add.text(540, 222, `Sale con la Master Ball · ${GACHA_RATES.legendary}% de legendarios`, { fontFamily: FONT, fontSize: '14px', color: '#4a5578' }).setOrigin(0, 0.5),
-      this.add.image(910, 132, ballKey('legendary')).setScale(2),
-    );
-    this.showcase = this.add.container(0, 0, parts);
-  }
-
   private buildHistory() {
     this.historyLayer?.destroy();
     const list = loadHistory();
     const parts: Phaser.GameObjects.GameObject[] = [];
     if (list.length === 0) {
-      parts.push(this.add.text(662, 322, 'Todavía no has tirado', { fontFamily: FONT, fontSize: '15px', color: '#7a849e' }).setOrigin(0.5));
+      parts.push(this.add.text(662, 330, 'Todavía no has tirado', { fontFamily: FONT, fontSize: '15px', color: '#7a849e' }).setOrigin(0.5));
     }
     list.forEach((e: HistoryEntry, i) => {
       const x = 410 + i * 44;
-      const y = 322;
+      const y = 332;
       parts.push(this.add.image(x, y, ballKey(e.rarity)).setScale(2));
       if (e.shiny) parts.push(this.add.text(x + 12, y - 16, '★', { fontFamily: FONT, fontSize: '14px', color: '#ffd34d' }).setStroke('#2b3a67', 3));
       // El sprite tapa la bola cuando carga (si ya estaba en caché, al momento)
@@ -287,7 +473,7 @@ export class GachaScene extends Phaser.Scene {
       if (rollDark(Math.random, DARK_GACHA_ODDS) && addDark(res.speciesId)) note += ' · ¡Oscuro!';
       return { res, shiny, duplicate, note };
     });
-    pushHistory(out.map((r) => ({ id: r.res.speciesId, rarity: r.res.rarity, shiny: r.shiny, at: Date.now() })));
+    pushHistory(out.map((r) => ({ id: r.res.speciesId, rarity: r.res.rarity, shiny: r.shiny, at: Date.now(), banner: this.bannerId })));
     return out;
   }
 
@@ -321,7 +507,12 @@ export class GachaScene extends Phaser.Scene {
       return;
     }
     const owned = new Set(loadUnlocked());
-    const results = n === 1 ? [pull(Math.random, this.pools, owned)] : pullMany(Math.random, this.pools, owned, 10);
+    // Garantía del banner: se guarda con la tirada (antes de animarla)
+    const state = loadBannerState();
+    const { results, pity } = pullBanner(Math.random, this.pools, owned, pityOf(state, this.bannerId), n);
+    state.banners[this.bannerId] = pity;
+    state.last = this.bannerId;
+    saveBannerState(state);
     const reveals = this.resolve(results);
     this.refreshHud();
     this.phase = 'anim';
@@ -484,16 +675,20 @@ export class GachaScene extends Phaser.Scene {
     this.phase = 'menu';
     this.tweens.timeScale = 1;
     this.buildHistory();
+    this.buildBannerCard();
     this.refreshHud();
-    this.message.setText('¿Otra? Gira la manivela');
+    this.message.setText(`¿Otra en ${bannerById(this.bannerId)!.name}? Gira la manivela`);
   }
 
   update() {
     if (this.leaving || !this.nav) return;
     const n0 = this.nav.read();
-    const d = n0.dy || n0.dx;
     const ok = n0.ok;
     const back = n0.back;
+    const pb = this.pad?.read() ?? new Set();
+    const J = Phaser.Input.Keyboard.JustDown;
+    const prevBanner = (this.keyQ && J(this.keyQ)) || pb.has('LB');
+    const nextBanner = (this.keyE && J(this.keyE)) || pb.has('RB');
 
     if (this.phase === 'anim') {
       // Acelerar la animación si tienes prisa
@@ -505,8 +700,26 @@ export class GachaScene extends Phaser.Scene {
       return;
     }
     if (back) return this.goBack();
+    if (this.confirmOpen) return;
+    // Q/E (teclado) y LB/RB (mando) cambian de banner desde cualquier fila
+    if (prevBanner) this.changeBanner(-1);
+    if (nextBanner) this.changeBanner(1);
+    if (this.focus === 'banner') {
+      if (n0.dx !== 0) this.changeBanner(Math.sign(n0.dx));
+      if (n0.dy > 0 || ok) this.setFocus('buttons');
+      return;
+    }
+    if (n0.dy < 0) return this.setFocus('banner');
     const n = this.buttons.length;
-    if (d !== 0) this.select((this.selected + Math.sign(d) + n) % n);
+    if (n0.dx !== 0) this.select((this.selected + Math.sign(n0.dx) + n) % n);
     if (ok) this.actions[this.selected]();
+  }
+
+  private setFocus(f: 'banner' | 'buttons') {
+    if (this.focus === f) return;
+    this.focus = f;
+    this.drawCardBg();
+    this.select(this.selected);
+    sfx('select');
   }
 }

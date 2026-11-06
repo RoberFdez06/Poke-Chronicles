@@ -89,7 +89,9 @@ Tres dificultades (Fácil, Normal, Difícil), cada una con sus récords.
 ## Progreso fuera de la partida
 
 - **Gacha:** los **tickets** que ganas jugando se gastan en tiradas para desbloquear nuevos Pokémon (común, raro,
-  épico, ultraente y legendario, con shinies).
+  épico, ultraente y legendario, con shinies). Hay un **banner por región** (Kanto a Paldea), otro de **formas
+  regionales** (Alola, Galar, Hisui y Paldea) y «Todas»; cada uno con su garantía (Épico cada 10, Legendario a las 80)
+  y su progreso X/Y. Cambia de banner con las pestañas, deslizando la ficha, Q/E o LB/RB.
 - **Mejoras:** los **caramelos**, que también se ganan jugando, suben las estadísticas de cada Pokémon (daño, PS,
   velocidad, cadencia, alcance, crítico y defensa).
 - **Pokédex**, misiones y logros, historial de partidas y tutorial.
