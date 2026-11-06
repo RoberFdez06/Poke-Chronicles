@@ -3,6 +3,8 @@
 // jugador y para enemigos y jefes. La partida (GameScene) le da un `AttackHost` con lo que necesita: crear
 // proyectiles, hacer daño y saber dónde está cada uno.
 import { clipSegmentToRects, segmentBlocked, type Box } from '../data/projectileRules';
+import { circle, type Shape } from '../data/hitbox';
+import { markerHit, patternBeamHit, trapHit, trapTrigger, vortexHit } from '../data/attackHitboxes';
 import Phaser from 'phaser';
 import type { Anim, Motion, Pattern } from '../data/movePatterns';
 import { typeColor } from '../data/types';
@@ -41,6 +43,13 @@ export interface AttackHost {
   shoot(side: Side, x: number, y: number, angle: number, o: ShootOpts): Sprite;
   /** Daño a todo lo que esté en el círculo (enemigos si es del jugador; el jugador si es de un enemigo). */
   area(side: Side, x: number, y: number, r: number, dmg: number, type: string, src: Sprite, once?: Set<object>): void;
+  /**
+   * Daño a todo lo que toque la forma (src/data/hitbox.ts): al jugador si su hitbox (PLAYER_HURT_R en los pies) la
+   * toca; a los enemigos, con su radio de cuerpo. La forma es la misma que se dibuja (attackHitboxes.ts).
+   */
+  hitShape(side: Side, shape: Shape, dmg: number, type: string, src: Sprite, once?: Set<object>): void;
+  /** ¿La hitbox del jugador toca la forma? (minas que se arman al pisarlas) */
+  playerTouches(shape: Shape): boolean;
   /** Daño a un enemigo concreto (cadenas). */
   hitOne(enemy: Sprite, dmg: number, type: string): void;
   enemies(): Sprite[];
@@ -60,6 +69,8 @@ export interface AttackHost {
 }
 
 const now = (h: AttackHost) => h.scene.time.now;
+/** Zona del suelo de radio r: la de los enemigos se marca con pixMarker (elipse); la tuya estalla en círculo (pixBlast). */
+const zoneOf = (side: Side, x: number, y: number, r: number): Shape => (side === 'foe' ? markerHit(x, y, r) : circle(x, y, r));
 const later = (h: AttackHost, ms: number, fn: () => void) => h.scene.time.delayedCall(ms, () => h.alive() && fn());
 
 /** El objetivo más cercano a (x, y): un enemigo (lado jugador) o el jugador (lado enemigo). */
@@ -238,7 +249,8 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
         const t = now(h);
         const d = side === 'player' ? h.aim() : dir;
         let a = Math.atan2(d.y, d.x);
-        if (p.sweep && t > t0) a += (((t - t0) / p.ms) - 0.5) * p.sweep;
+        // El barrido empieza en −sweep/2: el aviso ya se dibuja ahí (antes avisaba en el centro y salía girado)
+        if (p.sweep) a += ((Math.max(0, t - t0) / p.ms) - 0.5) * p.sweep;
         // El haz se corta en el borde de la arena: ni se dibuja ni golpea fuera del mapa
         // …y en la primera estructura (roca, pared, muro interior): los rayos no atraviesan nada
         const len = clipSegmentToRects(src.x, src.y, a, clipBeamToBounds(src.x, src.y, a, p.length, h.room()), h.blockers());
@@ -247,11 +259,17 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
         g.clear();
         if (t < t0) {
           g.lineStyle(4, color, 0.5).lineBetween(src.x, src.y, x2, y2);
-          return { x2, y2, on: false };
+          // Barrido: también se marca hasta dónde llegará
+          if (p.sweep) {
+            const ae = a + p.sweep;
+            const le = clipSegmentToRects(src.x, src.y, ae, clipBeamToBounds(src.x, src.y, ae, p.length, h.room()), h.blockers());
+            g.lineStyle(2, color, 0.35).lineBetween(src.x, src.y, src.x + Math.cos(ae) * le, src.y + Math.sin(ae) * le);
+          }
+          return { x2, y2, a, len, on: false };
         }
         // Rayo pixel art (supervisor): bandas de color con núcleo blanco y anillos de energía que viajan
         drawPixBeam(g, src.x, src.y, x2, y2, Math.max(PX * 3, p.width), color, t);
-        return { x2, y2, on: true };
+        return { x2, y2, a, len, on: true };
       };
       const ev = sc.time.addEvent({
         delay: 30,
@@ -262,19 +280,27 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
             g.destroy();
             return;
           }
-          const { x2, y2, on } = draw();
+          const { x2, y2, a, len, on } = draw();
           if (!on) return;
+          // Lo que daña es el núcleo del rayo dibujado (attackHitboxes.patternBeamHit)
+          const beam = patternBeamHit(src.x, src.y, a, len, p.width);
           if (Math.random() < 0.5) typeTrail(sc, Phaser.Math.Linear(src.x, x2, Math.random()), Phaser.Math.Linear(src.y, y2, Math.random()), type, 1.2, 7);
           // Cada objetivo recibe un golpe cada 120 ms mientras está dentro
-          const targets = side === 'player' ? h.enemies() : [h.player()];
-          for (const e of targets) {
+          if (side === 'foe') {
+            const pl = h.player();
+            if ((hits.get(pl) ?? 0) <= now(h) && h.playerTouches(beam)) {
+              hits.set(pl, now(h) + 120);
+              h.hitShape('foe', beam, dmg, type, src);
+            }
+            return;
+          }
+          for (const e of h.enemies()) {
             if (!e.active) continue;
-            const r = side === 'player' ? ((e.getData('size') as number) ?? 60) * 0.4 : 18;
-            if (distToSegment(e.x, e.y, src.x, src.y, x2, y2) > p.width / 2 + r) continue;
+            const r = ((e.getData('size') as number) ?? 60) * 0.4;
+            if (distToSegment(e.x, e.y, src.x, src.y, x2, y2) > (beam.k === 'capsule' ? beam.r : 0) + r) continue;
             if ((hits.get(e) ?? 0) > now(h)) continue;
             hits.set(e, now(h) + 120);
-            if (side === 'player') h.hitOne(e, dmg, type);
-            else h.area('foe', e.x, e.y, 1, dmg, type, src);
+            h.hitOne(e, dmg, type);
           }
         },
       });
@@ -372,7 +398,8 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
               const a = Math.random() * Math.PI * 2;
               typeImpact(sc, cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.65, type, 0.6, 3);
             }
-            h.area(side, cx, cy, r, dmg, type, src, once);
+            // La onda se dibuja achatada (r × 0,65 r): golpea en esa elipse, no en un círculo
+            h.hitShape(side, markerHit(cx, cy, r), dmg, type, src, once);
             if (k >= 1 || !h.alive()) {
               ev.remove();
               g.destroy();
@@ -423,7 +450,7 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
               typeImpact(sc, x, y, type, 1, 6);
               pixBlast(sc, x, y, p.radius, color);
               sc.cameras.main.shake(90, 0.004);
-              h.area(side, x, y, p.radius, dmg, type, src);
+              h.hitShape(side, zoneOf(side, x, y, p.radius), dmg, type, src);
             },
           });
         });
@@ -478,7 +505,7 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
             typeImpact(sc, tx, ty, type, 1, 6);
             dustBurst(sc, tx, ty, 1.1, 8);
             pixBlast(sc, tx, ty, p.radius, color);
-            h.area(side, tx, ty, p.radius, dmg, type, src);
+            h.hitShape(side, zoneOf(side, tx, ty, p.radius), dmg, type, src);
           },
         });
       }
@@ -586,7 +613,8 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
         pixBolt(sc, from.x, from.y, e.x, e.y, color);
         hitSpark(sc, e.x, e.y, color, 6, 1);
         if (side === 'player') h.hitOne(e, dmg, type);
-        else h.area('foe', e.x, e.y, 1, dmg, type, src);
+        // El rayo llega a tu sprite: golpe seguro (24 px cubren del centro del dibujo a los pies)
+        else h.hitShape('foe', circle(e.x, e.y, 24), dmg, type, src);
         from = { x: e.x, y: e.y };
         later(h, 90, () => jump(k + 1));
       };
@@ -643,7 +671,7 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
             pixDebris(sc, x, y - 10, color, 6, 0.8, 10);
             sc.cameras.main.shake(70, 0.003);
           }
-          h.area(side, x, y, p.radius, dmg, type, src);
+          h.hitShape(side, zoneOf(side, x, y, p.radius), dmg, type, src);
         });
       }
       break;
@@ -665,14 +693,15 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
           loop: true,
           callback: () => {
             const gone = !h.alive() || now(h) - t0 > p.life;
-            const near = !gone && nearestTarget(h, side, x, y, undefined, p.radius * 0.7);
+            // La de un enemigo se arma al pisar su runa (antes nearestTarget devolvía siempre al jugador y estallaba ya)
+            const near = !gone && (side === 'foe' ? h.playerTouches(trapTrigger(x, y, p.radius)) : nearestTarget(h, side, x, y, undefined, p.radius * 0.7));
             if (!gone && !near) return;
             ev.remove();
             m.destroy();
             if (gone) return;
             typeImpact(sc, x, y, type, 1, 6);
             mineBlastFx(sc, x, y, p.radius, color);
-            h.area(side, x, y, p.radius, dmg, type, src);
+            h.hitShape(side, side === 'foe' ? trapHit(x, y, p.radius) : circle(x, y, p.radius), dmg, type, src);
           },
         });
       }
@@ -824,7 +853,9 @@ export function castPattern(h: AttackHost, side: Side, src: Sprite, dir: Phaser.
             return;
           }
           typeTrail(sc, c.x + Phaser.Math.Between(-30, 30), c.y + Phaser.Math.Between(-20, 20), type, 1.3, 8);
-          h.area(side, c.x, c.y, p.radius, dmg, type, src);
+          // Enemigo: daña la sombra del remolino en el suelo; el tuyo, como siempre (y además arrastra)
+          if (side === 'foe') h.hitShape('foe', vortexHit(c.x, c.y, p.radius), dmg, type, src);
+          else h.area(side, c.x, c.y, p.radius, dmg, type, src);
           // Arrastra hacia el centro (no a los jefes ni al jugador)
           if (side === 'player') {
             for (const e of h.enemies()) {

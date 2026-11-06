@@ -124,14 +124,12 @@ import {
   biomeExtraAttacks,
   bossAttacksFor,
   hazardSpec,
-  laserHits,
   MAX_HELPERS,
   MEGA_ATTACK_LABEL,
   MEGA_BLAST_WIDTH,
   megaBlastAngles,
   megaBlastSpec,
   laserSpec,
-  shockwaveHits,
   shockwaveSpec,
   spiralSpec,
   BOSS_ATTACK_LABEL,
@@ -389,6 +387,8 @@ import type { SecondChanceChoice } from './SecondChanceScene';
 import { accountInfo } from '../net/cloud';
 import { CASCADE_LABEL, CASCADE_SHAPES, cascadePlan, cascadeShapesFor, cascadeSpec, comboPlan, comboSpec, chaseSpec, frenzyRest, isFrenzyAttack, lightningPlan, lightningSpec, normalizeShape, pickFrenzy, pickShape, stormPlan, stormSpec, type CascadeShape, type FrenzyAttack } from '../data/bossFrenzy';
 import { frenzyHazards, runCascade, runChase, runCombo, runLightning, type FrenzyHost } from './frenzyRuntime';
+import { bodyCircle, circle, hitboxDebugEnabled, hitsCircle, hitsPlayer, outline, ray, HITBOX_DEBUG_KEY, PLAYER_HURT_R, type Shape } from '../data/hitbox';
+import { beamHalf, bossLaserHit, dashHit, emergeHit, megaBlastHit, meteorHit, miasmaHit, novaHit, shockHit } from '../data/attackHitboxes';
 import { blitzAttacksFor, bounceAngles, bounceSpec, bounceStep, crossArms, crossMinePlaces, crossSpec, dashEnd, dashSpec, gridBeams, gridHits, gridSpec, helixAngles, helixSpec, isBlitzAttack, meteorSpec, meteorSpots, miasmaSpec, wallHits, wallPlan, wallPos, wallSpec, wallTravelMs, BLITZ_MIN_WARN, type BlitzAttack, type Orb } from '../data/bossBlitz';
 import { bounceWarn, dashWarn, drawBounceOrb, drawCrossBlast, drawGridBeam, drawMiasma, drawWallBar, gridWarn, meteorImpact, meteorWarn, miasmaWarn, mineWarn, wallWarn } from '../ui/art/blitzFx';
 import { BOSS_RETRY_MS, NAV_R_BIG, NAV_R_SMALL, aimUsable, buildNav, cellOf, navField, pathDir, segmentClear, usableAttacks, type Box, type Nav } from '../data/bossPath';
@@ -3115,6 +3115,16 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.enemies = this.physics.add.group();
+    // Capa de depuración de hitboxes (solo desarrollo/admin, con ?hitboxes o localStorage pokeisaac.hitboxes = '1')
+    this.hbDebug = undefined;
+    this.hbShapes = [];
+    let hbStored: string | null = null;
+    try {
+      hbStored = localStorage.getItem(HITBOX_DEBUG_KEY);
+    } catch {
+      hbStored = null;
+    }
+    if (hitboxDebugEnabled(location.search, hbStored, adminAllowed())) this.hbDebug = this.add.graphics().setDepth(60);
     this.shots = this.physics.add.group();
     this.foeShots = this.physics.add.group();
     this.host = this.makeHost();
@@ -3135,7 +3145,8 @@ export class GameScene extends Phaser.Scene {
     // La hierba alta para los disparos y se rompe con ellos; los agujeros no paran nada
     this.physics.add.overlap(this.shots, this.bushes, (s, b) => this.onShotBush(asSprite(s), asSprite(b)));
     this.physics.add.overlap(this.shots, this.enemies, (s, e) => this.onHit(asSprite(s), asSprite(e)));
-    this.physics.add.overlap(this.player, this.enemies, (_p, e) => this.hurtPlayer(asSprite(e)));
+    // Contacto: el círculo inscrito del cuerpo del enemigo contra tu hitbox (la caja de Arcade tiene aire en las esquinas)
+    this.physics.add.overlap(this.player, this.enemies, (_p, e) => this.hurtPlayer(asSprite(e)), (_p, e) => this.touchesPlayer(asSprite(e)));
     this.physics.add.collider(this.foeShots, [this.walls, this.doorBlocks], (s) => asSprite(s).destroy());
     this.physics.add.overlap(this.foeShots, this.bushes, (s) => asSprite(s).destroy());
     this.physics.add.overlap(this.player, this.foeShots, (_p, s) => {
@@ -3143,7 +3154,7 @@ export class GameScene extends Phaser.Scene {
       if (this.synergyReflect(asSprite(s))) return;
       this.hurtPlayer(asSprite(s));
       asSprite(s).destroy();
-    });
+    }, (_p, s) => this.touchesPlayer(asSprite(s)));
     this.physics.add.overlap(this.player, this.pickups, (_p, it) => this.pickItem(asSprite(it)));
     this.physics.add.overlap(this.player, this.loot, (_p, it) => this.pickLoot(asSprite(it)));
 
@@ -5191,7 +5202,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       e.setData('hp', hp).setTint(0xff6666).setData('flashUntil', this.time.now + 120);
       if (hp <= 0) this.killEnemy(e);
     }
-    if (inBlast(x, y, this.player.x, this.player.y, R * 0.8) && this.time.now >= this.invulnUntil) {
+    if (this.playerIn(circle(x, y, R * 0.8)) && this.time.now >= this.invulnUntil) {
       this.invulnUntil = this.time.now + 900;
       this.hp -= BOMB.selfDamage;
       sfx('hurt');
@@ -8526,7 +8537,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (this.ended) return;
       judgmentStrike(this, rects, color);
       this.cameras.main.shake(180, 0.008);
-      if (b.active && judgmentHits(plan, this.player.x - i.x0, this.player.y - i.y0)) this.hurtPlayer(b, true);
+      if (b.active && judgmentHits(plan, this.hurtPt().x - i.x0, this.hurtPt().y - i.y0, PLAYER_HURT_R)) this.hurtPlayer(b, true);
     });
     return spec.warnMs + 400;
   }
@@ -8560,7 +8571,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           onUpdate: () => {
             g.clear();
             drawNovaWave(g, cx, cy, st.r, gapAt, spec.gap, color, this.time.now);
-            if (b.active && !this.ended && shockwaveHits(cx, cy, st.r, gapAt, spec.gap, this.player.x, this.player.y) && !this.shielded(cx, cy)) this.hurtPlayer(b, true);
+            if (b.active && !this.ended && this.playerIn(novaHit(cx, cy, st.r, gapAt, spec.gap)) && !this.shielded(cx, cy)) this.hurtPlayer(b, true);
           },
           onComplete: () => g.destroy(),
         });
@@ -9344,7 +9355,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     if (this.arenaCracks.size === 0 || this.ended || this.transitioning || this.hp <= 1 || time < this.arenaTickAt) return;
     if (this.time.now < this.invulnUntil) return;
-    const [tx, ty] = this.tileOf(this.player.x, this.player.y, this.current);
+    // Las grietas y la lava se pisan: cuenta la casilla de tus pies
+    const [tx, ty] = this.tileOf(this.hurtPt().x, this.hurtPt().y, this.current);
     const kind = this.arenaCracks.get(`${this.current.id}:${tx},${ty}`);
     if (!kind) return;
     this.arenaTickAt = time + 700;
@@ -9384,7 +9396,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           g.destroy();
           if (!b.active || this.ended) return;
           megaBlastFx(this, cx, cy, angles, spec.length, MEGA_BLAST_WIDTH, color, 12, lenOf);
-          if (angles.some((a) => laserHits(cx, cy, a, lenOf(a), this.player.x, this.player.y, MEGA_BLAST_WIDTH))) this.hurtPlayer(b, true);
+          if (angles.some((a) => this.playerIn(megaBlastHit(cx, cy, a, lenOf(a))))) this.hurtPlayer(b, true);
         });
       });
     }
@@ -9533,7 +9545,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       for (const p of spots) {
         const fx = this.add.circle(p.x, p.y, R, typeColor(ai.type), 0.7).setDepth(12);
         this.tweens.add({ targets: fx, alpha: 0, scale: 1.3, duration: 260, onComplete: () => fx.destroy() });
-        if (b.active && inBlast(p.x, p.y, this.player.x, this.player.y, R)) this.hurtPlayer(b, true);
+        if (b.active && this.playerIn(circle(p.x, p.y, R))) this.hurtPlayer(b, true);
       }
     });
   }
@@ -9615,7 +9627,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
                 g.lineStyle(16, color, 0.85).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
                 g.lineStyle(4, 0xffffff, 0.7).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
               } else drawShockRing(g, cx, cy, st.r, gapAt, sw.gap, ai.type, color, this.time.now);
-              if (b.active && !this.ended && shockwaveHits(cx, cy, st.r, gapAt, sw.gap, this.player.x, this.player.y) && !this.shielded(cx, cy)) this.hurtPlayer(b, true);
+              if (b.active && !this.ended && this.playerIn(shockHit(cx, cy, st.r, gapAt, sw.gap)) && !this.shielded(cx, cy)) this.hurtPlayer(b, true);
             },
             onComplete: () => g.destroy(),
           });
@@ -9657,7 +9669,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
                 g.lineStyle(26, color, 0.35).lineBetween(b.x, b.y, x2, y2);
                 g.lineStyle(10, 0xffffff, 0.9).lineBetween(b.x, b.y, x2, y2);
               } else drawBossLaser(g, b.x, b.y, a, ln, color, this.time.now);
-              if (laserHits(b.x, b.y, a, ln, this.player.x, this.player.y)) this.hurtPlayer(b, true);
+              if (this.playerIn(bossLaserHit(b.x, b.y, a, ln))) this.hurtPlayer(b, true);
             }
           },
           onComplete: () => g.destroy(),
@@ -9695,7 +9707,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           const fx = this.add.circle(sp.x, sp.y, R, 0xff7043, 0.75).setDepth(12);
           this.tweens.add({ targets: fx, alpha: 0, scale: 1.25, duration: 280, onComplete: () => fx.destroy() });
         } else hazardBlast(this, sp.x, sp.y, R, color);
-        if (b.active && inBlast(sp.x, sp.y, this.player.x, this.player.y, R)) this.hurtPlayer(b, true);
+        if (b.active && this.playerIn(circle(sp.x, sp.y, R))) this.hurtPlayer(b, true);
       }
     });
     return hz.warnMs;
@@ -9709,8 +9721,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    */
   private bossFrenzy(b: Sprite, ai: EnemyAI, attack: FrenzyAttack, phase: 1 | 2, shape?: CascadeShape): number {
     const color = typeColor(ai.type);
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
     const host: FrenzyHost = {
-      scene: this, boss: b, player: this.player, arena: this.arena(), color, low: lowFx(),
+      // El frenesí mira tu hitbox (centro del cuerpo), no el centro del dibujo
+      scene: this, boss: b, player: { get x() { return self.hurtPt().x; }, get y() { return self.hurtPt().y; } }, arena: this.arena(), color, low: lowFx(),
       ok: () => b.active && !this.ended && this.frozenSince === undefined && this.arenaFallAt === undefined,
       hurt: () => this.hurtPlayer(b, true),
       track: (stop) => { this.blitzLive.add(stop); return () => { this.blitzLive.delete(stop); }; },
@@ -9842,7 +9857,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
                 const fx = this.add.circle(p.x, p.y, sp.radius, color, 0.7).setDepth(12);
                 this.tweens.add({ targets: fx, alpha: 0, scale: 1.2, duration: 260, onComplete: () => fx.destroy() });
               } else meteorImpact(this, p.x, p.y, sp.radius, color);
-              if (inBlast(p.x, p.y, this.player.x, this.player.y, sp.radius)) hurt();
+              if (this.playerIn(meteorHit(p.x, p.y, sp.radius))) hurt();
             }
           });
         });
@@ -9902,7 +9917,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             if (pos === null) return false;
             drawWallBar(g, A, plan, pos, sp.thick, color, this.time.now);
             // Una roca o un muro entre el borde de salida y tú te tapa de la ola
-            if (wallHits(plan, pos, sp.thick, this.player.x, this.player.y) && !wallShield(plan)) hurt();
+            if (wallHits(plan, pos, sp.thick + PLAYER_HURT_R * 2, this.hurtPt().x, this.hurtPt().y) && !wallShield(plan)) hurt();
             return true;
           }));
         });
@@ -9932,7 +9947,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           mines.forEach((m, k) => {
             if (low) for (const [a, l] of arms[k]) g.lineStyle(sp.width, color, 0.8).lineBetween(m.x, m.y, m.x + Math.cos(a) * l, m.y + Math.sin(a) * l);
             else drawCrossBlast(g, m, arms[k], sp.width, color, this.time.now);
-            if (arms[k].some(([a, l]) => laserHits(m.x, m.y, a, l, this.player.x, this.player.y, sp.width / 2))) hurt();
+            if (arms[k].some(([a, l]) => this.playerIn(ray(m.x, m.y, a, l, beamHalf(sp.width))))) hurt();
           });
           return t < 380;
         }, 6);
@@ -9971,8 +9986,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
                 if (bm.axis === 'x') g.fillRect(bm.at - sp.width / 2, C.y0, sp.width, C.y1 - C.y0);
                 else g.fillRect(C.x0, bm.at - sp.width / 2, C.x1 - C.x0, sp.width);
               } else drawGridBeam(g, C, bm, sp.width, color, this.time.now);
-              const inside = bm.axis === 'x' ? this.player.y <= C.y1 : this.player.x <= C.x1;
-              if (inside && gridHits(bm, sp.width, this.player.x, this.player.y)) hurt();
+              const hp = this.hurtPt();
+              const inside = bm.axis === 'x' ? hp.y <= C.y1 : hp.x <= C.x1;
+              if (inside && gridHits(bm, beamHalf(sp.width) * 2 + PLAYER_HURT_R * 2, hp.x, hp.y)) hurt();
             });
             return t < sp.onMs;
           }));
@@ -10000,7 +10016,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           for (const o of orbs) {
             if (low) g.fillStyle(color, 0.9).fillCircle(o.x, o.y, sp.radius).lineStyle(3, 0xffffff, 0.9).strokeCircle(o.x, o.y, sp.radius);
             else drawBounceOrb(g, o.x, o.y, sp.radius, color, this.time.now);
-            if (Math.hypot(o.x - this.player.x, o.y - this.player.y) < sp.radius + 14) {
+            if (this.playerIn(circle(o.x, o.y, sp.radius))) {
               hurt();
               o.left = -1;
             }
@@ -10027,7 +10043,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         for (const p of spots) {
           if (low) g.fillStyle(color, 0.35 * a).fillCircle(p.x, p.y, R);
           else drawMiasma(g, p.x, p.y, R, color, this.time.now, a);
-          if (a > 0.6 && inBlast(p.x, p.y, this.player.x, this.player.y, R * 0.9)) hurt();
+          if (a > 0.6 && this.playerIn(miasmaHit(p.x, p.y, R))) hurt();
         }
         return t < sp.lingerMs;
       }, 2));
@@ -10055,7 +10071,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         const uy = (end.y - from.y) / (dist || 1);
         b.setVelocity(ux * sp.speed, uy * sp.speed);
         loop((_g, _dt, t) => {
-          if (Math.hypot(this.player.x - b.x, this.player.y - b.y) < sp.width / 2 + 20) hurt();
+          if (this.playerIn(dashHit(b.x, b.y, sp.width))) hurt();
           if (t >= dur || Math.hypot(end.x - b.x, end.y - b.y) < 20) {
             b.setVelocity(0, 0);
             this.cameras.main.shake(90, 0.004);
@@ -10089,6 +10105,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** IA de un enemigo según su comportamiento: perseguir, embestir, disparar o saltar. */
   /** Último momento en que el jugador esquivó o hizo parry (los cuerpo a cuerpo cercanos dudan). */
   private playerActionAt = -1e9;
+  /** Capa de depuración de hitboxes y las formas que han mirado si te daban (hitbox.ts). */
+  private hbDebug?: Phaser.GameObjects.Graphics;
+  private hbShapes: { s: Shape; until: number }[] = [];
 
   /**
    * IA de un enemigo: su comportamiento y, encima, la capa común (enemyAI.ts). Vigilante: si un enemigo normal lleva
@@ -10382,7 +10401,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             this.cameras.main.shake(140, 0.006);
             dustBurst(this, e.x, e.y + 18, 1.4, 12);
             typeImpact(this, e.x, e.y, ai.type, 1.1, 10);
-            if (Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y) < 70) this.hurtPlayer(e);
+            // Solo te da el cuerpo que sale (antes, 70 px alrededor sin nada dibujado)
+            if (this.playerIn(emergeHit(e.x, e.y, (e.getData('size') as number | undefined) ?? 60))) this.hurtPlayer(e);
           }
         } else {
           e.setVelocity(0, 0);
@@ -10424,7 +10444,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             this.tweens.add({ targets: fx, alpha: 0, scale: 1.25, duration: 300, onComplete: () => fx.destroy() });
             sfx('boom');
             this.cameras.main.shake(140, 0.005);
-            if (inBlast(e.x, e.y, this.player.x, this.player.y, r)) this.hurtPlayer(e);
+            if (this.playerIn(circle(e.x, e.y, r))) this.hurtPlayer(e);
             e.setData('mineBlown', true);
             this.killEnemy(e);
           }
@@ -11013,8 +11033,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (time < this.hazardTickAt) return;
     const room = this.current;
     const i = this.interior(room);
-    const tx = Math.floor((this.player.x - i.x0) / TILE);
-    const ty = Math.floor((this.player.y - i.y0) / TILE);
+    const tx = Math.floor((this.hurtPt().x - i.x0) / TILE);
+    const ty = Math.floor((this.hurtPt().y - i.y0) / TILE);
     if (!spec.hazards.some((h) => h.cell === room.id && h.tx === tx && h.ty === ty)) return;
     this.hazardTickAt = time + 700;
     const chip = Math.min(Math.max(1, Math.round(this.stats.maxHp * (spec.hazard === 'lava' ? 0.06 : 0.04))), Math.ceil(this.hp) - 1);
@@ -11306,6 +11326,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const menuPadNow = !!menuPad && menuPad.connected && (!!menuPad.buttons[8]?.pressed || (!this.ended && !!menuPad.buttons[9]?.pressed));
     if (!this.escKey || !this.current || !this.floor) return; // create() aún no ha terminado de cargar
     this.adminTick();
+    this.hitboxDebugTick();
     if (this.towerArrow) this.towerArrowTick();
     this.guideTick();
     if (this.tutPanel) this.tutTick();
@@ -11933,7 +11954,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         if (side === 'foe') {
           const p = this.player;
           if (!p?.active || once?.has(p)) return;
-          if (Phaser.Math.Distance.Between(x, y, p.x, p.y) > r + 22) return;
+          // Antes: r + 22 px al centro del dibujo; ahora tu hitbox contra el círculo
+          if (!this.playerIn(circle(x, y, r))) return;
           once?.add(p);
           if (src.active) this.hurtPlayer(src);
           return;
@@ -11947,6 +11969,25 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           this.hitEnemy(e, dmg, type, e.x, e.y, typeColor(type), new Phaser.Math.Vector2(e.x - x, e.y - y));
         }
       },
+      hitShape: (side, shape, dmg, type, src, once) => {
+        if (side === 'foe') {
+          const p = this.player;
+          if (!p?.active || once?.has(p) || !this.playerIn(shape)) return;
+          once?.add(p);
+          if (src.active) this.hurtPlayer(src);
+          return;
+        }
+        if (this.hbDebug) this.hbShapes.push({ s: shape, until: this.time.now + 160 });
+        for (const c of [...this.enemies.getChildren()]) {
+          const e = c as Sprite;
+          if (!e.active || once?.has(e)) continue;
+          const er = ((e.getData('size') as number | undefined) ?? 60) * 0.35;
+          if (!hitsCircle(shape, e.x, e.y, er)) continue;
+          once?.add(e);
+          this.hitEnemy(e, dmg, type, e.x, e.y, typeColor(type), new Phaser.Math.Vector2(e.x - this.player.x, e.y - this.player.y));
+        }
+      },
+      playerTouches: (shape) => !!this.player?.active && this.playerIn(shape),
       hitOne: (e, dmg, type) => e.active && this.hitEnemy(e, dmg, type, e.x, e.y, typeColor(type)),
       enemies: () => this.enemies.getChildren() as Sprite[],
       player: () => this.player,
@@ -13695,6 +13736,53 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * Te dan. `unblockable`: ataques de jefe que el parry no para (zonas de peligro marcadas, ondas y láseres), que
    * ya avisan antes y se esquivan moviéndose; si se pudieran bloquear, quedarían sin sentido.
    */
+  /** Centro de tu hitbox: el centro de tu cuerpo (los pies), no el del dibujo (src/data/hitbox.ts). */
+  private hurtPt(): { x: number; y: number } {
+    const b = this.player?.body as Body | null;
+    return b ? { x: b.center.x, y: b.center.y } : { x: this.player.x, y: this.player.y };
+  }
+
+  /** ¿Tu hitbox (PLAYER_HURT_R) toca la forma? Se apunta para la capa de depuración. */
+  private playerIn(shape: Shape): boolean {
+    if (this.hbDebug) this.hbShapes.push({ s: shape, until: this.time.now + 160 });
+    return hitsPlayer(shape, this.hurtPt());
+  }
+
+  /** ¿El cuerpo de un enemigo o proyectil (su círculo inscrito) toca tu hitbox? */
+  private touchesPlayer(o: Sprite): boolean {
+    const b = o.body as Body | null;
+    if (!b) return false;
+    const c = bodyCircle(b);
+    return hitsPlayer(circle(c.x, c.y, c.r), this.hurtPt());
+  }
+
+  /** Capa de depuración: tu hitbox (verde), cuerpos de enemigos y disparos (rojo) y zonas que dañan (naranja). */
+  private hitboxDebugTick() {
+    const g = this.hbDebug;
+    if (!g || !this.player?.active) return;
+    g.clear();
+    const line = (s: Shape, color: number) => {
+      for (const pts of outline(s, 24)) {
+        g.lineStyle(2, color, 0.9).beginPath().moveTo(pts[0].x, pts[0].y);
+        for (const q of pts.slice(1)) g.lineTo(q.x, q.y);
+        g.strokePath();
+      }
+    };
+    const hp = this.hurtPt();
+    line(circle(hp.x, hp.y, PLAYER_HURT_R), 0x40ff60);
+    for (const grp of [this.enemies, this.foeShots]) {
+      for (const o of grp.getChildren()) {
+        const b = (o as Sprite).body as Body | null;
+        if (!(o as Sprite).active || !b?.enable) continue;
+        const c = bodyCircle(b);
+        line(circle(c.x, c.y, c.r), 0xff3040);
+      }
+    }
+    const now = this.time.now;
+    this.hbShapes = this.hbShapes.filter((h) => h.until > now).slice(-80);
+    for (const h of this.hbShapes) line(h.s, 0xffa020);
+  }
+
   private hurtPlayer(enemy: Sprite, unblockable = false) {
     const now = this.time.now;
     // El modo dios (admin) NO corta aquí: si no, el parry nunca llegaba a mirarse y no funcionaba con el modo dios

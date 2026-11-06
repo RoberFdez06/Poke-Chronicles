@@ -1049,7 +1049,8 @@ export class TowerDefenseScene extends Phaser.Scene {
         const x = X(e.x);
         const y = Y(e.y) - 8;
         if (!lowFx() || e.special) typeImpact(this, x, y, e.type, e.special ? 1.3 : 0.7, e.special ? 12 : 4, 30);
-        if (e.splash > 0) pixRing(this, x, y + 6, e.splash * CELL, typeColor(e.type), 300, 7);
+        // Salpicadura: círculo real (antes achatado al 60 % y 2 px más arriba, y daba fuera del anillo)
+        if (e.splash > 0) pixRing(this, x, y + 8, e.splash * CELL, typeColor(e.type), 300, 7, 1);
         if (e.special) pixBlast(this, x, y, 28, typeColor(e.type), 31);
         // Números: siempre los críticos, súper eficaces y especiales; los normales, uno de cada tres (para no tapar el mapa)
         if (e.mul >= 2 || e.crit || e.special || (!lowFx() && Math.random() < 0.34)) {
@@ -1133,7 +1134,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         const y = Y(e.y) - 8;
         if (e.skill === 'aturdir') {
           sfx('boom');
-          pixRing(this, x, y + 8, e.r * CELL, info.color, 360, 44);
+          pixRing(this, x, y + 8, e.r * CELL, info.color, 360, 44, 1);
         } else if (e.skill === 'invocar') {
           sfx('enrage');
           phaseShock(this, x, y, info.color, 1.1, 30);

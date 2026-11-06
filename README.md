@@ -140,6 +140,7 @@ que crear un proyecto de Firebase y poner sus claves en un `.env.local` (que no 
 - `src/level`: generación de pisos, salas y biomas.
 - `src/scenes`: las pantallas de Phaser (menús, partida, resumen…).
 - `src/ui`: HUD, arte pixel generado por código, sonido y música sintetizados con Web Audio (sin archivos de audio).
+- Hitboxes: `src/data/hitbox.ts` (formas y la hitbox pequeña del jugador, en los pies) y `src/data/attackHitboxes.ts` (qué daña cada ataque, siempre dentro de lo que se dibuja). En desarrollo o como admin, `?hitboxes` en la URL (o `localStorage['pokeisaac.hitboxes'] = '1'`) dibuja las hitboxes encima de la partida.
 - La documentación de diseño y la bitácora de desarrollo están en [`docs/`](docs/).
 
 ## Créditos
