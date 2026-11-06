@@ -3,6 +3,7 @@
 // volver; en el equipo, Q/E o LB/RB cambian de página.
 import Phaser from 'phaser';
 import { addHelpBar } from '../ui/helpBar';
+import { playTdMenuMusic, releaseMusic } from '../ui/audio';
 import { fitDesign } from '../ui/layout';
 import { addBackButton } from '../ui/cards';
 import { NavInput, PadButtons, UI, type PadButton } from '../ui/nav';
@@ -111,6 +112,9 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
   }
 
   create() {
+    // Música del menú de torres; al salir, la del menú si nadie la ha cambiado ya (la partida pone la de su tipo)
+    playTdMenuMusic();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => releaseMusic((k) => k === 'td-menu'));
     fadeIn(this);
     fitDesign(this);
     addMenuBackdrop(this);

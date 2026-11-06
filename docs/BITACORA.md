@@ -2488,3 +2488,28 @@ niveles y que los minijefes fueran pseudolegendarios/ultraentes y los jefes lege
 Sin verificar a ojo (Vite no corre en la VM): las fichas compactas del menú de mapas (miniatura, textos e insignias en 96 px de
 alto), que la ficha del nivel con la línea de minijefes/jefe no pise la barra de ayuda, las dos plantillas nuevas horneadas, la
 página nueva de la guía, los ojos de 3 px en los enemigos y la ficha del minijefe. El HUD móvil y `layout.ts` no se tocan.
+
+## 2026-11-06 · Más música: listas por situación, música por tipo en Torres y mezcla aleatoria (rama `musica`)
+Motivo: Roberto: «todo el rato suena la misma y aburre». Todo es composición propia (sin samples ni música de terceros).
+- **Compositor por parámetros** (`src/data/musicGen.ts`, lógica pura): escala/modo (mayor, menor, dórico, frigio, lidio,
+  mixolidio, armónica, frigio mayor, pentatónicas, blues, tonos enteros), tónica, tempo, ondas, ritmo de melodía, bajo,
+  batería, armonía (pad o terceras), arpegio, eco y forma (AB, ABAB, AABB, AABA). La melodía es un motivo que se repite y
+  varía sobre la progresión, con cadencia al final de cada sección; semilla fija por nombre (siempre suena igual).
+- **Listas** (`src/data/music.ts`, `PLAYLISTS`, `runPlaylist`): exploración 4 por bioma (la de siempre + 3), +2 en Torre e
+  Infinito; combate 4 por bioma (3 con el sabor del bioma + la de siempre); minijefe 3 (nueva situación `mini` en
+  `musicState`, entre combate y jefe); jefe 4; jefe final 3; menú 3; tienda 3; salas tranquilas (centro, secreta, objeto) 3.
+  128 pistas en total.
+- **Defensa de torres**: familia por tipo (`TD_TYPE_FAMILY`: escala, tempo, onda, batería, ritmo y bajo propios), 2 pistas
+  por tipo; suena la del tipo tema del nivel (`levelTheme`), así las 18 fases suenan distinto. Menú de torres (2) y
+  oleadas con minijefe o jefe (3), que vuelven a la del tipo al acabar la oleada.
+- **Mezcla aleatoria** (`src/audio/playlist.ts`, `MusicShuffle`): elige al azar sin repetir la misma seguida (tampoco al
+  volver a una lista); cada pista da vueltas hasta ~70 s y pasa a otra; nueva pista en cada piso y al cambiar de
+  situación; al entrar en otra sala, otra pista si la actual lleva ≥25 s. Transición con el crossfade de siempre.
+- **Motor** (`src/ui/audio.ts`): onda del bajo y de la segunda voz, timbal y charles abierto, arpegio según la escala, eco;
+  volumen por onda para que todas suenen parejas; carriles viejos se desconectan (no se acumulan nodos). API nueva:
+  `startRunMusic`, `setMusicMood`, `musicRoom`, `playTdMusic`, `playTdChief`, `playTdMenuMusic`, `releaseMusic` (una
+  escena solo vuelve a la música del menú si la que suena aún es suya). Ajustes de música y desbloqueo de audio, igual.
+- Tests en `tests/musicPlaylist.test.ts` (sin repetición, semilla, notas en rango, pistas no vacías y distintas, listas ≥3,
+  18 fases con pista distinta).
+Sin escuchar (la VM no tiene audio): cómo suenan las pistas compuestas, el volumen relativo de las ondas nuevas (seno,
+bajo cuadrado/sierra, timbal, eco) y las transiciones al cambiar de sala. El HUD móvil y `layout.ts` no se tocan.
