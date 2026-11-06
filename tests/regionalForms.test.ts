@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { applyRegionalForms, formFacts, REGIONAL_FORMS, regionalForm, withRegionalForms } from '../src/data/regionalForms.ts';
+import { applyRegionalForms, formFacts, FORM_REGION_LABEL, REGIONAL_FORMS, regionalForm, withRegionalForms } from '../src/data/regionalForms.ts';
 import { filterCollection, regionOf } from '../src/data/regions.ts';
 import { TYPE_COLORS } from '../src/data/types.ts';
 
@@ -8,7 +8,7 @@ test('T83: toda forma apunta a una especie válida de la Pokédex nacional', () 
   for (const r of REGIONAL_FORMS) {
     assert.ok(Number.isInteger(r.baseId) && r.baseId >= 1 && r.baseId <= 1025, r.name);
     assert.ok(r.id > 10000, r.name);
-    assert.ok(r.nameEs.includes(r.region === 'alola' ? 'Alola' : 'Galar'));
+    assert.ok(r.nameEs.includes(FORM_REGION_LABEL[r.region]), r.name);
   }
 });
 

@@ -2540,3 +2540,28 @@ Motivo: Roberto: «todo el rato suena la misma y aburre». Todo es composición 
   18 fases con pista distinta).
 Sin escuchar (la VM no tiene audio): cómo suenan las pistas compuestas, el volumen relativo de las ondas nuevas (seno,
 bajo cuadrado/sierra, timbal, eco) y las transiciones al cambiar de sala. El HUD móvil y `layout.ts` no se tocan.
+## 2026-11-06 · Gacha por regiones y formas regionales (rama `gachareg`)
+Motivo: Roberto quería el gacha separado por regiones y por formas regionales, con progreso por región. Lógica pura en
+`src/data/gachaBanners.ts`, tests en `tests/gachaBanners.test.ts`, emblemas en `src/ui/art/bannerEmblems.ts` (datos) y
+`bannerArt.ts` (texturas).
+- **Banners** (`BANNERS`): Todas, uno por cada región de `regions.ts` (por número de Pokédex nacional, sin formas) y
+  «Formas regionales» (todas las formas). Las regiones no se solapan y, con Formas, cubren justo Todas (test).
+- **Rarezas y probabilidades iguales** (`GACHA_RATES`, `classifyRarity`). Si un banner no tiene una rareza, su parte pasa a
+  la más cercana, como ya hacía `pull` (`effectiveRates`): Kanto tiene Épico 14 % (no hay Ultraentes fuera de Alola);
+  Formas, Épico 15 % (ni Ultraentes ni legendarios). La línea de probabilidades de la pantalla enseña las del banner.
+- **Garantía por banner** (`pullBanner`, `PITY`): Épico o mejor a la 10.ª tirada seguida sin él y la mejor rareza del
+  banner (Legendario) a la 80.ª; la x10 conserva su Épico asegurado. Cuentas en `pokeisaac.gachaBanners` (con el último
+  banner elegido); invitados en memoria como el resto. No se tocan costes, devoluciones ni tickets.
+- **Formas nuevas** en `regionalForms.ts`: 16 de Hisui y 4 de Paldea (3 razas de Tauros y Wooper). Solo en gacha,
+  colección y Pokédex (Hisui cuenta en Sinnoh, `FORM_REGION_HOME`); no salen como enemigos (`WILD_FORMS` = Alola y Galar)
+  porque no tienen hoja de SpriteCollab. Ids, tipos y estadísticas de memoria (sin red en la VM para comprobar PokeAPI).
+- **Pantalla**: la ficha «Destacado de hoy» pasa a ficha del banner: emblema pixel art propio, nombre, barra y «X/Y
+  conseguidos», garantías que faltan, destacado de hoy del banner (de su mejor rareza) y, en Formas, «Alola a/b · Galar
+  … · Hisui … · Paldea …». Debajo, 11 pestañas con los emblemas. Teclado: arriba enfoca la ficha y ←/→ cambia; Q/E desde
+  cualquier sitio. Ratón: pestañas y flechas dibujadas. Mando: LB/RB (y cruceta como el teclado). Táctil: tocar una
+  pestaña o deslizar la ficha. Se abre en el último banner usado.
+- **Guardados**: lo desbloqueado no cambia (el progreso lo cuenta, también lo de antes); sin la clave nueva se empieza de
+  cero en Todas; el historial acepta entradas viejas sin `banner`. Sin migración ni versión nueva.
+Sin verificar a ojo (Vite no corre en la VM): que los textos de la ficha quepan entre el emblema y el destacado, las 11
+pestañas y su marco, las flechas, el deslizamiento táctil, los emblemas y que los sprites de Hisui/Paldea carguen. El HUD
+móvil y `layout.ts` no se tocan.
