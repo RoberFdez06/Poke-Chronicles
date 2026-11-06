@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { installScreenFit } from './ui/screenFit';
+import { installTouchSanity } from './ui/touchSanity';
 import { initialWideWidth, installWideScreen } from './ui/wideScreen';
 import { TitleScene } from './scenes/TitleScene';
 import { MenuScene } from './scenes/MenuScene';
@@ -123,6 +124,8 @@ function startGame() {
     scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, GardenScene, RunDexScene, SummaryScene, HistoryScene, KeysScene, BossIntroScene, GymPuzzleScene, FloorIntroScene, FinalPromptScene, RouteScene, SlotSwapScene, FusionScene, ItemChoiceScene, ConfirmScene, ControlsScene, SecondChanceScene, SeedCodeScene, PauseScene, AccountScene, PadLegendScene, TowerDefenseMenuScene, TowerDefenseScene, AdminScene, SynergyBookScene, LegalScene],
   });
   lockEscapeInFullscreen(game);
+  // Móvil: dedos cuyo «touchend» se pierde no dejan punteros de Phaser pulsados; en vertical se pausa
+  if (touchOnlyDevice()) installTouchSanity(game);
   // Pantalla completa automática en móvil y reajuste del lienzo al cambiar el tamaño real
   installScreenFit(game);
   installWideScreen(game);

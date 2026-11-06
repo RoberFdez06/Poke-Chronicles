@@ -2488,3 +2488,70 @@ niveles y que los minijefes fueran pseudolegendarios/ultraentes y los jefes lege
 Sin verificar a ojo (Vite no corre en la VM): las fichas compactas del menú de mapas (miniatura, textos e insignias en 96 px de
 alto), que la ficha del nivel con la línea de minijefes/jefe no pise la barra de ayuda, las dos plantillas nuevas horneadas, la
 página nueva de la guía, los ojos de 3 px en los enemigos y la ficha del minijefe. El HUD móvil y `layout.ts` no se tocan.
+
+## 2026-11-06 · Móvil: controles que ya no se quedan pillados y repaso de pantallas (rama `movil`)
+- Problema (Roberto, probando con gente): «los controles del móvil se quedan pillados a veces» y «la parte del móvil no
+  está terminada». El seguro de `movilbandas` (reclamar a 1,5 s, soltar en blur/visibilitychange/pagehide/pausa)
+  dejaba huecos. Casos encontrados mirando el código de Phaser 3.90 (`InputManager`, `TouchManager`) y el nuestro:
+  1. **Lienzo, dedo perdido**: Phaser solo libera un puntero con su touchend/touchcancel. Si el navegador se lo come
+     (deslizar desde el borde, notificación, multitarea de iOS, 4-5 dedos en iPad), `isDown` sigue en true: el stick
+     seguía con su dirección (el personaje andando solo) y el lienzo **no** tenía el reclamo a 1,5 s (solo las bandas).
+     Con 5 punteros perdidos ningún toque llegaba ya al juego (también en menús y en la Defensa de torres).
+  2. **Bandas**: el dedo perdido seguía moviendo hasta que otro dedo tocaba la banda y pasaban 1,5 s. Además los toques
+     de las bandas también creaban punteros de Phaser (su `touchstart` de la ventana), gastando los 5 huecos.
+  3. **Tercer dedo** en un lado ya ocupado: se ignoraba; al levantar el primero, el que seguía apoyado no hacía nada
+     hasta levantarlo y volver a tocar (se notaba como «pillado»).
+  4. **Botones «fantasma»**: un toque de Bomba/Poción/Activo durante una transición o cinemática se quedaba guardado y
+     salía segundos después.
+  5. **Vertical**: con el aviso «Gira el móvil» la partida seguía corriendo y los toques del aviso llegaban a Phaser.
+  6. Girar el móvil no soltaba nada (iOS suele mandar touchcancel, pero no siempre); al rehacer los controles se
+     añadían 4 punteros más cada vez.
+- Arreglo (lógica pura en `src/data/touchPointers.ts`, pruebas en `tests/touchGuard.test.ts`):
+  - `StickArbiter`: un dedo por stick; un dedo que cae en un lado ocupado **espera** y se queda el stick en cuanto el
+    primero se levanta (nace donde está ese dedo); dedo sin señales 1,5 s cede el stick (ahora también en el lienzo);
+    `sync(isLive)` suelta los que ya no están y `releaseAll()` todo. Lo usan el lienzo y las bandas.
+  - `ghostTouches` (retenidos que no están en `touches` ni en `changedTouches`) y `noFingersLeft` (touchend/cancel sin
+    dedos = soltar todo). `pressFresh`: un toque de botón que la partida no recoge en 300 ms se descarta.
+  - `src/ui/touchSanity.ts` (nuevo, `main.ts` solo en `touchOnlyDevice()`): en cada evento táctil de la página (fase de
+    captura, antes que Phaser) cancela en Phaser los punteros cuyo dedo ya no está, por su camino normal
+    (`onTouchCancel`: las escenas reciben pointerup con `wasCanceled`, en su misma posición, así que nada se «pulsa»).
+    También al ocultar la página. Al pasar a vertical cancela todo y emite `TOUCH_INTERRUPT`: `onFocusLost`
+    (`ui/focusPause.ts`) lo escucha, así que la partida y la Defensa de torres abren su pausa.
+  - `touchControls.ts`: el lienzo usa el árbitro (el `tick` sigue soltando lo que Phaser ya no tiene pulsado, y adopta
+    al que espera); soltar todo también con `orientationchange` y con touchend/cancel sin dedos; los toques pendientes
+    se borran al soltar todo; `addPointer(4)` solo una vez. Las **bandas** pasan a eventos táctiles con `identifier`
+    (Pointer Events solo donde no existen), sincronizan con la lista real `touches` en cada evento y hacen
+    `preventDefault`, así Phaser ya no ve sus toques. Si la caja derecha se mueve con el dedo puesto (barra del
+    navegador, giro) la base del stick se corrige para seguir bajo el dedo. El brillo de un botón de banda se cancela al
+    cerrar la escena (nunca se queda encogido).
+  - Prueba de 5000 pasos al azar (hasta 5 dedos, 10 % de touchend perdidos): nunca queda un stick con un dedo que no
+    está en la pantalla. Consola: `__POKEISAAC_DEBUG__.touchHeld()` (dedo de cada stick y punteros de Phaser pulsados).
+- Zonas de toque: «← Volver» (`addBackButton`, en todos los menús) crece en móvil hasta 56 px CSS con un margen
+  invisible (`touchPad` en `ui/uiScale.ts`, con prueba); la pausa de la partida se toca en todo su rincón (de ≈21 a
+  ≈29×35 px CSS en un móvil de 375 de alto).
+- App instalable: manifest con `id`, iconos «any» y uno «maskable» aparte (antes «any maskable» en la misma entrada; la
+  Poké Ball queda dentro de la zona segura) y `<meta name="mobile-web-app-capable">` (la de Apple sola está obsoleta en
+  Chrome). Prueba `tests/pwaManifest.test.ts`.
+- Repaso de tamaños (px CSS, cálculo con el lienzo de cada caja; no visto en pantalla):
+
+| Caja | Ranura / pausa HUD | Barra TD (32) | Casilla TD (48) | Letra 14 de menú sin aumento |
+|---|---|---|---|---|
+| 640×360 · S23 780×360 | 21 | 18 | 27 | 7,9 |
+| iPhone SE 667×375 · 14 Pro 734×372 | 22 | 19 | 28 | 8,1 |
+| 14 Pro Safari con barras 667×258 | 15 | 13 | 19 | 5,6 |
+| Pixel 7 915×412 · 932×430 | 24-25 | 21 | 31-32 | 9,0-9,4 |
+| Fold plegado 882×344 | 20 | 17 | 26 | 7,5 |
+| Fold abierto 884×768 | 29 | 25 | 37 | 10,9 |
+| iPad mini 1133×744 | 38 | 32 | 48 | 13,9 |
+
+  (Las letras de menú suben con el aumento de `main.ts` hasta 12 px CSS, tope ×1,5.) Joysticks y botones táctiles ya
+  daban ≥ 56 px de zona (tests de `movilbandas`/`movilhud`).
+- **Pendiente** (no se puede llegar a 56 px sin rehacer la composición 960×640 en móvil): botones de la barra y del
+  panel de torre de la Defensa de torres (13-21 px CSS de alto), casillas del mapa TD (19-32), ranuras de poder (15-25;
+  al menos tienen auto-apuntado) y filas de menú con poco hueco entre ellas. Propuesta para Roberto: una disposición
+  táctil propia para la Defensa de torres (barra y panel más altos, mapa con zoom y arrastre) en una rama aparte.
+- **Sin verificar a ojo**: Vite no corre en la VM y en el contenedor `npm ci` no pudo bajar paquetes (el registro de
+  npm devuelve 403 por el proxy), así que no hubo render con Chromium + Playwright ni capturas. Solo `npx tsc --noEmit`
+  y `npm test` (1195 pruebas). Probar en móvil real: jugar con 3-4 dedos, deslizar desde el borde y bajar las
+  notificaciones con el joystick puesto, cambiar de app y volver, girar a vertical (debe pausar) y volver, tocar Bomba
+  durante el cartel de piso (no debe salir luego), y en iPhone con barras de Safari que las bandas sigan bajo el dedo.

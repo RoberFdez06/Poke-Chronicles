@@ -3244,6 +3244,14 @@ export class GameScene extends Phaser.Scene {
         .setPadding(14, 12)
         .setInteractive({ useHandCursor: true }),
     );
+    // Táctil: la pausa se toca en todo su rincón (del borde del panel hasta antes de la barra de parry y de arriba
+    // hasta antes del medidor): ~29×35 px CSS en un móvil en vez de ~21. Es la única forma de pausar con el dedo
+    if (touchOnlyDevice()) {
+      const x0 = pb.x - pb.width / 2;
+      const y0 = pb.y - pb.height / 2;
+      const r = { x: HUD.left.x, y: 0, w: LX + HL.pause.x + HL.pause.w + 8 - HUD.left.x, h: HL.pause.y + HL.pause.h + 18 };
+      (pb.input?.hitArea as Phaser.Geom.Rectangle | undefined)?.setTo(r.x - x0, r.y - y0, r.w, r.h);
+    }
     // Modo admin: distintivo arriba a la derecha (clic: panel). Solo existe en dev o con la cuenta admin.
     if (adminAllowed()) {
       const g = hud(this.add.graphics());
@@ -9021,6 +9029,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         return { on: loadFx().guideArrows && guideModeOn(this.mode), mode: this.mode, targets: this.guideTargets(), visible: gd ? { boss: gd.arrows.boss.c.visible, trapdoor: gd.arrows.trapdoor.c.visible } : null, loot: Object.fromEntries(this.mapLoot()) };
       },
       autoState: () => ({ mode: this.autoMode(), dir: this.player ? this.autoMoveStep() : null, hazards: frenzyHazards().length }),
+      // Móvil: qué dedo tiene cada joystick (lienzo y bandas) y punteros de Phaser aún pulsados (seguro de dedos pillados)
+      touchHeld: () => (this.touch ? { ...this.touch.held, phaserDown: this.input.manager.pointers.filter((q) => q.id > 0 && q.isDown).map((q) => q.id) } : 'no es móvil'),
     };
     (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__ = api;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { delete (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__; });
