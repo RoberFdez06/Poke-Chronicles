@@ -3,6 +3,8 @@ import { pickSprites, type PokemonCard } from '../data/pokeapi';
 import { typeColor, typeNameEs } from '../data/types';
 import { addTypeChip, COLORS, drawBox, HEX, textStyle, strokePixelFrame } from './theme';
 import { STAT_KEYS, STAT_LABEL, statBar, type BaseStats } from '../data/pokeStats';
+import { mobileUi, touchPad, viewportCssPerPx } from './uiScale';
+import { U } from './layout';
 
 export const CARD_SIZE = { w: 200, h: 270 };
 
@@ -170,6 +172,16 @@ export function addBackButton(scene: Phaser.Scene, onClick: () => void, x = 36, 
     .setPadding(8, 6)
     .setDepth(5)
     .setInteractive({ useHandCursor: true });
+  // Móvil: la zona de toque crece (invisible) hasta ~56 px CSS; va en la esquina, donde no hay nada al lado
+  if (mobileUi()) {
+    const k = viewportCssPerPx() * U;
+    const px = touchPad(back.width, k, undefined, 40);
+    const py = touchPad(back.height, k, undefined, 40);
+    if (px > 0 || py > 0) {
+      const area = back.input?.hitArea as Phaser.Geom.Rectangle | undefined;
+      area?.setTo(-px, -py, back.width + px * 2, back.height + py * 2);
+    }
+  }
   back.on('pointerover', () => back.setColor('#ffd34d'));
   back.on('pointerout', () => back.setColor('#ffffff'));
   back.on('pointerdown', onClick);

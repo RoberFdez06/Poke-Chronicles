@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { installScreenFit } from './ui/screenFit';
+import { installTouchSanity } from './ui/touchSanity';
 import { initialWideWidth, installWideScreen } from './ui/wideScreen';
 import { TitleScene } from './scenes/TitleScene';
 import { MenuScene } from './scenes/MenuScene';
@@ -128,6 +129,8 @@ function startGame() {
   // Teclas que no se quedan pilladas (foco, pestaña, pausa, cambio de escena) y ratón fiable en los menús
   installKeyGuard(game);
   installMenuPointer(game);
+  // Móvil: dedos cuyo «touchend» se pierde no dejan punteros de Phaser pulsados; en vertical se pausa
+  if (touchOnlyDevice()) installTouchSanity(game);
   // Pantalla completa automática en móvil y reajuste del lienzo al cambiar el tamaño real
   installScreenFit(game);
   installWideScreen(game);

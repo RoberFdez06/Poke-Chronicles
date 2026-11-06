@@ -64,3 +64,15 @@ test('HUD: «Tamaño de la interfaz» agranda en móvil (también el tope) y no 
   assert.equal(hudFontSize(20, 0.347, false, Infinity, 1.5), 20);
   assert.equal(hudFontSize(14, 0.347, true, 22, 1.5), 33);
 });
+
+test('touchPad: margen para llegar a 56 px CSS, 0 si ya llega y con tope', async () => {
+  const { touchPad, TOUCH_TARGET_CSS } = await import('../src/ui/uiScale.ts');
+  assert.equal(TOUCH_TARGET_CSS, 56);
+  // iPhone SE apaisado (667×375): 0,347 px CSS por px de lienzo × 1,6875 de los menús
+  const k = (375 / 1080) * 1.6875;
+  const pad = touchPad(46, k);
+  assert.ok(Math.abs((46 + pad * 2) * k - 56) < 1e-9);
+  assert.equal(touchPad(200, k), 0);
+  assert.equal(touchPad(10, k, 56, 12), 12);
+  assert.equal(touchPad(10, 0), 0);
+});

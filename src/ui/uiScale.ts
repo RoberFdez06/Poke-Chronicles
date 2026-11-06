@@ -82,3 +82,16 @@ export const hudUiScale = (): number => (mobile ? hudUi : 1);
 
 /** Atajo para las escenas: tamaño del HUD con la ventana actual y el modo móvil fijado al arrancar. */
 export const hudFont = (size: number, max = Infinity): number => hudFontSize(size, viewportCssPerPx(), mobile, max, hudUi);
+
+/** Zona de toque buscada en móvil para botones sueltos (px CSS de lado): la de los dedos, no la de un cursor. */
+export const TOUCH_TARGET_CSS = 56;
+
+/**
+ * Margen (unidades de diseño, por lado) que hay que añadir a un botón de `size` unidades para que su zona de toque
+ * llegue a `minCss` px CSS, visto a `cssPerUnit` px CSS por unidad. 0 si ya llega. Con tope `maxPad` para no invadir
+ * otros botones.
+ */
+export function touchPad(size: number, cssPerUnit: number, minCss = TOUCH_TARGET_CSS, maxPad = Infinity): number {
+  if (!(cssPerUnit > 0) || size * cssPerUnit >= minCss) return 0;
+  return Math.min(maxPad, (minCss / cssPerUnit - size) / 2);
+}
