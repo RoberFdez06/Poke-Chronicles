@@ -118,31 +118,54 @@ export interface TdRewards {
   firstClear: boolean;
   /** Tickets extra por los jefes de oleada (ya sumados en `tickets`). */
   chiefTickets: number;
+  /** Primera victoria del día (economy.ts): tickets ya sumados en `tickets` (y sus caramelos en `candies`). La pone la escena. */
+  firstWin?: number;
 }
 
 /** Tickets por jefes de oleada vencidos (con tope). */
 export const chiefTicketsFor = (n: number | undefined): number => Math.min(CHIEF_TICKETS_MAX, Math.max(0, Math.floor(n ?? 0)) * CHIEF_TICKETS);
 
-/** Premio extra por cada estrella nueva. */
+/** Premio extra por cada estrella nueva. Economía (06/11): antes 1 caramelo por estrella. */
 export const STAR_TICKETS = 6;
-export const STAR_CANDIES = 1;
+export const STAR_CANDIES = 4;
+/**
+ * Economía (06/11): caramelos por cada ticket de oleadas y victoria (los de jefes de oleada y estrellas no cuentan),
+ * como el CANDY_PER_TICKET del juego normal. Antes un nivel repetido no daba ningún caramelo.
+ */
+export const TD_CANDY_PER_TICKET = 3;
+/** Tickets extra la primera vez que superas cada nivel. */
+export const FIRST_CLEAR_TICKETS = 4;
+/** Jefe final del mapa la primera vez: tickets y caramelos (antes 20 y 5). */
+export const MAP_BOSS_TICKETS = 20;
+export const MAP_BOSS_CANDIES = 15;
+/** Infinito: tope de tickets por oleadas y caramelos extra por récord (desde la oleada 10; antes 2). */
+export const ENDLESS_TICKETS_MAX = 40;
+export const ENDLESS_RECORD_CANDIES = 5;
 
 export function rewardsFor(o: TdOutcome, before: MapProgress, mapTier = 0): TdRewards {
   const w = Math.max(0, Math.floor(o.waves));
   if (o.level <= 0) {
     const newRecord = w > before.endless;
     const chiefTickets = chiefTicketsFor(o.chiefs);
-    return { tickets: Math.min(40, Math.floor(w / 2)) + chiefTickets, candies: Math.floor(w / 10) + (newRecord && w >= 10 ? 2 : 0), newStars: 0, newRecord, firstClear: false, chiefTickets };
+    const base = Math.min(ENDLESS_TICKETS_MAX, Math.floor(w / 2));
+    return {
+      tickets: base + chiefTickets,
+      candies: base * TD_CANDY_PER_TICKET + (newRecord && w >= 10 ? ENDLESS_RECORD_CANDIES : 0),
+      newStars: 0, newRecord, firstClear: false, chiefTickets,
+    };
   }
   const stars = o.won ? Math.max(0, Math.min(3, o.stars)) : 0;
   const prev = before.stars[o.level - 1] ?? 0;
   const newStars = Math.max(0, stars - prev);
   const boss = o.level >= (mapById(o.mapId)?.levels ?? Math.max(1, before.stars.length));
   const chiefTickets = chiefTicketsFor(o.chiefs);
+  const first = o.won && prev === 0;
+  // Lo que se gana jugando (oleadas y victoria): da también caramelos, al cambio
+  const played = Math.floor(w / 3) + (o.won ? 2 + Math.floor(mapTier / 3) : 0);
   return {
     chiefTickets,
-    tickets: chiefTickets + Math.floor(w / 3) + (o.won ? 2 + Math.floor(mapTier / 3) : 0) + newStars * STAR_TICKETS + (boss && o.won && prev === 0 ? 20 : 0),
-    candies: newStars * STAR_CANDIES + (boss && o.won && prev === 0 ? 5 : 0),
+    tickets: chiefTickets + played + newStars * STAR_TICKETS + (first ? FIRST_CLEAR_TICKETS : 0) + (boss && first ? MAP_BOSS_TICKETS : 0),
+    candies: played * TD_CANDY_PER_TICKET + newStars * STAR_CANDIES + (boss && first ? MAP_BOSS_CANDIES : 0),
     newStars,
     newRecord: false,
     firstClear: o.won && prev === 0,

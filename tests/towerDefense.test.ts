@@ -351,7 +351,8 @@ test('premios: tickets y caramelos, extra la primera vez por cada estrella; réc
   assert.ok(r3.tickets > 0 && r3.candies >= 3 && r3.firstClear);
   const again = rewardsFor({ mapId: 'pradera', level: 1, waves: 6, won: true, stars: 3 }, { stars: [3, ...Array(9).fill(0)], endless: 0 });
   assert.equal(again.newStars, 0);
-  assert.ok(again.tickets < r3.tickets && again.candies === 0);
+  // Economía (06/11): repetir un nivel ya da caramelos (antes 0), pero menos que la primera vez
+  assert.ok(again.tickets < r3.tickets && again.candies > 0 && again.candies < r3.candies);
   const lost = rewardsFor({ mapId: 'pradera', level: 2, waves: 3, won: false, stars: 0 }, before);
   assert.equal(lost.newStars, 0);
   const boss = rewardsFor({ mapId: 'pradera', level: LEVELS_PER_MAP, waves: 11, won: true, stars: 1 }, { stars: Array(10).fill(0), endless: 0 });

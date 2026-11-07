@@ -14,7 +14,7 @@ import { fitDesign } from '../ui/layout';
 import { NavInput, PadButtons, UI, MenuList } from '../ui/nav';
 import { drawBox, fadeIn, goTo, lowFx, RARITY_COLORS, shorten } from '../ui/theme';
 import { ToastStack } from '../ui/toast';
-import { sfx } from '../ui/audio';
+import { playTdChief, playTdMusic, releaseMusic, sfx } from '../ui/audio';
 import { currentInput } from '../ui/inputMode';
 import { GlyphText } from '../ui/art/keyGlyphs';
 import { HoldRepeat, cycle, stepCursor, tdHelp, tdKeyLabel, type TdDevice, type TdHelpContext, type TdKeyAction } from '../data/towerDefense/controls';
@@ -23,7 +23,7 @@ import { dir8Row, pmdScale } from '../data/pmdAnim';
 import { dressLoose, procAnimate } from '../ui/locoAnim';
 import { fetchFormSprites, fetchNextEvolutions, fetchPokemonCard, fetchSpeciesName } from '../data/pokeapi';
 import { withTimeout } from '../data/offline';
-import { addCandies, addTickets, loadUpgrades } from '../data/save';
+import { addCandies, addTickets, CANDY_PER_TICKET, claimFirstWin, loadUpgrades } from '../data/save';
 import { levelsFor } from '../data/upgrades';
 import { typeColor, typeNameEs } from '../data/types';
 import { bakeBiomeTiles } from '../ui/art/tiles';
@@ -47,7 +47,7 @@ import { BRANCH_LEVEL, MAX_TOWER_LEVEL, MEGA_LEVEL, STYLE_LABEL, branchInfo, lev
 import { drawMegaAura, towerMegaFx } from '../ui/art/tdMegaArt';
 import { drawGate, drawLink, drawSynergyGem, drawTerrain, drawTrap, drawTrickMark } from '../ui/art/tdRetoArt';
 import { TERRAIN_INFO, TERRAIN_FX, isLevelMap } from '../data/towerDefense/variants';
-import { themeBanner, themeHint, type ThemeBoost } from '../data/towerDefense/themes';
+import { levelTheme, themeBanner, themeHint, type ThemeBoost } from '../data/towerDefense/themes';
 import { bakeTypeIcons, drawThemeAmbient, drawThemeGround, drawThemeProp, hasThemeProp, pickMotes, typeIcon, type Mote } from '../ui/art/tdThemeArt';
 import { TRAP_INFO, TRAP_KINDS, type TrapKind } from '../data/towerDefense/live';
 import { TRICK_INFO } from '../data/towerDefense/tricks';
@@ -226,6 +226,9 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.themeBadges = [];
   }
 
+  /** Tipo tema del nivel para la música. */
+  private musicTheme = 'normal';
+
   create() {
     fadeIn(this);
     fitDesign(this);
@@ -312,6 +315,10 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.td = new TdGame({ map: this.map, level: this.args.level, team, seed: Date.now() % 100000 });
     // El mapa de este nivel (rutas, rocas y terreno propios: variants.ts)
     this.map = this.td.map;
+    // Música del tipo tema del nivel (cada una de las 18 fases suena distinto); al salir, la del menú si aún es la suya
+    this.musicTheme = levelTheme(this.map, this.args.level);
+    playTdMusic(this.musicTheme);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => releaseMusic((k) => k.startsWith('td:') || k === 'td-jefe'));
     this.loadingText.destroy();
     this.build();
     this.ready = true;
@@ -859,6 +866,15 @@ export class TowerDefenseScene extends Phaser.Scene {
     const o = this.td.outcome();
     const stars = starsFor(o.hp, o.maxHp, o.won);
     const rewards = submitTdOutcome({ mapId: this.map.id, level: this.args.level, waves: o.waves, won: o.won, stars, chiefs: o.chiefs });
+    // Economía (06/11): primera victoria del día (superar un nivel; el infinito no cuenta), con sus caramelos
+    if (o.won && !this.td.endless) {
+      const fw = claimFirstWin();
+      if (fw.tickets > 0) {
+        rewards.firstWin = fw.tickets;
+        rewards.tickets += fw.tickets;
+        rewards.candies += fw.tickets * CANDY_PER_TICKET;
+      }
+    }
     // Tickets y caramelos (nunca monedas)
     if (rewards.tickets > 0) addTickets(rewards.tickets);
     if (rewards.candies > 0) addCandies(rewards.candies);
@@ -923,6 +939,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (r.candies) prize.push(`+${r.candies} caramelos`);
     if (prize.length) lines.push(prize.join(' · '));
     if (r.chiefTickets) lines.push(`Jefes vencidos: ${this.td.chiefsBeaten} (+${r.chiefTickets} tickets)`);
+    if (r.firstWin) lines.push(`¡Primera victoria del día! (+${r.firstWin} tickets)`);
     if (r.newStars) lines.push(`¡${r.newStars} ${r.newStars === 1 ? 'estrella nueva' : 'estrellas nuevas'}! (premio extra)`);
     if (accountInfo().mode === 'guest') lines.push('Invitado: el progreso no se guarda al cerrar');
     const body = this.add
@@ -1049,7 +1066,8 @@ export class TowerDefenseScene extends Phaser.Scene {
         const x = X(e.x);
         const y = Y(e.y) - 8;
         if (!lowFx() || e.special) typeImpact(this, x, y, e.type, e.special ? 1.3 : 0.7, e.special ? 12 : 4, 30);
-        if (e.splash > 0) pixRing(this, x, y + 6, e.splash * CELL, typeColor(e.type), 300, 7);
+        // Salpicadura: círculo real (antes achatado al 60 % y 2 px más arriba, y daba fuera del anillo)
+        if (e.splash > 0) pixRing(this, x, y + 8, e.splash * CELL, typeColor(e.type), 300, 7, 1);
         if (e.special) pixBlast(this, x, y, 28, typeColor(e.type), 31);
         // Números: siempre los críticos, súper eficaces y especiales; los normales, uno de cada tres (para no tapar el mapa)
         if (e.mul >= 2 || e.crit || e.special || (!lowFx() && Math.random() < 0.34)) {
@@ -1102,6 +1120,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         break;
       case 'waveStart':
         sfx(e.boss ? 'roar' : 'door');
+        playTdChief(!!(e.boss || e.chief), this.musicTheme);
         this.toast(e.boss ? `Oleada ${e.wave}: ¡jefe legendario!` : e.chief ? `Oleada ${e.wave}: ¡minijefe!` : `Oleada ${e.wave}`, e.boss || e.chief ? 'danger' : 'info');
         if (e.event) this.eventStartFx(e.event);
         if (e.theme) this.toast(TRICK_INFO[e.theme as TrickKind].tip, 'warning');
@@ -1111,6 +1130,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         break;
       case 'waveEnd':
         sfx('clear');
+        playTdChief(false, this.musicTheme);
         this.toast(`Oleada superada: +${e.bonus} $${e.perfect ? ' (sin fugas)' : ''}${e.farm ? ` · granjas +${e.farm} $` : ''}${e.interest ? ` · hucha +${e.interest} $` : ''}`, 'reward');
         break;
       case 'chiefIntro':
@@ -1133,7 +1153,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         const y = Y(e.y) - 8;
         if (e.skill === 'aturdir') {
           sfx('boom');
-          pixRing(this, x, y + 8, e.r * CELL, info.color, 360, 44);
+          pixRing(this, x, y + 8, e.r * CELL, info.color, 360, 44, 1);
         } else if (e.skill === 'invocar') {
           sfx('enrage');
           phaseShock(this, x, y, info.color, 1.1, 30);

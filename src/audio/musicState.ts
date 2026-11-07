@@ -1,8 +1,8 @@
 // Lógica pura del estado de la música (sin Web Audio ni Phaser): qué situación suena, con qué retardos
 // y cómo se reparte el volumen en un crossfade. ui/audio.ts y GameScene solo la usan.
 
-/** Situación musical: jefe final, jefe (o minijefe), combate o la del bioma. */
-export type MusicMood = 'final' | 'boss' | 'combat' | 'calm';
+/** Situación musical: jefe final, jefe, minijefe, combate o la del bioma. */
+export type MusicMood = 'final' | 'boss' | 'mini' | 'combat' | 'calm';
 
 /** Entrar en combate (o subir de intensidad) casi enseguida: filtra un solo fotograma, no un cambio real. */
 export const MUSIC_ENTER_MS = 450;
@@ -13,7 +13,7 @@ export const CROSSFADE_S = 1.5;
 /** Si una pista vuelve a sonar antes de este tiempo, se reanuda donde iba en vez de empezar de cero. */
 export const RESUME_WINDOW_MS = 20000;
 
-const RANK: Record<MusicMood, number> = { calm: 0, combat: 1, boss: 2, final: 3 };
+const RANK: Record<MusicMood, number> = { calm: 0, combat: 1, mini: 2, boss: 3, final: 4 };
 
 /** Retardo para pasar de `from` a `to`: corto si sube la intensidad, largo si baja. */
 export const moodDelay = (from: MusicMood, to: MusicMood): number => (RANK[to] > RANK[from] ? MUSIC_ENTER_MS : MUSIC_EXIT_MS);

@@ -8,7 +8,7 @@ import { levelsFor, parseUpgrades, upgradeCost, type UpgradeBook, type UpgradeKi
 import { nodeState } from './upgradeTree.ts';
 import { activeStorage, type StorageLike } from './storage.ts';
 import { emptyRecords, parseRecords, withRecord, type GameMode, type Records } from './modes.ts';
-import { applyMissionEvent, offerNpcMission, parseMissions, type Completed, type MissionEvent, type MissionState, type NpcMission } from './missions.ts';
+import { applyMissionEvent, missionCandies, offerNpcMission, parseMissions, type Completed, type MissionEvent, type MissionState, type NpcMission } from './missions.ts';
 import { dayNumber } from './gacha.ts';
 import { addSeed, parseGarden, takeBasket, type GardenBerryId, type GardenState } from './berries.ts';
 import { awardMedal, parseMedals, type MedalAward } from './medals.ts';
@@ -22,6 +22,7 @@ import { parseHistory, withRun, type RunRecord } from './runHistory.ts';
 import { parseKeys, type KeyMap } from './keybinds.ts';
 import { parseSeedBests, seedBest, withSeedBest } from './seedCode.ts';
 import { isCheatRun } from './admin.ts';
+import { claimFirstWinState, parseFirstWin, type FirstWinState } from './economy.ts';
 import { parseSynergiesFound, serializeSynergiesFound } from './synergyFx.ts';
 
 export type { StorageLike } from './storage.ts';
@@ -114,6 +115,12 @@ export const COINS_KEY = 'pokeisaac.coins';
  */
 export const ROOM_TICKETS = 3;
 export const BOSS_TICKETS = 2;
+/**
+ * Economía (06/11, la gente decía que se ganaban muy pocos): el jefe da además una base fija (6 + 2 × piso: 8 en el
+ * piso 1, 16 en el 5) y las salas suben +1 cada dos pisos, hasta +2 (3, 3, 4, 4, 5…). Ver economy.ts y la bitácora.
+ */
+export const BOSS_BASE_TICKETS = 6;
+export const ROOM_TICKETS_MAX_EXTRA = 2;
 
 // --- Caramelos: la moneda de las mejoras de estadísticas (los tickets quedan solo para el gacha) ---
 
@@ -544,6 +551,8 @@ export function recordMissionEvent(
   }
   for (const c of completed) {
     addTickets(c.reward.tickets, storage);
+    // Economía (06/11): las misiones y logros también dan caramelos, al cambio de siempre (missionCandies)
+    addCandies(missionCandies(c.reward), storage);
     if (c.reward.pokemon) unlockPokemon(c.reward.pokemon, storage);
   }
   return { completed, expired };
@@ -698,6 +707,34 @@ export function saveKeys(keys: KeyMap, storage: StorageLike | null = browserStor
 
 // --- Borrar progreso (Ajustes) ---
 
+// --- Primera victoria del día (economy.ts) ---
+
+export const FIRST_WIN_KEY = 'pokeisaac.firstWin';
+
+export function loadFirstWin(storage: StorageLike | null = browserStorage()): FirstWinState {
+  try {
+    return parseFirstWin(storage?.getItem(FIRST_WIN_KEY) ?? null);
+  } catch {
+    return parseFirstWin(null);
+  }
+}
+
+/**
+ * Cobra la primera victoria de hoy si aún no se ha cobrado: guarda el día y la racha y devuelve los tickets que tocan
+ * (0 si ya se cobró hoy o en partidas de trucos). Quien llama suma los tickets (y sus caramelos).
+ */
+export function claimFirstWin(day = dayNumber(), storage: StorageLike | null = browserStorage()): { tickets: number; streak: number } {
+  if (isCheatRun()) return { tickets: 0, streak: 0 };
+  const r = claimFirstWinState(loadFirstWin(storage), day);
+  if (r.tickets <= 0) return { tickets: 0, streak: r.streak };
+  try {
+    storage?.setItem(FIRST_WIN_KEY, JSON.stringify(r.state));
+  } catch {
+    // sin almacenamiento: no se guarda
+  }
+  return { tickets: r.tickets, streak: r.streak };
+}
+
 /** Todo lo que se pierde al borrar el progreso: desbloqueos, tickets, récords y partidas. El volumen se queda. */
 export const PROGRESS_KEYS: readonly string[] = [
   DEX_KEY,
@@ -722,6 +759,7 @@ export const PROGRESS_KEYS: readonly string[] = [
   HISTORY_KEY,
   COMBO_BEST_KEY,
   SYNERGIES_KEY,
+  FIRST_WIN_KEY,
   // Defensa de torres (src/data/towerDefense/progress.ts, TD_KEY)
   'pokeisaac.towerdef',
   'pokeisaac.towerdef.team',

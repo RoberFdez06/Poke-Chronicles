@@ -2488,3 +2488,234 @@ niveles y que los minijefes fueran pseudolegendarios/ultraentes y los jefes lege
 Sin verificar a ojo (Vite no corre en la VM): las fichas compactas del menú de mapas (miniatura, textos e insignias en 96 px de
 alto), que la ficha del nivel con la línea de minijefes/jefe no pise la barra de ayuda, las dos plantillas nuevas horneadas, la
 página nueva de la guía, los ojos de 3 px en los enemigos y la ficha del minijefe. El HUD móvil y `layout.ts` no se tocan.
+
+## 2026-11-06 · Entrada: teclas que no se quedan pilladas y ratón fiable en los menús (rama `entrada`)
+Motivo: al probar con gente, «los controles en teclado se quedan pillados» y «el ratón cuesta usarlo en el menú». Igual que
+`touchPointers.ts` para el táctil: lógica pura en `src/data/keyHold.ts` y `src/data/menuPointer.ts`, tests en
+`tests/entrada.test.ts`, enganche a Phaser en `src/ui/keyGuard.ts` y `src/ui/menuPointer.ts` (los dos se instalan en `main.ts`).
+- **Teclado** (`keyHold`, `keyGuard`): estado propio por tecla con los keydown/keyup del navegador (fase de captura). Cada
+  fotograma, tras procesar Phaser su cola (`POST_STEP`), se sueltan en TODAS las escenas las teclas que Phaser cree pulsadas y
+  el navegador no (`stuckKeys`): arregla las soltadas mientras la escena estaba parada, en una transición o con el teclado
+  desactivado. Se suelta todo en blur, focus, `visibilitychange`, `pagehide` y menú contextual del navegador; al soltar Cmd
+  (macOS se traga los keyup de las demás); los modificadores se corrigen con el estado real que trae cada evento de teclado o
+  ratón (Alt de un Alt+Tab); una tecla física se suelta aunque suba con otro código (IME/teclas muertas, 229). Al reanudar o
+  despertar una escena se reinician sus teclas (Phaser ya lo hace al pausar). No se suelta nada por tiempo: mantener W y tocar
+  D deja de repetir W y sigue pulsada. El ghosting del teclado (combinaciones que el propio teclado no manda) no tiene arreglo
+  por software; para eso están las teclas configurables.
+- **Ratón en todos los menús** (`menuPointer`, todas las escenas salvo `Game` y `TowerDefense`, y nunca en táctil): los
+  botones (objetos con cursor de mano) aceptan paso y clic en un margen de 6 a 14 px de diseño alrededor de su zona
+  (`hitPad`); un botón tocado de lleno gana al margen de su vecino, entre dos márgenes el más cercano y el fondo de un diálogo
+  sigue tapando lo de debajo (`pickHit`). Clic fiable (`judgeDown`): solo el izquierdo (el derecho solo en TowerDefenseMenu,
+  donde hace algo), nada en los primeros 180 ms de una pantalla o de su vuelta a primer plano, y el segundo clic de un doble
+  clic no «salta» a la pantalla o el botón que abrió el primero (los clics rápidos en el mismo botón sí cuentan). Un clic
+  descartado no pasa a la escena de debajo. Hover = selección: tras usar teclado o mando, en cuanto el ratón se mueve vuelve
+  a seleccionar lo que tiene debajo (`shouldReHover`). `MenuList` sube y baja con la rueda.
+- Técnica: se envuelven `InputManager.pointWithinHitArea` e `InputPlugin.sortGameObjects/processDownEvents/processMoveEvents`
+  de Phaser 3.90 (si se actualiza Phaser, revisar `src/ui/menuPointer.ts`). Teclado, ratón y mando siguen yendo cada uno solo;
+  el táctil y las colisiones no se tocan.
+Sin verificar a ojo (Vite no corre en la VM): el margen de clic en cada menú (sobre todo filas pegadas y botones pequeños
+como ✕ o ◀ ▶), que la selección siga al ratón tras usar teclado, la rueda en las listas y que ningún clic legítimo se pierda
+por los 180 ms de arranque.
+## 2026-11-06 · Más música: listas por situación, música por tipo en Torres y mezcla aleatoria (rama `musica`)
+Motivo: Roberto: «todo el rato suena la misma y aburre». Todo es composición propia (sin samples ni música de terceros).
+- **Compositor por parámetros** (`src/data/musicGen.ts`, lógica pura): escala/modo (mayor, menor, dórico, frigio, lidio,
+  mixolidio, armónica, frigio mayor, pentatónicas, blues, tonos enteros), tónica, tempo, ondas, ritmo de melodía, bajo,
+  batería, armonía (pad o terceras), arpegio, eco y forma (AB, ABAB, AABB, AABA). La melodía es un motivo que se repite y
+  varía sobre la progresión, con cadencia al final de cada sección; semilla fija por nombre (siempre suena igual).
+- **Listas** (`src/data/music.ts`, `PLAYLISTS`, `runPlaylist`): exploración 4 por bioma (la de siempre + 3), +2 en Torre e
+  Infinito; combate 4 por bioma (3 con el sabor del bioma + la de siempre); minijefe 3 (nueva situación `mini` en
+  `musicState`, entre combate y jefe); jefe 4; jefe final 3; menú 3; tienda 3; salas tranquilas (centro, secreta, objeto) 3.
+  128 pistas en total.
+- **Defensa de torres**: familia por tipo (`TD_TYPE_FAMILY`: escala, tempo, onda, batería, ritmo y bajo propios), 2 pistas
+  por tipo; suena la del tipo tema del nivel (`levelTheme`), así las 18 fases suenan distinto. Menú de torres (2) y
+  oleadas con minijefe o jefe (3), que vuelven a la del tipo al acabar la oleada.
+- **Mezcla aleatoria** (`src/audio/playlist.ts`, `MusicShuffle`): elige al azar sin repetir la misma seguida (tampoco al
+  volver a una lista); cada pista da vueltas hasta ~70 s y pasa a otra; nueva pista en cada piso y al cambiar de
+  situación; al entrar en otra sala, otra pista si la actual lleva ≥25 s. Transición con el crossfade de siempre.
+- **Motor** (`src/ui/audio.ts`): onda del bajo y de la segunda voz, timbal y charles abierto, arpegio según la escala, eco;
+  volumen por onda para que todas suenen parejas; carriles viejos se desconectan (no se acumulan nodos). API nueva:
+  `startRunMusic`, `setMusicMood`, `musicRoom`, `playTdMusic`, `playTdChief`, `playTdMenuMusic`, `releaseMusic` (una
+  escena solo vuelve a la música del menú si la que suena aún es suya). Ajustes de música y desbloqueo de audio, igual.
+- Tests en `tests/musicPlaylist.test.ts` (sin repetición, semilla, notas en rango, pistas no vacías y distintas, listas ≥3,
+  18 fases con pista distinta).
+Sin escuchar (la VM no tiene audio): cómo suenan las pistas compuestas, el volumen relativo de las ondas nuevas (seno,
+bajo cuadrado/sierra, timbal, eco) y las transiciones al cambiar de sala. El HUD móvil y `layout.ts` no se tocan.
+## 2026-11-06 · Gacha por regiones y formas regionales (rama `gachareg`)
+Motivo: Roberto quería el gacha separado por regiones y por formas regionales, con progreso por región. Lógica pura en
+`src/data/gachaBanners.ts`, tests en `tests/gachaBanners.test.ts`, emblemas en `src/ui/art/bannerEmblems.ts` (datos) y
+`bannerArt.ts` (texturas).
+- **Banners** (`BANNERS`): Todas, uno por cada región de `regions.ts` (por número de Pokédex nacional, sin formas) y
+  «Formas regionales» (todas las formas). Las regiones no se solapan y, con Formas, cubren justo Todas (test).
+- **Rarezas y probabilidades iguales** (`GACHA_RATES`, `classifyRarity`). Si un banner no tiene una rareza, su parte pasa a
+  la más cercana, como ya hacía `pull` (`effectiveRates`): Kanto tiene Épico 14 % (no hay Ultraentes fuera de Alola);
+  Formas, Épico 15 % (ni Ultraentes ni legendarios). La línea de probabilidades de la pantalla enseña las del banner.
+- **Garantía por banner** (`pullBanner`, `PITY`): Épico o mejor a la 10.ª tirada seguida sin él y la mejor rareza del
+  banner (Legendario) a la 80.ª; la x10 conserva su Épico asegurado. Cuentas en `pokeisaac.gachaBanners` (con el último
+  banner elegido); invitados en memoria como el resto. No se tocan costes, devoluciones ni tickets.
+- **Formas nuevas** en `regionalForms.ts`: 16 de Hisui y 4 de Paldea (3 razas de Tauros y Wooper). Solo en gacha,
+  colección y Pokédex (Hisui cuenta en Sinnoh, `FORM_REGION_HOME`); no salen como enemigos (`WILD_FORMS` = Alola y Galar)
+  porque no tienen hoja de SpriteCollab. Ids, tipos y estadísticas de memoria (sin red en la VM para comprobar PokeAPI).
+- **Pantalla**: la ficha «Destacado de hoy» pasa a ficha del banner: emblema pixel art propio, nombre, barra y «X/Y
+  conseguidos», garantías que faltan, destacado de hoy del banner (de su mejor rareza) y, en Formas, «Alola a/b · Galar
+  … · Hisui … · Paldea …». Debajo, 11 pestañas con los emblemas. Teclado: arriba enfoca la ficha y ←/→ cambia; Q/E desde
+  cualquier sitio. Ratón: pestañas y flechas dibujadas. Mando: LB/RB (y cruceta como el teclado). Táctil: tocar una
+  pestaña o deslizar la ficha. Se abre en el último banner usado.
+- **Guardados**: lo desbloqueado no cambia (el progreso lo cuenta, también lo de antes); sin la clave nueva se empieza de
+  cero en Todas; el historial acepta entradas viejas sin `banner`. Sin migración ni versión nueva.
+Sin verificar a ojo (Vite no corre en la VM): que los textos de la ficha quepan entre el emblema y el destacado, las 11
+pestañas y su marco, las flechas, el deslizamiento táctil, los emblemas y que los sprites de Hisui/Paldea carguen. El HUD
+móvil y `layout.ts` no se tocan.
+## 2026-11-06 · Economía: más tickets y caramelos, por rendimiento, primera victoria del día y caramelos que caen (rama `economia`)
+Motivo: quienes han probado el juego dicen que dan muy pocos tickets (gacha) y caramelos (mejoras). Lógica pura nueva en
+`src/data/economy.ts`; números en `progression.ts`, `save.ts`, `modes.ts`, `missions.ts` y `towerDefense/progress.ts`;
+informe en `balance.ts` (`economyReport`, `expectedRunWithBonus`, caramelos en `simulateRuns`); tests en `tests/economia.test.ts`
+(y rangos al día en `balance.test.ts`, `progression.test.ts` y `towerDefense.test.ts`). Gacha (10 / 100) y costes de las
+mejoras (15 × nivel; árbol entero 4145 caramelos) sin tocar.
+- **Salas** 3, 3, 4, 4, 5 (+1 cada dos pisos, tope +2; antes 3 siempre). **Jefe** 6 + 2 × piso (8…16; antes 2 × piso). Minijefe
+  = dos salas (6…10). La Torre casi igual en jefes (206 en el piso 100, antes 200), salas con el tope de 5.
+- **Rendimiento** al acabar (`performanceBonus`): 0, 0, 4, 10, 18, 28 tickets por pisos completados, +6 por piso más (tope 60);
+  hitos = cada 5 rondas en Oleadas, cada 2 jefes en el Rush, cada 10 pisos en la Torre.
+- **Primera victoria del día** (`claimFirstWin`, clave `pokeisaac.firstWin`, en `PROGRESS_KEYS`): el primer jefe del día o el
+  primer nivel de la Defensa de torres ganado: 15 tickets, +3 por cada día seguido (tope 30), con sus caramelos.
+- **Caramelos que caen** (`candyDrop`): 12 % de los enemigos 1-2 (+1 cada 4 pisos), minijefe 3 + piso, jefe 6 + 2 × piso,
+  +5 shiny, +3 oscuro; con la dificultad. Se cobran al momento (un caramelo sale volando hacia ti y «+N caramelos»): no
+  quedan en el suelo ni en el guardado.
+- **Misiones/logros/encargos** dan también 3 caramelos por ticket; diarias 3/4/5 → 5/6/8 tickets (logros sin tocar: no se
+  cambia lo ya ganado). La racha del desafío diario da también caramelos. **Oleadas**: 2 + ronda/4 por ronda.
+- **Defensa de torres**: 3 caramelos por ticket de oleadas y victoria (antes un nivel repetido daba 0), 4 por estrella
+  nueva (antes 1), +4 tickets la primera vez de cada nivel, jefe del mapa 20 tickets y 15 caramelos (antes 5); infinito 3
+  caramelos por ticket y +5 por récord.
+- Guardados: nada ganado cambia. `RunCounters.candies` y `RunRecord.candies` son opcionales (como `dashes`): sin subir
+  `RUN_VERSION` (los guardados viejos se leen igual y el resumen calcula los caramelos con los tickets si faltan).
+
+| Simulador (`economyReport`, 600 partidas, semilla 3) | Antes | Ahora |
+|---|---|---|
+| Tickets por partida media (muere en el piso 2-3) | 50,7 | 61,0 (+15-30 con la 1.ª victoria) |
+| Caramelos por partida media | 152 | 213 |
+| Tickets esperados: piso 1 / hasta piso 3 / partida completa / con reto final | 23 / 93 / 196 / 298 | 29 / 122 / 280 (+28 de rendimiento) / 388 (+34) |
+| Partidas para la 1.ª tirada (Pokémon nuevo) | 0,2 | 0,16 (0 con la 1.ª victoria) |
+| Partidas para una x10 (Épico asegurado) | 2,0 | 1,6 (1,4 con la 1.ª victoria) |
+| Partidas para la 1.ª mejora / una estadística al máximo (225) | 0,1 / 1,5 | 0,07 / 1,06 |
+| Partidas para el árbol entero de un Pokémon (4145) | 27 | 19,5 |
+| Partidas para un legendario (100 tiradas de media) | 19,7 | 16,4 |
+| Oleadas hasta la ronda 10 | 17 | 30 |
+| Defensa de torres, nivel repetido (6 oleadas) | 4 tickets, 0 caramelos | 4 tickets, 12 caramelos |
+
+Nota: el simulador ya daba una tirada en la primera partida; que la gente note «muy pocos» apunta a que juega menos
+salas que el modelo, así que el cambio sube sobre todo lo que se gana al llegar lejos y lo que se ve (caramelos al
+caer, avisos de premio). Si sigue corto, lo siguiente es `ROOM_TICKETS` o `CANDY_PER_TICKET`.
+Sin verificar a ojo (Vite no corre en la VM): el caramelo que vuela al jugador y su «+N caramelos», los avisos de primera
+victoria y de premio por llegar lejos, la línea nueva del resultado de la Defensa de torres (que quepa en la caja) y el pie
+más largo de la pantalla de Misiones. El HUD móvil y `layout.ts` no se tocan.
+## 2026-11-06 · Auditoría de hitboxes: solo te da lo que se ve (rama `hitbox`)
+Motivo: Roberto: «no están bien las hitbox de algunos ataques, te dan sin estar en el sitio». Causas: casi todos los golpes
+scriptados miraban el **centro del dibujo** del jugador (no sus pies) con márgenes de 14-22 px, y las zonas del suelo se dibujan
+**achatadas** (elipse r × 0,65 r) pero dañaban en un **círculo** de r + 22: por encima y por debajo te daban a casi el doble de lo
+marcado. Lógica pura nueva en `src/data/hitbox.ts` (círculo, elipse, rectángulo rotado, cápsula/rayo, sector/cono, anillo con
+hueco, unión; distancia, contacto, contorno) y `src/data/attackHitboxes.ts` (dibujo y hitbox de cada ataque con los mismos
+números), tests en `tests/hitbox.test.ts` (formas, catálogo de ~300 entradas: hitbox ⊆ dibujo con 2 px de tolerancia y nunca daño
+antes del aviso).
+- **Tu hitbox**: círculo de `PLAYER_HURT_R` = 10 px en el centro del cuerpo (pies); el sprite mide 84 px y el cuerpo de choque con
+  paredes sigue en 16 px (pasar por puertas no cambia). Proyectiles y contacto con enemigos pasan por un filtro (process callback):
+  el círculo inscrito del cuerpo de Arcade contra tu hitbox (las cajas de los sprites PMD tenían aire en las esquinas).
+- **Capa de depuración**: solo en desarrollo o admin, con `?hitboxes` o `localStorage['pokeisaac.hitboxes'] = '1'`: tu hitbox
+  en verde, cuerpos de enemigos y disparos en rojo y las formas que han mirado si te daban, en naranja (160 ms).
+
+| Ataque | Dibujo | Daña antes | Daña ahora |
+|---|---|---|---|
+| Zona genérica de enemigo (`area`) | círculo r | centro del dibujo a ≤ r + 22 | tu hitbox toca el círculo r |
+| Terremoto (tuyo y suyo) | onda elipse r × 0,65 r | círculo r + 22 (enemigos: + radio) | elipse (los dos lados) |
+| Lluvia, bomba, erupción (enemigo) | `pixMarker` r × 0,65 r | círculo r + 22 | elipse de la marca |
+| Mina de patrón (enemigo) | runa r × 0,6 r | **estallaba al momento** (nearestTarget sin alcance) + círculo r + 22 | se arma al pisar el 70 % de la runa; daña la elipse |
+| Remolino (enemigo) | embudo con sombra 0,85 R × 0,275 R | círculo R + 22 | sombra del suelo |
+| Rayo de patrón (enemigo/jefe) | `drawPixBeam` ancho máx(18, w) | ½w + 18 al centro | núcleo 80 % del dibujado |
+| Rayo con barrido (Psicorrayo, Pulso Dragón de jefe) | aviso en el centro | salía girado −½ barrido, sin aviso | el aviso ya marca el inicio y el final |
+| Cadena (enemigo) | rayo hasta ti | — | igual (golpe directo) |
+| Láser giratorio | haz de 22 | 18 al centro | núcleo 8,8 + hitbox |
+| Estallido mega | banda de 44 | 22 al centro | núcleo 17,6 + hitbox |
+| Onda / Nova | bolas de 9 px en r | ±11 al centro | anillo ±6 + hitbox, hueco igual |
+| Zona de peligro, lluvia del jefe, orbes, enemigo mina | círculos | centro dentro (orbes r + 14) | hitbox toca el círculo |
+| Meteoro | aviso elipse R × 0,6 R | círculo R | elipse del aviso |
+| Miasma | nubes ~0,9 R | 0,9 R al centro | círculo 0,75 R + hitbox |
+| Muro, rejilla, minas en cruz | barras/rayos | medio ancho al centro | núcleo + hitbox, desde tus pies |
+| Embestida marcada (asalto y frenesí) | carril de 60 | 50 px al centro | 30 + hitbox |
+| Cruz del juicio | franjas de 72 | margen 10 al centro | margen = hitbox, desde tus pies |
+| Frenesí (líneas, rayos, zonas, charcos) | ya coincidían | centro del dibujo | igual, desde tus pies |
+| Enemigo que cava al salir | montículo 40 × 16 | 70 px alrededor | su cuerpo (0,35 × tamaño) |
+| Proyectiles (tuyos/suyos) | forma 16 px de textura | caja de Arcade vs tu círculo de 16 | círculo inscrito vs hitbox de 10 |
+| Contacto con enemigos/jefes (y carga) | sprite | caja 60 % × 55 % del fotograma | círculo inscrito de esa caja |
+| Tu bomba | círculo 110 | 88 al centro | hitbox toca 88 |
+| Grietas/lava de la arena y peligros de la Torre | casillas | casilla del centro del dibujo | casilla de tus pies |
+| Defensa de torres: salpicadura y «Aturdir» | anillo achatado 60 % | círculo | el anillo se dibuja redondo y centrado |
+
+Sin cambios (revisados): disparo básico y cargado, poderes, fusiones (usan el mismo motor de ataques), orbitales y rastro de las
+sinergias (algo generosos, a tu favor), alcance de las torres y minas/tormenta de la Defensa (ya redondas).
+Sin verificar a ojo (Vite no corre en la VM): la capa de depuración (colores, que no tape el HUD), la segunda línea del aviso del
+rayo con barrido, que el cambio a los pies se sienta bien con los Pokémon de fotogramas grandes y que los rayos del jefe no se noten
+más blandos o duros (el núcleo + hitbox es ±1-7 px de lo de antes). El HUD móvil, `layout.ts` y la economía no se tocan.
+## 2026-11-06 · Móvil: controles que ya no se quedan pillados y repaso de pantallas (rama `movil`)
+- Problema (Roberto, probando con gente): «los controles del móvil se quedan pillados a veces» y «la parte del móvil no
+  está terminada». El seguro de `movilbandas` (reclamar a 1,5 s, soltar en blur/visibilitychange/pagehide/pausa)
+  dejaba huecos. Casos encontrados mirando el código de Phaser 3.90 (`InputManager`, `TouchManager`) y el nuestro:
+  1. **Lienzo, dedo perdido**: Phaser solo libera un puntero con su touchend/touchcancel. Si el navegador se lo come
+     (deslizar desde el borde, notificación, multitarea de iOS, 4-5 dedos en iPad), `isDown` sigue en true: el stick
+     seguía con su dirección (el personaje andando solo) y el lienzo **no** tenía el reclamo a 1,5 s (solo las bandas).
+     Con 5 punteros perdidos ningún toque llegaba ya al juego (también en menús y en la Defensa de torres).
+  2. **Bandas**: el dedo perdido seguía moviendo hasta que otro dedo tocaba la banda y pasaban 1,5 s. Además los toques
+     de las bandas también creaban punteros de Phaser (su `touchstart` de la ventana), gastando los 5 huecos.
+  3. **Tercer dedo** en un lado ya ocupado: se ignoraba; al levantar el primero, el que seguía apoyado no hacía nada
+     hasta levantarlo y volver a tocar (se notaba como «pillado»).
+  4. **Botones «fantasma»**: un toque de Bomba/Poción/Activo durante una transición o cinemática se quedaba guardado y
+     salía segundos después.
+  5. **Vertical**: con el aviso «Gira el móvil» la partida seguía corriendo y los toques del aviso llegaban a Phaser.
+  6. Girar el móvil no soltaba nada (iOS suele mandar touchcancel, pero no siempre); al rehacer los controles se
+     añadían 4 punteros más cada vez.
+- Arreglo (lógica pura en `src/data/touchPointers.ts`, pruebas en `tests/touchGuard.test.ts`):
+  - `StickArbiter`: un dedo por stick; un dedo que cae en un lado ocupado **espera** y se queda el stick en cuanto el
+    primero se levanta (nace donde está ese dedo); dedo sin señales 1,5 s cede el stick (ahora también en el lienzo);
+    `sync(isLive)` suelta los que ya no están y `releaseAll()` todo. Lo usan el lienzo y las bandas.
+  - `ghostTouches` (retenidos que no están en `touches` ni en `changedTouches`) y `noFingersLeft` (touchend/cancel sin
+    dedos = soltar todo). `pressFresh`: un toque de botón que la partida no recoge en 300 ms se descarta.
+  - `src/ui/touchSanity.ts` (nuevo, `main.ts` solo en `touchOnlyDevice()`): en cada evento táctil de la página (fase de
+    captura, antes que Phaser) cancela en Phaser los punteros cuyo dedo ya no está, por su camino normal
+    (`onTouchCancel`: las escenas reciben pointerup con `wasCanceled`, en su misma posición, así que nada se «pulsa»).
+    También al ocultar la página. Al pasar a vertical cancela todo y emite `TOUCH_INTERRUPT`: `onFocusLost`
+    (`ui/focusPause.ts`) lo escucha, así que la partida y la Defensa de torres abren su pausa.
+  - `touchControls.ts`: el lienzo usa el árbitro (el `tick` sigue soltando lo que Phaser ya no tiene pulsado, y adopta
+    al que espera); soltar todo también con `orientationchange` y con touchend/cancel sin dedos; los toques pendientes
+    se borran al soltar todo; `addPointer(4)` solo una vez. Las **bandas** pasan a eventos táctiles con `identifier`
+    (Pointer Events solo donde no existen), sincronizan con la lista real `touches` en cada evento y hacen
+    `preventDefault`, así Phaser ya no ve sus toques. Si la caja derecha se mueve con el dedo puesto (barra del
+    navegador, giro) la base del stick se corrige para seguir bajo el dedo. El brillo de un botón de banda se cancela al
+    cerrar la escena (nunca se queda encogido).
+  - Prueba de 5000 pasos al azar (hasta 5 dedos, 10 % de touchend perdidos): nunca queda un stick con un dedo que no
+    está en la pantalla. Consola: `__POKEISAAC_DEBUG__.touchHeld()` (dedo de cada stick y punteros de Phaser pulsados).
+- Zonas de toque: «← Volver» (`addBackButton`, en todos los menús) crece en móvil hasta 56 px CSS con un margen
+  invisible (`touchPad` en `ui/uiScale.ts`, con prueba); la pausa de la partida se toca en todo su rincón (de ≈21 a
+  ≈29×35 px CSS en un móvil de 375 de alto).
+- App instalable: manifest con `id`, iconos «any» y uno «maskable» aparte (antes «any maskable» en la misma entrada; la
+  Poké Ball queda dentro de la zona segura) y `<meta name="mobile-web-app-capable">` (la de Apple sola está obsoleta en
+  Chrome). Prueba `tests/pwaManifest.test.ts`.
+- Repaso de tamaños (px CSS, cálculo con el lienzo de cada caja; no visto en pantalla):
+
+| Caja | Ranura / pausa HUD | Barra TD (32) | Casilla TD (48) | Letra 14 de menú sin aumento |
+|---|---|---|---|---|
+| 640×360 · S23 780×360 | 21 | 18 | 27 | 7,9 |
+| iPhone SE 667×375 · 14 Pro 734×372 | 22 | 19 | 28 | 8,1 |
+| 14 Pro Safari con barras 667×258 | 15 | 13 | 19 | 5,6 |
+| Pixel 7 915×412 · 932×430 | 24-25 | 21 | 31-32 | 9,0-9,4 |
+| Fold plegado 882×344 | 20 | 17 | 26 | 7,5 |
+| Fold abierto 884×768 | 29 | 25 | 37 | 10,9 |
+| iPad mini 1133×744 | 38 | 32 | 48 | 13,9 |
+
+  (Las letras de menú suben con el aumento de `main.ts` hasta 12 px CSS, tope ×1,5.) Joysticks y botones táctiles ya
+  daban ≥ 56 px de zona (tests de `movilbandas`/`movilhud`).
+- **Pendiente** (no se puede llegar a 56 px sin rehacer la composición 960×640 en móvil): botones de la barra y del
+  panel de torre de la Defensa de torres (13-21 px CSS de alto), casillas del mapa TD (19-32), ranuras de poder (15-25;
+  al menos tienen auto-apuntado) y filas de menú con poco hueco entre ellas. Propuesta para Roberto: una disposición
+  táctil propia para la Defensa de torres (barra y panel más altos, mapa con zoom y arrastre) en una rama aparte.
+- **Sin verificar a ojo**: Vite no corre en la VM y en el contenedor `npm ci` no pudo bajar paquetes (el registro de
+  npm devuelve 403 por el proxy), así que no hubo render con Chromium + Playwright ni capturas. Solo `npx tsc --noEmit`
+  y `npm test` (1195 pruebas). Probar en móvil real: jugar con 3-4 dedos, deslizar desde el borde y bajar las
+  notificaciones con el joystick puesto, cambiar de app y volver, girar a vertical (debe pausar) y volver, tocar Bomba
+  durante el cartel de piso (no debe salir luego), y en iPhone con barras de Safari que las bandas sigan bajo el dedo.

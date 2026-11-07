@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { installScreenFit } from './ui/screenFit';
+import { installTouchSanity } from './ui/touchSanity';
 import { initialWideWidth, installWideScreen } from './ui/wideScreen';
 import { TitleScene } from './scenes/TitleScene';
 import { MenuScene } from './scenes/MenuScene';
@@ -39,6 +40,8 @@ import { AdminScene } from './scenes/AdminScene';
 import { SynergyBookScene } from './scenes/SynergyBookScene';
 import { LegalScene } from './scenes/LegalScene';
 import { trackInput } from './ui/inputMode';
+import { installKeyGuard } from './ui/keyGuard';
+import { installMenuPointer } from './ui/menuPointer';
 import { COLORS, hex, loadThemeFont, setLowFxProbe } from './ui/theme';
 import { loadFx } from './data/save';
 import { initAudio, playMusic, reloadAudioSettings } from './ui/audio';
@@ -123,6 +126,11 @@ function startGame() {
     scene: [TitleScene, MenuScene, SlotsScene, StarterScene, GameScene, GachaScene, FirstStarterScene, ModeScene, SettingsScene, PokedexScene, UpgradeScene, MissionsScene, GardenScene, RunDexScene, SummaryScene, HistoryScene, KeysScene, BossIntroScene, GymPuzzleScene, FloorIntroScene, FinalPromptScene, RouteScene, SlotSwapScene, FusionScene, ItemChoiceScene, ConfirmScene, ControlsScene, SecondChanceScene, SeedCodeScene, PauseScene, AccountScene, PadLegendScene, TowerDefenseMenuScene, TowerDefenseScene, AdminScene, SynergyBookScene, LegalScene],
   });
   lockEscapeInFullscreen(game);
+  // Teclas que no se quedan pilladas (foco, pestaña, pausa, cambio de escena) y ratón fiable en los menús
+  installKeyGuard(game);
+  installMenuPointer(game);
+  // Móvil: dedos cuyo «touchend» se pierde no dejan punteros de Phaser pulsados; en vertical se pausa
+  if (touchOnlyDevice()) installTouchSanity(game);
   // Pantalla completa automática en móvil y reajuste del lienzo al cambiar el tamaño real
   installScreenFit(game);
   installWideScreen(game);

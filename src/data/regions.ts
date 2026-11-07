@@ -1,7 +1,7 @@
 // Regiones, iniciales de cada región y filtros de la colección (por región, nombre y rareza).
 // Lógica pura, sin Phaser ni red, para poder testearla.
 import type { Rarity } from './gacha.ts';
-import { regionalForm } from './regionalForms.ts';
+import { FORM_REGION_HOME, regionalForm } from './regionalForms.ts';
 
 export interface Region {
   id: string;
@@ -26,9 +26,9 @@ export const REGIONS: readonly Region[] = [
 ];
 
 export function regionOf(id: number): Region | undefined {
-  // T83: las formas regionales cuentan en su región (Vulpix de Alola en Alola)
+  // T83: las formas regionales cuentan en su región (Vulpix de Alola en Alola; las de Hisui, en Sinnoh)
   const form = regionalForm(id);
-  if (form) return REGIONS.find((r) => r.id === form.region);
+  if (form) return REGIONS.find((r) => r.id === FORM_REGION_HOME[form.region]);
   return REGIONS.find((r) => id >= r.first && id <= r.last);
 }
 

@@ -4,6 +4,7 @@
 // (en la tormenta, STORM_MAX_ACTIVE elementos vivos a la vez).
 import Phaser from 'phaser';
 import { dashEnd } from '../data/bossBlitz';
+import { PLAYER_HURT_R } from '../data/hitbox';
 import {
   laneHits, laneState, strikeHits, aimStrike, zoneHits, COMBO_ACT_MS, LIGHTNING_ON_MS, chaseOrder, creepStep, homingStep,
   type CascadePlan, type ChaseKind, type ChaseSpec, type ComboSpec, type ComboStep, type Pt, type Strike,
@@ -176,7 +177,7 @@ export function runCombo(h: FrenzyHost, steps: ComboStep[], spec: ComboSpec, das
         const sp = dist / (COMBO_ACT_MS.dash / 1000);
         if (k < 1 && Math.hypot(s.to.x - b.x, s.to.y - b.y) > 16) b.setVelocity((dx / dist) * sp, (dy / dist) * sp);
         else b.setVelocity(0, 0);
-        if (!s.hit && Math.hypot(h.player.x - b.x, h.player.y - b.y) < dashWidth / 2 + 20) {
+        if (!s.hit && Math.hypot(h.player.x - b.x, h.player.y - b.y) < dashWidth / 2 + PLAYER_HURT_R) {
           s.hit = true;
           h.hurt();
         }

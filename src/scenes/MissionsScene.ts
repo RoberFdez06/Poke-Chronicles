@@ -129,7 +129,7 @@ export class MissionsScene extends Phaser.Scene {
     });
 
     this.add
-      .text(480, 626, 'Se cumplen jugando y el premio se da solo · Esc, B o "Volver" para salir', {
+      .text(480, 626, 'Se cumplen jugando y el premio se da solo (y 3 caramelos por ticket) · Esc, B o "Volver" para salir', {
         fontFamily: FONT, fontSize: '14px', color: '#ffffff',
       })
       .setOrigin(0.5).setAlpha(0.7);

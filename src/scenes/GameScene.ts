@@ -4,7 +4,8 @@ import { evolveFloors, pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
 import { typeColor, typeNameEs } from '../data/types';
 import { GYM_PUZZLE_ENABLED, GYM_PUZZLE_TICKETS, gymPuzzleKind, gymTier, hasGym } from '../level/gymPuzzles';
-import { addCandies, addTickets, CANDY_PER_TICKET, earnMedal, loadCandies, loadDaily, loadDefeated, loadTickets, saveDefeated, spendCandies, spendTickets, submitSeedBest } from '../data/save';
+import { addCandies, addTickets, CANDY_PER_TICKET, claimFirstWin, earnMedal, loadCandies, loadDaily, loadDefeated, loadTickets, saveDefeated, spendCandies, spendTickets, submitSeedBest } from '../data/save';
+import { candyDrop, performanceBonus } from '../data/economy';
 import { buildDexIndex, registerDefeat, type DexIndex } from '../data/runDex';
 import { clearRun, saveRun, DailyRun, FloorItemSave, RunSave, RUN_VERSION, SavedDrop, FLOOR_LAYOUT } from '../data/runSave';
 import { dailySeed, seedFloorSeed, seedRng, streakReward } from '../data/daily';
@@ -124,14 +125,12 @@ import {
   biomeExtraAttacks,
   bossAttacksFor,
   hazardSpec,
-  laserHits,
   MAX_HELPERS,
   MEGA_ATTACK_LABEL,
   MEGA_BLAST_WIDTH,
   megaBlastAngles,
   megaBlastSpec,
   laserSpec,
-  shockwaveHits,
   shockwaveSpec,
   spiralSpec,
   BOSS_ATTACK_LABEL,
@@ -155,7 +154,7 @@ import { badgeTexture, discoveryBurst, retaliateWave } from '../ui/art/synergyAr
 import { chainBreak, chainHit, chainOdds, chainVisible, newShinyChain, rollShiny, SHINY_ENEMY, SHINY_ODDS, type ShinyChain } from '../data/shiny';
 import { sparkle } from '../ui/sparkle';
 import { applyUpgrades, levelsFor } from '../data/upgrades';
-import { cry, playMenuMusic, playTrack, sfx } from '../ui/audio';
+import { cry, musicRoom, playMenuMusic, setMusicMood, sfx, startRunMusic } from '../ui/audio';
 import { setMusicTempo, sfxShift } from '../ui/audio';
 import { FUSION_TYPES, fusableSlots, fusionStyleOf, moveHasType, moveTypes, powerTypes, applyFusion, applyPickupFusion } from '../data/fusion';
 import { SLOT_SWAP_FUSE } from './SlotSwapScene';
@@ -172,7 +171,6 @@ import { bossDeathFlourish, finalBossDeath, finalDeathMs, finaleVictoryBanner } 
 import { ARENA_AT, fallTheme } from '../level/arenaPhase';
 import { BOSS_PHASE2_AT, BOSS_ATTACK_LABEL as PATTERN_LABEL, isPatternAttack, patternMs, patternWarnAngles, patternWaves, type PatternAttack } from '../data/bossPatterns';
 import { shotSfx } from '../data/sounds';
-import { trackForBiome, trackForMood, TRACKS } from '../data/music';
 import { forceMood, initialMood, stepMood, type MoodState, type MusicMood } from '../audio/musicState';
 import { drawHudFrame, drawSlotFrame } from '../ui/art/hud';
 import { bakeProjectiles, bakeTypeFx, projKey, projMode, projRotation, statusPuff, typeImpact, typeTrail } from '../ui/art/typeFx';
@@ -389,6 +387,8 @@ import type { SecondChanceChoice } from './SecondChanceScene';
 import { accountInfo } from '../net/cloud';
 import { CASCADE_LABEL, CASCADE_SHAPES, cascadePlan, cascadeShapesFor, cascadeSpec, comboPlan, comboSpec, chaseSpec, frenzyRest, isFrenzyAttack, lightningPlan, lightningSpec, normalizeShape, pickFrenzy, pickShape, stormPlan, stormSpec, type CascadeShape, type FrenzyAttack } from '../data/bossFrenzy';
 import { frenzyHazards, runCascade, runChase, runCombo, runLightning, type FrenzyHost } from './frenzyRuntime';
+import { bodyCircle, circle, hitboxDebugEnabled, hitsCircle, hitsPlayer, outline, ray, HITBOX_DEBUG_KEY, PLAYER_HURT_R, type Shape } from '../data/hitbox';
+import { beamHalf, bossLaserHit, dashHit, emergeHit, megaBlastHit, meteorHit, miasmaHit, novaHit, shockHit } from '../data/attackHitboxes';
 import { blitzAttacksFor, bounceAngles, bounceSpec, bounceStep, crossArms, crossMinePlaces, crossSpec, dashEnd, dashSpec, gridBeams, gridHits, gridSpec, helixAngles, helixSpec, isBlitzAttack, meteorSpec, meteorSpots, miasmaSpec, wallHits, wallPlan, wallPos, wallSpec, wallTravelMs, BLITZ_MIN_WARN, type BlitzAttack, type Orb } from '../data/bossBlitz';
 import { bounceWarn, dashWarn, drawBounceOrb, drawCrossBlast, drawGridBeam, drawMiasma, drawWallBar, gridWarn, meteorImpact, meteorWarn, miasmaWarn, mineWarn, wallWarn } from '../ui/art/blitzFx';
 import { BOSS_RETRY_MS, NAV_R_BIG, NAV_R_SMALL, aimUsable, buildNav, cellOf, navField, pathDir, segmentClear, usableAttacks, type Box, type Nav } from '../data/bossPath';
@@ -2897,6 +2897,20 @@ export class GameScene extends Phaser.Scene {
     return n;
   }
 
+  /** Economía (06/11): caramelos que suelta un enemigo; con la dificultad, se suman ya y un caramelo vuela hacia ti. */
+  private dropCandies(x: number, y: number, base: number) {
+    const n = scaleTickets(base, this.diff);
+    if (n <= 0 || this.tutMode) return;
+    addCandies(n);
+    this.counters.candies = (this.counters.candies ?? 0) + n;
+    if (!this.textures.exists(iconKey('candy')) || !this.player?.active) return;
+    const img = this.add.image(x, y, iconKey('candy')).setScale(2).setDepth(8);
+    this.tweens.add({ targets: img, y: y - 40, duration: 220, ease: 'Quad.easeOut', onComplete: () => {
+      this.tweens.add({ targets: img, x: this.player.x, y: this.player.y - 20, scale: 1.2, duration: 380, ease: 'Quad.easeIn', onComplete: () => img.destroy() });
+    } });
+    if (this.fxBudget.take(this.time.now)) this.popup(x, y - 30, `+${n} caramelo${n === 1 ? '' : 's'}`, 0xff7ab8);
+  }
+
   /** Nivel de dificultad: el piso, el jefe por el que vas o, en Oleadas, el que toca a la ronda. */
   private level(): number {
     if (this.mode === 'tower') return towerLevel(this.floorNum); // T72: sube suave (100 pisos)
@@ -3115,6 +3129,16 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.enemies = this.physics.add.group();
+    // Capa de depuración de hitboxes (solo desarrollo/admin, con ?hitboxes o localStorage pokeisaac.hitboxes = '1')
+    this.hbDebug = undefined;
+    this.hbShapes = [];
+    let hbStored: string | null = null;
+    try {
+      hbStored = localStorage.getItem(HITBOX_DEBUG_KEY);
+    } catch {
+      hbStored = null;
+    }
+    if (hitboxDebugEnabled(location.search, hbStored, adminAllowed())) this.hbDebug = this.add.graphics().setDepth(60);
     this.shots = this.physics.add.group();
     this.foeShots = this.physics.add.group();
     this.host = this.makeHost();
@@ -3135,7 +3159,8 @@ export class GameScene extends Phaser.Scene {
     // La hierba alta para los disparos y se rompe con ellos; los agujeros no paran nada
     this.physics.add.overlap(this.shots, this.bushes, (s, b) => this.onShotBush(asSprite(s), asSprite(b)));
     this.physics.add.overlap(this.shots, this.enemies, (s, e) => this.onHit(asSprite(s), asSprite(e)));
-    this.physics.add.overlap(this.player, this.enemies, (_p, e) => this.hurtPlayer(asSprite(e)));
+    // Contacto: el círculo inscrito del cuerpo del enemigo contra tu hitbox (la caja de Arcade tiene aire en las esquinas)
+    this.physics.add.overlap(this.player, this.enemies, (_p, e) => this.hurtPlayer(asSprite(e)), (_p, e) => this.touchesPlayer(asSprite(e)));
     this.physics.add.collider(this.foeShots, [this.walls, this.doorBlocks], (s) => asSprite(s).destroy());
     this.physics.add.overlap(this.foeShots, this.bushes, (s) => asSprite(s).destroy());
     this.physics.add.overlap(this.player, this.foeShots, (_p, s) => {
@@ -3143,7 +3168,7 @@ export class GameScene extends Phaser.Scene {
       if (this.synergyReflect(asSprite(s))) return;
       this.hurtPlayer(asSprite(s));
       asSprite(s).destroy();
-    });
+    }, (_p, s) => this.touchesPlayer(asSprite(s)));
     this.physics.add.overlap(this.player, this.pickups, (_p, it) => this.pickItem(asSprite(it)));
     this.physics.add.overlap(this.player, this.loot, (_p, it) => this.pickLoot(asSprite(it)));
 
@@ -3244,6 +3269,14 @@ export class GameScene extends Phaser.Scene {
         .setPadding(14, 12)
         .setInteractive({ useHandCursor: true }),
     );
+    // Táctil: la pausa se toca en todo su rincón (del borde del panel hasta antes de la barra de parry y de arriba
+    // hasta antes del medidor): ~29×35 px CSS en un móvil en vez de ~21. Es la única forma de pausar con el dedo
+    if (touchOnlyDevice()) {
+      const x0 = pb.x - pb.width / 2;
+      const y0 = pb.y - pb.height / 2;
+      const r = { x: HUD.left.x, y: 0, w: LX + HL.pause.x + HL.pause.w + 8 - HUD.left.x, h: HL.pause.y + HL.pause.h + 18 };
+      (pb.input?.hitArea as Phaser.Geom.Rectangle | undefined)?.setTo(r.x - x0, r.y - y0, r.w, r.h);
+    }
     // Modo admin: distintivo arriba a la derecha (clic: panel). Solo existe en dev o con la cuenta admin.
     if (adminAllowed()) {
       const g = hud(this.add.graphics());
@@ -3510,7 +3543,7 @@ export class GameScene extends Phaser.Scene {
     // Música del bioma (la del jefe la pone spawnBoss); al salir de la partida, la del menú
     this.musicState = initialMood('calm');
     this.musicAt = 0;
-    playTrack(trackForBiome(this.biome.id));
+    startRunMusic(this.biome.id, this.mode, this.floorNum);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => playMenuMusic());
     // Nada sale del mapa: también justo después de mover la física (embestidas, empujones, teletransportes)
     this.physics.world.on(Phaser.Physics.Arcade.Events.WORLD_STEP, this.keepInside, this);
@@ -5191,7 +5224,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       e.setData('hp', hp).setTint(0xff6666).setData('flashUntil', this.time.now + 120);
       if (hp <= 0) this.killEnemy(e);
     }
-    if (inBlast(x, y, this.player.x, this.player.y, R * 0.8) && this.time.now >= this.invulnUntil) {
+    if (this.playerIn(circle(x, y, R * 0.8)) && this.time.now >= this.invulnUntil) {
       this.invulnUntil = this.time.now + 900;
       this.hp -= BOMB.selfDamage;
       sfx('hurt');
@@ -5581,7 +5614,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const { completed, expired } = recordMissionEvent(e);
     for (const m of expired) this.notify(`Encargo caducado\n${m.npc}: ${m.text}`, { kind: 'warning', ms: 4000 });
     for (const c of completed) {
-      const reward = rewardText(c.reward, { item: c.reward.item ? passiveById(c.reward.item)?.name : undefined });
+      const reward = rewardText(c.reward, { item: c.reward.item ? passiveById(c.reward.item)?.name : undefined, candies: true });
       sfx('buy');
       if (c.kind === 'daily') this.notify(`¡Misión cumplida!\n${c.text}\n${reward}`, { kind: 'mission', ms: 5000 });
       else if (c.kind === 'npc') this.notify(`¡Encargo cumplido!\n${c.text}\n${reward}`, { kind: 'mission', ms: 5000 });
@@ -5888,6 +5921,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const before = itemSlots(this.bossesBeaten);
     this.bossesBeaten++;
     this.mission({ kind: 'boss' });
+    // Economía (06/11): primera victoria del día (el primer jefe que vences cada día), más con días seguidos
+    if (!this.tutMode) {
+      const fw = claimFirstWin();
+      if (fw.tickets > 0) {
+        const n = this.giveTickets(fw.tickets);
+        this.notify(`¡Primera victoria del día!${fw.streak > 1 ? ` (${fw.streak} días seguidos)` : ''}\n+${n} tickets y ${n * CANDY_PER_TICKET} caramelos`, { kind: 'reward', icon: 'ticket' });
+      }
+    }
     if (itemSlots(this.bossesBeaten) > before) {
       this.notify(`+1 hueco de objeto\nObjetos ${slotsLabel(this.passives, this.bossesBeaten)}`, { kind: 'reward', icon: 'bag' });
       this.refreshInventory();
@@ -6977,6 +7018,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     else if (room.kind === 'center') this.tip('center');
     else if (room.kind === 'shop') this.tip('shop');
     if (room.kind === 'center' || room.kind === 'shop') this.npcEncounter(room);
+    // Música: tienda y salas tranquilas con su lista; al cambiar de sala, otra pista si la actual ya lleva un rato
+    musicRoom(room.kind, !this.cleared.has(room.id) && (this.mode === 'waves' || room.kind === 'combat' || room.kind === 'boss' || room.kind === 'challenge'));
     if (room.kind === 'boss' && !this.cleared.has(room.id)) this.gardenBossBerries();
     if (!this.cleared.has(room.id) && (this.mode === 'waves' || room.kind === 'combat' || room.kind === 'boss' || room.kind === 'challenge')) {
       this.tip('shoot');
@@ -7896,7 +7939,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     this.buildBossBar(group[0], label, this.finaleMembers[0].types[0], group);
     this.notify(trio ? `¡Reto final: ${f.name}!` : `¡Reto final: ${label}, más fuerte que nunca!`, { kind: 'danger', icon: 'star' });
     this.finaleMembers.forEach((m) => void cry(m.id));
-    playTrack(TRACKS.jefeFinal);
+    setMusicMood('final');
     this.musicState = forceMood('final', this.time.now);
     const fighter = (m: (typeof this.finaleMembers)[number]) => ({ texture: `${m.key}-front`, name: m.name, types: m.types });
     this.showBossIntro(group[0].getData('ai') as EnemyAI, {
@@ -8051,7 +8094,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     this.notify(dark ? `¡${darkName(cap(this.bossName))}, jefe legendario oscuro!\nMás fuerte en todo, con un ataque de más y se enfurece a media vida` : `¡${this.bossName}, jefe legendario!`, { kind: 'danger', icon: 'pokeball' });
     void cry(this.bossId);
-    playTrack(TRACKS.jefe);
+    setMusicMood('boss');
     this.musicState = forceMood('boss', this.time.now);
     this.showBossIntro(ai, dark ? { boss: { texture: `${this.bossKey}-front`, name: darkName(cap(this.bossName)), types: this.bossTypes }, dark, subtitle: `Legendario oscuro · ${progressText(this.mode, this.floorNum)}` } : {});
   }
@@ -8526,7 +8569,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (this.ended) return;
       judgmentStrike(this, rects, color);
       this.cameras.main.shake(180, 0.008);
-      if (b.active && judgmentHits(plan, this.player.x - i.x0, this.player.y - i.y0)) this.hurtPlayer(b, true);
+      if (b.active && judgmentHits(plan, this.hurtPt().x - i.x0, this.hurtPt().y - i.y0, PLAYER_HURT_R)) this.hurtPlayer(b, true);
     });
     return spec.warnMs + 400;
   }
@@ -8560,7 +8603,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           onUpdate: () => {
             g.clear();
             drawNovaWave(g, cx, cy, st.r, gapAt, spec.gap, color, this.time.now);
-            if (b.active && !this.ended && shockwaveHits(cx, cy, st.r, gapAt, spec.gap, this.player.x, this.player.y) && !this.shielded(cx, cy)) this.hurtPlayer(b, true);
+            if (b.active && !this.ended && this.playerIn(novaHit(cx, cy, st.r, gapAt, spec.gap)) && !this.shielded(cx, cy)) this.hurtPlayer(b, true);
           },
           onComplete: () => g.destroy(),
         });
@@ -9021,6 +9064,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         return { on: loadFx().guideArrows && guideModeOn(this.mode), mode: this.mode, targets: this.guideTargets(), visible: gd ? { boss: gd.arrows.boss.c.visible, trapdoor: gd.arrows.trapdoor.c.visible } : null, loot: Object.fromEntries(this.mapLoot()) };
       },
       autoState: () => ({ mode: this.autoMode(), dir: this.player ? this.autoMoveStep() : null, hazards: frenzyHazards().length }),
+      // Móvil: qué dedo tiene cada joystick (lienzo y bandas) y punteros de Phaser aún pulsados (seguro de dedos pillados)
+      touchHeld: () => (this.touch ? { ...this.touch.held, phaserDown: this.input.manager.pointers.filter((q) => q.id > 0 && q.isDown).map((q) => q.id) } : 'no es móvil'),
     };
     (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__ = api;
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => { delete (window as unknown as Record<string, unknown>).__POKEISAAC_DEBUG__; });
@@ -9344,7 +9389,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     }
     if (this.arenaCracks.size === 0 || this.ended || this.transitioning || this.hp <= 1 || time < this.arenaTickAt) return;
     if (this.time.now < this.invulnUntil) return;
-    const [tx, ty] = this.tileOf(this.player.x, this.player.y, this.current);
+    // Las grietas y la lava se pisan: cuenta la casilla de tus pies
+    const [tx, ty] = this.tileOf(this.hurtPt().x, this.hurtPt().y, this.current);
     const kind = this.arenaCracks.get(`${this.current.id}:${tx},${ty}`);
     if (!kind) return;
     this.arenaTickAt = time + 700;
@@ -9384,7 +9430,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           g.destroy();
           if (!b.active || this.ended) return;
           megaBlastFx(this, cx, cy, angles, spec.length, MEGA_BLAST_WIDTH, color, 12, lenOf);
-          if (angles.some((a) => laserHits(cx, cy, a, lenOf(a), this.player.x, this.player.y, MEGA_BLAST_WIDTH))) this.hurtPlayer(b, true);
+          if (angles.some((a) => this.playerIn(megaBlastHit(cx, cy, a, lenOf(a))))) this.hurtPlayer(b, true);
         });
       });
     }
@@ -9533,7 +9579,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       for (const p of spots) {
         const fx = this.add.circle(p.x, p.y, R, typeColor(ai.type), 0.7).setDepth(12);
         this.tweens.add({ targets: fx, alpha: 0, scale: 1.3, duration: 260, onComplete: () => fx.destroy() });
-        if (b.active && inBlast(p.x, p.y, this.player.x, this.player.y, R)) this.hurtPlayer(b, true);
+        if (b.active && this.playerIn(circle(p.x, p.y, R))) this.hurtPlayer(b, true);
       }
     });
   }
@@ -9615,7 +9661,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
                 g.lineStyle(16, color, 0.85).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
                 g.lineStyle(4, 0xffffff, 0.7).beginPath().arc(cx, cy, st.r, gapAt + sw.gap / 2, gapAt - sw.gap / 2 + Math.PI * 2).strokePath();
               } else drawShockRing(g, cx, cy, st.r, gapAt, sw.gap, ai.type, color, this.time.now);
-              if (b.active && !this.ended && shockwaveHits(cx, cy, st.r, gapAt, sw.gap, this.player.x, this.player.y) && !this.shielded(cx, cy)) this.hurtPlayer(b, true);
+              if (b.active && !this.ended && this.playerIn(shockHit(cx, cy, st.r, gapAt, sw.gap)) && !this.shielded(cx, cy)) this.hurtPlayer(b, true);
             },
             onComplete: () => g.destroy(),
           });
@@ -9657,7 +9703,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
                 g.lineStyle(26, color, 0.35).lineBetween(b.x, b.y, x2, y2);
                 g.lineStyle(10, 0xffffff, 0.9).lineBetween(b.x, b.y, x2, y2);
               } else drawBossLaser(g, b.x, b.y, a, ln, color, this.time.now);
-              if (laserHits(b.x, b.y, a, ln, this.player.x, this.player.y)) this.hurtPlayer(b, true);
+              if (this.playerIn(bossLaserHit(b.x, b.y, a, ln))) this.hurtPlayer(b, true);
             }
           },
           onComplete: () => g.destroy(),
@@ -9695,7 +9741,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           const fx = this.add.circle(sp.x, sp.y, R, 0xff7043, 0.75).setDepth(12);
           this.tweens.add({ targets: fx, alpha: 0, scale: 1.25, duration: 280, onComplete: () => fx.destroy() });
         } else hazardBlast(this, sp.x, sp.y, R, color);
-        if (b.active && inBlast(sp.x, sp.y, this.player.x, this.player.y, R)) this.hurtPlayer(b, true);
+        if (b.active && this.playerIn(circle(sp.x, sp.y, R))) this.hurtPlayer(b, true);
       }
     });
     return hz.warnMs;
@@ -9709,8 +9755,11 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    */
   private bossFrenzy(b: Sprite, ai: EnemyAI, attack: FrenzyAttack, phase: 1 | 2, shape?: CascadeShape): number {
     const color = typeColor(ai.type);
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
+    const self = this;
     const host: FrenzyHost = {
-      scene: this, boss: b, player: this.player, arena: this.arena(), color, low: lowFx(),
+      // El frenesí mira tu hitbox (centro del cuerpo), no el centro del dibujo
+      scene: this, boss: b, player: { get x() { return self.hurtPt().x; }, get y() { return self.hurtPt().y; } }, arena: this.arena(), color, low: lowFx(),
       ok: () => b.active && !this.ended && this.frozenSince === undefined && this.arenaFallAt === undefined,
       hurt: () => this.hurtPlayer(b, true),
       track: (stop) => { this.blitzLive.add(stop); return () => { this.blitzLive.delete(stop); }; },
@@ -9842,7 +9891,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
                 const fx = this.add.circle(p.x, p.y, sp.radius, color, 0.7).setDepth(12);
                 this.tweens.add({ targets: fx, alpha: 0, scale: 1.2, duration: 260, onComplete: () => fx.destroy() });
               } else meteorImpact(this, p.x, p.y, sp.radius, color);
-              if (inBlast(p.x, p.y, this.player.x, this.player.y, sp.radius)) hurt();
+              if (this.playerIn(meteorHit(p.x, p.y, sp.radius))) hurt();
             }
           });
         });
@@ -9902,7 +9951,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             if (pos === null) return false;
             drawWallBar(g, A, plan, pos, sp.thick, color, this.time.now);
             // Una roca o un muro entre el borde de salida y tú te tapa de la ola
-            if (wallHits(plan, pos, sp.thick, this.player.x, this.player.y) && !wallShield(plan)) hurt();
+            if (wallHits(plan, pos, sp.thick + PLAYER_HURT_R * 2, this.hurtPt().x, this.hurtPt().y) && !wallShield(plan)) hurt();
             return true;
           }));
         });
@@ -9932,7 +9981,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           mines.forEach((m, k) => {
             if (low) for (const [a, l] of arms[k]) g.lineStyle(sp.width, color, 0.8).lineBetween(m.x, m.y, m.x + Math.cos(a) * l, m.y + Math.sin(a) * l);
             else drawCrossBlast(g, m, arms[k], sp.width, color, this.time.now);
-            if (arms[k].some(([a, l]) => laserHits(m.x, m.y, a, l, this.player.x, this.player.y, sp.width / 2))) hurt();
+            if (arms[k].some(([a, l]) => this.playerIn(ray(m.x, m.y, a, l, beamHalf(sp.width))))) hurt();
           });
           return t < 380;
         }, 6);
@@ -9971,8 +10020,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
                 if (bm.axis === 'x') g.fillRect(bm.at - sp.width / 2, C.y0, sp.width, C.y1 - C.y0);
                 else g.fillRect(C.x0, bm.at - sp.width / 2, C.x1 - C.x0, sp.width);
               } else drawGridBeam(g, C, bm, sp.width, color, this.time.now);
-              const inside = bm.axis === 'x' ? this.player.y <= C.y1 : this.player.x <= C.x1;
-              if (inside && gridHits(bm, sp.width, this.player.x, this.player.y)) hurt();
+              const hp = this.hurtPt();
+              const inside = bm.axis === 'x' ? hp.y <= C.y1 : hp.x <= C.x1;
+              if (inside && gridHits(bm, beamHalf(sp.width) * 2 + PLAYER_HURT_R * 2, hp.x, hp.y)) hurt();
             });
             return t < sp.onMs;
           }));
@@ -10000,7 +10050,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           for (const o of orbs) {
             if (low) g.fillStyle(color, 0.9).fillCircle(o.x, o.y, sp.radius).lineStyle(3, 0xffffff, 0.9).strokeCircle(o.x, o.y, sp.radius);
             else drawBounceOrb(g, o.x, o.y, sp.radius, color, this.time.now);
-            if (Math.hypot(o.x - this.player.x, o.y - this.player.y) < sp.radius + 14) {
+            if (this.playerIn(circle(o.x, o.y, sp.radius))) {
               hurt();
               o.left = -1;
             }
@@ -10027,7 +10077,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         for (const p of spots) {
           if (low) g.fillStyle(color, 0.35 * a).fillCircle(p.x, p.y, R);
           else drawMiasma(g, p.x, p.y, R, color, this.time.now, a);
-          if (a > 0.6 && inBlast(p.x, p.y, this.player.x, this.player.y, R * 0.9)) hurt();
+          if (a > 0.6 && this.playerIn(miasmaHit(p.x, p.y, R))) hurt();
         }
         return t < sp.lingerMs;
       }, 2));
@@ -10055,7 +10105,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         const uy = (end.y - from.y) / (dist || 1);
         b.setVelocity(ux * sp.speed, uy * sp.speed);
         loop((_g, _dt, t) => {
-          if (Math.hypot(this.player.x - b.x, this.player.y - b.y) < sp.width / 2 + 20) hurt();
+          if (this.playerIn(dashHit(b.x, b.y, sp.width))) hurt();
           if (t >= dur || Math.hypot(end.x - b.x, end.y - b.y) < 20) {
             b.setVelocity(0, 0);
             this.cameras.main.shake(90, 0.004);
@@ -10089,6 +10139,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   /** IA de un enemigo según su comportamiento: perseguir, embestir, disparar o saltar. */
   /** Último momento en que el jugador esquivó o hizo parry (los cuerpo a cuerpo cercanos dudan). */
   private playerActionAt = -1e9;
+  /** Capa de depuración de hitboxes y las formas que han mirado si te daban (hitbox.ts). */
+  private hbDebug?: Phaser.GameObjects.Graphics;
+  private hbShapes: { s: Shape; until: number }[] = [];
 
   /**
    * IA de un enemigo: su comportamiento y, encima, la capa común (enemyAI.ts). Vigilante: si un enemigo normal lleva
@@ -10382,7 +10435,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             this.cameras.main.shake(140, 0.006);
             dustBurst(this, e.x, e.y + 18, 1.4, 12);
             typeImpact(this, e.x, e.y, ai.type, 1.1, 10);
-            if (Phaser.Math.Distance.Between(e.x, e.y, this.player.x, this.player.y) < 70) this.hurtPlayer(e);
+            // Solo te da el cuerpo que sale (antes, 70 px alrededor sin nada dibujado)
+            if (this.playerIn(emergeHit(e.x, e.y, (e.getData('size') as number | undefined) ?? 60))) this.hurtPlayer(e);
           }
         } else {
           e.setVelocity(0, 0);
@@ -10424,7 +10478,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
             this.tweens.add({ targets: fx, alpha: 0, scale: 1.25, duration: 300, onComplete: () => fx.destroy() });
             sfx('boom');
             this.cameras.main.shake(140, 0.005);
-            if (inBlast(e.x, e.y, this.player.x, this.player.y, r)) this.hurtPlayer(e);
+            if (this.playerIn(circle(e.x, e.y, r))) this.hurtPlayer(e);
             e.setData('mineBlown', true);
             this.killEnemy(e);
           }
@@ -11013,8 +11067,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (time < this.hazardTickAt) return;
     const room = this.current;
     const i = this.interior(room);
-    const tx = Math.floor((this.player.x - i.x0) / TILE);
-    const ty = Math.floor((this.player.y - i.y0) / TILE);
+    const tx = Math.floor((this.hurtPt().x - i.x0) / TILE);
+    const ty = Math.floor((this.hurtPt().y - i.y0) / TILE);
     if (!spec.hazards.some((h) => h.cell === room.id && h.tx === tx && h.ty === ty)) return;
     this.hazardTickAt = time + 700;
     const chip = Math.min(Math.max(1, Math.round(this.stats.maxHp * (spec.hazard === 'lava' ? 0.06 : 0.04))), Math.ceil(this.hp) - 1);
@@ -11243,13 +11297,14 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       if (!e.active || e.getData('helper')) continue;
       const ai = e.getData('ai') as EnemyAI | undefined;
       if (e.getData('finale')) { mood = 'final'; break; }
-      if (ai?.boss || e.getData('miniboss')) mood = 'boss';
+      if (ai?.boss) mood = 'boss';
+      else if (e.getData('miniboss')) { if (mood !== 'boss') mood = 'mini'; }
       else if (mood === 'calm') mood = 'combat';
     }
     // Histéresis (audio/musicState.ts): subir a combate casi al instante, volver a la normal tras unos segundos
     const r = stepMood(this.musicState, mood, time);
     this.musicState = r.state;
-    if (r.changed) playTrack(trackForMood(r.state.mood, this.biome.id));
+    if (r.changed) setMusicMood(r.state.mood);
   }
 
   /** ¿Las puertas de la sala (grande) actual están cerradas (combate)? */
@@ -11306,6 +11361,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     const menuPadNow = !!menuPad && menuPad.connected && (!!menuPad.buttons[8]?.pressed || (!this.ended && !!menuPad.buttons[9]?.pressed));
     if (!this.escKey || !this.current || !this.floor) return; // create() aún no ha terminado de cargar
     this.adminTick();
+    this.hitboxDebugTick();
     if (this.towerArrow) this.towerArrowTick();
     this.guideTick();
     if (this.tutPanel) this.tutTick();
@@ -11935,7 +11991,8 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         if (side === 'foe') {
           const p = this.player;
           if (!p?.active || once?.has(p)) return;
-          if (Phaser.Math.Distance.Between(x, y, p.x, p.y) > r + 22) return;
+          // Antes: r + 22 px al centro del dibujo; ahora tu hitbox contra el círculo
+          if (!this.playerIn(circle(x, y, r))) return;
           once?.add(p);
           if (src.active) this.hurtPlayer(src);
           return;
@@ -11949,6 +12006,25 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
           this.hitEnemy(e, dmg, type, e.x, e.y, typeColor(type), new Phaser.Math.Vector2(e.x - x, e.y - y));
         }
       },
+      hitShape: (side, shape, dmg, type, src, once) => {
+        if (side === 'foe') {
+          const p = this.player;
+          if (!p?.active || once?.has(p) || !this.playerIn(shape)) return;
+          once?.add(p);
+          if (src.active) this.hurtPlayer(src);
+          return;
+        }
+        if (this.hbDebug) this.hbShapes.push({ s: shape, until: this.time.now + 160 });
+        for (const c of [...this.enemies.getChildren()]) {
+          const e = c as Sprite;
+          if (!e.active || once?.has(e)) continue;
+          const er = ((e.getData('size') as number | undefined) ?? 60) * 0.35;
+          if (!hitsCircle(shape, e.x, e.y, er)) continue;
+          once?.add(e);
+          this.hitEnemy(e, dmg, type, e.x, e.y, typeColor(type), new Phaser.Math.Vector2(e.x - this.player.x, e.y - this.player.y));
+        }
+      },
+      playerTouches: (shape) => !!this.player?.active && this.playerIn(shape),
       hitOne: (e, dmg, type) => e.active && this.hitEnemy(e, dmg, type, e.x, e.y, typeColor(type)),
       enemies: () => this.enemies.getChildren() as Sprite[],
       player: () => this.player,
@@ -12780,6 +12856,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     loot
       .filter((d) => hasShop || d.kind !== 'coin')
       .forEach((d, k) => this.dropLoot(enemy.x + (k - 1) * 26, enemy.y + 10, d));
+    // Economía (06/11): caramelos que caen de verdad (se cobran al momento; los ayudantes no sueltan)
+    if (!enemy.getData('helper')) {
+      const sweets = candyDrop(Math.random, this.level(), {
+        boss, mini: !!enemy.getData('miniboss'), shiny: !!enemy.getData('shiny'), dark: !!enemy.getData('dark'),
+      });
+      if (sweets > 0) this.dropCandies(enemy.x, enemy.y, sweets);
+    }
     (enemy.getData('bar') as Phaser.GameObjects.Graphics | undefined)?.destroy();
     // Trío: la barra sigue mientras quede alguno; los que quedan se enfurecen
     const others = boss ? (this.bossBar?.group ?? []).filter((o) => o !== enemy && o.active) : [];
@@ -12839,7 +12922,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     if (boss && others.length === 0) {
       this.bossFx?.destroy();
       this.bossFx = undefined;
-      playTrack(trackForBiome(this.biome.id));
+      setMusicMood('calm');
       // Al caer el jefe se van sus ayudantes
       for (const c of [...this.enemies.getChildren()]) {
         const h = c as Sprite;
@@ -13697,6 +13780,53 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
    * Te dan. `unblockable`: ataques de jefe que el parry no para (zonas de peligro marcadas, ondas y láseres), que
    * ya avisan antes y se esquivan moviéndose; si se pudieran bloquear, quedarían sin sentido.
    */
+  /** Centro de tu hitbox: el centro de tu cuerpo (los pies), no el del dibujo (src/data/hitbox.ts). */
+  private hurtPt(): { x: number; y: number } {
+    const b = this.player?.body as Body | null;
+    return b ? { x: b.center.x, y: b.center.y } : { x: this.player.x, y: this.player.y };
+  }
+
+  /** ¿Tu hitbox (PLAYER_HURT_R) toca la forma? Se apunta para la capa de depuración. */
+  private playerIn(shape: Shape): boolean {
+    if (this.hbDebug) this.hbShapes.push({ s: shape, until: this.time.now + 160 });
+    return hitsPlayer(shape, this.hurtPt());
+  }
+
+  /** ¿El cuerpo de un enemigo o proyectil (su círculo inscrito) toca tu hitbox? */
+  private touchesPlayer(o: Sprite): boolean {
+    const b = o.body as Body | null;
+    if (!b) return false;
+    const c = bodyCircle(b);
+    return hitsPlayer(circle(c.x, c.y, c.r), this.hurtPt());
+  }
+
+  /** Capa de depuración: tu hitbox (verde), cuerpos de enemigos y disparos (rojo) y zonas que dañan (naranja). */
+  private hitboxDebugTick() {
+    const g = this.hbDebug;
+    if (!g || !this.player?.active) return;
+    g.clear();
+    const line = (s: Shape, color: number) => {
+      for (const pts of outline(s, 24)) {
+        g.lineStyle(2, color, 0.9).beginPath().moveTo(pts[0].x, pts[0].y);
+        for (const q of pts.slice(1)) g.lineTo(q.x, q.y);
+        g.strokePath();
+      }
+    };
+    const hp = this.hurtPt();
+    line(circle(hp.x, hp.y, PLAYER_HURT_R), 0x40ff60);
+    for (const grp of [this.enemies, this.foeShots]) {
+      for (const o of grp.getChildren()) {
+        const b = (o as Sprite).body as Body | null;
+        if (!(o as Sprite).active || !b?.enable) continue;
+        const c = bodyCircle(b);
+        line(circle(c.x, c.y, c.r), 0xff3040);
+      }
+    }
+    const now = this.time.now;
+    this.hbShapes = this.hbShapes.filter((h) => h.until > now).slice(-80);
+    for (const h of this.hbShapes) line(h.s, 0xffa020);
+  }
+
   private hurtPlayer(enemy: Sprite, unblockable = false) {
     const now = this.time.now;
     // El modo dios (admin) NO corta aquí: si no, el parry nunca llegaba a mirarse y no funcionaba con el modo dios
@@ -13850,8 +13980,15 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         // También en los tickets de la partida, para que el resumen y el historial cuenten lo ganado de verdad
         this.earned += bonus;
         addTickets(bonus);
+        // Economía (06/11): con sus caramelos, como el resto de premios
+        addCandies(bonus * CANDY_PER_TICKET);
         this.notify(`¡Racha de ${streak} días!\n+${bonus} tickets`, { kind: 'reward', icon: 'ticket' });
       }
+    }
+    // Economía (06/11): premio por rendimiento según lo lejos que has llegado (pisos, rondas, jefes)
+    {
+      const perf = this.giveTickets(performanceBonus(this.mode, won ? this.floorNum : this.floorNum - 1));
+      if (perf > 0) this.notify(`Premio por llegar lejos\n+${perf} tickets y ${perf * CANDY_PER_TICKET} caramelos`, { kind: 'reward', icon: 'ticket' });
     }
     // T81: la partida con código guarda su mejor resultado (pisos, rondas o jefes superados) para comparar
     const code = this.seedCode();
@@ -13885,6 +14022,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       damage: Math.round(this.counters.damage),
       items: [...counts].map(([id, n]) => (passiveById(id)?.name ?? id) + (n > 1 ? ` x${n}` : '')),
       tickets: this.earned,
+      candies: this.earned * CANDY_PER_TICKET + (this.counters.candies ?? 0),
       newRecord: this.counters.newRecord,
       parries: this.counters.parries ?? 0,
       picked: this.counters.picked ?? 0,

@@ -89,9 +89,14 @@ Tres dificultades (Fácil, Normal, Difícil), cada una con sus récords.
 ## Progreso fuera de la partida
 
 - **Gacha:** los **tickets** que ganas jugando se gastan en tiradas para desbloquear nuevos Pokémon (común, raro,
-  épico, ultraente y legendario, con shinies).
+  épico, ultraente y legendario, con shinies). Hay un **banner por región** (Kanto a Paldea), otro de **formas
+  regionales** (Alola, Galar, Hisui y Paldea) y «Todas»; cada uno con su garantía (Épico cada 10, Legendario a las 80)
+  y su progreso X/Y. Cambia de banner con las pestañas, deslizando la ficha, Q/E o LB/RB.
 - **Mejoras:** los **caramelos**, que también se ganan jugando, suben las estadísticas de cada Pokémon (daño, PS,
-  velocidad, cadencia, alcance, crítico y defensa).
+  velocidad, cadencia, alcance, crítico y defensa). Caen de los enemigos (siempre del minijefe y del jefe) y se ganan
+  con cada ticket (3 por ticket), también en las misiones y en la Defensa de torres.
+- **Premios extra:** primera victoria del día (el primer jefe o nivel de la Defensa de torres; más con días seguidos) y
+  premio por rendimiento al acabar la partida según lo lejos que llegues.
 - **Pokédex**, misiones y logros, historial de partidas y tutorial.
 - **Cuentas opcionales** (Firebase): el progreso se guarda en la nube. Como invitado se puede jugar, pero no se guarda.
 
@@ -140,6 +145,8 @@ que crear un proyecto de Firebase y poner sus claves en un `.env.local` (que no 
 - `src/level`: generación de pisos, salas y biomas.
 - `src/scenes`: las pantallas de Phaser (menús, partida, resumen…).
 - `src/ui`: HUD, arte pixel generado por código, sonido y música sintetizados con Web Audio (sin archivos de audio).
+- `src/data/music.ts` + `src/data/musicGen.ts`: música chiptune propia (128 pistas: 4 por bioma, combate por bioma, minijefe, jefe, jefe final, menú, tienda, salas tranquilas y una familia por tipo en la Defensa de torres); `src/audio/playlist.ts` las mezcla al azar sin repetir.
+- Hitboxes: `src/data/hitbox.ts` (formas y la hitbox pequeña del jugador, en los pies) y `src/data/attackHitboxes.ts` (qué daña cada ataque, siempre dentro de lo que se dibuja). En desarrollo o como admin, `?hitboxes` en la URL (o `localStorage['pokeisaac.hitboxes'] = '1'`) dibuja las hitboxes encima de la partida.
 - La documentación de diseño y la bitácora de desarrollo están en [`docs/`](docs/).
 
 ## Créditos

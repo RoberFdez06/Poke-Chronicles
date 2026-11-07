@@ -183,6 +183,8 @@ export class MenuList {
       box.setInteractive(new Phaser.Geom.Rectangle(0, (this.h - hitH) / 2, this.w, hitH) /* Phaser la centra solo */, Phaser.Geom.Rectangle.Contains);
       box.input!.cursor = 'pointer';
       box.on('pointerover', () => this.active && this.select(i));
+      // Rueda del ratón: sube y baja por la lista (como las flechas)
+      box.on('wheel', (_p: unknown, _dx: number, dy: number) => this.active && dy !== 0 && this.move(Math.sign(dy)));
       box.on('pointerdown', () => {
         if (!this.active) return;
         this.select(i);

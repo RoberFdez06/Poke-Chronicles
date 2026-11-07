@@ -14,7 +14,7 @@ import {
   MAX_ROOMS,
 } from '../src/level/progression.ts';
 import { generateFloor, mulberry32 } from '../src/level/floorGen.ts';
-import { BOSS_TICKETS, ROOM_TICKETS } from '../src/data/save.ts';
+import { BOSS_BASE_TICKETS, BOSS_TICKETS, ROOM_TICKETS } from '../src/data/save.ts';
 
 test('cada piso tiene más salas y nunca pasa del máximo', () => {
   assert.equal(roomCountFor(1, () => 0), 8);
@@ -42,12 +42,14 @@ test('la dificultad sube con el piso', () => {
   assert.ok(difficultyFor(100).speed <= 1.6);
 });
 
-test('los tickets del jefe escalan con el piso; los de sala no (T32)', () => {
-  assert.equal(roomTicketsFor(1), ROOM_TICKETS);
-  assert.equal(roomTicketsFor(3), ROOM_TICKETS);
-  assert.equal(bossTicketsFor(1), BOSS_TICKETS);
-  assert.equal(bossTicketsFor(3), BOSS_TICKETS * 3);
+test('los tickets escalan con el piso: jefe 6 + 2 × piso, salas +1 cada dos pisos hasta +2 (economía 06/11)', () => {
+  assert.deepEqual([1, 2, 3, 4, 5, 6, 20].map(roomTicketsFor), [ROOM_TICKETS, ROOM_TICKETS, ROOM_TICKETS + 1, ROOM_TICKETS + 1, ROOM_TICKETS + 2, ROOM_TICKETS + 2, ROOM_TICKETS + 2]);
+  assert.equal(bossTicketsFor(1), BOSS_BASE_TICKETS + BOSS_TICKETS);
+  assert.deepEqual([1, 2, 3, 4, 5].map(bossTicketsFor), [8, 10, 12, 14, 16]);
+  // La Torre (jefe cada 10 pisos) apenas cambia: 206 en el piso 100 (antes 200)
+  assert.equal(bossTicketsFor(100), 206);
   assert.equal(minibossTicketsFor(2), ROOM_TICKETS * 2);
+  assert.equal(minibossTicketsFor(5), (ROOM_TICKETS + 2) * 2);
 });
 
 test('el jefe siempre es legendario o singular', () => {
