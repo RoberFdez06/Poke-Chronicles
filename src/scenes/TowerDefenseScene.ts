@@ -9,8 +9,15 @@
 // - Tras cada oleada, 1 de 3 mejoras (1/2/3, flechas o cruceta y aceptar, o clic). Jefes de oleada cada 5 y eventos
 //   (niebla, tormenta…) avisados arriba a la derecha del mapa, nunca en el centro.
 // Abajo a la derecha, una barra de ayuda cambia según lo elegido y el dispositivo con el que se juega.
+// Móvil o tableta táctil (rama `tdmovil`, data/towerDefense/touchTd.ts): disposición propia con columnas de botones de
+// ≥ 56 px CSS a los lados y el mapa en su cámara con zoom, arrastre y lupa; colocar, mover y apuntar piden confirmar
+// (anillo o «Confirmar»). Teclado, ratón y mando siguen igual.
 import Phaser from 'phaser';
-import { fitDesign } from '../ui/layout';
+import { fitDesign, LW } from '../ui/layout';
+import { touchOnlyDevice } from '../data/controls';
+import { DESIGN_ZOOM, designView, cssPerUnit, infoSide, nearestCell, ringRadius, sheetSlots, snapRadius, tdTouchLayout, type TdTouchLayout } from '../data/towerDefense/touchTd';
+import { TdTouchMap } from '../ui/tdTouchMap';
+import { fitTextIn, tdTouchBox, useTdTouchWidth } from '../ui/tdTouchScene';
 import { NavInput, PadButtons, UI, MenuList } from '../ui/nav';
 import { drawBox, fadeIn, goTo, lowFx, RARITY_COLORS, shorten } from '../ui/theme';
 import { ToastStack } from '../ui/toast';
@@ -179,6 +186,21 @@ export class TowerDefenseScene extends Phaser.Scene {
   private eventText!: Phaser.GameObjects.Text;
   private bossName!: Phaser.GameObjects.Text;
   private eventIconKey = '';
+  // Táctil (rama `tdmovil`)
+  private touch = false;
+  private tl: TdTouchLayout | null = null;
+  private tmap: TdTouchMap | null = null;
+  /** Casilla elegida con el dedo que espera confirmación (anillo o «Confirmar»). */
+  private pending: { x: number; y: number } | null = null;
+  /** Objetos de la interfaz (para rehacerla al girar o cambiar las barras del navegador). */
+  private uiObjs: Phaser.GameObjects.GameObject[] = [];
+  private touchBtns: { confirm: Btn; cancel: Btn } | null = null;
+  private touchHint: Phaser.GameObjects.Text | null = null;
+  private hudIcons: Phaser.GameObjects.Image[] = [];
+  private themeIcon: Phaser.GameObjects.Image | null = null;
+  private allCells: { x: number; y: number }[] = [];
+  /** Dónde van la barra del jefe y el aviso del evento (arriba a la derecha del mapa) y su escala. */
+  private ev = { x: EV_X, y: 68, w: EV_W, s: 1 };
 
   constructor() {
     super('TowerDefense');
@@ -224,6 +246,16 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.motes = [];
     this.soulCells = [];
     this.themeBadges = [];
+    this.touch = false;
+    this.tl = null;
+    this.tmap = null;
+    this.pending = null;
+    this.uiObjs = [];
+    this.touchBtns = null;
+    this.touchHint = null;
+    this.hudIcons = [];
+    this.themeIcon = null;
+    this.ev = { x: EV_X, y: 68, w: EV_W, s: 1 };
   }
 
   /** Tipo tema del nivel para la música. */
@@ -232,6 +264,12 @@ export class TowerDefenseScene extends Phaser.Scene {
   create() {
     fadeIn(this);
     fitDesign(this);
+    // Táctil: lienzo a todo el ancho (hasta 3:1) y disposición propia (al cerrarse suelta los dedos)
+    this.touch = touchOnlyDevice();
+    if (this.touch) {
+      useTdTouchWidth(this);
+      fitDesign(this);
+    }
     this.cameras.main.setBackgroundColor(0x18202c);
     bakeTdArt(this);
     bakeTypeFx(this);
@@ -389,14 +427,18 @@ export class TowerDefenseScene extends Phaser.Scene {
 
     // Zona del mapa: ratón
     const zone = this.add.zone(OX, OY, W, H).setOrigin(0).setInteractive().setDepth(1);
+    // En táctil los dedos van por los gestos del mapa (TdTouchMap); la zona queda para un ratón
     // El ratón mueve el mismo cursor que el teclado y el mando (así solo hay un cursor en pantalla)
     zone.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (this.touch && p.wasTouch) return;
       this.hover = this.cellAt(p);
       if (this.hover && this.canAct()) this.cursor = { ...this.hover };
     });
-    zone.on('pointerout', () => (this.hover = null));
+    zone.on('pointerout', (p: Phaser.Input.Pointer) => {
+      if (!(this.touch && p.wasTouch)) this.hover = null;
+    });
     zone.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (!this.canAct()) return;
+      if (!this.canAct() || (this.touch && p.wasTouch)) return;
       if (p.rightButtonDown()) return this.cancel();
       const c = this.cellAt(p);
       if (!c) return;
@@ -408,12 +450,192 @@ export class TowerDefenseScene extends Phaser.Scene {
       if (this.canAct() && dy) this.cycleTeam(dy > 0 ? 1 : -1);
     });
 
+    if (this.touch) this.setupTouch(W, H);
+    this.buildUi();
+    this.drawAmbient(0);
+  }
+
+  /** Barra, equipo, panel y avisos; en táctil con la disposición de ahora (y se guardan para rehacerlos). */
+  private buildUi() {
+    const before = new Set(this.children.list);
+    if (this.touch) this.tl = this.touchLayoutNow();
     this.buildHud();
     this.buildTeam();
     this.buildBar();
-    this.drawAmbient(0);
+    const L = this.tl;
     // Avisos arriba a la izquierda del mapa (nunca en el centro): estrechos, como mucho 2 y breves para no tapar el camino
-    this.toasts = new ToastStack(this, OX + 6, OY + 6, 220, (c) => c.setDepth(70), 2);
+    this.toasts = L
+      ? new ToastStack(this, L.map.x + L.pad, L.map.y + L.pad, Math.min(L.map.w * 0.48, L.font * 20), (c) => c.setDepth(70), 2, (px) => Math.max(px, L.fontMin))
+      : new ToastStack(this, OX + 6, OY + 6, 220, (c) => c.setDepth(70), 2);
+    this.uiObjs = this.children.list.filter((o) => !before.has(o));
+    if (L) this.tmap?.layout(L.map, L.k / DESIGN_ZOOM);
+  }
+
+  // --- Táctil: disposición propia (rama `tdmovil`) ---
+
+  private touchLayoutNow(): TdTouchLayout {
+    const b = tdTouchBox();
+    return tdTouchLayout(designView(LW), cssPerUnit(b.w, b.h, LW), this.td.team.length, ABILITIES.length);
+  }
+
+  private setupTouch(W: number, H: number) {
+    this.allCells = [];
+    for (let y = 0; y < TD_ROWS; y++) for (let x = 0; x < TD_COLS; x++) this.allCells.push({ x, y });
+    this.tmap = new TdTouchMap(this, { x: OX - 8, y: OY - 8, w: W + 16, h: H + 16 }, CELL, {
+      tap: (wx, wy, px, py) => this.touchTap(wx, wy, px, py),
+      hold: (wx, wy) => {
+        this.hover = this.touchCellAt(wx, wy);
+      },
+      holdEnd: (wx, wy, commit) => {
+        if (commit) this.touchPick(wx, wy);
+        else this.hover = this.pending;
+      },
+      blocked: () => !this.canAct(),
+    });
+  }
+
+  /** Lo llama wideScreen al cambiar el ancho del lienzo (girar, barras del navegador): en táctil se rehace la interfaz. */
+  relayoutWide() {
+    fitDesign(this);
+    if (!this.touch || !this.ready) return;
+    const next = this.touchLayoutNow();
+    const tl = this.tl;
+    if (tl && Math.abs(next.view.w - tl.view.w) < 0.5 && Math.abs(next.k - tl.k) < 1e-4) return;
+    for (const o of this.uiObjs) o.destroy();
+    for (const o of this.panelTexts) o.destroy();
+    for (const b of this.panelBtns) {
+      b.text?.destroy();
+      b.zone.destroy();
+    }
+    this.teamBtns = [];
+    this.barBtns = [];
+    this.cdTexts = [];
+    this.keyTexts = [];
+    this.help = [];
+    this.themeBadges = [];
+    this.panelBtns = [];
+    this.panelTexts = [];
+    this.hudIcons = [];
+    this.themeIcon = null;
+    this.panelKey = '';
+    this.helpKey = '';
+    this.eventIconKey = '';
+    this.touchBtns = null;
+    this.touchHint = null;
+    this.buildUi();
+  }
+
+  private needsConfirm(): boolean {
+    return this.placing !== null || this.moving !== null || this.aiming !== null;
+  }
+
+  /** ¿Hoja de la torre o del camino abierta en la columna derecha (en vez del equipo)? */
+  private sheetOpen(): boolean {
+    return !!this.tl && this.moving === null && (this.selected !== null || this.roadSel !== null);
+  }
+
+  /** Casilla que toca el dedo: la de debajo o la válida más cercana a ≤ 28 px CSS (según lo que se está haciendo). */
+  private touchCellAt(wx: number, wy: number): { x: number; y: number } | null {
+    const tm = this.tmap;
+    if (!tm) return null;
+    const r = snapRadius(tm.zoomNow, tm.cssPerCanvas, CELL);
+    const free = this.freeCells.filter((c) => !this.td.towerAt(c.x, c.y));
+    let cands: { x: number; y: number }[];
+    if (this.aiming) cands = this.allCells;
+    else if (this.moving !== null) {
+      const mv = this.td.towers.find((q) => q.id === this.moving);
+      cands = mv ? [...free, { x: mv.x, y: mv.y }] : free;
+    } else if (this.placing !== null) cands = [...free, ...this.td.towers.map((t) => ({ x: t.x, y: t.y }))];
+    else cands = this.allCells.filter((c) => this.td.towerAt(c.x, c.y) || this.td.isRoad(c.x, c.y) || free.some((f) => f.x === c.x && f.y === c.y));
+    return nearestCell(wx, wy, cands, OX, OY, CELL, r);
+  }
+
+  /** Toque en el mapa: dentro del anillo de la casilla elegida confirma; si no, elige casilla. */
+  private touchTap(wx: number, wy: number, px: number, py: number) {
+    const tm = this.tmap;
+    if (!tm) return;
+    if (this.pending && this.needsConfirm()) {
+      const c = tm.screenOf(sx(this.pending.x) + CELL / 2, sy(this.pending.y) + CELL / 2);
+      if (Math.hypot(px - c.x, py - c.y) <= ringRadius(tm.cellCanvas, tm.cssPerCanvas)) return this.confirmPending();
+    }
+    this.touchPick(wx, wy);
+  }
+
+  /** Elige la casilla del dedo. Colocar, mover y apuntar esperan confirmación; abrir una torre o el camino, no. */
+  private touchPick(wx: number, wy: number) {
+    const cell = this.touchCellAt(wx, wy);
+    if (!cell) {
+      // Fuera del mapa o lejos de todo: cierra lo abierto
+      if (!this.needsConfirm() && (this.selected !== null || this.roadSel)) this.cancel();
+      return;
+    }
+    this.cursor = { ...cell };
+    if (this.needsConfirm()) {
+      // Un Pokémon colocado bajo el dedo mientras eliges dónde poner otro: se abre su torre
+      if (this.placing !== null && this.td.towerAt(cell.x, cell.y)) {
+        this.pending = null;
+        return this.activateCell(cell.x, cell.y);
+      }
+      this.pending = { ...cell };
+      this.hover = { ...cell };
+      sfx('select');
+      return;
+    }
+    this.pending = null;
+    this.activateCell(cell.x, cell.y);
+    // Casilla libre sin nada elegido: queda elegido el último Pokémon y esta casilla espera confirmación
+    if (this.needsConfirm()) {
+      this.pending = { ...cell };
+      this.hover = { ...cell };
+    }
+  }
+
+  private confirmPending() {
+    const c = this.pending;
+    if (!c || !this.canAct()) return;
+    this.pending = null;
+    this.activateCell(c.x, c.y);
+    this.hover = null;
+  }
+
+  private touchCancel() {
+    if (this.moving !== null) {
+      this.moving = null;
+      this.pending = null;
+      this.hover = null;
+      this.focus = { zone: 'panel', i: 0 };
+      return;
+    }
+    this.cancel();
+  }
+
+  /** Sacudida de la cámara del mapa (en táctil) o de la principal. */
+  private shakeCam(ms: number, k: number) {
+    if (this.tmap) this.tmap.shake(ms, k);
+    else this.cameras.main.shake(ms, k);
+  }
+
+  /** Enseña o esconde un botón (y su zona de toque). */
+  private showBtn(b: Btn, on: boolean) {
+    b.text?.setVisible(on);
+    b.icon?.setVisible(on);
+    if (b.zone.input) b.zone.input.enabled = on;
+  }
+
+  /** Línea de ayuda táctil (abajo del mapa). */
+  private touchHintText(): string {
+    if (this.perkUi || this.ended) return '';
+    const cost = (n: number) => `${n} $`;
+    if (this.aiming) return this.pending ? `Toca el anillo o «Confirmar»: lanzar ${ABILITY_INFO[this.aiming].name}` : `Toca el mapa donde lanzar ${ABILITY_INFO[this.aiming].name}`;
+    const mv = this.moving !== null ? this.td.towers.find((q) => q.id === this.moving) : undefined;
+    if (mv) return this.pending ? `Toca el anillo o «Confirmar»: mover aquí (${cost(this.td.moveCost(mv))})` : `Toca la casilla nueva de ${mv.mon.name}`;
+    if (this.selected !== null) return 'Acciones a la derecha · toca fuera para cerrar';
+    if (this.roadSel) return 'Trampas y barricada a la derecha · toca fuera para cerrar';
+    if (this.placing !== null) {
+      const m = this.td.team[this.placing];
+      return this.pending ? `Toca el anillo o «Confirmar»: colocar ${m.name} (${cost(towerCost(m))})` : `Toca una casilla libre para ${m.name}`;
+    }
+    return 'Toca una casilla o un Pokémon · arrastra o pellizca el mapa · mantén el dedo: lupa';
   }
 
   private toast(text: string, kind: 'info' | 'reward' | 'warning' | 'danger' = 'info') {
@@ -421,7 +643,7 @@ export class TowerDefenseScene extends Phaser.Scene {
   }
 
   private cellAt(p: Phaser.Input.Pointer): { x: number; y: number } | null {
-    const w = this.cameras.main.getWorldPoint(p.x, p.y);
+    const w = this.tmap ? this.tmap.worldAt(p.x, p.y) : this.cameras.main.getWorldPoint(p.x, p.y);
     const x = Math.floor((w.x - OX) / CELL);
     const y = Math.floor((w.y - OY) / CELL);
     return x >= 0 && y >= 0 && x < TD_COLS && y < TD_ROWS ? { x, y } : null;
@@ -446,6 +668,7 @@ export class TowerDefenseScene extends Phaser.Scene {
   }
 
   private buildHud() {
+    if (this.tl) return this.buildHudTouch(this.tl);
     const top = this.add.graphics().setDepth(55);
     drawBox(top, 4, 4, 780, 52, { radius: 10 });
     tdIcon(this, 30, 30, 'heart', 3).setDepth(62);
@@ -472,24 +695,89 @@ export class TowerDefenseScene extends Phaser.Scene {
 
   private buildTeam() {
     this.td.team.forEach((m, i) => {
-      const x = PANEL_X + 12 + (i % 2) * 72;
-      const y = 42 + Math.floor(i / 2) * 72;
-      const b = this.makeBtn(x, y, 66, 66, '', () => this.pickSlot(i));
+      // Táctil: casillas de la columna derecha (≥ 56 px CSS); todo se escala con su lado (`k`)
+      const r = this.tl?.team[i];
+      const x = r ? r.x : PANEL_X + 12 + (i % 2) * 72;
+      const y = r ? r.y : 42 + Math.floor(i / 2) * 72;
+      const side = r ? r.w : 66;
+      const k = side / 66;
+      const b = this.makeBtn(x, y, side, side, '', () => this.pickSlot(i));
       const tex = this.monTexture(m.id);
-      b.icon = this.add.image(x + 33, y + 28, tex.key, tex.frame).setDepth(62);
-      const fit = 44 / Math.max(1, b.icon.width, b.icon.height);
-      b.icon.setScale(tex.pmd ? Math.min(2.2, fit * 1.5) : tex.key === tdIconKey('ball') ? 2.6 : fit * 1.3);
-      b.text = this.add.text(x + 33, y + 56, `${towerCost(m)} $`, { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: NAVY }).setOrigin(0.5).setDepth(62);
+      b.icon = this.add.image(x + side / 2, y + 28 * k, tex.key, tex.frame).setDepth(62);
+      const fit = (44 * k) / Math.max(1, b.icon.width, b.icon.height);
+      b.icon.setScale(tex.pmd ? Math.min(2.2 * k, fit * 1.5) : tex.key === tdIconKey('ball') ? 2.6 * k : fit * 1.3);
+      b.text = this.add.text(x + side / 2, y + 56 * k, `${towerCost(m)} $`, { fontFamily: UI.FONT, fontSize: `${Math.round(13 * k)}px`, fontStyle: 'bold', color: NAVY }).setOrigin(0.5).setDepth(62);
       this.teamBtns.push(b);
       // Potenciada en este nivel: insignia del tipo tema (o flecha de Ventaja) arriba a la derecha de la casilla
       const boost = this.td.themeBoostOf({ mon: m }).kind;
       this.themeBadges.push(
-        boost === 'tema' ? typeIcon(this, x + 56, y + 11, this.td.theme, 1.4).setDepth(63) : boost === 'ventaja' ? this.add.image(x + 57, y + 10, tdIconKey('pkUp')).setScale(1.2).setDepth(63) : null,
+        boost === 'tema'
+          ? typeIcon(this, x + 56 * k, y + 11 * k, this.td.theme, 1.4 * k).setDepth(63)
+          : boost === 'ventaja'
+            ? this.add.image(x + 57 * k, y + 10 * k, tdIconKey('pkUp')).setScale(1.2 * k).setDepth(63)
+            : null,
       );
     });
   }
 
+  /** Táctil: columnas con su fondo, franja de datos encima del mapa y avisos del jefe/evento arriba a la derecha del mapa. */
+  private buildHudTouch(L: TdTouchLayout) {
+    const g = this.add.graphics().setDepth(55);
+    const half = L.pad / 2;
+    drawBox(g, L.left.x - half, L.left.y - half, L.left.w + L.pad, L.left.h + L.pad, { radius: 10 });
+    drawBox(g, L.right.x - half, L.right.y - half, L.right.w + L.pad, L.right.h + L.pad, { radius: 10 });
+    drawBox(g, L.strip.x, L.strip.y, L.strip.w, L.strip.h, { radius: 8 });
+    const cy = L.strip.y + L.strip.h / 2;
+    const k = L.font / 15;
+    this.hudIcons = [tdIcon(this, 0, cy, 'heart', 3 * k).setDepth(62), tdIcon(this, 0, cy, 'coin', 3 * k).setDepth(62)];
+    const st = (size: number, color = NAVY) => this.add.text(0, cy, '', { fontFamily: UI.FONT, fontSize: `${size}px`, fontStyle: 'bold', color }).setOrigin(0, 0.5).setDepth(62);
+    this.hud = { hp: st(L.font), money: st(L.fontBig, '#8a6a00'), wave: st(L.font), next: st(L.fontMin), title: st(L.fontMin).setOrigin(1, 0.5) };
+    this.hud.title.setText(shorten(`${this.map.name} · ${this.td.endless ? 'Infinito' : `Nv. ${this.args.level}`}`, 26));
+    this.themeIcon = typeIcon(this, 0, cy, this.td.theme, 1.8 * k).setDepth(62);
+    this.teamHead = new GlyphText(this, 0, 0, '', { size: 12, color: NAVY, auto: false }).setDepth(62).setVisible(false);
+    const evW = Math.min(L.map.w * 0.5, L.font * 22);
+    this.ev = { x: L.map.x + L.map.w - evW - L.pad, y: L.map.y + L.pad, w: evW, s: L.fontMin / 12 };
+    const e = this.ev;
+    this.bossName = this.add.text(e.x + e.w, e.y + 18 * e.s, '', { fontFamily: UI.FONT, fontSize: `${L.fontMin}px`, fontStyle: 'bold', color: '#ffffff' }).setOrigin(1, 0).setStroke('#18202c', 4).setDepth(62);
+    this.eventIcon = tdIcon(this, e.x + 16 * e.s, 0, 'rayo', 2 * e.s).setDepth(62).setVisible(false);
+    this.eventText = this.add
+      .text(e.x + 32 * e.s, 0, '', { fontFamily: UI.FONT, fontSize: `${L.fontMin}px`, fontStyle: 'bold', color: '#ffffff', wordWrap: { width: e.w - 40 * e.s }, lineSpacing: 1 })
+      .setStroke('#18202c', 4)
+      .setDepth(62);
+  }
+
+  /** Táctil: habilidades, oleada, velocidad y pausa en la columna izquierda; Confirmar y Cancelar abajo a la derecha. */
+  private buildBarTouch(L: TdTouchLayout) {
+    const k = L.btn / 32;
+    ABILITIES.forEach((id, i) => {
+      const r = L.abilities[i];
+      const b = this.makeBtn(r.x, r.y, r.w, r.h, '', () => this.useAbility(id));
+      b.icon = tdIcon(this, r.x + r.w / 2, r.y + r.h / 2, id, 2.2 * k * 0.8).setDepth(62);
+      b.color = ABILITY_INFO[id].color;
+      this.cdTexts.push(this.add.text(r.x + r.w / 2, r.y + r.h / 2, '', { fontFamily: UI.FONT, fontSize: `${L.fontBig}px`, fontStyle: 'bold', color: '#ffffff' }).setOrigin(0.5).setStroke('#18202c', 4).setDepth(64));
+      this.barBtns.push(b);
+    });
+    const R = (r: { x: number; y: number; w: number; h: number }, label: string, act: () => void, en: () => boolean = () => true, color?: number) => {
+      const b = this.makeBtn(r.x, r.y, r.w, r.h, label, act, en, L.font, color);
+      b.text?.setWordWrapWidth(r.w - L.pad);
+      return b;
+    };
+    this.barBtns.push(R(L.wave, 'Siguiente oleada', () => this.callWave(), () => this.td.phase === 'prep'));
+    this.barBtns.push(R(L.speed, 'x1', () => this.cycleSpeed()));
+    this.barBtns.push(R(L.pause, 'Pausa', () => this.openPause()));
+    this.touchBtns = {
+      confirm: R(L.confirm, 'Confirmar', () => this.confirmPending(), () => this.pending !== null, 0x7cf07a),
+      cancel: R(L.cancel, 'Cancelar', () => this.touchCancel(), () => true, 0xffc8b8),
+    };
+    this.touchHint = this.add
+      .text(L.map.x + L.map.w / 2, L.map.y + L.map.h - L.pad, '', { fontFamily: UI.FONT, fontSize: `${L.fontMin}px`, color: '#ffffff', align: 'center', wordWrap: { width: L.map.w - L.pad * 4 } })
+      .setOrigin(0.5, 1)
+      .setStroke('#18202c', 4)
+      .setDepth(62);
+  }
+
   private buildBar() {
+    if (this.tl) return this.buildBarTouch(this.tl);
     // Tecla o botón del mando dibujado en pixel art (no escrito)
     const keyText = (x: number, a: TdKeyAction, originX = 0, size = 13) => {
       const t = new GlyphText(this, x, 617, '', { size, color: NAVY, auto: false, originX }).setDepth(64);
@@ -556,6 +844,7 @@ export class TowerDefenseScene extends Phaser.Scene {
   }
 
   private cancel() {
+    this.pending = null;
     this.placing = null;
     this.selected = null;
     this.aiming = null;
@@ -569,6 +858,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (this.moving !== null) {
       // Cancelar el movimiento vuelve a la torre abierta
       this.moving = null;
+      this.pending = null;
       this.focus = { zone: 'panel', i: 0 };
       return;
     }
@@ -673,6 +963,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     const t = this.selectedTower();
     if (!t) return;
     this.moving = t.id;
+    this.pending = null;
     this.cursor = { x: t.x, y: t.y };
     this.focus = { zone: 'grid' };
   }
@@ -695,6 +986,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.td.moveTower(t.id, x, y);
     sfx('buy');
     this.moving = null;
+    this.pending = null;
     this.focus = { zone: 'panel', i: 0 };
   }
 
@@ -745,7 +1037,8 @@ export class TowerDefenseScene extends Phaser.Scene {
       return;
     }
     if (this.aiming === id) {
-      // En táctil no hay cursor: tocar otra vez el botón cancela
+      // Táctil con casilla elegida: el botón otra vez la lanza ahí; sin casilla (o sin cursor), cancela
+      if (this.tl && this.pending) return this.confirmPending();
       if (currentInput() === 'touch') return this.cancel();
       return this.castAt(id, this.cursor.x, this.cursor.y);
     }
@@ -760,6 +1053,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     this.roadSel = null;
     this.focus = { zone: 'grid' };
     this.aiming = id;
+    this.pending = null;
     sfx('select');
   }
 
@@ -773,6 +1067,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     }
     this.td.useAbility(id, at);
     this.aiming = null;
+    this.pending = null;
   }
 
   /** Efectos de una habilidad lanzada (llegan como evento del motor). */
@@ -786,7 +1081,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         pixFlash(this, X(p.x), Y(p.y), 34, 0xffffff, 220, 44);
       }
       if (x || y) pixRing(this, X(x), Y(y) + 8, ABILITY_INFO.rayo.radius * CELL, 0xffd34d, 380, 44);
-      this.cameras.main.shake(180, 0.006);
+      this.shakeCam(180, 0.006);
     } else if (id === 'ventisca') {
       sfx('hit');
       const veil = this.add.rectangle(OX, OY, TD_COLS * CELL, TD_ROWS * CELL, 0x8fe0ff, 0.35).setOrigin(0).setDepth(45);
@@ -803,7 +1098,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       pixBlast(this, X(x), Y(y), ABILITY_INFO.bomba.radius * CELL, 0xff7a3a, 45);
       pixRing(this, X(x), Y(y) + 8, ABILITY_INFO.bomba.radius * CELL, 0xffd34d, 420, 44);
       if (!lowFx()) pixDebris(this, X(x), Y(y), 0x6a7080, 14, 1.6, 44);
-      this.cameras.main.shake(220, 0.01);
+      this.shakeCam(220, 0.01);
     } else {
       sfx('levelup');
       pixRing(this, X(x), Y(y) + 8, ABILITY_INFO.refuerzo.radius * CELL, 0x7cf07a, 500, 44);
@@ -817,16 +1112,22 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (!this.ready || this.ended || this.overlay) return;
     this.paused = true;
     const c = this.add.container(0, 0).setDepth(100);
-    const dim = this.add.rectangle(480, 320, 1600, 1000, 0x000000, 0.6).setInteractive();
+    const dim = this.add.rectangle(480, 320, 4000, 4000, 0x000000, 0.6).setInteractive();
     const g = this.add.graphics();
-    drawBox(g, 300, 170, 360, 360, { radius: 16 });
-    const t = this.add.text(480, 205, 'Pausa', { fontFamily: UI.FONT, fontSize: '30px', fontStyle: 'bold', color: NAVY }).setOrigin(0.5);
+    // Táctil: filas de casi un botón (≥ 48 px CSS) que caben en el alto
+    const L = this.tl;
+    const rowH = L ? Math.max(48, Math.min(L.btn, Math.floor((640 - L.pad * 2 - L.fontBig * 3) / 4 - 12))) : 48;
+    const boxW = L ? Math.max(360, L.font * 17) : 360;
+    const boxH = L ? L.fontBig * 3 + 4 * (rowH + 12) + L.pad : 360;
+    const boxY = L ? 320 - boxH / 2 : 170;
+    drawBox(g, 480 - boxW / 2, boxY, boxW, boxH, { radius: 16 });
+    const t = this.add.text(480, L ? boxY + L.fontBig * 1.5 : 205, 'Pausa', { fontFamily: UI.FONT, fontSize: `${L ? L.fontBig * 2 : 30}px`, fontStyle: 'bold', color: NAVY }).setOrigin(0.5);
     c.add([dim, g, t]);
     this.overlay = c;
     this.overlayList = new MenuList(
       this,
       480,
-      262,
+      L ? boxY + L.fontBig * 3 + rowH / 2 : 262,
       ['Continuar', 'Controles', 'Reiniciar nivel', 'Salir a los niveles'],
       (i) => {
         if (i === 0) return this.closePause();
@@ -838,7 +1139,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         });
         if (!asked) go();
       },
-      { w: 300, h: 48, gap: 12, depth: 101 },
+      { w: boxW - 60, h: rowH, gap: 12, depth: 101, ...(L ? { fontSize: Math.max(24, L.fontBig) } : {}) },
     );
     c.add(this.overlayList.container);
   }
@@ -881,7 +1182,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (!o.won) {
       const b = this.basePos();
       pixBlast(this, b.x, b.y, 60, 0xff5a4a, 50);
-      this.cameras.main.shake(400, 0.012);
+      this.shakeCam(400, 0.012);
     }
     this.time.delayedCall(o.won ? 700 : 1000, () => this.showResult(o.won, stars, o.waves, rewards));
   }
@@ -890,7 +1191,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     sfx(won ? 'clear' : 'faint');
     const c = this.add.container(0, 0).setDepth(100);
     this.overlay = c;
-    const dim = this.add.rectangle(480, 320, 1600, 1000, 0x000000, 0.65).setInteractive();
+    const dim = this.add.rectangle(480, 320, 4000, 4000, 0x000000, 0.65).setInteractive();
     const g = this.add.graphics();
     drawBox(g, 230, 86, 500, 486, { radius: 18 });
     // Cinta del título
@@ -963,6 +1264,7 @@ export class TowerDefenseScene extends Phaser.Scene {
   update(time: number, delta: number) {
     if (!this.ready) return;
     this.readInput(delta);
+    this.tmap?.update(time);
     if (!this.paused && !this.ended && !this.overlay) {
       this.td.step((Math.min(delta, 100) / 1000) * SPEEDS[this.speedIdx]);
       for (const e of this.td.drainEvents()) this.onEvent(e);
@@ -1092,7 +1394,7 @@ export class TowerDefenseScene extends Phaser.Scene {
           sfx('roar');
           pixBlast(this, x, y, e.boss ? 70 : 54, 0xffd34d, 31);
           starBurst(this, x, y, 0xffd34d, 10, 1.6, 32);
-          this.cameras.main.shake(320, 0.01);
+          this.shakeCam(320, 0.01);
           this.toast(e.boss ? `¡Has vencido a ${CHIEF_NAMES[e.species] ?? 'el jefe legendario'}!` : `¡Minijefe vencido! +${e.money} $ y tickets al acabar`, 'reward');
         } else sfx('hit');
         break;
@@ -1103,7 +1405,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         const b = this.basePos();
         damageNumber(this, b.x, b.y - 30, e.dmg, { color: '#ff5a4a', depth: 50 });
         hitSpark(this, b.x, b.y - 6, 0xff5a4a, 8, 1.2, 31);
-        this.cameras.main.shake(140, 0.004);
+        this.shakeCam(140, 0.004);
         break;
       }
       case 'heal':
@@ -1270,7 +1572,7 @@ export class TowerDefenseScene extends Phaser.Scene {
           sfx('boom');
           pixBlast(this, X(e.x), Y(e.y) - 6, e.r * CELL, 0xff7a3a, 45);
           if (!lowFx()) pixDebris(this, X(e.x), Y(e.y), 0x6a7080, 10, 1.2, 44);
-          this.cameras.main.shake(160, 0.006);
+          this.shakeCam(160, 0.006);
         } else {
           pixRing(this, X(e.x), Y(e.y), 22, 0xe8ecf4, 300, 44);
         }
@@ -1279,7 +1581,7 @@ export class TowerDefenseScene extends Phaser.Scene {
         sfx('enrage');
         phaseShock(this, X(e.x), Y(e.y), 0xb08aff, 1.2, 30);
         pixDebris(this, X(e.x), Y(e.y), 0x6a7080, 14, 1.4, 44);
-        this.cameras.main.shake(260, 0.008);
+        this.shakeCam(260, 0.008);
         this.toast(`¡Se abre ${e.label === 'Entrada nueva' ? 'una entrada nueva' : e.label === 'Atajo' ? 'un atajo' : 'un camino alternativo'}!`, 'danger');
         break;
       case 'routeClosed':
@@ -1360,7 +1662,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     if (this.ended || this.perkUi || this.overlay) return;
     this.cancel();
     const c = this.add.container(0, 0).setDepth(100);
-    const dim = this.add.rectangle(480, 320, 1600, 1000, 0x000000, 0.55).setInteractive();
+    const dim = this.add.rectangle(480, 320, 4000, 4000, 0x000000, 0.55).setInteractive();
     const epic = list.some((p) => p.epic);
     const title = this.add
       .text(400, 128, epic ? '¡Jefe vencido! Elige una mejora épica' : 'Elige una mejora', { fontFamily: UI.FONT, fontSize: '24px', fontStyle: 'bold', color: epic ? '#e0c8ff' : '#ffffff' })
@@ -1837,6 +2139,18 @@ export class TowerDefenseScene extends Phaser.Scene {
       g.fillStyle(info.color, 0.16).fillCircle(cx, cy, info.radius * CELL);
       drawRange(g, cx, cy, info.radius * CELL, true, t);
     }
+    // Táctil: anillo de confirmación (≥ 56 px CSS) alrededor de la casilla elegida
+    if (this.tmap && this.pending && this.needsConfirm() && !this.ended) {
+      const tm = this.tmap;
+      const r = ringRadius(tm.cellCanvas, tm.cssPerCanvas) / tm.zoomNow;
+      const lw = 3 / Math.max(1e-6, tm.zoomNow * tm.cssPerCanvas);
+      const cx = sx(this.pending.x) + CELL / 2;
+      const cy = sy(this.pending.y) + CELL / 2;
+      const pulse = still ? 1 : 0.75 + 0.25 * Math.sin(t / 160);
+      g.lineStyle(lw * 2.2, 0x18202c, 0.8).strokeCircle(cx, cy, r);
+      g.lineStyle(lw, this.aiming ? ABILITY_INFO[this.aiming].color : 0xffd34d, pulse).strokeCircle(cx, cy, r);
+      g.lineStyle(lw, 0xffffff, 0.9).strokeRect(sx(this.pending.x) + 1, sy(this.pending.y) + 1, CELL - 2, CELL - 2);
+    }
     if (!touch && this.focus.zone === 'grid' && !this.overlay && !this.ended) drawCursor(g, sx(this.cursor.x), sy(this.cursor.y), CELL, this.aiming ? ABILITY_INFO[this.aiming].color : this.moving !== null ? 0x8fd0ff : this.placing !== null ? 0x7cf07a : 0xffd34d, t);
   }
 
@@ -1846,13 +2160,24 @@ export class TowerDefenseScene extends Phaser.Scene {
     const game = this.td;
     const dev = currentInput() as TdDevice;
     const hr = game.hp / game.maxHp;
-    drawBar(g, 46, 24, 96, 12, hr, hr > 0.5 ? 0x4cd964 : hr > 0.25 ? 0xffcc00 : 0xff3b30);
+    const hpColor = hr > 0.5 ? 0x4cd964 : hr > 0.25 ? 0xffcc00 : 0xff3b30;
+    if (!this.tl) drawBar(g, 46, 24, 96, 12, hr, hpColor);
     this.hud.hp.setText(`${game.hp}/${game.maxHp}`);
     this.hud.money.setText(`${game.money}`);
     this.hud.wave.setText(game.endless ? `Oleada ${Math.max(1, game.wave)}` : `Oleada ${Math.max(1, game.wave)}/${game.totalWaves}`);
     this.hud.next.setText(game.phase === 'prep' ? `Llega en ${Math.max(0, Math.ceil(game.prepLeft))} s` : game.phase === 'wave' ? `${game.enemies.length} en el mapa` : '');
+    if (this.tl) this.drawStripTouch(g, this.tl, hr, hpColor);
+    const sheet = this.sheetOpen();
+    const teamShown = !this.tl || (!sheet && this.moving === null);
     // Equipo
     this.teamBtns.forEach((b, i) => {
+      // Táctil: con la hoja de la torre o moviendo una torre, el equipo se esconde (su sitio es para las acciones)
+      if (this.tl) {
+        this.showBtn(b, teamShown);
+        this.themeBadges[i]?.setVisible(teamShown);
+        if (!teamShown) return;
+      }
+      const s = b.w / 66;
       const m = game.team[i];
       const afford = game.money >= towerCost(m);
       const full = game.placedOf(i) >= game.limitOf(i);
@@ -1862,7 +2187,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       g.fillStyle(on ? 0xffd34d : full ? 0x8a90a0 : afford ? 0xe8ecf4 : 0xc8ccd4, 1).fillRect(b.x, b.y, b.w, b.h);
       g.fillStyle(0xffffff, 0.5).fillRect(b.x, b.y, b.w, 3);
       g.fillStyle(RARITY_COLORS[m.rarity], 1).fillRect(b.x, b.y + b.h - 4, b.w, 4);
-      for (let q = 0; q < game.limitOf(i); q++) g.fillStyle(q < game.placedOf(i) ? 0x2e86de : 0xb8bcc6, 1).fillRect(b.x + 4 + q * 8, b.y + 5, 6, 6);
+      for (let q = 0; q < game.limitOf(i); q++) g.fillStyle(q < game.placedOf(i) ? 0x2e86de : 0xb8bcc6, 1).fillRect(b.x + (4 + q * 8) * s, b.y + 5 * s, 6 * s, 6 * s);
       if (foc) g.lineStyle(2, 0xffd34d, 0.8).strokeRect(b.x - 4, b.y - 4, b.w + 8, b.h + 8);
       b.icon?.setAlpha(afford && !full ? 1 : 0.45);
       b.text?.setColor(afford ? NAVY : '#a04040');
@@ -1898,9 +2223,67 @@ export class TowerDefenseScene extends Phaser.Scene {
         }
       }
     });
+    if (this.touchBtns) {
+      // Confirmar / Cancelar: solo al colocar, mover o apuntar (y sin la hoja abierta)
+      const show = !sheet && this.needsConfirm() && !this.ended;
+      for (const b of [this.touchBtns.confirm, this.touchBtns.cancel]) {
+        this.showBtn(b, show);
+        if (!show) continue;
+        const en = b.enabled();
+        g.fillStyle(0x18202c, 1).fillRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4);
+        g.fillStyle(en ? b.color ?? 0xe8ecf4 : 0xb8bcc6, 1).fillRect(b.x, b.y, b.w, b.h);
+        g.fillStyle(0xffffff, 0.5).fillRect(b.x, b.y, b.w, 3);
+      }
+    }
+    if (this.touchHint && this.tl) {
+      const txt = this.touchHintText();
+      if (this.touchHint.text !== txt) this.touchHint.setText(txt);
+      if (txt) {
+        const t = this.touchHint;
+        g.fillStyle(0x18202c, 0.6).fillRect(t.x - t.width / 2 - 6, t.y - t.height - 2, t.width + 12, t.height + 4);
+      }
+      // Marco de la lupa (la cámara de la lupa pinta debajo)
+      const fr = this.tmap?.loupeFrame();
+      if (fr) {
+        g.lineStyle(6, 0x18202c, 1).strokeRect(fr.x - 3, fr.y - 3, fr.w + 6, fr.h + 6);
+        g.lineStyle(3, 0xffd34d, 1).strokeRect(fr.x - 1, fr.y - 1, fr.w + 2, fr.h + 2);
+        const cx = fr.x + fr.w / 2;
+        const cy = fr.y + fr.h / 2;
+        g.lineStyle(2, 0xffffff, 0.8).lineBetween(cx - 8, cy, cx + 8, cy).lineBetween(cx, cy - 8, cx, cy + 8);
+      }
+    }
     this.drawTopRight(g);
     this.updatePanel(g);
     this.updateHelp(dev);
+  }
+
+  /** Táctil: vida, dinero, oleada y llegada en fila dentro de la franja de encima del mapa; el nombre a la derecha si cabe. */
+  private drawStripTouch(g: Phaser.GameObjects.Graphics, L: TdTouchLayout, hr: number, color: number) {
+    const cy = L.strip.y + L.strip.h / 2;
+    const gap = L.font * 0.4;
+    let x = L.strip.x + L.pad * 2;
+    const [heart, coin] = this.hudIcons;
+    heart?.setPosition(x + heart.displayWidth / 2, cy);
+    x += (heart?.displayWidth ?? 0) + gap;
+    const bw = L.font * 3;
+    drawBar(g, x, cy - L.font * 0.3, bw, L.font * 0.6, hr, color);
+    x += bw + gap;
+    this.hud.hp.setX(x);
+    x += this.hud.hp.width + gap * 3;
+    coin?.setPosition(x + coin.displayWidth / 2, cy);
+    x += (coin?.displayWidth ?? 0) + gap;
+    this.hud.money.setX(x);
+    x += this.hud.money.width + gap * 3;
+    this.hud.wave.setX(x);
+    x += this.hud.wave.width + gap * 3;
+    this.hud.next.setX(x);
+    x += this.hud.next.width + gap * 3;
+    const right = L.strip.x + L.strip.w - L.pad * 2;
+    const icon = this.themeIcon;
+    const tw = this.hud.title.width + (icon?.displayWidth ?? 0) + gap;
+    const fits = right - tw >= x;
+    this.hud.title.setVisible(fits).setX(right);
+    icon?.setVisible(fits).setPosition(right - this.hud.title.width - gap - (icon.displayWidth / 2), cy);
   }
 
   /** Arriba a la derecha del mapa: barra grande del jefe y el evento (próximo o en curso, con lo que le queda). */
@@ -1908,7 +2291,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     const game = this.td;
     const boss = game.enemies.find((e) => e.def.kind === 'boss') ?? game.enemies.find((e) => e.def.kind === 'chief');
     if (boss) {
-      drawBossBar(g, EV_X, 68, EV_W, boss.hp / boss.def.maxHp, boss.maxShield ? boss.shield / boss.maxShield : 0, boss.def.kind === 'boss' ? 0xb08aff : 0xe53935);
+      drawBossBar(g, this.ev.x, this.ev.y, this.ev.w, boss.hp / boss.def.maxHp, boss.maxShield ? boss.shield / boss.maxShield : 0, boss.def.kind === 'boss' ? 0xb08aff : 0xe53935);
       const name = boss.def.kind === 'boss' ? `Jefe · ${CHIEF_NAMES[boss.def.species] ?? this.names.get(boss.def.species) ?? 'legendario'}` : `Minijefe · ${CHIEF_NAMES[boss.def.species] ?? ''}`;
       this.bossName.setText(`${name}  ${Math.max(0, Math.ceil(boss.hp))}/${boss.def.maxHp}`).setVisible(true);
     } else this.bossName.setVisible(false);
@@ -1925,7 +2308,8 @@ export class TowerDefenseScene extends Phaser.Scene {
       line = `${info.name} · ${Number.isFinite(info.duration) ? `${Math.max(0, Math.ceil(game.eventLeft))} s` : 'toda la oleada'}\n${info.desc}`;
       if (Number.isFinite(info.duration)) ratio = game.eventLeft / info.duration;
     }
-    const y = boss ? 102 : 68;
+    const E = this.ev;
+    const y = boss ? E.y + 34 * E.s : E.y;
     if (!line) {
       this.eventText.setVisible(false);
       this.eventIcon.setVisible(false);
@@ -1937,14 +2321,15 @@ export class TowerDefenseScene extends Phaser.Scene {
       this.eventIconKey = icon;
       this.eventIcon.setTexture(tdIconKey(icon));
     }
-    this.eventText.setText(line).setPosition(EV_X + 34, y + 5).setVisible(true);
-    this.eventIcon.setPosition(EV_X + 17, y + 20).setVisible(true);
-    const h = Math.max(36, this.eventText.height + 12);
-    g.fillStyle(0x18202c, 0.82).fillRect(EV_X, y, EV_W, h);
-    g.fillStyle(color, 1).fillRect(EV_X, y, 4, h);
+    const q = 4 * E.s;
+    this.eventText.setText(line).setPosition(E.x + 34 * E.s, y + 5 * E.s).setVisible(true);
+    this.eventIcon.setPosition(E.x + 17 * E.s, y + 20 * E.s).setVisible(true);
+    const h = Math.max(36 * E.s, this.eventText.height + 12 * E.s);
+    g.fillStyle(0x18202c, 0.82).fillRect(E.x, y, E.w, h);
+    g.fillStyle(color, 1).fillRect(E.x, y, q, h);
     if (ratio >= 0) {
-      g.fillStyle(0x3a4050, 1).fillRect(EV_X + 4, y + h - 4, EV_W - 4, 4);
-      g.fillStyle(color, 1).fillRect(EV_X + 4, y + h - 4, (EV_W - 4) * Math.max(0, Math.min(1, ratio)), 4);
+      g.fillStyle(0x3a4050, 1).fillRect(E.x + q, y + h - q, E.w - q, q);
+      g.fillStyle(color, 1).fillRect(E.x + q, y + h - q, (E.w - q) * Math.max(0, Math.min(1, ratio)), q);
     }
   }
 
@@ -1996,8 +2381,14 @@ export class TowerDefenseScene extends Phaser.Scene {
       const c = currentInput() === 'touch' ? this.hover ?? this.cursor : this.cursor;
       this.placePreview(this.td.terrainAt(c.x, c.y), this.td.previewSynergy(this.placing, c.x, c.y));
     }
-    g.fillStyle(0x18202c, 0.1).fillRect(PANEL_X + 8, 264, 148, 322);
+    if (!this.tl) g.fillStyle(0x18202c, 0.1).fillRect(PANEL_X + 8, 264, 148, 322);
+    else this.layoutInfoTouch(g, this.tl, tw);
+    const panelShown = !this.tl || this.moving === null;
     this.panelBtns.forEach((b, i) => {
+      if (this.tl) {
+        this.showBtn(b, panelShown);
+        if (!panelShown) return;
+      }
       const en = b.enabled();
       const foc = this.focus.zone === 'panel' && this.focus.i === i && currentInput() !== 'mouse' && currentInput() !== 'touch';
       g.fillStyle(0x18202c, 1).fillRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4);
@@ -2031,6 +2422,7 @@ export class TowerDefenseScene extends Phaser.Scene {
     }
     this.panelTexts = [];
     this.panelBtns = [];
+    if (this.tl) return this.rebuildPanelTouch(tw, this.tl);
     const x = PANEL_X + 12;
     const y0 = 268;
     const txt = (y: number, s: string, size = 14, color = NAVY, bold = false) => {
@@ -2153,6 +2545,118 @@ export class TowerDefenseScene extends Phaser.Scene {
     } else if (count.get('flying')) {
       showTdTip(this, 'td_air');
       txt(y0 + 34 + lines.length * 17, '¡Voladores! Solo los alcanzan Volador, Eléctrico, Psíquico, Dragón, Fantasma, Hada y Hielo (o la rama Táctica).', 11, '#a04040');
+    }
+  }
+  /**
+   * Táctil: la hoja de la torre o del camino en la columna derecha (botones ≥ 56 px CSS, medias filas o enteras) y su
+   * ficha de texto sobre el mapa, en la mitad contraria a la casilla. Al colocar, solo la ficha (el equipo sigue).
+   */
+  private rebuildPanelTouch(tw: TdTower | undefined, L: TdTouchLayout) {
+    type Spec = { label: string; act: () => void; en: () => boolean; color?: number; span: 1 | 2 };
+    const specs: Spec[] = [];
+    const cardW = Math.min(L.map.w * 0.5, L.font * 21);
+    const txt = (s: string, size: number, color = '#ffffff', bold = false) => {
+      const t = this.add
+        .text(0, 0, s, { fontFamily: UI.FONT, fontSize: `${size}px`, fontStyle: bold ? 'bold' : 'normal', color, wordWrap: { width: cardW - L.pad * 2 }, lineSpacing: 1 })
+        .setStroke('#18202c', 3)
+        .setDepth(62);
+      this.panelTexts.push(t);
+      return t;
+    };
+    const close: Spec = { label: 'Cerrar', act: () => this.cancel(), en: () => true, span: 1 };
+    if (tw) {
+      const base = tw.evolved ? this.names.get(tw.evolved) ?? tw.mon.name : tw.mon.name;
+      const name = tw.mega !== null ? `Mega ${base}` : base;
+      const cost = this.td.upgradeCost(tw);
+      txt(`${shorten(name, 16)} · ${levelLabel(tw.level, tw.evolved !== null)}${cost === null ? ' · máximo' : ''}`, L.font, '#ffe9a8', true);
+      showTdTip(this, 'td_upgrade');
+      // [1]: estadísticas (las rellena updatePanel en cada fotograma)
+      txt('', L.fontMin);
+      if (cost !== null && tw.level + 1 === BRANCH_LEVEL && !tw.branch) {
+        const style = towerStats(tw.mon, 1, null).style;
+        const a = branchInfo(style, 'a');
+        const bb = branchInfo(style, 'b');
+        specs.push({ label: `${a.name} · ${cost} $`, act: () => this.doUpgrade('a'), en: () => this.td.money >= cost, color: 0xffb0a8, span: 2 });
+        specs.push({ label: `${bb.name} · ${cost} $`, act: () => this.doUpgrade('b'), en: () => this.td.money >= cost, color: 0xa8d0ff, span: 2 });
+        txt(`Rama ${a.name}: ${a.desc}\nRama ${bb.name}: ${bb.desc}`, L.fontMin, '#ffffff');
+      } else if (cost !== null) {
+        const evo = tw.level + 1 === MEGA_LEVEL ? '\nMegaevoluciona' : tw.level + 1 === MAX_TOWER_LEVEL ? (tw.mon.evolveId ? '\nEvoluciona' : '\nAura final') : '';
+        specs.push({ label: `Mejorar · ${cost} $${evo}`, act: () => this.doUpgrade(), en: () => this.td.money >= cost, color: 0xb8f0c8, span: 2 });
+      }
+      specs.push({ label: `Objetivo:\n${TARGETING_LABEL[tw.targeting]}`, act: () => this.td.cycleTargeting(tw.id), en: () => true, span: 1 });
+      const mc = this.td.moveCost(tw);
+      specs.push({ label: `Mover\n${mc} $`, act: () => this.startMove(), en: () => this.td.money >= mc, color: 0xa8d0ff, span: 1 });
+      specs.push({ label: `Vender\n+${this.td.sellValue(tw)} $`, act: () => this.doSell(), en: () => true, color: 0xffe0a0, span: 1 });
+      specs.push(close);
+    } else if (this.roadSel) {
+      const { x: rx, y: ry } = this.roadSel;
+      const trap = this.td.trapAt(rx, ry);
+      const ter = this.td.terrainAt(rx, ry);
+      txt('Camino', L.font, '#ffe9a8', true);
+      const lines = [
+        ...(trap ? [`Aquí: ${TRAP_INFO[trap.kind].name}`] : []),
+        ...(ter ? [`${TERRAIN_INFO[ter].name}: ${TERRAIN_INFO[ter].desc.toLowerCase()}`] : []),
+        `Trampas: ${this.td.traps.length}/4. Las pisan los de tierra.`,
+        ...TRAP_KINDS.map((k) => `${TRAP_INFO[k].name}: ${TRAP_INFO[k].desc}`),
+      ];
+      for (const k of TRAP_KINDS) {
+        const info = TRAP_INFO[k];
+        specs.push({ label: `${info.name}\n${this.td.trapCost(k)} $`, act: () => this.doTrap(k), en: () => !this.td.trapError(k, rx, ry), color: k === 'mina' ? 0xffc8a0 : 0xe8ecf4, span: 1 });
+      }
+      const route = this.td.routeAt(rx, ry);
+      if (route >= 0 && this.td.map.routes.length > 1) {
+        const left = this.td.barricades[route];
+        specs.push({
+          label: left ? `Barricada puesta\n(${left} oleada${left > 1 ? 's' : ''})` : `Barricada · ${this.td.barricadeCost()} $\nCierra la ruta 2 oleadas`,
+          act: () => this.doBarricade(route),
+          en: () => !this.td.barricadeError(route),
+          color: 0xd8b080,
+          span: 2,
+        });
+      } else lines.push('Toca el tramo propio de una ruta (no compartido) para cerrarla con una barricada.');
+      txt(lines.join('\n'), L.fontMin);
+      specs.push(close);
+    } else if (this.placing !== null) {
+      const m = this.td.team[this.placing];
+      const s = towerStats(m, 1, null);
+      txt(`${shorten(m.name, 16)} · ${towerCost(m)} $`, L.font, '#ffe9a8', true);
+      txt(
+        `${STYLE_LABEL[s.style]} · ${m.types.map(typeNameEs).join('/')}\nDaño ${s.damage}  Cad. ${s.rate}/s  Alcance ${s.range.toFixed(1)}${s.air ? ' · aéreo' : ''}${s.income ? `\nGranja: +${s.income} $/oleada` : ''}${(() => { const b = boostLine(this.td.themeBoostOf({ mon: m })); return b ? `\n${b}` : ''; })()}\nColocados ${this.td.placedOf(this.placing)}/${this.td.limitOf(this.placing)}`,
+        L.fontMin,
+      );
+      const c = this.pending ?? this.cursor;
+      txt('', L.fontMin, '#a8f0a0', true).setData('preview', this.placing);
+      this.placePreview(this.td.terrainAt(c.x, c.y), this.td.previewSynergy(this.placing, c.x, c.y));
+      return;
+    } else return;
+    const slots = sheetSlots(L.right, L.btn, L.gap, L.rows, specs.map((q) => q.span));
+    specs.forEach((q, i) => {
+      const r = slots[i];
+      if (!r) return;
+      const b = this.makeBtn(r.x, r.y, r.w, r.h, q.label, q.act, q.en, L.font, q.color);
+      fitTextIn(b.text, r.w - L.pad * 2, r.h - L.pad, L.font, L.fontMin);
+      this.panelBtns.push(b);
+    });
+    if (this.focus.zone === 'panel') this.focus.i = Math.min(this.focus.i, Math.max(0, this.panelBtns.length - 1));
+  }
+
+  /** Táctil: coloca la ficha de texto (abajo del mapa, en la mitad contraria a la casilla) y pinta su fondo. */
+  private layoutInfoTouch(g: Phaser.GameObjects.Graphics, L: TdTouchLayout, tw: TdTower | undefined) {
+    const texts = this.panelTexts.filter((t) => t.text);
+    if (!texts.length || !this.tmap) return;
+    const cell = tw ? { x: tw.x, y: tw.y } : this.roadSel ?? this.pending ?? this.hover ?? this.cursor;
+    const at = this.tmap.designOf(sx(cell.x) + CELL / 2, sy(cell.y) + CELL / 2);
+    const cardW = Math.min(L.map.w * 0.5, L.font * 21);
+    const h = texts.reduce((a, t) => a + t.height + 2, 0) + L.pad * 2;
+    const x = infoSide(at.x, L.map) === 'left' ? L.map.x + L.pad : L.map.x + L.map.w - cardW - L.pad;
+    const hintH = this.touchHint?.text ? this.touchHint.height + L.pad * 2 : L.pad;
+    const y = Math.max(L.map.y + L.pad, L.map.y + L.map.h - hintH - h);
+    g.fillStyle(0x18202c, 0.78).fillRect(x, y, cardW, h);
+    g.lineStyle(2, 0xffd34d, 0.6).strokeRect(x, y, cardW, h);
+    let ty = y + L.pad;
+    for (const t of this.panelTexts) {
+      t.setPosition(x + L.pad, ty);
+      if (t.text) ty += t.height + 2;
     }
   }
 }
