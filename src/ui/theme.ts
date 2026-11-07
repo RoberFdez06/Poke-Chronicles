@@ -53,7 +53,8 @@ export const ARROW = '▶';
  */
 export async function loadThemeFont(timeoutMs = 2500): Promise<boolean> {
   try {
-    const face = new FontFace(FONT_FAMILY, `url(${import.meta.env.BASE_URL}${FONT_URL})`);
+    // Sin ligaduras: la «fi» de Pixelify Sans parece una «A» («Reto final» se leía «Reto Anal»)
+    const face = new FontFace(FONT_FAMILY, `url(${import.meta.env.BASE_URL}${FONT_URL})`, { featureSettings: '"liga" 0, "dlig" 0' });
     // El tipo FontFaceSet de esta versión de TypeScript no declara add()
     (document.fonts as unknown as { add(f: FontFace): void }).add(face);
     // Los números de Pixelify Sans (2 y 5) parecen una S: van con una fuente pixel propia, solo para 0-9

@@ -11,6 +11,7 @@ import { confirmText } from '../data/confirm';
 import { addBackButton, buildPokemonCard, loadCardTextures } from '../ui/cards';
 import { NavInput, PadButtons } from '../ui/nav';
 import { ARROW, COLORS, drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
+import { fitTextLine, setFitLine } from '../ui/fitText';
 import { addMenuBackdrop } from '../ui/art/landscape';
 import { addIcon } from '../ui/art/icons';
 import { addTreeLinks, BRANCH_COLORS, drawTreeNode, type TreeHalo, type TreeLink } from '../ui/art/upgradeArt';
@@ -122,7 +123,8 @@ export class UpgradeScene extends Phaser.Scene {
       const x = TREE.x0 + BRANCHES.indexOf(n.branch) * TREE.dx;
       const y = TREE.y0 + n.depth * TREE.dy;
       const bg = this.add.graphics();
-      this.add.text(x, y - 14, UPGRADE_LABEL[n.kind], { fontFamily: FONT, fontSize: '14px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5);
+      // Nombres largos («Golpe certero»): con margen dentro del nodo
+      fitTextLine(this.add.text(x, y - 14, UPGRADE_LABEL[n.kind], { fontFamily: FONT, fontSize: '14px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5), TREE.w - 26, 10);
       const cost = this.add.text(x, y + 22, '', { fontFamily: FONT, fontSize: '12px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(0.5);
       const zone = this.add.zone(x, y, TREE.w, TREE.h).setInteractive({ useHandCursor: true });
       zone.on('pointerover', () => this.select(n.kind));
@@ -180,7 +182,8 @@ export class UpgradeScene extends Phaser.Scene {
   }
 
   private refresh() {
-    this.ticketsText.setText(`Caramelos: ${loadCandies()}`);
+    // Saldos grandes (999999): la cifra baja de letra para no pisar el icono del caramelo
+    setFitLine(this.ticketsText, `Caramelos: ${loadCandies()}`, 924 - 768, 12);
     if (this.ids.length === 0) return;
     const lv = levelsFor(loadUpgrades(), this.id);
     const links: TreeLink[] = [];
@@ -201,6 +204,8 @@ export class UpgradeScene extends Phaser.Scene {
       if (state === 'available' || sel) halos.push({ x: r.x, y: r.y, w: TREE.w, h: TREE.h, color: sel ? COLORS.gold : color, sel });
       const cost = nodeCost(n.kind, lv);
       r.cost.setText(state === 'locked' ? 'Bloqueado' : cost === null ? 'MÁX' : `${cost} car.`);
+      // Coste dentro del nodo (en móvil la letra crece y «MÁX» pisaba el borde de abajo)
+      r.cost.setScale(1).setScale(Math.min(1, (TREE.w - 14) / Math.max(1, r.cost.width), (2 * (TREE.h / 2 - 2 - 22)) / Math.max(1, r.cost.height)));
     }
     this.links.set(links, halos);
     const n = treeNode(this.selected);

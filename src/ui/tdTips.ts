@@ -3,6 +3,7 @@ import { loadTutorial, saveTutorial } from '../data/save';
 import { markTipSeen, shouldShowTip, TIPS, type TipId } from '../data/tutorial';
 import { UI } from './nav';
 import { drawBox } from './theme';
+import { TD_COLS, TD_ROWS } from '../data/towerDefense/maps';
 
 /**
  * Consejo de la defensa de torres: una tira arriba que no para la partida, sale una sola vez por consejo (y respeta
@@ -14,14 +15,19 @@ export function showTdTip(scene: Phaser.Scene, id: TipId): boolean {
   if (!shouldShowTip(state, id)) return false;
   saveTutorial(markTipSeen(state, id));
   const w = 700;
-  const h = 64;
-  const x = 480 - w / 2;
-  const y = 100; // debajo de la barra superior (vida de la base, dinero, oleada)
+  // Centrado sobre el mapa (x = 12, TD_COLS casillas de 48 px): centrado en la pantalla pisaba el panel del equipo
+  const x = 12 + (TD_COLS * 48 - w) / 2;
   scene.data.set('tdTip', true);
   const c = scene.add.container(0, 0).setDepth(90);
+  const title = scene.add.text(x + 16, 0, `Consejo · ${TIPS[id].title}`, { fontFamily: UI.FONT, fontSize: '14px', fontStyle: 'bold', color: '#b8860b' });
+  const text = scene.add.text(x + 16, 0, TIPS[id].text.replace(/\n/g, ' '), { fontFamily: UI.FONT, fontSize: '12px', color: '#2b3a67', wordWrap: { width: w - 32 } });
+  // Abajo del mapa (fila TD_ROWS de 48 px desde y = 62): arriba pisaba los avisos y el del nivel temático.
+  // El alto sale del texto (en móvil la letra crece y antes se salía del cuadro)
+  const h = Math.max(64, 8 + title.height + 4 + text.height + 8);
+  const y = 62 + TD_ROWS * 48 - h - 8;
+  title.setY(y + 8);
+  text.setY(y + 12 + title.height);
   const box = drawBox(scene.add.graphics(), x, y, w, h, { radius: 12 }).setAlpha(0.95);
-  const title = scene.add.text(x + 16, y + 8, `Consejo · ${TIPS[id].title}`, { fontFamily: UI.FONT, fontSize: '14px', fontStyle: 'bold', color: '#b8860b' });
-  const text = scene.add.text(x + 16, y + 28, TIPS[id].text.replace(/\n/g, ' '), { fontFamily: UI.FONT, fontSize: '12px', color: '#2b3a67', wordWrap: { width: w - 32 } });
   c.add([box, title, text]);
   const close = () => {
     if (!c.active) return;

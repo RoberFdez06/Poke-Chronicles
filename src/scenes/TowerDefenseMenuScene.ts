@@ -5,6 +5,7 @@ import Phaser from 'phaser';
 import { addHelpBar } from '../ui/helpBar';
 import { playTdMenuMusic, releaseMusic } from '../ui/audio';
 import { fitDesign } from '../ui/layout';
+import { fitTextLine } from '../ui/fitText';
 import { addBackButton } from '../ui/cards';
 import { NavInput, PadButtons, UI, type PadButton } from '../ui/nav';
 import { drawBox, fadeIn, goTo, RARITY_COLORS, shorten } from '../ui/theme';
@@ -239,17 +240,26 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
       const parts: Phaser.GameObjects.GameObject[] = [g, thumb, name, info];
       // Tipos tema del mapa (el suyo primero) debajo de la miniatura
       themesOf(m).forEach((ty, k) => parts.push(typeIcon(this, cx + 21 + k * 22, cy + L.icons, ty, compact ? 1.4 : 1.6).setAlpha(open ? 1 : 0.5)));
+      // Dentro de la ficha (ancho cw − 8): el nombre a lo ancho y los datos a la derecha de la miniatura
+      fitTextLine(name, cw - 8 - 22, 10);
       if (open) {
         info.setText(`Niveles ${cleared}/${m.levels}`);
-        parts.push(tdIcon(this, ix + 8, cy + L.stars, 'star', 1.8));
-        parts.push(this.add.text(ix + 20, cy + L.stars, `${mapStars(this.progress, m.id)}/${m.levels * 3}`, { fontFamily: UI.FONT, fontSize: '13px', color: NAVY }).setOrigin(0, 0.5));
+        fitTextLine(info, cx + cw - 8 - 6 - ix, 9);
+        // Con letra de móvil las líneas de la ficha compacta (96 px) se pisaban: cada una cabe en su franja
+        const capH = (t: Phaser.GameObjects.Text, h: number) => t.setScale(Math.min(t.scaleX, h / Math.max(1, t.height)));
+        capH(info, L.stars - 9 - (compact ? 28 : 32));
+        const star = tdIcon(this, ix + 8, cy + L.stars, 'star', 1.8);
+        parts.push(star);
+        // La cifra empieza donde acaba la estrella (antes la estrella tapaba el primer número)
+        const sx = Math.max(ix + 20, star.x + star.displayWidth / 2 + 3);
+        parts.push(capH(fitTextLine(this.add.text(sx, cy + L.stars, `${mapStars(this.progress, m.id)}/${m.levels * 3}`, { fontFamily: UI.FONT, fontSize: '13px', color: NAVY }).setOrigin(0, 0.5), cx + cw - 8 - 6 - sx, 9), 2 * (L.bar - 2 - L.stars)));
         // Barra de niveles superados
         const bar = this.add.graphics();
         const bw = compact ? 110 : 98;
         bar.fillStyle(0x18202c, 1).fillRect(ix, cy + L.bar, bw, 8);
         bar.fillStyle(cleared >= m.levels ? 0xffd34d : 0x2ecc71, 1).fillRect(ix + 1, cy + L.bar + 1, ((bw - 2) * cleared) / m.levels, 6);
         parts.push(bar);
-        if (isEndlessUnlocked(this.progress, m.id)) parts.push(this.add.text(ix, cy + L.inf, '∞ abierto', { fontFamily: UI.FONT, fontSize: '12px', color: '#b8860b' }));
+        if (isEndlessUnlocked(this.progress, m.id)) parts.push(capH(this.add.text(ix, cy + L.inf, '∞ abierto', { fontFamily: UI.FONT, fontSize: '12px', color: '#b8860b' }), ch - 7 - L.inf));
       } else {
         parts.push(tdIcon(this, cx + (compact ? 44 : 52), cy + L.lock, 'lock', compact ? 2.4 : 3));
       }

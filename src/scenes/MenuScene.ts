@@ -1,5 +1,6 @@
 import { clearCheatRun } from '../data/admin';
 import Phaser from 'phaser';
+import { fitTextLine } from '../ui/fitText';
 import { addHelpBar } from '../ui/helpBar';
 import { fitDesign, COVER_H, COVER_W, DCX, DCY } from '../ui/layout';
 import { fetchPokemonCard } from '../data/pokeapi';
@@ -99,11 +100,16 @@ export class MenuScene extends Phaser.Scene {
 
     // Franja de abajo: progreso y ayuda
     this.add.rectangle(DCX, 620, COVER_W + 4, 40, 0x101828, 0.85).setDepth(20);
-    this.add
-      .text(480, 610, `Pokémon desbloqueados: ${loadUnlocked().length}   ·   Récords: ${recordsLine()}`, {
-        fontFamily: FONT, fontSize: '14px', color: '#f8f8f8',
-      })
-      .setOrigin(0.5).setDepth(21);
+    // Récords altos (99999 en todos los modos): la línea baja de letra en vez de salirse por los lados
+    fitTextLine(
+      this.add
+        .text(480, 610, `Pokémon desbloqueados: ${loadUnlocked().length}   ·   Récords: ${recordsLine()}`, {
+          fontFamily: FONT, fontSize: '14px', color: '#f8f8f8',
+        })
+        .setOrigin(0.5).setDepth(21),
+      940,
+      9,
+    );
     addHelpBar(this, 480, 628, 'Flechas o W S, o ratón para moverte · Enter, Espacio o clic para elegir', { fontSize: 12, color: '#a8b0c8' }, 'Toca una opción para elegirla')
       .setDepth(21);
 

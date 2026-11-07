@@ -71,9 +71,11 @@ export class RunDexScene extends Phaser.Scene {
       g.fillStyle(full ? COLORS.hpGreen : c, 1).fillRect(bx + 2, y + 42, Math.round((bw - 4) * Math.min(1, p.percent / 100)), 10);
       for (const m of DEX_MILESTONES.slice(0, -1)) g.fillStyle(0xffffff, 0.8).fillRect(bx + Math.round((bw * m) / 100) - 1, y + 38, 2, 18);
       const next = DEX_MILESTONES.find((m) => p.percent < m);
-      this.add.text(x + 16, y + 62, next ? `${p.percent} % · al ${next} %: +${DEX_CANDIES[next]} caramelos` : '¡Tipo completo!', {
+      const hint = this.add.text(x + 16, y + 63, next ? `${p.percent} % · al ${next} %: +${DEX_CANDIES[next]} caramelos` : '¡Tipo completo!', {
         fontFamily: FONT, fontSize: '12px', color: next ? '#b8860b' : '#2e9a4a',
       }).setOrigin(0, 0.5);
+      // Entre la barra y el borde de abajo (con la letra de móvil pisaba los dos)
+      hint.setScale(Math.min(1, (cw - 32) / Math.max(1, hint.width), 14 / Math.max(1, hint.height)));
     });
 
     this.add

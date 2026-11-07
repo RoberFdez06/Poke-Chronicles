@@ -78,3 +78,20 @@ test('contadores por ancho medido: 1 a 6 cifras de monedas sin pisarse ni salirs
   // cifras cortas: se quedan en su sitio de siempre
   assert.deepEqual(counterRowLayout(lw, ['1', '1', '1', '1'].map((t) => approxTextWidth(t, 16)), pref).x, pref);
 });
+
+test('contadores con iconos más anchos (la llave): 999999 monedas sin quedar debajo del icono siguiente', async () => {
+  const { counterRowLayout, COUNTER_TEXT_DX, COUNTER_MIN_GAP } = await import('../src/data/hudLayout.ts');
+  const lw = 208;
+  const l = hudLayout(lw);
+  const pref = [l.counterX.coin, l.counterX.key, l.counterX.bomb, l.counterX.potion];
+  const half = [14, 20, 16, 14];
+  for (const coins of ['0', '999999']) {
+    const tw = [coins, '99', '99', '99'].map((t) => approxTextWidth(t, 22));
+    const { x, scale } = counterRowLayout(lw, tw, pref, undefined, half);
+    for (let i = 0; i < 4; i++) {
+      const end = x[i] + COUNTER_TEXT_DX + tw[i] * scale;
+      assert.ok(x[i] - half[i] >= -1e-6 && end <= lw + 1e-6, `${coins}: ${i} dentro`);
+      if (i < 3) assert.ok(x[i + 1] - half[i + 1] >= end + COUNTER_MIN_GAP - 1e-6, `${coins}: ${i} pisa al icono siguiente`);
+    }
+  }
+});

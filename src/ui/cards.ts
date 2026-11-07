@@ -152,8 +152,10 @@ export function statBars(scene: Phaser.Scene, stats: BaseStats, x: number, y: nu
   const barW = w - labelW - numW - 6;
   STAT_KEYS.forEach((k, i) => {
     const ry = y + i * 15;
-    out.push(scene.add.text(x, ry, STAT_LABEL[k], textStyle(12, HEX.textSoft)).setOrigin(0, 0.5));
-    out.push(scene.add.text(x + w, ry, String(stats[k]), textStyle(12, HEX.text, { fontStyle: 'bold' })).setOrigin(1, 0.5));
+    // En móvil la letra crece: nombre y cifra se encogen para no pisar la barra ni la fila de al lado
+    const fit = (t: Phaser.GameObjects.Text, maxW: number) => t.setScale(Math.min(1, maxW / Math.max(1, t.width), 16 / Math.max(1, t.height)));
+    out.push(fit(scene.add.text(x, ry, STAT_LABEL[k], textStyle(12, HEX.textSoft)).setOrigin(0, 0.5), labelW - 3));
+    out.push(fit(scene.add.text(x + w, ry, String(stats[k]), textStyle(12, HEX.text, { fontStyle: 'bold' })).setOrigin(1, 0.5), numW + 2));
     const bx = x + labelW;
     g.fillStyle(COLORS.hpTrack, 1).fillRect(bx, ry - 3, barW, 6);
     g.fillStyle(statColor(stats[k]), 1).fillRect(bx, ry - 3, barW * statBar(stats[k]), 6);
