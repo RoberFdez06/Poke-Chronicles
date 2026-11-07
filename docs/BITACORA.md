@@ -2719,3 +2719,64 @@ más blandos o duros (el núcleo + hitbox es ±1-7 px de lo de antes). El HUD m�
   y `npm test` (1195 pruebas). Probar en móvil real: jugar con 3-4 dedos, deslizar desde el borde y bajar las
   notificaciones con el joystick puesto, cambiar de app y volver, girar a vertical (debe pausar) y volver, tocar Bomba
   durante el cartel de piso (no debe salir luego), y en iPhone con barras de Safari que las bandas sigan bajo el dedo.
+
+## 2026-11-07 · Defensa de torres en móvil: disposición táctil propia (rama `tdmovil`)
+- Problema (repaso de `movil`): en táctil la Defensa de torres seguía la composición 960×640 de escritorio: barra y panel
+  de torre de 13-21 px CSS, casillas de 19-32 px y menús con fichas de 39-56 px. Solo en dispositivos táctiles
+  (`touchOnlyDevice`); teclado, ratón y mando siguen exactamente igual (cada uno por sí solo).
+- Lógica pura con pruebas (`tests/tdTouch.test.ts`, 42 pruebas): `src/data/towerDefense/touchTd.ts` (ancho del lienzo,
+  px CSS por unidad, disposición de la partida, hoja de acciones, casilla más cercana, anillo y radio de pegado, zoom,
+  lupa, gestos `MapGesture`) y `src/data/towerDefense/touchMenu.ts` (rejillas de mapas, niveles y «Elige tu equipo»).
+- Lienzo: las pantallas de torres piden en táctil el lienzo a todo el ancho hasta 3:1 (`setTouchFullWidth` en
+  `ui/wideScreen.ts`; aquí no hay bandas DOM) y lo sueltan al cerrarse si no sigue otra de torres (`tdWidthStillNeeded`).
+- Partida (`TowerDefenseScene` + `ui/tdTouchMap.ts`): dos columnas de botones de ≥ 56 px CSS a los lados (izquierda:
+  Pausa, Velocidad, Oleada y las 4 habilidades; derecha: el equipo 2×3 y, al colocar/mover/apuntar, [Confirmar]
+  [Cancelar]; con una torre o un camino abiertos, la **hoja** de acciones en su lugar: Mejorar o las dos ramas, Objetivo,
+  Mover, Vender y Cerrar; Mina, Telaraña, Barricada y Cerrar). Franja con vida, dinero, oleada y llegada encima del mapa;
+  ficha de texto (nombre, estadísticas, ramas, trampas) abajo del mapa en la mitad contraria a la casilla; jefe y
+  evento arriba a la derecha del mapa; avisos arriba a la izquierda; línea de ayuda táctil abajo. Letra ≥ 12 px CSS
+  (10 al encoger textos largos). Al girar o cambiar las barras del navegador se rehace la interfaz sin tocar la partida.
+- Mapa: en su propia cámara (lo de profundidad < 54 es mapa; lo de encima, interfaz en la cámara principal, que se
+  pinta la última). Un dedo: toque = casilla (la de debajo o la válida más cercana a ≤ 28 px CSS); arrastrar = mover
+  el mapa; mantener 0,32 s = **lupa** encima del dedo (o al lado si no cabe) que sigue al dedo y elige al soltar. Dos
+  dedos: pellizco (zoom hasta casillas de 84 px CSS) y arrastre. Colocar, mover y lanzar Tormenta/Bomba/Refuerzo no se
+  hacen al primer toque: la casilla queda con un **anillo de confirmación** (radio ≥ 28 px CSS: zona efectiva ≥ 56 aunque
+  la casilla se vea de 20) y se confirma tocando dentro del anillo, con «Confirmar» o con el botón de la habilidad otra
+  vez. Abrir una torre o el camino no pide confirmar. Pausa con filas de ≥ 46 px CSS.
+- Dedos pillados: `MapGesture` usa como mucho 2 dedos, un `up` cancelado (touchcancel o `touchSanity`) nunca es toque,
+  `sync` suelta cada fotograma los que Phaser ya no tiene pulsados y `releaseAll` al pausar, con mejoras o fin, y al
+  cerrar la escena; además, al cerrar cualquier pantalla de torres se cancelan en Phaser todos los punteros táctiles
+  (`releaseAllTouches` en `ui/touchSanity.ts`). Prueba de 5000 pasos al azar con 10 % de `up` perdidos. Los botones son
+  zonas de Phaser normales (nada queda «pulsado»).
+- Menús: cabecera con «← Volver» y «Cómo se juega» de un botón de alto (zona de toque = el botón); 18 mapas en rejilla
+  (o por páginas con ◀ ▶ grandes si no caben), niveles + infinito en una sola rejilla con el texto del nivel a la
+  derecha, y «Elige tu equipo» en tres columnas: información + aviso de equipo + página ◀ ▶, filtros y colección,
+  equipo 2×3 con [¡A jugar!][Prueba]. Al cambiar el ancho, el menú se rehace en su sitio (conserva el equipo sin
+  guardar). En vertical sale el aviso «Gira el móvil» y la partida se pausa (ya existía: `TOUCH_INTERRUPT`).
+- Tamaños calculados (px CSS; botón de la partida; mapa; casilla al encajar → zoom máximo; mapas cols×filas y ficha;
+  niveles; colección por página y lado):
+
+| Caja | Lienzo | Botón | Mapa | Casilla | Mapas | Niveles | Colección |
+|---|---|---|---|---|---|---|---|
+| 640×360 | 1920 | 56 | 388×324 | 24 → 84 | 5×4, 120×66 | 4×4, 84×66 | 12, 66 |
+| iPhone SE 667×375 | 1920 | 56 | 417×340 | 26 → 84 | 5×4, 125×69 | 4×4, 88×69 | 12, 71 |
+| iPhone 14 Pro 734×372 | 2130 | 56 | 484×338 | 30 → 84 | 5×4, 138×68 | 4×4, 98×68 | 15, 65 |
+| Galaxy S23 780×360 | 2340 | 56 | 528×324 | 29 → 84 | 5×4, 148×66 | 4×4, 104×66 | 18, 58 |
+| Pixel 7 915×412 | 2398 | 56 | 664×376 | 33 → 84 | 5×4, 174×78 | 4×4, 139×78 | 28, 61 |
+| 932×430 | 2340 | 56 | 682×396 | 35 → 84 | 5×4, 178×83 | 4×4, 144×83 | 28, 63 |
+| 14 Pro Safari con barras 667×258 | 2792 | 56 | 419×224 | 20 → 84 | 4×2 (3 páginas), 127×87 | 8×2, 56×87 | 10, 56 |
+| Fold plegado 882×344 | 2768 | 56 | 630×309 | 27 → 84 | 6×3, 139×84 | 4×4, 130×61 | 21, 58 |
+| Fold abierto 884×768 | 1920 | 57 | 629×461 | 39 → 84 | 4×5, 212×78 | 4×4, 130×100 | 35, 58 |
+| iPad mini 1133×744 | 1920 | 57 | 876×599 | 53 → 84 | 4×5, 274×106 | 4×4, 188×134 | 63, 64 |
+| iPad Pro 12,9 1366×1024 | 1920 | 56 | 1111×731 | 65 → 84 | 4×5, 333×133 | 4×4, 253×168 | 140, 57 |
+
+  Solo en cajas extremas (< 250 px CSS de alto, p. ej. 840×240) los botones bajan a ≈ 55 px para que quepan las 4 filas.
+- **Sin verificar a ojo**: Vite no corre en la VM y en el contenedor `npm ci` falló por el proxy, así que no hubo render
+  ni capturas; solo `npx tsc --noEmit` y `npm test`. Lo que más riesgo tiene: el orden de pintado y el filtro de
+  cámaras (mapa / lupa / interfaz), que Phaser resuelva los toques de los botones con la cámara del mapa debajo, la
+  nitidez del mapa con zoom no entero, que los textos encogidos quepan de verdad en cada botón, la ficha de texto sobre
+  el mapa y el cambio en vivo al girar o enseñar las barras. No adaptados: la pantalla de resultados (filas de 17-25 px
+  CSS), la elección de mejoras (tarjetas grandes pero letra pequeña), los avisos de consejo (`tdTips`) y la ventana
+  «Cómo se juega» (solo crecen ◀ ▶ ✕). Probar en iPhone con y sin barras, Android, Fold e iPad: colocar con anillo y
+  con lupa, pellizcar y arrastrar con una oleada en curso, abrir torre y camino, mover, vender, ramas, habilidades de
+  zona, pausar, girar a vertical y volver, y que ningún dedo se quede pillado al cambiar de pantalla.

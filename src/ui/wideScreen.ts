@@ -4,6 +4,7 @@ import Phaser from 'phaser';
 import { touchOnlyDevice } from '../data/controls';
 import { logicalWidth } from '../data/wideLayout';
 import { touchCanvasWide, touchWideWidth } from '../data/touchLayout';
+import { tdTouchWidth } from '../data/towerDefense/touchTd';
 import { loadMobileView, MOBILE_VIEW_CHANGED } from '../data/mobileView';
 import { fitDesign, H, LW, OFF, setLogicalWidth, U } from './layout';
 
@@ -26,11 +27,14 @@ function parentBox(): { w: number; h: number } {
 /** Ancho lógico para una caja: escritorio (wideLayout) o táctil (touchLayout, con bandas justas para los botones). */
 function widthFor(w: number, h: number): number {
   if (!touchOnlyDevice()) return logicalWidth(w, h, false);
+  // Defensa de torres en táctil: sin bandas DOM, el lienzo llena la caja hasta 3:1 (data/towerDefense/touchTd.ts)
+  if (fullTouch) return tdTouchWidth(w, h);
   return touchWideWidth(w, h, loadMobileView().uiSize / 100);
 }
 
 /** Ancho para la banda de los menús: en táctil con el lienzo ensanchado solo para el HUD, la de 1920 (no se mueven). */
 function menuWidthFor(w: number, h: number, lw: number): number {
+  if (fullTouch) return lw;
   return touchOnlyDevice() && touchCanvasWide(w, h, lw) ? 1920 : lw;
 }
 
@@ -66,6 +70,20 @@ export function relayoutScene(scene: Phaser.Scene) {
   }
 }
 
+/** Pantallas que piden el lienzo táctil a todo el ancho (Defensa de torres) y cómo volver a medir ya. */
+let fullTouch = false;
+let applyNow: (() => void) | null = null;
+
+/**
+ * La Defensa de torres (partida y menús) pide en táctil el lienzo a todo el ancho de la caja, hasta 3:1 (no usa las
+ * bandas de botones de la partida). Lo pide al empezar y lo suelta al cerrarse. Sin táctil no hace nada.
+ */
+export function setTouchFullWidth(on: boolean) {
+  if (!touchOnlyDevice() || fullTouch === on) return;
+  fullTouch = on;
+  applyNow?.();
+}
+
 export function installWideScreen(game: Phaser.Game) {
   let timer = 0;
   const apply = () => {
@@ -77,6 +95,7 @@ export function installWideScreen(game: Phaser.Game) {
     for (const scene of game.scene.getScenes(true)) relayoutScene(scene);
     game.events.emit(WIDE_RESIZED, lw);
   };
+  applyNow = apply;
   const schedule = () => {
     clearTimeout(timer);
     timer = window.setTimeout(apply, 80);

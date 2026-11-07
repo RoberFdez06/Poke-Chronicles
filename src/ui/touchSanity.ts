@@ -49,6 +49,15 @@ function cancelPointers(game: Phaser.Game, ids: readonly number[], timeStamp: nu
 /** Ids de los punteros táctiles que Phaser tiene activos. */
 const activeTouchIds = (game: Phaser.Game): number[] => (game.input?.pointers ?? []).filter((p) => p.active && p.id > 0).map((p) => p.identifier);
 
+/**
+ * Suelta en Phaser todos los punteros táctiles activos (por su camino normal: pointerup con wasCanceled). Lo usan
+ * las escenas al cerrarse (Defensa de torres, rama `tdmovil`): un dedo que sigue apoyado al cambiar de pantalla no
+ * puede quedar «pulsado» en la siguiente. Fuera de táctil no hay punteros táctiles y no hace nada.
+ */
+export function releaseAllTouches(game: Phaser.Game) {
+  cancelPointers(game, activeTouchIds(game), typeof performance !== 'undefined' ? performance.now() : Date.now());
+}
+
 export function installTouchSanity(game: Phaser.Game) {
   if (typeof window === 'undefined') return;
   const ids = (l: TouchList) => Array.from({ length: l.length }, (_, i) => l[i].identifier);
@@ -61,7 +70,7 @@ export function installTouchSanity(game: Phaser.Game) {
   };
   for (const ev of ['touchstart', 'touchend', 'touchcancel'] as const) window.addEventListener(ev, onTouch, { capture: true, passive: true });
   // Cambiar de app, bloquear o girar: Phaser no recibe los touchend de los dedos que había
-  const all = () => cancelPointers(game, activeTouchIds(game), performance.now());
+  const all = () => releaseAllTouches(game);
   window.addEventListener('pagehide', all);
   document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && all());
   try {
