@@ -34,7 +34,7 @@ type Row = 'music' | 'sfx' | 'fullscreen' | 'effects' | 'fps' | 'texts' | 'guide
 const ROWS: Row[] = ['music', 'sfx', 'fullscreen', 'effects', 'fps', 'texts', 'guide', 'controls', 'account', 'credits', 'reset', 'back'];
 const ROW = { w: 520, h: 38, gap: 3, top: 124 };
 /** Con «Panel admin» (solo dev o cuenta admin) hay una fila más: van más juntas. */
-const ROW_ADMIN = { ...ROW, h: 36, gap: 3 };
+const ROW_ADMIN = { ...ROW, h: 33, gap: 3 };
 const ROWS_GEO = ROW;
 /** Móvil: tres filas más (zoom de la sala, tamaño de la interfaz y modo automático), más juntas. */
 const ROW_MOBILE = { ...ROW, h: 29, gap: 2 };

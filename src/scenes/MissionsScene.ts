@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { buildNpc } from '../ui/art/worldArt';
 import { fitDesign } from '../ui/layout';
+import { fitTextLine } from '../ui/fitText';
 import { loadMedals, loadMissions } from '../data/save';
 import { dayNumber } from '../data/gacha';
 import { ACHIEVEMENTS, dailyMissions, isAchieved, NPC_MAX_ACTIVE, npcMissionById, rewardText, type Reward } from '../data/missions';
@@ -112,13 +113,16 @@ export class MissionsScene extends Phaser.Scene {
       const n = Math.min(a.goal, state.achievements[a.id] ?? 0);
       const done = isAchieved(state, a.id);
       drawBox(this.add.graphics(), x, y, cw, ch, { radius: 12, fill: done ? COLORS.goldSoft : COLORS.panel });
-      this.add.text(x + 16, y + 16, `${done ? '★ ' : ''}${a.name}`, { fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: HEX.text })
-        .setOrigin(0, 0.5);
-      this.add.text(x + 16, y + 36, a.text, { fontFamily: FONT, fontSize: '14px', color: HEX.textSoft }).setOrigin(0, 0.5);
-      this.add.text(x + 16, y + 56, rewardText(a.reward, itemNames(a.reward)), {
-        fontFamily: FONT, fontSize: '12px', color: '#b8860b', wordWrap: { width: cw - 32 },
-      }).setOrigin(0, 0.5);
-      if (a.goal > 1 && !done) {
+      // Cada línea en su fila y dentro de la tarjeta (en móvil la letra crece y antes se pisaban); a la derecha
+      // queda sitio para la cuenta y la barra si las hay
+      const bar = a.goal > 1 && !done;
+      fitTextLine(this.add.text(x + 16, y + 16, `${done ? '★ ' : ''}${a.name}`, { fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: HEX.text })
+        .setOrigin(0, 0.5), cw - 32 - (bar ? 70 : 0), 11);
+      fitTextLine(this.add.text(x + 16, y + 36, a.text, { fontFamily: FONT, fontSize: '14px', color: HEX.textSoft }).setOrigin(0, 0.5), cw - 32 - (bar ? 68 : 0), 10);
+      fitTextLine(this.add.text(x + 16, y + 56, rewardText(a.reward, itemNames(a.reward)), {
+        fontFamily: FONT, fontSize: '12px', color: '#b8860b',
+      }).setOrigin(0, 0.5), cw - 32, 9);
+      if (bar) {
         this.bar(x + cw - 76, y + 36, 60, n / a.goal);
         this.add.text(x + cw - 16, y + 16, `${n}/${a.goal}`, { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(1, 0.5);
       }

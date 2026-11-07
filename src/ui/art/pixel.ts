@@ -18,12 +18,14 @@ export function addPixelText(
   x: number,
   y: number,
   text: string,
-  o: { size: number; scale: number; color: string; stroke?: string; strokeWidth?: number; shadow?: string },
+  o: { size: number; scale: number; color: string; stroke?: string; strokeWidth?: number; shadow?: string; maxW?: number },
 ) {
   const t = scene.add
     .text(x, y, text, { fontFamily: FONT, fontSize: `${o.size}px`, fontStyle: 'bold', color: o.color, resolution: 1 })
     .setOrigin(0.5)
     .setScale(o.scale);
+  // Títulos largos: se encogen para no salirse de su cuadro (ancho máximo en unidades de la escena)
+  if (o.maxW && t.width * o.scale > o.maxW) t.setScale(o.maxW / t.width);
   if (o.stroke) t.setStroke(o.stroke, o.strokeWidth ?? 2);
   if (o.shadow) t.setShadow(1, 1, o.shadow, 0, true, true);
   t.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);

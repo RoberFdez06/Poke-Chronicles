@@ -4,6 +4,7 @@
 import Phaser from 'phaser';
 import { addHelpBar } from '../ui/helpBar';
 import { fitDesign } from '../ui/layout';
+import { fitTextLine } from '../ui/fitText';
 import { addBackButton } from '../ui/cards';
 import { NavInput, PadButtons, UI, type PadButton } from '../ui/nav';
 import { drawBox, fadeIn, goTo, RARITY_COLORS, shorten } from '../ui/theme';
@@ -235,10 +236,16 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
       const parts: Phaser.GameObjects.GameObject[] = [g, thumb, name, info];
       // Tipos tema del mapa (el suyo primero) debajo de la miniatura
       themesOf(m).forEach((ty, k) => parts.push(typeIcon(this, cx + 21 + k * 22, cy + L.icons, ty, compact ? 1.4 : 1.6).setAlpha(open ? 1 : 0.5)));
+      // Dentro de la ficha (ancho cw − 8): el nombre a lo ancho y los datos a la derecha de la miniatura
+      fitTextLine(name, cw - 8 - 22, 10);
       if (open) {
         info.setText(`Niveles ${cleared}/${m.levels}`);
-        parts.push(tdIcon(this, ix + 8, cy + L.stars, 'star', 1.8));
-        parts.push(this.add.text(ix + 20, cy + L.stars, `${mapStars(this.progress, m.id)}/${m.levels * 3}`, { fontFamily: UI.FONT, fontSize: '13px', color: NAVY }).setOrigin(0, 0.5));
+        fitTextLine(info, cx + cw - 8 - 6 - ix, 9);
+        const star = tdIcon(this, ix + 8, cy + L.stars, 'star', 1.8);
+        parts.push(star);
+        // La cifra empieza donde acaba la estrella (antes la estrella tapaba el primer número)
+        const sx = Math.max(ix + 20, star.x + star.displayWidth / 2 + 3);
+        parts.push(fitTextLine(this.add.text(sx, cy + L.stars, `${mapStars(this.progress, m.id)}/${m.levels * 3}`, { fontFamily: UI.FONT, fontSize: '13px', color: NAVY }).setOrigin(0, 0.5), cx + cw - 8 - 6 - sx, 9));
         // Barra de niveles superados
         const bar = this.add.graphics();
         const bw = compact ? 110 : 98;

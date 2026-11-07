@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { COVER_H, COVER_W, DCX, DCY } from './layout';
 import { mobileUi, rowHitHeight } from './uiScale';
 import { ARROW, COLORS, FONT, drawBox, textStyle } from './theme';
+import { fitTextLine } from './fitText';
 import { sfx } from './audio';
 import { keyCode } from './keys';
 import { loadKeys } from '../data/save';
@@ -172,6 +173,8 @@ export class MenuList {
       const bg = scene.add.graphics();
       const size = opts.fontSize ?? 24;
       const text = scene.add.text(0, 0, label, textStyle(size, '#2b3a67', { fontStyle: 'bold' })).setOrigin(0.5);
+      // Textos largos (nombres de objetos, pistas): caben en la fila sin pisar la flecha ni salirse del cuadro
+      if (text.width > this.w - 64) fitTextLine(text, this.w - 64, Math.max(10, size - 6));
       // Flecha de selección a la izquierda, como en los menús de los juegos
       const arrow = scene.add.text(-this.w / 2 + 14, 0, ARROW, textStyle(size - 4, '#2b3a67')).setOrigin(0, 0.5);
       const box = scene.add.container(0, i * (this.h + gap), [bg, text, arrow]).setSize(this.w, this.h);

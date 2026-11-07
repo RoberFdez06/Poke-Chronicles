@@ -18,6 +18,7 @@ import { sparkle } from '../ui/sparkle';
 import { typeColor, typeNameEs } from '../data/types';
 import { cry, sfx } from '../ui/audio';
 import { ARROW, addTypeChip, drawBox, fadeIn, FONT, goTo, hex, RARITY_COLORS } from '../ui/theme';
+import { setFitLine } from '../ui/fitText';
 import { addMenuBackdrop } from '../ui/art/landscape';
 import { NavInput } from '../ui/nav';
 import { addBurst, addMachineIdle, addRays, bakeGachaArt, ballKey, CRANK_KEY, MACHINE, MACHINE_KEY } from '../ui/art/gachaMachine';
@@ -155,8 +156,9 @@ export class GachaScene extends Phaser.Scene {
   }
 
   private refreshHud() {
-    this.ticketsText.setText(`Tickets: ${loadTickets()}`);
-    this.ownedText.setText(`Desbloqueados: ${loadUnlocked().length}`);
+    // Saldos grandes (999999): bajan de letra en vez de salirse del cuadro
+    setFitLine(this.ticketsText, `Tickets: ${loadTickets()}`, 924 - 704, 12);
+    setFitLine(this.ownedText, `Desbloqueados: ${loadUnlocked().length}`, 924 - 704, 11);
   }
 
   // --- Botones ---
