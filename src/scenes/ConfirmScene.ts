@@ -4,6 +4,7 @@ import { COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
 import { NavInput } from '../ui/nav';
 import { drawBox, FONT, HEX } from '../ui/theme';
 import { addPixelText } from '../ui/art/pixel';
+import { fitTextBox } from '../ui/fitText';
 import { sfx } from '../ui/audio';
 import { accept, cancel, choose, CONFIRM_LABEL, CONFIRM_ORDER, moveFocus, newConfirm, type ConfirmChoice, type ConfirmState } from '../data/confirm';
 
@@ -57,10 +58,18 @@ export class ConfirmScene extends Phaser.Scene {
       .on('pointerdown', () => this.armed() && this.apply(cancel(this.state)));
     drawBox(this.add.graphics(), BOX.x, BOX.y, BOX.w, BOX.h, { radius: 16, border: 0xd4a017 });
     this.add.zone(BOX.x + BOX.w / 2, BOX.y + BOX.h / 2, BOX.w, BOX.h).setInteractive();
-    addPixelText(this, DCX, BOX.y + 40, this.args.title ?? 'CONFIRMAR COMPRA', { size: 16, scale: 2.2, color: '#f8d030', stroke: '#283068', strokeWidth: 3, shadow: '#101828' });
-    this.add
-      .text(DCX, BOX.y + 118, this.args.text, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: HEX.text, align: 'center', wordWrap: { width: BOX.w - 60 } })
-      .setOrigin(0.5);
+    addPixelText(this, DCX, BOX.y + 40, this.args.title ?? 'CONFIRMAR COMPRA', { size: 16, scale: 2.2, color: '#f8d030', stroke: '#283068', strokeWidth: 3, shadow: '#101828', maxW: BOX.w - 40 });
+    // El texto cabe entre el título y los botones (los largos bajan de letra en vez de pisar «Sí» y «No»)
+    const textTop = BOX.y + 62;
+    const textBottom = BTN.y - BTN.h / 2 - 6;
+    fitTextBox(
+      this.add
+        .text(DCX, (textTop + textBottom) / 2, this.args.text, { fontFamily: FONT, fontSize: '22px', fontStyle: 'bold', color: HEX.text, align: 'center', wordWrap: { width: BOX.w - 60 } })
+        .setOrigin(0.5),
+      BOX.w - 60,
+      textBottom - textTop,
+      13,
+    );
     CONFIRM_ORDER.forEach((c, i) => {
       const x = DCX + (i === 0 ? -1 : 1) * 105;
       const g = this.add.graphics();

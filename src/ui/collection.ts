@@ -17,6 +17,13 @@ export interface Chip {
   h: number;
 }
 
+/** Encoge (sin cambiar la letra) el texto de una pestaña si no cabe en ella con 4 px de margen. */
+export function fitChipText(chip: Chip) {
+  const t = chip.text.setScale(1);
+  const k = Math.min(1, (chip.w - 8) / Math.max(1, t.width), (chip.h - 6) / Math.max(1, t.height));
+  if (k < 1) t.setScale(k);
+}
+
 export function makeChip(scene: Phaser.Scene, x: number, y: number, w: number, h: number, label: string, size: number, onClick: () => void): Chip {
   const bg = scene.add.graphics();
   const text = scene.add
@@ -104,15 +111,20 @@ export class FilterBar {
     const total = ownedCounts ? Object.values(ownedCounts).reduce((a, b) => a + b, 0) : all.length;
     this.tabs.forEach((t, i) => {
       t.text.setText(i === 0 ? `Todas\n${total}` : `${REGIONS[i - 1].name}\n${counts[REGIONS[i - 1].id]}`);
+      // Con la letra de móvil las dos líneas eran más altas que la pestaña: se encogen para caber con margen
+      fitChipText(t);
       paintChip(t, i - 1 === this.regionIdx, i > 0 && counts[REGIONS[i - 1].id] === 0);
     });
     const f = this.filter();
     this.searchBtn.text.setText(this.query ? `Buscar: ${this.query}` : 'Buscar por nombre…');
+    fitChipText(this.searchBtn);
     paintChip(this.searchBtn, this.query !== '');
     this.rarityBtn.text.setText(`Rareza: ${f.rarity ? RARITY_LABEL[f.rarity] : 'Todas'}`);
+    fitChipText(this.rarityBtn);
     paintChip(this.rarityBtn, !!f.rarity);
     if (this.typeBtn) {
       this.typeBtn.text.setText(`Tipo: ${f.type ? typeNameEs(f.type) : 'Todos'}`);
+      fitChipText(this.typeBtn);
       paintChip(this.typeBtn, !!f.type);
     }
     this.pad?.refresh(shown);

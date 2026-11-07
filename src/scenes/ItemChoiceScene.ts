@@ -5,6 +5,7 @@ import { MenuList, NavInput } from '../ui/nav';
 import { FONT, HEX } from '../ui/theme';
 import { addForgeFrame } from '../ui/art/forgeArt';
 import { addPixelText } from '../ui/art/pixel';
+import { fitTextBox } from '../ui/fitText';
 import { sfx } from '../ui/audio';
 import { badgeTexture } from '../ui/art/synergyArt';
 import { lowFx } from '../ui/theme';
@@ -53,10 +54,16 @@ export class ItemChoiceScene extends Phaser.Scene {
     // Marco de hierro con yunques (forja) o huecos dibujados: ui/art/forgeArt.ts
     this.add.rectangle(DCX, DCY, COVER_W + 4, COVER_H + 4, 0x0d1425, 0.82).setInteractive();
     addForgeFrame(this, 130, 30, 700, 580, this.args.title);
-    addPixelText(this, 480, 62, this.args.title, { size: 16, scale: 2.2, color: '#f8d030', stroke: '#283068', strokeWidth: 3, shadow: '#101828' });
-    this.add
-      .text(480, 112, this.args.text, { fontFamily: FONT, fontSize: '16px', color: HEX.text, align: 'center', wordWrap: { width: 640 }, lineSpacing: 4 })
-      .setOrigin(0.5);
+    addPixelText(this, 480, 62, this.args.title, { size: 16, scale: 2.2, color: '#f8d030', stroke: '#283068', strokeWidth: 3, shadow: '#101828', maxW: 640 });
+    // Entre el título y la primera fila (los textos largos bajan de letra en vez de pisar la lista)
+    fitTextBox(
+      this.add
+        .text(480, 112, this.args.text, { fontFamily: FONT, fontSize: '16px', color: HEX.text, align: 'center', wordWrap: { width: 640 }, lineSpacing: 4 })
+        .setOrigin(0.5),
+      640,
+      66,
+      11,
+    );
     const hints = this.args.hints ?? [];
     const labels = this.args.options.map((o, i) => (i < 9 ? `${i + 1} · ${o}` : o) + (hints[i] ? `  ·  ${hints[i]}` : ''));
     labels.push(this.args.cancel ?? 'Cancelar');

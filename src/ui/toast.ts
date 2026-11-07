@@ -69,10 +69,10 @@ export class ToastStack {
     const textX = 50;
     const tw = this.w - textX - pad;
     const head = this.scene.add.text(textX, pad + 2, title ?? '', {
-      fontFamily: FONT, fontSize: `${this.font(15)}px`, fontStyle: 'bold', color: '#' + style.color.toString(16).padStart(6, '0'), wordWrap: { width: tw },
+      fontFamily: FONT, fontSize: `${this.font(15)}px`, fontStyle: 'bold', color: '#' + style.color.toString(16).padStart(6, '0'), wordWrap: { width: tw, useAdvancedWrap: true },
     });
     const body = this.scene.add.text(textX, head.y + head.height + 2, rest.join('\n'), {
-      fontFamily: FONT, fontSize: `${this.font(13)}px`, color: HEX.text, wordWrap: { width: tw },
+      fontFamily: FONT, fontSize: `${this.font(13)}px`, color: HEX.text, wordWrap: { width: tw, useAdvancedWrap: true },
     });
     const h = Math.max(52, Math.ceil(body.y + (rest.length ? body.height : 0) + pad));
     const bg = drawBox(this.scene.add.graphics(), 0, 0, this.w, h, { radius: 10 });

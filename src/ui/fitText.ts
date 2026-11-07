@@ -34,3 +34,17 @@ export function fitTextLine(t: Phaser.GameObjects.Text, maxW: number, minPx = 10
   if (t.width > maxW) t.setScale(maxW / t.width);
   return t;
 }
+
+/**
+ * Cambia el texto de una línea que se actualiza (saldos, contadores) y lo encaja en `maxW`: parte siempre del tamaño
+ * de letra con el que se creó (el del modo móvil incluido), así no se queda pequeño cuando la cifra vuelve a caber.
+ */
+export function setFitLine(t: Phaser.GameObjects.Text, text: string, maxW: number, minPx = 10): Phaser.GameObjects.Text {
+  let base = t.getData('fitBasePx') as number | undefined;
+  if (base === undefined) {
+    base = px(t);
+    t.setData('fitBasePx', base);
+  }
+  t.setFontSize(base).setText(text);
+  return fitTextLine(t, maxW, minPx);
+}

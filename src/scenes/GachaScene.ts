@@ -22,6 +22,7 @@ import { sparkle } from '../ui/sparkle';
 import { typeColor, typeNameEs } from '../data/types';
 import { cry, sfx } from '../ui/audio';
 import { ARROW, addTypeChip, drawBox, fadeIn, FONT, goTo, hex, RARITY_COLORS } from '../ui/theme';
+import { fitTextLine, setFitLine } from '../ui/fitText';
 import { addMenuBackdrop } from '../ui/art/landscape';
 import { NavInput, PadButtons } from '../ui/nav';
 import { bakeBannerArt, bannerKey } from '../ui/art/bannerArt';
@@ -314,7 +315,9 @@ export class GachaScene extends Phaser.Scene {
     bar.fillStyle(0xe4e4ec, 1).fillRect(502, 146, bw, 10);
     const frac = prog.total > 0 ? prog.got / prog.total : 0;
     bar.fillStyle(prog.got === prog.total ? 0xffd34d : 0x58b048, 1).fillRect(502, 146, Math.round(bw * frac), 10);
-    parts.push(bar, this.add.text(702, 151, `${prog.got}/${prog.total} conseguidos`, { fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: navy }).setOrigin(0, 0.5));
+    // Los textos de la ficha acaban antes del destacado (x 862 ± 44 con sus rayos): con letra de móvil lo pisaban
+    const TXT_END = 862 - 46;
+    parts.push(bar, fitTextLine(this.add.text(702, 151, `${prog.got}/${prog.total} conseguidos`, { fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: navy }).setOrigin(0, 0.5), TXT_END - 702, 9));
 
     // Garantías de este banner
     const top = bannerTop(pools);
@@ -322,7 +325,7 @@ export class GachaScene extends Phaser.Scene {
     const pity = left.top !== null
       ? `Garantía: ${RARITY_LABEL[top]} en ${left.top} · Épico o mejor en ${left.epic}`
       : `Garantía: Épico o mejor en ${left.epic} (sin legendarios)`;
-    parts.push(this.add.text(500, 176, pity, { fontFamily: FONT, fontSize: '14px', color: navy }).setOrigin(0, 0.5));
+    parts.push(fitTextLine(this.add.text(500, 176, pity, { fontFamily: FONT, fontSize: '14px', color: navy }).setOrigin(0, 0.5), TXT_END - 500, 9));
 
     // Qué hay en el banner
     let info: string;
@@ -331,7 +334,7 @@ export class GachaScene extends Phaser.Scene {
       info = FORM_REGIONS.map((r) => `${FORM_REGION_LABEL[r]} ${fp[r].got}/${fp[r].total}`).join(' · ');
     } else if (banner.kind === 'region') info = `Pokédex n.º ${banner.first}-${banner.last} · ${poolIds(pools).length} Pokémon`;
     else info = `Todas las regiones y formas · ${poolIds(pools).length} Pokémon`;
-    parts.push(this.add.text(500, 220, info, { fontFamily: FONT, fontSize: '13px', color: soft }).setOrigin(0, 0.5));
+    parts.push(fitTextLine(this.add.text(500, 220, info, { fontFamily: FONT, fontSize: '13px', color: soft }).setOrigin(0, 0.5), TXT_END - 500, 9));
     const featText = this.add.text(500, 198, '', { fontFamily: FONT, fontSize: '14px', color: soft }).setOrigin(0, 0.5);
     parts.push(featText);
     this.cardLayer = this.add.container(0, 0, parts);
@@ -347,7 +350,7 @@ export class GachaScene extends Phaser.Scene {
       .then(async (card) => {
         const key = await this.loadSprite(card, false);
         if (!this.alive || token !== this.cardToken || !this.cardLayer?.active) return;
-        featText.setText(`Destacado de hoy: ${capitalize(card.name)} (${RARITY_LABEL[top]})`);
+        fitTextLine(featText.setText(`Destacado de hoy: ${capitalize(card.name)} (${RARITY_LABEL[top]})`), TXT_END - 500, 9);
         this.cardLayer.add(addRays(this, 862, midY - 10, RARITY_COLORS[top], 44, 10));
         if (key) this.cardLayer.add(this.add.image(862, midY - 10, key).setDisplaySize(72, 72));
       })
@@ -355,8 +358,9 @@ export class GachaScene extends Phaser.Scene {
   }
 
   private refreshHud() {
-    this.ticketsText.setText(`Tickets: ${loadTickets()}`);
-    this.ownedText.setText(`Desbloqueados: ${loadUnlocked().length}`);
+    // Saldos grandes (999999): bajan de letra en vez de salirse del cuadro
+    setFitLine(this.ticketsText, `Tickets: ${loadTickets()}`, 924 - 704, 12);
+    setFitLine(this.ownedText, `Desbloqueados: ${loadUnlocked().length}`, 924 - 704, 11);
   }
 
   // --- Botones ---

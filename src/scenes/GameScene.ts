@@ -11747,7 +11747,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
     row.sig = sig;
     const LX = HUD.left.x + HUD.pad;
     const pref = [HUD_COUNT_X.coin, HUD_COUNT_X.key, HUD_COUNT_X.bomb, HUD_COUNT_X.potion];
-    const { x, scale } = counterRowLayout(HUD.left.w - HUD.pad * 2, texts.map((t) => t!.width), pref);
+    // Con el medio ancho real de cada icono (la llave a escala 2 es más ancha que la moneda): con 999999 monedas
+    // la cifra ya no queda debajo de la llave ni la última se sale del panel
+    const { x, scale } = counterRowLayout(HUD.left.w - HUD.pad * 2, texts.map((t) => t!.width), pref, undefined, row.icons.map((ic) => (ic ? ic.displayWidth / 2 : 0)));
     texts.forEach((t, i) => {
       row.icons[i]?.setX(LX + x[i]);
       t!.setX(LX + x[i] + 15).setScale(scale);

@@ -139,6 +139,13 @@ export class PauseScene extends Phaser.Scene {
       t(176, 417, shorten(`Sinergia: ${near[0]}${near.length > 1 ? ` +${near.length - 1}` : ''}`, 46), 13, '#8a5a00', true);
     }
     const itemsText = t(66, PAUSE_ITEMS_Y, d.items.length ? d.items.join(' · ') : 'Ninguno todavía', 14, '#4a5578').setMaxLines(PAUSE_ITEM_MAX_LINES);
+    // Muchos objetos: la última línea visible acaba en «…» (no en un «·» suelto) para que se vea que hay más
+    const itemLines = itemsText.getWrappedText(itemsText.text);
+    if (itemLines.length > PAUSE_ITEM_MAX_LINES) {
+      const shown = itemLines.slice(0, PAUSE_ITEM_MAX_LINES);
+      shown[shown.length - 1] = shown[shown.length - 1].replace(/[\s·]+$/, '') + ' …';
+      itemsText.setText(shown.join('\n'));
+    }
     // Lo de debajo se coloca donde termina de verdad la lista de objetos (1, 2 o 3 líneas)
     const tail = pauseTailLayout(itemLinesFromHeight(itemsText.height), !!d.reactions, d.moves.length);
     if (tail.panelH > PAUSE_PANEL_MIN_H) {

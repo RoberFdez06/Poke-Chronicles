@@ -161,17 +161,21 @@ export const COUNTER_MIN_GAP = 6;
  * intenta quedarse en su x de siempre (`prefX`), pero si la cifra anterior es larga se corre a la derecha; si
  * entonces se sale del panel (ancho `lw`), se empujan hacia la izquierda; y si ni así caben, las cifras se encogen
  * (`scale` < 1, el texto se escala; los iconos no) y van juntas. Devuelve la x del icono de cada contador.
+ * `iconHalf`: medio ancho real de cada icono (la llave es más ancha que la moneda); la cifra sigue empezando en
+ * x + COUNTER_TEXT_DX, así que un icono más ancho que eso solo ocupa sitio por la izquierda.
  */
-export function counterRowLayout(lw: number, textW: number[], prefX: number[], minGap = COUNTER_MIN_GAP): { x: number[]; scale: number } {
+export function counterRowLayout(lw: number, textW: number[], prefX: number[], minGap = COUNTER_MIN_GAP, iconHalf: readonly number[] = []): { x: number[]; scale: number } {
   const n = textW.length;
-  const fixed = n * (COUNTER_ICON_HALF + COUNTER_TEXT_DX) + Math.max(0, n - 1) * minGap;
+  const half = (i: number) => Math.max(COUNTER_ICON_HALF, iconHalf[i] ?? 0);
+  let fixed = Math.max(0, n - 1) * minGap;
+  for (let i = 0; i < n; i++) fixed += half(i) + COUNTER_TEXT_DX;
   const total = fixed + textW.reduce((a, b) => a + b, 0);
   const scale = total > lw ? Math.max(0.4, (lw - fixed) / Math.max(1, total - fixed)) : 1;
-  const w = textW.map((t) => COUNTER_ICON_HALF + COUNTER_TEXT_DX + t * scale);
+  const w = textW.map((t, i) => half(i) + COUNTER_TEXT_DX + t * scale);
   // izquierda → derecha: sin pisar la cifra anterior
   const left: number[] = [];
   for (let i = 0; i < n; i++) {
-    const want = (prefX[i] ?? 0) - COUNTER_ICON_HALF;
+    const want = (prefX[i] ?? 0) - half(i);
     left.push(i === 0 ? Math.max(0, want) : Math.max(want, left[i - 1] + w[i - 1] + minGap));
   }
   // derecha → izquierda: sin salirse del panel
@@ -179,5 +183,5 @@ export function counterRowLayout(lw: number, textW: number[], prefX: number[], m
     const lim = i === n - 1 ? lw - w[i] : left[i + 1] - minGap - w[i];
     left[i] = Math.max(0, Math.min(left[i], lim));
   }
-  return { x: left.map((l) => l + COUNTER_ICON_HALF), scale };
+  return { x: left.map((l, i) => l + half(i)), scale };
 }

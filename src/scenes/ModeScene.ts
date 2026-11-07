@@ -70,7 +70,7 @@ export class ModeScene extends Phaser.Scene {
   private pad!: PadButtons;
   private keys!: Record<'Q' | 'E' | 'C' | 'T', Phaser.Input.Keyboard.Key>;
   private tutBtn!: Phaser.GameObjects.Text;
-  private cards: { frame: Phaser.GameObjects.Graphics; box: Phaser.GameObjects.Container; record: Phaser.GameObjects.Text }[] = [];
+  private cards: { frame: Phaser.GameObjects.Graphics; box: Phaser.GameObjects.Container; record: Phaser.GameObjects.Text; desc: Phaser.GameObjects.Text; next: Phaser.GameObjects.Text }[] = [];
   private selected = 0;
   private records: Records = emptyRecords();
   private readyAt = 0;
@@ -159,6 +159,8 @@ export class ModeScene extends Phaser.Scene {
     const record = this.add.text(w / 2, h - 36, '', { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: '#b8860b', align: 'center' }).setOrigin(0.5);
     const next = this.add.text(w / 2, h - 14, def.next, { fontFamily: UI.FONT, fontSize: '12px', color: '#7a849e' }).setOrigin(0.5);
     fitTextLine(next, w - 16, minPx);
+    // Con la letra de móvil, «Luego: …» tocaba el borde de abajo: siempre con 7 px de aire
+    next.setY(Math.min(h - 14, h - 7 - next.displayHeight / 2));
     // Hueco de la descripción: de y = 92 hasta encima del récord (centrado en h − 36), con 4 px de aire
     fitTextBox(desc, w - 20, h - 36 - record.height / 2 - 4 - 92, minPx);
     const box = this.add.container(cardX(i), cardY(i), [bg, frame, icon, name, desc, record, next]).setSize(w, h);
@@ -170,7 +172,7 @@ export class ModeScene extends Phaser.Scene {
       this.select(i);
       this.pick(i);
     });
-    return { frame, box, record };
+    return { frame, box, record, desc, next };
   }
 
   private recordFor(id: ModeCardId): string {
@@ -271,6 +273,11 @@ export class ModeScene extends Phaser.Scene {
     this.cards.forEach((c, k) => {
       c.record.setScale(1).setText(this.recordFor(CARDS[k].id));
       if (c.record.width > CARD.w - 16) c.record.setScale((CARD.w - 16) / c.record.width);
+      // Encima de «Luego: …» y la descripción, encima del récord (con la letra de móvil se pisaban)
+      const nextTop = c.next.y - c.next.displayHeight / 2;
+      c.record.setY(Math.min(CARD.h - 36, nextTop - 1 - c.record.displayHeight / 2));
+      const recTop = c.record.y - c.record.displayHeight / 2;
+      if (c.desc.y + c.desc.displayHeight > recTop - 3) fitTextBox(c.desc, CARD.w - 20, recTop - 3 - c.desc.y, mobileUi() ? 13 : 9);
     });
   }
 
