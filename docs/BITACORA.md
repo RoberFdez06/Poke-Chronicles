@@ -2719,3 +2719,37 @@ más blandos o duros (el núcleo + hitbox es ±1-7 px de lo de antes). El HUD m�
   y `npm test` (1195 pruebas). Probar en móvil real: jugar con 3-4 dedos, deslizar desde el borde y bajar las
   notificaciones con el joystick puesto, cambiar de app y volver, girar a vertical (debe pausar) y volver, tocar Bomba
   durante el cartel de piso (no debe salir luego), y en iPhone con barras de Safari que las bandas sigan bajo el dedo.
+
+## Auditoría visual: cajas, solapes y textos cortados (rama `auditoria`, 07/11)
+Recorrido automático (Playwright + comprobación de los objetos de Phaser: texto fuera de su caja, textos que se pisan, texto
+sobre iconos, interactivos fuera de cámara) de ~40 pantallas en 1920×1080, 1366×768, 1280×720, 2560×1080, 3440×1440,
+1024×768 y táctil 852×393, 734×372, 667×375, 915×412, 667×258 y vertical 390×844, con valores extremos: 999999 tickets,
+caramelos y monedas, 99 llaves/bombas/pociones, 24 objetos (24/10), 1025 Pokémon y shinies, mejoras y huerto al máximo,
+récords 99999, Torre 100, nombres y textos de 40+ caracteres, cuatro avisos a la vez y textos «Completos». Capturas de
+antes/después en `docs/auditoria/`.
+Arreglado (solo tamaños, anclajes y ajuste de texto; nada de lógica):
+- **Fuente**: sin ligaduras (`liga`/`dlig` a 0 en theme.ts): la «fi» de Pixelify Sans parecía una «A» («Reto final» se leía
+  «Reto Anal», «Infinito», «Final»…).
+- **HUD de contadores**: `counterRowLayout` acepta el medio ancho real de cada icono (la llave es más ancha): con 999999
+  monedas la cifra ya no queda debajo de la llave (test nuevo en hudLayout.test.ts).
+- **Avisos (toasts)**: las palabras largas se parten (`useAdvancedWrap`) en vez de salirse de la tarjeta.
+- **Confirmar y Forja (ItemChoice)**: títulos largos se encogen (`addPixelText` con `maxW`), el texto se encaja entre el título
+  y los botones (`fitTextBox`) y las filas de `MenuList` encogen los textos largos para no pisar la flecha ni salirse.
+- **Ajustes**: con «Panel admin» la fila «Volver» pisaba la barra de ayuda (filas de 33 px).
+- **Saldos**: Gacha y Mejoras con 999999 bajan de letra (`setFitLine`) en vez de pisar el icono del caramelo.
+- **Gacha (banners)**: los textos de la ficha acaban antes del Pokémon destacado (antes «conseguidos» y la garantía quedaban
+  debajo de él en móvil).
+- **Pausa**: con muchos objetos la última línea acaba en «…» en vez de cortarse con un «·».
+- **Menú principal**: la línea de récords altos baja de letra en vez de salirse por los lados.
+- **Modos (móvil)**: «Luego: …», el récord y la descripción ya no se pisan ni tocan el borde.
+- **Pestañas de región y filtros** (Pokédex, inicial): el texto de dos líneas cabe en la pestaña con la letra de móvil.
+- **Huerto, Misiones (logros), Registro de combate, Mejoras (nodos y barras de estadísticas)**: cada línea encaja en su caja con
+  la letra de móvil (antes se pisaban o salían del borde).
+- **Defensa de torres**: menú de mapas (fichas normales y compactas de 18) con nombre, niveles, estrellas y «∞ abierto» dentro de
+  la ficha y la cifra después de la estrella; el consejo de la partida va abajo del mapa y centrado en él (arriba pisaba los
+  avisos y el aviso del nivel temático, y centrado en pantalla pisaba el panel del equipo).
+Pendiente HUD móvil (no tocado, es del trabajo de móvil): en 852×393 la rejilla de objetos (24) queda cortada por el panel del
+objeto activo, la pila de avisos de la derecha se corta por abajo y la cifra de pociones toca el borde del panel de contadores.
+No comprobado: la pantalla «Elige tu equipo» con el aviso (la colección tarda en cargar sin red en el contenedor), el resumen de
+partida tras morir (la animación no terminó en la captura), Legal en el tercer apartado (falla al arrancar la escena con datos
+sueltos: solo desde la prueba) y los sprites reales (sin acceso a PokeAPI: se ven Poké Balls genéricas).
