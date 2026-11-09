@@ -3,13 +3,15 @@
 ## Cómo se protegen las cuentas y los datos
 
 - **Autenticación:** Firebase Authentication (correo y contraseña, o Google). Las contraseñas las gestiona Firebase y
-  nunca pasan por este código ni se guardan en el repositorio. La política exige **8 caracteres como mínimo, con
-  mayúscula, minúscula, número y carácter especial**.
+  nunca pasan por este código ni se guardan en el repositorio. La política de contraseña (8 caracteres como mínimo,
+  con mayúscula, minúscula, número y carácter especial) se configura en Firebase Authentication.
 - **Datos:** Cloud Firestore con reglas estrictas ([`firestore.rules`](firestore.rules)): cada usuario solo puede leer
   y escribir `users/{su uid}`; todo lo demás está denegado.
-- **Claves:** la configuración web de Firebase es pública por diseño, y la clave de API está restringida a los
-  dominios del juego. No hay claves privadas, tokens ni contraseñas en el código ni en el historial de git. Los
+- **Claves:** la configuración web de Firebase es pública por diseño, y la clave de API debe restringirse a los
+  dominios del juego en Google Cloud (ver `docs/SEGURIDAD.md`, pendiente de confirmar). No hay claves privadas, tokens ni contraseñas en el código ni en el historial de git. Los
   valores locales van en `.env.local`, que está ignorado por git.
+- **Navegador:** el HTML lleva una Content-Security-Policy por `<meta>` (GitHub Pages no permite cabeceras): solo scripts
+  propios y el de Google para el acceso con su cuenta, sin plugins ni `base` ajena. No hay `innerHTML` ni `eval` en el código.
 - **Modo administrador:** solo se activa si el SHA-256 del correo de la sesión coincide con una variable de entorno
   que **no** se incluye en la web pública.
 - **Repositorio:** Secret scanning, Push protection, alertas y actualizaciones de seguridad de Dependabot activadas.
