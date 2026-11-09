@@ -2849,3 +2849,8 @@ otra (p. ej. «Desafío diario»); además un Enter muy breve no siempre contaba
 - **Cuelgue al continuar**: `startFloor` ponía la trampilla antes de `enterRoom` y `cellRoom` leía `this.current` sin valor. Toda partida guardada con el jefe del piso vencido (y la Torre con el piso superado) daba «Algo ha fallado». Ahora `this.current` se fija antes, y la búsqueda de sitio de la trampilla no mira caminos si el jugador está fuera de la arena.
 - **Solapes**: título de la Pokédex en dos líneas entre «Volver» y «Sinergias»; ficha de torre sin pisar el aviso de tipos; «Francotirador» y el filtro «Todos» encajados; la baya madura ya no tapa su nombre en el Huerto y la descripción de las semillas baja del icono.
 - **Textos**: «Falta 1 partida», 18 mapas en la tarjeta del modo y coma decimal (`data/decimal.ts`) en pausa, torres, fusión y forja. Tests en `tests/textosEspanol.test.ts`.
+
+## FPS del Modo Normal: HUD pintado en imágenes (rama `fps-hud`)
+
+- El fondo de los laterales (63 000 órdenes) y el minimapa (20 000) eran Graphics que se repetían en cada fotograma y por cada cámara del HUD: 26 ms de dibujado, 30-40 FPS. Ahora van a imágenes (`ui/bakedGraphics.ts`): cuatro para las franjas del fondo y una para el mapa, que se repinta solo en `drawMap`. El Graphics del mapa sigue guardando la disposición (tooltip y bordes) sin pintarse; el marco que late y los iconos animados siguen en sus capas. Se repintan si la gráfica pierde y recupera el contexto.
+- Test: `tests/e2e/hudbake.spec.ts`.

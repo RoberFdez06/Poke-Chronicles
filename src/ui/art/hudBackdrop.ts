@@ -27,8 +27,8 @@ export function drawMotif(g: Phaser.GameObjects.Graphics, t: HudTheme, x: number
   });
 }
 
-/** Rectángulos de pantalla que quedan fuera de la sala. */
-function strips() {
+/** Rectángulos de pantalla que quedan fuera de la sala (todo el fondo cae dentro de ellos). */
+export function strips() {
   const gv = GAME_VIEW;
   return [
     { x: 0, y: 0, w: gv.x, h: H },
