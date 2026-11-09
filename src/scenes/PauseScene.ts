@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { decimal } from '../data/decimal';
 import { fitTextLine } from '../ui/fitText';
 import { addHelpBar } from '../ui/helpBar';
 import { MENU_BAND, COVER_H, COVER_W, DCX, DCY, fitDesign } from '../ui/layout';
@@ -105,14 +106,14 @@ export class PauseScene extends Phaser.Scene {
     t(66, 170, `Monedas ${d.coins} · Llaves ${d.keys} · Bombas ${d.bombs} · Tickets +${d.earned}`, 15, '#4a5578');
     const rows: [string, string][] = [
       ['PS', `${Math.ceil(d.hp)} / ${st.maxHp}`],
-      ['Daño', `${st.damage.toFixed(1)}`],
-      ['Disparos/s', `${(1000 / st.fireDelay).toFixed(1)}`],
+      ['Daño', decimal(st.damage, 1)],
+      ['Disparos/s', decimal(1000 / st.fireDelay, 1)],
       ['Velocidad', `${Math.round(st.speed)}`],
-      ['Alcance', `${(st.range / 1000).toFixed(2)} s`],
+      ['Alcance', `${decimal(st.range / 1000, 2)} s`],
       ['Disparos extra', `${st.extraShots}`],
       ['Atraviesa', `${st.pierce}`],
       ['Rebotes', `${st.bounces}`],
-      ['Poderes', `×${st.powerMul.toFixed(2)}`],
+      ['Poderes', `×${decimal(st.powerMul, 2)}`],
       ['Daño recibido', `${Math.round(st.damageTaken * 100)} %`],
     ];
     rows.forEach(([k, v], i) => {

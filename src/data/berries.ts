@@ -91,6 +91,12 @@ export const isRipe = (p: Plot | null): boolean => !!p && p.runs >= GARDEN_BERRI
 /** Partidas que le faltan a una parcela (0 = lista para recoger). */
 export const runsLeft = (p: Plot): number => Math.max(0, GARDEN_BERRIES[p.berry].growRuns - p.runs);
 
+/** «Falta 1 partida» / «Faltan 2 partidas». */
+export function runsLeftLabel(p: Plot): string {
+  const n = runsLeft(p);
+  return n === 1 ? 'Falta 1 partida' : `Faltan ${n} partidas`;
+}
+
 /** Planta una semilla en una parcela vacía. null si no se puede (parcela ocupada o sin semillas). */
 export function plant(state: GardenState, plot: number, berry: GardenBerryId): GardenState | null {
   if (plot < 0 || plot >= state.plots.length || state.plots[plot] || state.seeds[berry] <= 0) return null;

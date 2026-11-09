@@ -5,7 +5,7 @@ import { fitDesign } from '../ui/layout';
 import { fitTextBox, fitTextLine } from '../ui/fitText';
 import { loadGarden, saveGarden } from '../data/save';
 import {
-  GARDEN_BERRIES, GARDEN_BERRY_IDS, GARDEN_CARRY, GARDEN_PLOTS, harvest, isRipe, plant, runsLeft, type GardenBerryId, type GardenState,
+  GARDEN_BERRIES, GARDEN_BERRY_IDS, GARDEN_CARRY, GARDEN_PLOTS, harvest, isRipe, plant, runsLeft, runsLeftLabel, type GardenBerryId, type GardenState,
 } from '../data/berries';
 import { addBackButton } from '../ui/cards';
 import { NavInput } from '../ui/nav';
@@ -80,7 +80,7 @@ export class GardenScene extends Phaser.Scene {
         const ripe = isRipe(p);
         // En móvil la letra crece: cada línea cabe en la parcela (antes «¡Lista para recoger!» se salía)
         fitTextLine(text(plotX(k), PLOT.y - PLOT.h / 2 + 20, b.name, 16, HEX.text, true), PLOT.w - 20, 10);
-        fitTextLine(text(plotX(k), PLOT.y + 64, ripe ? '¡Lista para recoger!' : `Faltan ${runsLeft(p)} ${runsLeft(p) === 1 ? 'partida' : 'partidas'}`, 14,
+        fitTextLine(text(plotX(k), PLOT.y + 64, ripe ? '¡Lista para recoger!' : runsLeftLabel(p), 14,
           ripe ? '#2e9a4a' : HEX.textSoft, ripe), PLOT.w - 20, 10);
       } else {
         fitTextLine(text(plotX(k), PLOT.y - PLOT.h / 2 + 20, `Parcela ${k + 1}`, 16, HEX.textSoft, true), PLOT.w - 20, 10);
@@ -107,7 +107,8 @@ export class GardenScene extends Phaser.Scene {
       // Nombre y cantidad (×999) a la derecha del icono, sin salirse; la descripción, entre el nombre y el borde
       fitTextLine(t, 215, 10);
       L.add(t);
-      const descTop = SEED_Y - 12 + t.displayHeight / 2 + 2;
+      // Por debajo del icono de la baya, que baja más que el nombre
+      const descTop = Math.max(SEED_Y - 12 + t.displayHeight / 2 + 2, SEED_Y + 9);
       const descBottom = SEED_Y + 56 - 5;
       L.add(fitTextBox(this.add.text(x, (descTop + descBottom) / 2, `${b.description}\nCrece en ${b.growRuns} ${b.growRuns === 1 ? 'partida' : 'partidas'} · cesta: ${this.garden.basket[id]}`, {
         fontFamily: FONT, fontSize: '12px', color: HEX.textSoft, align: 'center', wordWrap: { width: 250 },

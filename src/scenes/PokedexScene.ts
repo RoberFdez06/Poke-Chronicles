@@ -25,6 +25,8 @@ const PAGE_SIZE = COLS * ROWS;
 const TILE = { w: 106, h: 108, gap: 6 };
 /** Centro de la primera fila: debajo de los filtros (que acaban en y ≈ 164). */
 const GRID_TOP = 228;
+/** Ancho del título, centrado en x = 480: acaba antes del botón «Sinergias» (que empieza en x = 808). */
+const HEADER_W = 632;
 
 /** Sprite pixel de frente del repositorio de PokeAPI (sin pedir /pokemon/{id} por cada uno). */
 const spriteUrl = (id: number, shiny = false) =>
@@ -125,9 +127,13 @@ export class PokedexScene extends Phaser.Scene {
     loading.destroy();
 
     const have = this.entries.filter((e) => e.owned);
-    this.add
-      .text(480, 40, this.pickFor ? `Elige un Pokémon para mejorar · Tienes ${have.length}` : `Pokédex · Tienes ${have.length} de ${all.length} · ★ ${shinies.size} shiny${darkSeen ? ` · ${darks.size} oscuros (${darkSeen} descubiertos)` : ''}`, { fontFamily: FONT, fontSize: '30px', color: '#ffffff' })
-      .setOrigin(0.5);
+    // Título y recuento caben entre «Volver» y «Sinergias» (en una sola línea de 30 px los pisaba a los dos)
+    const header = (y: number, s: string, px: number) => fitTextLine(this.add.text(480, y, s, { fontFamily: FONT, fontSize: `${px}px`, color: '#ffffff' }).setOrigin(0.5), HEADER_W, 11);
+    if (this.pickFor) header(40, `Elige un Pokémon para mejorar · Tienes ${have.length}`, 30);
+    else {
+      header(26, 'Pokédex', 26);
+      header(52, `Tienes ${have.length} de ${all.length} · ★ ${shinies.size} shiny${darkSeen ? ` · ${darks.size} oscuros (${darkSeen} descubiertos)` : ''}`, 16);
+    }
     this.filters = new FilterBar(this, {
       tabsY: 92,
       buttonsY: 146,
