@@ -105,3 +105,10 @@ export function stuckKeys(s: KeyHold, gameKeys: Iterable<{ keyCode: number; isDo
   for (const k of gameKeys) if (k.isDown && !s.held.has(k.keyCode)) out.push(k.keyCode);
   return out;
 }
+
+/**
+ * Pulsación breve (keydown y keyup procesados en el mismo fotograma, como un Enter sintético o un toque muy rápido):
+ * Phaser borra el «recién pulsada» de la tecla al soltarla y `JustDown` no la ve nunca. Se conserva hasta el final de
+ * ese fotograma (después se borra: una tecla que nadie miró no vale como pulsación en fotogramas posteriores).
+ */
+export const keepJustDown = (wasJustDown: boolean, downFrame: number, upFrame: number): boolean => wasJustDown && downFrame === upFrame;

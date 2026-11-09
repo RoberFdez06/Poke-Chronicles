@@ -2814,3 +2814,32 @@ sueltos: solo desde la prueba) y los sprites reales (sin acceso a PokeAPI: se ve
   «Cómo se juega» (solo crecen ◀ ▶ ✕). Probar en iPhone con y sin barras, Android, Fold e iPad: colocar con anillo y
   con lupa, pellizcar y arrastrar con una oleada en curso, abrir torre y camino, mover, vender, ramas, habilidades de
   zona, pausar, girar a vertical y volver, y que ningún dedo se quede pillado al cambiar de pantalla.
+## 2026-11-09 · Ratón que no seguía en las tarjetas de modos, pulsaciones breves y avisos de audio (rama `hover`)
+Motivo: en la versión publicada, con el ratón sobre una tarjeta de «¿A qué quieres jugar?» el marco dorado se quedaba en
+otra (p. ej. «Desafío diario»); además un Enter muy breve no siempre contaba y la consola se llenaba de avisos de BiquadFilter.
+- **Causa raíz del ratón** (no era de `menuPointer`): Phaser suma SIEMPRE medio tamaño (`displayOrigin` = w/2, h/2) a la
+  coordenada local de un contenedor con `setSize` antes de mirar su zona, así que `Rectangle(0, 0, w, h)` cubre de −w/2 a
+  +w/2 alrededor de la posición. El resto de contenedores dibujan su contenido centrado («Phaser la centra solo»), pero las
+  tarjetas de modos se dibujan desde la esquina (0..w): su zona quedaba corrida media tarjeta arriba a la izquierda y el
+  ratón en la mitad derecha o de abajo de una tarjeta caía en la vecina. Ya pasaba antes de la rama `entrada` (comprobado
+  con el commit 3c54921): no es regresión de la capa de ratón. Arreglo: `containerHitRect(w, h, 'corner')`
+  (data/menuPointer.ts) corre la zona medio tamaño; ModeScene la usa.
+- **Comprobado en Chromium + Playwright** (esbuild en modo desarrollo como en la auditoría): malla de 11 puntos por botón
+  (centro, 4 esquinas, 4 bordes y 2 cuartos, a 1, 2 y 3 px dentro del borde) en Menú, Modos, Ajustes, Pokédex, Mejoras, Gacha,
+  menú de la Defensa de torres, Huecos, Teclas, Misiones, Huerto, Controles, Historial, RunDex, Sinergias y Legal, a 1366×768,
+  1920×1080, 2560×1080, 1024×768 y con escala de Windows 125 % y 150 %: antes fallaban ~100 de 286 puntos en Modos (y 24 de 65
+  con ratón real), ahora 0 en todas. Con 1 px justo en la raya entre dos filas del Menú gana la de arriba (las filas se
+  tocan): es el píxel compartido, no un fallo. Margen de clic, clic fiable, rueda y hover tras teclado siguen igual.
+- **Teclado** (`keyGuard`): no perdía pulsaciones por soltar teclas, pero Phaser sí: si keydown y keyup se procesan en el
+  mismo fotograma (Enter sintético, toque muy rápido), `Key.onUp` borra el «recién pulsada» y `JustDown` no lo ve nunca (antes:
+  0 de 6 flechas breves movían la selección en Modos; ahora 6 de 6 y Enter abre el modo). Se conserva hasta el final de ese
+  fotograma (`keepJustDown` en data/keyHold.ts) y después caduca, así una tecla que nadie miró no cuenta más tarde.
+- **Pantalla «Pulsa una tecla…»**: `unlockAudio` esperaba a `AudioContext.resume()`, que sin activación del usuario (tecla
+  sintética, política del navegador) no se resuelve nunca. Ahora espera como mucho 500 ms y sigue; el audio arranca con el
+  siguiente gesto (initAudio ya lo hacía). En Chromium sin pantalla no se pudo reproducir el bloqueo (allí `resume()` resuelve).
+- **Audio**: los avisos «BiquadFilter.frequency… 48000 outside nominal range» venían del charles de la música de combate y
+  jefe (ruido a 6000 Hz × 8 en `playTone`). La frecuencia del filtro se limita a la mitad de la de muestreo (`filterFreq`,
+  audio/musicState.ts); el navegador ya la recortaba así, suena igual.
+- Tests: `tests/hover.test.ts` (zona de contenedores dibujados desde la esquina o centrados, pulsación breve, frecuencia del
+  filtro) y `tests/e2e/hover.spec.ts` (malla en todos los menús a 1366×768 y 1024×768, ratón real por tarjetas de Modos y
+  flechas/Enter breves). Con el código anterior la malla y las teclas breves fallan.

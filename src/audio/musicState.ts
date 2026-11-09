@@ -60,3 +60,9 @@ export function resumeStep(lastStep: number, silentMs: number, length: number): 
 export function needsResume(state: string): boolean {
   return state === 'suspended' || state === 'interrupted';
 }
+
+/**
+ * Frecuencia de un filtro dentro de su rango válido (0 a la mitad de la frecuencia de muestreo, Nyquist). El navegador
+ * ya la recorta así (suena igual), pero avisa en consola con cada nota («outside nominal range»).
+ */
+export const filterFreq = (f: number, sampleRate: number): number => Math.min(Math.max(f, 0), sampleRate / 2);

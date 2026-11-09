@@ -6,7 +6,7 @@ import { fetchCryUrl } from '../data/pokeapi';
 import {
   TRACKS, menuPlaylist, roomMusicFor, runPlaylist, tdChiefPlaylist, tdMenuPlaylist, tdTypePlaylist, type MusicTrack, type Playlist, type RunMusic,
 } from '../data/music';
-import { CROSSFADE_S, RESUME_WINDOW_MS, crossfadeGains, needsResume, resumeStep, type MusicMood } from '../audio/musicState.ts';
+import { CROSSFADE_S, RESUME_WINDOW_MS, crossfadeGains, filterFreq, needsResume, resumeStep, type MusicMood } from '../audio/musicState.ts';
 import { MusicShuffle, loopsFor } from '../audio/playlist.ts';
 
 let ctx: AudioContext | null = null;
@@ -113,8 +113,9 @@ function playTone(c: AudioContext, out: AudioNode, t: Tone, at: number) {
     src.buffer = noise;
     const filter = c.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(t.freq * 8, start);
-    if (t.slideTo) filter.frequency.exponentialRampToValueAtTime(t.slideTo * 8, start + t.dur);
+    // Ruido: filtro a 8 × la nota, sin pasar de Nyquist (6000 × 8 = 48 kHz avisaba en consola en cada golpe de platillo)
+    filter.frequency.setValueAtTime(filterFreq(t.freq * 8, c.sampleRate), start);
+    if (t.slideTo) filter.frequency.exponentialRampToValueAtTime(Math.max(1, filterFreq(t.slideTo * 8, c.sampleRate)), start + t.dur);
     src.connect(filter).connect(env);
     src.start(start);
     src.stop(start + t.dur);
@@ -408,15 +409,21 @@ function startLoop() {
 /** ¿Se puede sonar ya? (el navegador exige un gesto del jugador antes de dejar sonar nada) */
 export const audioReady = (): boolean => !!ctx && ctx.state === 'running';
 
-/** Desbloquea el audio con un gesto y avisa cuando ya suena. */
+/** Lo más que se espera a que el navegador deje sonar el audio antes de seguir (en silencio) tras la pantalla previa. */
+const UNLOCK_WAIT_MS = 500;
+
+/**
+ * Desbloquea el audio con un gesto y avisa cuando ya suena o, como mucho, a los UNLOCK_WAIT_MS. Sin activación del
+ * usuario (una tecla sintética, una política del navegador) `resume()` no se resuelve nunca y la pantalla «Pulsa una
+ * tecla…» se quedaba parada; ahora sigue y el audio arranca con el siguiente gesto (initAudio).
+ */
 export async function unlockAudio(): Promise<void> {
   const c = ensure();
   if (c && needsResume(c.state)) {
-    try {
-      await c.resume();
-    } catch {
-      // sin permiso: seguirá en silencio
-    }
+    await Promise.race([
+      c.resume().catch(() => undefined), // sin permiso: seguirá en silencio
+      new Promise<void>((r) => setTimeout(r, UNLOCK_WAIT_MS)),
+    ]);
   }
 }
 

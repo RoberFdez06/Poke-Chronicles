@@ -23,6 +23,7 @@ import { currentPlan } from './runLaunch';
 import { loadTutorial, saveTutorial } from '../data/save';
 import { markPracticed, practiced, shouldOfferTutorial, tutorialModeFor, TUTORIAL_STARTER, type TutorialMode } from '../data/bossTutorial';
 import { currentInput } from '../ui/inputMode';
+import { containerHitRect } from '../data/menuPointer';
 
 /** Margen tras abrir la pantalla en el que se ignora confirmar (el Enter que pulsó «Jugar» no elige modo). */
 const INPUT_DELAY_MS = 350;
@@ -164,7 +165,10 @@ export class ModeScene extends Phaser.Scene {
     // Hueco de la descripción: de y = 92 hasta encima del récord (centrado en h − 36), con 4 px de aire
     fitTextBox(desc, w - 20, h - 36 - record.height / 2 - 4 - 92, minPx);
     const box = this.add.container(cardX(i), cardY(i), [bg, frame, icon, name, desc, record, next]).setSize(w, h);
-    box.setInteractive(new Phaser.Geom.Rectangle(0, 0, w, h), Phaser.Geom.Rectangle.Contains);
+    // La tarjeta se dibuja desde su esquina (0..w) y Phaser centra la zona de un contenedor: hay que correrla medio
+    // tamaño (antes el ratón en la mitad derecha o de abajo seleccionaba la tarjeta vecina)
+    const hit = containerHitRect(w, h, 'corner');
+    box.setInteractive(new Phaser.Geom.Rectangle(hit.x, hit.y, hit.w, hit.h), Phaser.Geom.Rectangle.Contains);
     box.input!.cursor = 'pointer';
     box.on('pointerover', () => !this.leaving && this.select(i));
     box.on('pointerdown', () => {
