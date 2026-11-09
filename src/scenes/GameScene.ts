@@ -3272,8 +3272,13 @@ export class GameScene extends Phaser.Scene {
       addHudAmbient(this, th, (o) => hud(o), lowFx());
       const prevBg = document.body.style.background;
       document.body.style.background = `#${th.bg.toString(16).padStart(6, '0')}`;
+      // Entre las cámaras del HUD (pantalla ancha) se veía el azul de fondo del juego en franjas: en partida, el color del bioma
+      const clear = (this.renderer as unknown as { config: { backgroundColor: Phaser.Display.Color } }).config;
+      const prevClear = clear.backgroundColor;
+      clear.backgroundColor = Phaser.Display.Color.ValueToColor(th.bg);
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
         document.body.style.background = prevBg;
+        clear.backgroundColor = prevClear;
         setHudPalette(null);
       });
     }
