@@ -363,7 +363,8 @@ import { behaviorFor, behaviorForSpecies, enemyStats, pickFloorEnemies, EnemyBeh
 } from '../data/enemies';
 import { drawMinimap, minimapBounds, minimapRoomAt, ROOM_LABEL } from './minimap';
 import { hudThemeFor } from '../ui/art/hudTheme';
-import { addHudAmbient, drawHudBackdrop } from '../ui/art/hudBackdrop';
+import { addHudAmbient, drawHudBackdrop, strips } from '../ui/art/hudBackdrop';
+import { addBakeTarget, onGpuRestored, paintBake } from '../ui/bakedGraphics';
 import { setHudPalette } from '../ui/art/hud';
 import { byDevice, drawKeyGlyph, GlyphText } from '../ui/art/keyGlyphs';
 import { bossCallout, floatPopup, PromptPanel } from '../ui/floatText';
@@ -1066,6 +1067,9 @@ export class GameScene extends Phaser.Scene {
   private static offlineNotified = false;
   private bannerBox!: Phaser.GameObjects.Graphics;
   private minimap!: Phaser.GameObjects.Graphics;
+  private mapBake!: Phaser.GameObjects.RenderTexture;
+  /** Columna derecha entera: el mapa nunca sale de ella (y sus motivos asoman un poco por arriba y por la izquierda). */
+  private readonly mapBakeRect = { x: HUD.right.x - 16, y: 0, w: HUD.right.w + 16, h: H };
   /** «Modo automático» (solo móvil, data/autoMode.ts): ajuste guardado, último poder lanzado solo, dirección anterior
    * de la IA de movimiento y el botón del HUD (indicador y activar/desactivar rápido). */
   private auto: AutoModeSetting = loadAutoMode();
@@ -3254,7 +3258,17 @@ export class GameScene extends Phaser.Scene {
     {
       const th = hudThemeFor(this.biome.id);
       setHudPalette(th);
-      hud(drawHudBackdrop(this.add.graphics(), th, this.floorSeed));
+      // El fondo tiene unas 60 000 órdenes de dibujo: se pinta una vez en una imagen por franja (ver bakedGraphics.ts)
+      const backRects = strips();
+      const backs = backRects.map((r) => hud(addBakeTarget(this, r)));
+      const paintBack = () => {
+        const g = this.make.graphics({}, false);
+        drawHudBackdrop(g, th, this.floorSeed);
+        backs.forEach((rt, i) => paintBake(rt, g, backRects[i]));
+        g.destroy();
+      };
+      paintBack();
+      onGpuRestored(this, paintBack);
       addHudAmbient(this, th, (o) => hud(o), lowFx());
       const prevBg = document.body.style.background;
       document.body.style.background = `#${th.bg.toString(16).padStart(6, '0')}`;
@@ -3442,7 +3456,10 @@ export class GameScene extends Phaser.Scene {
       if (this.touch) dashBtn.disableInteractive();
     }
     // Minimapa arriba a la derecha
-    this.minimap = hud(this.add.graphics());
+    // El Graphics solo guarda el dibujo; en pantalla sale la imagen, que se repinta cuando cambia el mapa (drawMap)
+    this.minimap = hud(this.add.graphics().setVisible(false));
+    this.mapBake = hud(addBakeTarget(this, this.mapBakeRect));
+    onGpuRestored(this, () => this.drawMap());
     // Modo automático (solo móvil): botón pequeño en la franja de arriba, a la derecha de la barra del jefe
     if (this.touch) {
       const r = GameScene.AUTO_BTN;
@@ -5311,6 +5328,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       chests: new Set((this.floor.chestRooms ?? []).filter((id) => !this.openedChests.has(id))),
       loot: this.mapLoot(),
     });
+    paintBake(this.mapBake, this.minimap, this.mapBakeRect);
     this.toasts?.setTop(bottom + 16);
   }
 
