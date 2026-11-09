@@ -43,6 +43,21 @@ export function padHit(r: Rect, x: number, y: number, pad: number): 'exact' | 'p
   return null;
 }
 
+/**
+ * Zona de impacto de un contenedor de Phaser con `setSize(w, h)`. Phaser suma SIEMPRE medio tamaño (el `displayOrigin`
+ * de un contenedor es w/2, h/2) a la coordenada local antes de mirar la zona, así que un rectángulo (0, 0, w, h) cubre
+ * de −w/2 a +w/2 alrededor de la posición del contenedor. Vale si el contenido se dibuja centrado; si se dibuja desde la
+ * esquina (de 0 a w, como las tarjetas de modos), la zona tiene que ir corrida medio tamaño o quedará encima de la
+ * tarjeta de arriba a la izquierda (el ratón sobre la mitad derecha o de abajo seleccionaba la tarjeta vecina).
+ */
+export function containerHitRect(w: number, h: number, drawn: 'center' | 'corner'): Rect {
+  return drawn === 'corner' ? { x: w / 2, y: h / 2, w, h } : { x: 0, y: 0, w, h };
+}
+
+/** Prueba de impacto de Phaser 3.90 en un contenedor de w × h (sin escala): punto relativo a su posición. */
+export const containerHit = (hit: Rect, w: number, h: number, x: number, y: number): boolean =>
+  padHit(hit, x + w / 2, y + h / 2, 0) === 'exact';
+
 export interface HitCand {
   /** El punto cae dentro del botón dibujado (no solo en el margen). */
   exact: boolean;
