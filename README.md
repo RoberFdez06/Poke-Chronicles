@@ -139,6 +139,14 @@ Las **cuentas en la nube** son opcionales: sin configurar nada, el juego funcion
 que crear un proyecto de Firebase y poner sus claves en un `.env.local` (que no se sube a git). Los pasos están en
 [`docs/DESARROLLO.md`](docs/DESARROLLO.md).
 
+## Decisiones técnicas
+
+- **Lógica separada de la pantalla.** Las reglas y los datos (objetos, modos, gacha, ataques) viven en `src/data` como código puro, sin Phaser, para poder probarlas con `node --test` sin abrir el navegador.
+- **TypeScript en modo estricto.** Los errores de tipos salen al compilar, no mientras se juega.
+- **Arte y sonido generados por código.** El pixel art y la música se crean en tiempo de ejecución (Canvas y Web Audio), así el juego no depende de archivos de imagen ni de audio y carga rápido.
+- **Invitado primero, cuenta opcional.** El juego funciona sin registrarse. Firebase (Auth y Firestore) solo guarda el progreso en la nube si el jugador lo quiere, y las reglas de Firestore limitan cada jugador a sus propios datos.
+- **Despliegue automático con pruebas.** Cada `push` a `main` pasa `npm test` y `npm run build` antes de publicar en GitHub Pages, de modo que una versión rota no llega a la web.
+
 ## Por dentro
 
 - `src/data`: reglas y datos puros (objetos, modos, gacha, ataques, mejoras…), con pruebas en `tests/`.
