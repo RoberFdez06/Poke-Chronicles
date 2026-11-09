@@ -13,6 +13,7 @@
 // ≥ 56 px CSS a los lados y el mapa en su cámara con zoom, arrastre y lupa; colocar, mover y apuntar piden confirmar
 // (anillo o «Confirmar»). Teclado, ratón y mando siguen igual.
 import Phaser from 'phaser';
+import { decimal } from '../data/decimal';
 import { fitDesign, LW } from '../ui/layout';
 import { touchOnlyDevice } from '../data/controls';
 import { DESIGN_ZOOM, designView, cssPerUnit, infoSide, nearestCell, ringRadius, sheetSlots, snapRadius, tdTouchLayout, type TdTouchLayout } from '../data/towerDefense/touchTd';
@@ -2400,7 +2401,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       const syn = this.td.synergyOf(tw).names;
       const ter = this.td.terrainAt(tw.x, tw.y);
       this.panelTexts[1].setText(
-        `${STYLE_LABEL[s.style]} · ${tw.mon.types.map(typeNameEs).join('/')}\nDaño ${s.damage}  Cad. ${s.rate}/s\nAlcance ${s.range.toFixed(1)}${s.air ? ' · aéreo' : ''}\n${
+        `${STYLE_LABEL[s.style]} · ${tw.mon.types.map(typeNameEs).join('/')}\nDaño ${decimal(s.damage)}  Cad. ${decimal(s.rate)}/s\nAlcance ${decimal(s.range, 1)}${s.air ? ' · aéreo' : ''}\n${
           s.income ? `Granja: +${s.income} $/oleada` : syn.length ? shorten(syn.join(', '), 22) : ter ? shorten(`${TERRAIN_INFO[ter].name}: ${TERRAIN_INFO[ter].desc}`, 22) : `Derrotados: ${tw.kills}`
         }`,
       );
@@ -2510,7 +2511,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       txt(y0, shorten(m.name, 14), 16, NAVY, true);
       txt(
         y0 + 24,
-        `${STYLE_LABEL[s.style]} · ${m.types.map(typeNameEs).join('/')}\nCoste ${towerCost(m)} $\nDaño ${s.damage}  Cad. ${s.rate}/s\nAlcance ${s.range.toFixed(1)}${s.air ? ' · aéreo' : ''}${s.income ? `\nGranja: +${s.income} $/oleada` : ''}\n${boostLine(this.td.themeBoostOf({ mon: m }))}\nColocados ${this.td.placedOf(this.placing)}/${this.td.limitOf(this.placing)}`,
+        `${STYLE_LABEL[s.style]} · ${m.types.map(typeNameEs).join('/')}\nCoste ${towerCost(m)} $\nDaño ${decimal(s.damage)}  Cad. ${decimal(s.rate)}/s\nAlcance ${decimal(s.range, 1)}${s.air ? ' · aéreo' : ''}${s.income ? `\nGranja: +${s.income} $/oleada` : ''}\n${boostLine(this.td.themeBoostOf({ mon: m }))}\nColocados ${this.td.placedOf(this.placing)}/${this.td.limitOf(this.placing)}`,
         12,
       );
       // Lo que daría la casilla del cursor: terreno y sinergias con las vecinas
@@ -2621,7 +2622,7 @@ export class TowerDefenseScene extends Phaser.Scene {
       const s = towerStats(m, 1, null);
       txt(`${shorten(m.name, 16)} · ${towerCost(m)} $`, L.font, '#ffe9a8', true);
       txt(
-        `${STYLE_LABEL[s.style]} · ${m.types.map(typeNameEs).join('/')}\nDaño ${s.damage}  Cad. ${s.rate}/s  Alcance ${s.range.toFixed(1)}${s.air ? ' · aéreo' : ''}${s.income ? `\nGranja: +${s.income} $/oleada` : ''}${(() => { const b = boostLine(this.td.themeBoostOf({ mon: m })); return b ? `\n${b}` : ''; })()}\nColocados ${this.td.placedOf(this.placing)}/${this.td.limitOf(this.placing)}`,
+        `${STYLE_LABEL[s.style]} · ${m.types.map(typeNameEs).join('/')}\nDaño ${decimal(s.damage)}  Cad. ${decimal(s.rate)}/s  Alcance ${decimal(s.range, 1)}${s.air ? ' · aéreo' : ''}${s.income ? `\nGranja: +${s.income} $/oleada` : ''}${(() => { const b = boostLine(this.td.themeBoostOf({ mon: m })); return b ? `\n${b}` : ''; })()}\nColocados ${this.td.placedOf(this.placing)}/${this.td.limitOf(this.placing)}`,
         L.fontMin,
       );
       const c = this.pending ?? this.cursor;

@@ -5,6 +5,7 @@ import { MenuList, NavInput } from '../ui/nav';
 import { drawBox, FONT, HEX } from '../ui/theme';
 import { addPixelText } from '../ui/art/pixel';
 import { sfx } from '../ui/audio';
+import { decimal } from '../data/decimal';
 import { typeColor, typeNameEs } from '../data/types';
 import type { MovePower } from '../data/items';
 import { applyPickupFusion, fusePowers, fusionBlock, fusionStyleOf, patternLabel, pickupCandidates, pickupFusionBlock, recipeByKey, NEW_POWER_INDEX } from '../data/fusion';
@@ -150,7 +151,7 @@ export class FusionScene extends Phaser.Scene {
     t(140, 196, r.name, 26, '#8a5a00', true);
     const kindLabel = kind === 'named' ? 'Receta descubierta' : kind === 'superior' ? 'Versión Superior' : 'Fusión de tipos';
     t(140, 234, `${kindLabel} · Tipos: ${f.types[0] === f.types[1] ? typeNameEs(f.types[0]) : `${typeNameEs(f.types[0])} + ${typeNameEs(f.types[1])}`}`, 15);
-    t(140, 258, `Potencia ${r.power} (antes ${Math.max(a.power, b.power)}) · Recarga ${(r.cooldown / 1000).toFixed(1)} s`, 15);
+    t(140, 258, `Potencia ${r.power} (antes ${Math.max(a.power, b.power)}) · Recarga ${decimal(r.cooldown / 1000, 1)} s`, 15);
     t(140, 282, `Ataque: ${patternLabel(r)}`, 15);
     t(140, 306, `Proyectil: ${style.shape} · estela ${style.trail} · impacto ${style.impact}`, 13, HEX.textSoft);
     const inc = this.args.incoming;

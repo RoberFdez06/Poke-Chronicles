@@ -108,7 +108,8 @@ export function drawGardenPlot(g: Phaser.GameObjects.Graphics, cx: number, soilY
   const hgt = Math.max(8, Math.round(60 * grow));
   if (ripe) {
     const bob = still ? 0 : Math.round(Math.sin(t / 380) * 1.5) * 2;
-    drawBerry(g, plot.berry, cx, baseY - hgt - 18 + bob, 2, t);
+    // Justo encima de la tierra y a tamaño justo: arriba de la mata tapaba el nombre de la baya
+    drawBerry(g, plot.berry, cx, soilY - 18 + bob, 1.1, t);
     if (!still) for (let k = 0; k < 4; k++) {
       const life = (t / 1600 + k * 0.25) % 1;
       cell(g, cx - 30 + k * 20, baseY - hgt - life * 50, k % 2 ? 0xffffff : lightOf(b.color), 1 - life);

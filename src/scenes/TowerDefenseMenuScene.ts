@@ -11,7 +11,7 @@ import { touchOnlyDevice } from '../data/controls';
 import { gridCell, levelsLayout, mapsLayout, menuFrame, menuUnits, teamLayout, type GridFit, type TeamTouchLayout } from '../data/towerDefense/touchMenu';
 import type { Rect } from '../data/towerDefense/touchTd';
 import { fitTextIn, tdTouchView, useTdTouchWidth } from '../ui/tdTouchScene';
-import { fitTextLine } from '../ui/fitText';
+import { fitTextLine, setFitLine } from '../ui/fitText';
 import { addBackButton } from '../ui/cards';
 import { NavInput, PadButtons, UI, type PadButton } from '../ui/nav';
 import { drawBox, fadeIn, goTo, RARITY_COLORS, shorten } from '../ui/theme';
@@ -643,7 +643,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
     this.teamSel = 0;
     this.page = 0;
     this.filters = { ...NO_FILTERS };
-    const loadingText = this.add.text(300, 300, 'Cargando tu colección…', { fontFamily: UI.FONT, fontSize: '20px', color: '#ffffff' }).setOrigin(0.5).setStroke('#18202c', 4);
+    const loadingText = this.add.text(480, 300, 'Cargando tu colección…', { fontFamily: UI.FONT, fontSize: '20px', color: '#ffffff' }).setOrigin(0.5).setStroke('#18202c', 4);
     this.layer.add(loadingText);
     this.loading = true;
     void this.loadOwned().then(() => {
@@ -917,6 +917,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
       barTexts[BAR_SORT].setText(SORT_LABEL[this.sort]);
       barTexts[BAR_RESET].setText('Todos').setAlpha(this.filters.cls === 'todos' && this.filters.tipo === 'todos' ? 0.5 : 1);
       if (u) bars.forEach((b, i) => fitTextIn(barTexts[i], b.w - u.pad, b.h - u.pad, u.font, u.fontMin));
+      else bars.forEach((b, i) => setFitLine(barTexts[i], barTexts[i].text, b.w - 8, 9));
       const ring = (x: number, y: number, w: number, h: number) => {
         sel.lineStyle(3, 0x18202c, 1).strokeRect(x - 3, y - 3, w + 6, h + 6);
         sel.lineStyle(2, 0xffd34d, 1).strokeRect(x - 1, y - 1, w + 2, h + 2);
@@ -937,6 +938,12 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
         infoIcon.setVisible(false);
         infoText.setText(this.trial ? 'Equipo de prueba: para probar el modo. Juega con tus Pokémon del gacha para ir más lejos.' : '');
       }
+      // Escritorio: la ficha larga ocupaba 4 líneas y su última quedaba debajo del aviso de tipos
+      if (!T)
+        for (let fs = 15; fs >= 11; fs--) {
+          infoText.setFontSize(fs);
+          if (infoText.y + infoText.height <= warn.y - 2) break;
+        }
       // Aviso previo: el veredicto cambia al elegir o quitar torres (y con el equipo de prueba)
       {
         const lm = TD_MAPS[this.mapSel];
@@ -1001,7 +1008,7 @@ export class TowerDefenseMenuScene extends Phaser.Scene {
           slotImgs.push(this.add.text(sx + 74, sy + 18, shorten(q.name, 8), { fontFamily: UI.FONT, fontSize: '13px', fontStyle: 'bold', color: NAVY }));
           slotImgs.push(this.add.image(sx + 74, sy + 38, classIconKey(st)).setOrigin(0).setScale(2));
           slotImgs.push(this.add.text(sx + 96, sy + 40, `${towerCost(q)} $`, { fontFamily: UI.FONT, fontSize: '12px', color: NAVY }));
-          slotImgs.push(this.add.text(sx + 74, sy + 62, STYLE_LABEL[st], { fontFamily: UI.FONT, fontSize: '11px', color: NAVY }));
+          slotImgs.push(fitTextLine(this.add.text(sx + 74, sy + 62, STYLE_LABEL[st], { fontFamily: UI.FONT, fontSize: '11px', color: NAVY }), 62, 8));
           if (this.zone === 'panel' && this.panelSel === k) {
             g.lineStyle(3, 0x18202c, 1).strokeRect(sx - 2, sy - 2, 144, 94);
             g.lineStyle(2, 0xffd34d, 1).strokeRect(sx, sy, 140, 90);

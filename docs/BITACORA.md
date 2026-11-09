@@ -2843,3 +2843,9 @@ otra (p. ej. «Desafío diario»); además un Enter muy breve no siempre contaba
 - Tests: `tests/hover.test.ts` (zona de contenedores dibujados desde la esquina o centrados, pulsación breve, frecuencia del
   filtro) y `tests/e2e/hover.spec.ts` (malla en todos los menús a 1366×768 y 1024×768, ratón real por tarjetas de Modos y
   flechas/Enter breves). Con el código anterior la malla y las teclas breves fallan.
+
+## Fallos de la prueba completa en navegador (rama `fallos-prueba`)
+
+- **Cuelgue al continuar**: `startFloor` ponía la trampilla antes de `enterRoom` y `cellRoom` leía `this.current` sin valor. Toda partida guardada con el jefe del piso vencido (y la Torre con el piso superado) daba «Algo ha fallado». Ahora `this.current` se fija antes, y la búsqueda de sitio de la trampilla no mira caminos si el jugador está fuera de la arena.
+- **Solapes**: título de la Pokédex en dos líneas entre «Volver» y «Sinergias»; ficha de torre sin pisar el aviso de tipos; «Francotirador» y el filtro «Todos» encajados; la baya madura ya no tapa su nombre en el Huerto y la descripción de las semillas baja del icono.
+- **Textos**: «Falta 1 partida», 18 mapas en la tarjeta del modo y coma decimal (`data/decimal.ts`) en pausa, torres, fusión y forja. Tests en `tests/textosEspanol.test.ts`.

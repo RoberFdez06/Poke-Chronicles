@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { decimal } from '../data/decimal';
 import { fetchAbility, offlinePokemonIds, onOfflineData, usingOfflineData, fetchAttackMovesForTypes, fetchMoveInfo, fetchEvolutionsLeft, fetchNextEvolutions, fetchPokemon, fetchPokemonCard, fetchFormSprites, pickSprites } from '../data/pokeapi';
 import { evolveFloors, pickEvolution, shouldEvolve } from '../data/evolution';
 import { filterMovesByTypes } from '../data/moves';
@@ -3529,6 +3530,9 @@ export class GameScene extends Phaser.Scene {
     // de abajo es de los consejos)
     this.prompt = new PromptPanel(this, GAME_VIEW.x + 12, HUD.bottom.y - 34, GAME_VIEW.w - 24, (o) => this.toHud(o), hudFont(18));
 
+    // La sala actual tiene que estar puesta antes de la trampilla: su búsqueda de sitio mira en qué sala está cada punto
+    // (al continuar una partida con el jefe vencido, this.current aún no existía y el juego se colgaba)
+    this.current = start;
     // Si ya habías vencido al jefe, la trampilla sigue ahí
     if (this.mode === 'tower') this.towerEnter();
     else if (this.mode !== 'waves' && this.cleared.has(this.floor.bossId)) {
@@ -6320,7 +6324,7 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
         const name = passiveById(id)?.name ?? id;
         this.nextItemChoice(
           'FORJA: MEJORAR',
-          `¿Mejorar ${this.passiveName(id)} a ${levelLabel(name, lv)}?\nSu efecto pasa a ×${(1 + UPGRADE_STEP * lv).toFixed(2)}. Cuesta ${c} monedas (tienes ${this.coins}). La forja solo se puede usar una vez.`,
+          `¿Mejorar ${this.passiveName(id)} a ${levelLabel(name, lv)}?\nSu efecto pasa a ×${decimal(1 + UPGRADE_STEP * lv, 2)}. Cuesta ${c} monedas (tienes ${this.coins}). La forja solo se puede usar una vez.`,
           [this.coins >= c ? `Mejorar por ${c} monedas` : `Te faltan ${c - this.coins} monedas`],
           (ok) => {
             if (ok !== 0 || !this.forgeUsable(room)) return;
@@ -11086,6 +11090,9 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   private trapdoorSpot(g: { x0: number; y0: number; x1: number; y1: number; cx: number; cy: number }) {
     const reach = (q: { x: number; y: number }) => {
       if (!this.player?.active) return true;
+      // Con el jugador fuera de la arena (al continuar la partida en otra sala) no hay camino que comprobar
+      const { x, y } = this.player;
+      if (x < g.x0 || x > g.x1 || y < g.y0 || y > g.y1) return true;
       const room = this.cellRoom(q.x, q.y);
       if (room.id !== this.cellRoom(this.player.x, this.player.y).id) return true;
       const grid = this.grids.get(room.id);

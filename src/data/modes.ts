@@ -39,7 +39,7 @@ export function modeDesc(mode: GameMode): string {
     case 'tower':
       return `${TOWER_FLOORS} pisos de una sola sala: minijefe cada 5, jefe y descanso cada 10.`;
     case 'towerdef':
-      return 'Coloca y mejora a los Pokémon de tu colección como torres para frenar las oleadas en 16 mapas.';
+      return 'Coloca y mejora a los Pokémon de tu colección como torres para frenar las oleadas en 18 mapas.';
   }
 }
 
