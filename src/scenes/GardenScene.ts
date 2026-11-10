@@ -3,6 +3,7 @@ import { addHelpBar } from '../ui/helpBar';
 import { addBerryIcon, addGardenPlot } from '../ui/art/berryArt';
 import { fitDesign } from '../ui/layout';
 import { fitTextBox, fitTextLine } from '../ui/fitText';
+import { mobileUi } from '../ui/uiScale';
 import { loadGarden, saveGarden } from '../data/save';
 import {
   GARDEN_BERRIES, GARDEN_BERRY_IDS, GARDEN_CARRY, GARDEN_PLOTS, harvest, isRipe, plant, runsLeft, runsLeftLabel, type GardenBerryId, type GardenState,
@@ -110,9 +111,12 @@ export class GardenScene extends Phaser.Scene {
       // Por debajo del icono de la baya, que baja más que el nombre
       const descTop = Math.max(SEED_Y - 12 + t.displayHeight / 2 + 2, SEED_Y + 9);
       const descBottom = SEED_Y + 56 - 5;
-      L.add(fitTextBox(this.add.text(x, (descTop + descBottom) / 2, `${b.description}\nCrece en ${b.growRuns} ${b.growRuns === 1 ? 'partida' : 'partidas'} · cesta: ${this.garden.basket[id]}`, {
+      // Móvil: se quedaba en 8 px reales; segunda línea más corta y letra mínima mayor
+      const mob = mobileUi();
+      const grow = mob ? `Crece: ${b.growRuns} part. · cesta ${this.garden.basket[id]}` : `Crece en ${b.growRuns} ${b.growRuns === 1 ? 'partida' : 'partidas'} · cesta: ${this.garden.basket[id]}`;
+      L.add(fitTextBox(this.add.text(x, (descTop + descBottom) / 2, `${b.description}\n${grow}`, {
         fontFamily: FONT, fontSize: '12px', color: HEX.textSoft, align: 'center', wordWrap: { width: 250 },
-      }).setOrigin(0.5), 250, descBottom - descTop, 9));
+      }).setOrigin(0.5), 250, descBottom - descTop, mob ? 14 : 9));
       const zone = this.add.zone(x, SEED_Y + 8, 270, 96).setInteractive({ useHandCursor: true });
       zone.on('pointerdown', () => {
         this.seedSel = k;

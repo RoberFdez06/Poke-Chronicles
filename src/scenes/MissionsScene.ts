@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { buildNpc } from '../ui/art/worldArt';
 import { fitDesign } from '../ui/layout';
 import { fitTextLine } from '../ui/fitText';
+import { setHitRect } from '../ui/hitArea';
+import { mobileUi } from '../ui/uiScale';
 import { loadMedals, loadMissions } from '../data/save';
 import { dayNumber } from '../data/gacha';
 import { ACHIEVEMENTS, dailyMissions, isAchieved, NPC_MAX_ACTIVE, npcMissionById, rewardText, type Reward } from '../data/missions';
@@ -61,6 +63,8 @@ export class MissionsScene extends Phaser.Scene {
       })
       .setOrigin(1, 0.5)
       .setInteractive({ useHandCursor: true });
+    // Móvil: la pestaña se ve de ~23 px reales de alto; la zona de toque crece hacia arriba y abajo
+    if (mobileUi()) setHitRect(tab, -12, -16, tab.width + 24, tab.height + 32);
     tab.on('pointerdown', () => this.flip());
 
     if (this.page === 1) {
@@ -121,7 +125,7 @@ export class MissionsScene extends Phaser.Scene {
       fitTextLine(this.add.text(x + 16, y + 36, a.text, { fontFamily: FONT, fontSize: '14px', color: HEX.textSoft }).setOrigin(0, 0.5), cw - 32 - (bar ? 68 : 0), 10);
       fitTextLine(this.add.text(x + 16, y + 56, rewardText(a.reward, itemNames(a.reward)), {
         fontFamily: FONT, fontSize: '12px', color: '#b8860b',
-      }).setOrigin(0, 0.5), cw - 32, 9);
+      }).setOrigin(0, 0.5), cw - 32, mobileUi() ? 14 : 9);
       if (bar) {
         this.bar(x + cw - 76, y + 36, 60, n / a.goal);
         this.add.text(x + cw - 16, y + 16, `${n}/${a.goal}`, { fontFamily: FONT, fontSize: '13px', color: HEX.textSoft }).setOrigin(1, 0.5);

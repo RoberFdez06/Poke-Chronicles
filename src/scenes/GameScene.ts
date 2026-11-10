@@ -365,6 +365,7 @@ import { drawMinimap, minimapBounds, minimapRoomAt, ROOM_LABEL } from './minimap
 import { hudThemeFor } from '../ui/art/hudTheme';
 import { addHudAmbient, drawHudBackdrop, strips } from '../ui/art/hudBackdrop';
 import { addBakeTarget, onGpuRestored, paintBake } from '../ui/bakedGraphics';
+import { setHitRect } from '../ui/hitArea';
 import { setHudPalette } from '../ui/art/hud';
 import { byDevice, drawKeyGlyph, GlyphText } from '../ui/art/keyGlyphs';
 import { bossCallout, floatPopup, PromptPanel } from '../ui/floatText';
@@ -3216,6 +3217,13 @@ export class GameScene extends Phaser.Scene {
     // dos, así «ignore» y «cameraFilter &= ~hudCam.id» valen para las tres sin tocar el resto del código.
     // Paneles más grandes en ancho: hasta 3 cámaras por lado (un tramo cada una, ver hudPanelSlices)
     this.hudSideCams = [0, 1, 2, 3, 4, 5].map((i) => this.cameras.add(0, 0, HUD.left.w, H).setName(`hud-side-${i}`));
+    // La cámara táctil se crea antes de juntar los ids: Phaser da a cada cámara nueva el primer bit que no es el id
+    // de ninguna otra, y con hudCam ya sumado (254) su bit 2 parecía libre. La táctil se quedaba con él y, al ignorar
+    // hudCam su capa, la ignoraba también ella: los botones táctiles no se veían.
+    // Y se guarda ya: layoutHudCams elige los tramos del panel según haya cámara táctil, y sin ella ponía los de
+    // escritorio mientras los botones usaban los táctiles (Parry y Esquiva acababan encima de la primera ranura).
+    const touchCam = touchOnlyDevice() && TOUCH_HUD_SCALE_ENABLED ? this.cameras.add(0, 0, W, H).setName('touch').setVisible(false) : undefined;
+    this.touchCam = touchCam;
     for (const c of this.hudSideCams) (hudCam as { id: number }).id |= c.id;
     this.layoutHudCams();
     hudCam.ignore(this.children.list.filter((o) => o !== this.hudLayer));
@@ -3229,17 +3237,15 @@ export class GameScene extends Phaser.Scene {
     };
     // Táctil: capa y cámara propias para los controles cuando el HUD va escalado (ver touchLayer). La cámara no
     // pinta nada más; sin HUD escalado está apagada y los controles siguen en la capa del HUD como siempre.
-    if (touchOnlyDevice() && TOUCH_HUD_SCALE_ENABLED) {
+    if (touchCam) {
       const touchLayer = this.add.container(0, 0).setDepth(51);
       this.cameras.main.ignore(touchLayer);
       hudCam.ignore(touchLayer);
-      const touchCam = this.cameras.add(0, 0, W, H).setName('touch').setVisible(false);
       touchCam.ignore(this.children.list.filter((o) => o !== touchLayer));
       const onAddedTouch = (go: Phaser.GameObjects.GameObject) => go !== touchLayer && touchCam.ignore(go);
       this.events.on(Phaser.Scenes.Events.ADDED_TO_SCENE, onAddedTouch);
       this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.events.off(Phaser.Scenes.Events.ADDED_TO_SCENE, onAddedTouch));
       this.touchLayer = touchLayer;
-      this.touchCam = touchCam;
     }
     const txt = (x: number, y: number, size: number, color: string = '#f8f8f8', bold = false) =>
       hud(this.add.text(x, y, '', { fontFamily: FONT, fontSize: `${size}px`, fontStyle: bold ? 'bold' : 'normal', color }));
@@ -3295,7 +3301,7 @@ export class GameScene extends Phaser.Scene {
       const x0 = pb.x - pb.width / 2;
       const y0 = pb.y - pb.height / 2;
       const r = { x: HUD.left.x, y: 0, w: LX + HL.pause.x + HL.pause.w + 8 - HUD.left.x, h: HL.pause.y + HL.pause.h + 18 };
-      (pb.input?.hitArea as Phaser.Geom.Rectangle | undefined)?.setTo(r.x - x0, r.y - y0, r.w, r.h);
+      setHitRect(pb, r.x - x0, r.y - y0, r.w, r.h);
     }
     // Modo admin: distintivo arriba a la derecha (clic: panel). Solo existe en dev o con la cuenta admin.
     if (adminAllowed()) {

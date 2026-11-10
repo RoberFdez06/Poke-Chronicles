@@ -5,6 +5,7 @@ import { addTypeChip, COLORS, drawBox, HEX, textStyle, strokePixelFrame } from '
 import { STAT_KEYS, STAT_LABEL, statBar, type BaseStats } from '../data/pokeStats';
 import { mobileUi, touchPad, viewportCssPerPx } from './uiScale';
 import { U } from './layout';
+import { setHitRect } from './hitArea';
 
 export const CARD_SIZE = { w: 200, h: 270 };
 
@@ -179,10 +180,7 @@ export function addBackButton(scene: Phaser.Scene, onClick: () => void, x = 36, 
     const k = viewportCssPerPx() * U;
     const px = touchPad(back.width, k, undefined, 40);
     const py = touchPad(back.height, k, undefined, 40);
-    if (px > 0 || py > 0) {
-      const area = back.input?.hitArea as Phaser.Geom.Rectangle | undefined;
-      area?.setTo(-px, -py, back.width + px * 2, back.height + py * 2);
-    }
+    if (px > 0 || py > 0) setHitRect(back, -px, -py, back.width + px * 2, back.height + py * 2);
   }
   back.on('pointerover', () => back.setColor('#ffd34d'));
   back.on('pointerout', () => back.setColor('#ffffff'));

@@ -20,6 +20,7 @@ import { DESIGN_ZOOM, designView, cssPerUnit, infoSide, nearestCell, ringRadius,
 import { TdTouchMap } from '../ui/tdTouchMap';
 import { fitTextIn, tdTouchBox, useTdTouchWidth } from '../ui/tdTouchScene';
 import { NavInput, PadButtons, UI, MenuList } from '../ui/nav';
+import { mobileUi } from '../ui/uiScale';
 import { drawBox, fadeIn, goTo, lowFx, RARITY_COLORS, shorten } from '../ui/theme';
 import { ToastStack } from '../ui/toast';
 import { playTdChief, playTdMusic, releaseMusic, sfx } from '../ui/audio';
@@ -1256,7 +1257,12 @@ export class TowerDefenseScene extends Phaser.Scene {
     }
     opts.push({ label: 'Reintentar', act: () => this.restart() });
     opts.push({ label: 'Elegir nivel', act: () => this.toMaps() });
-    this.overlayList = new MenuList(this, 480, 540 - (opts.length - 1) * 50, opts.map((o) => o.label), (i) => opts[i].act(), { w: 320, h: 42, gap: 8, fontSize: 20, depth: 101 });
+    // Móvil: los botones medían ~31 px reales de alto; algo más altos y con el último un poco más abajo
+    const mob = mobileUi();
+    const bh = mob ? 48 : 42;
+    const step = bh + (mob ? 6 : 8);
+    const lastY = mob ? 548 : 540;
+    this.overlayList = new MenuList(this, 480, lastY - (opts.length - 1) * step, opts.map((o) => o.label), (i) => opts[i].act(), { w: 320, h: bh, gap: step - bh, fontSize: 20, depth: 101 });
     c.add(this.overlayList.container);
   }
 

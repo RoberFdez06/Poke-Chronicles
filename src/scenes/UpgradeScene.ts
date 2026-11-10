@@ -12,6 +12,7 @@ import { addBackButton, buildPokemonCard, loadCardTextures } from '../ui/cards';
 import { NavInput, PadButtons } from '../ui/nav';
 import { ARROW, COLORS, drawBox, fadeIn, FONT, goTo, HEX } from '../ui/theme';
 import { fitTextLine, setFitLine } from '../ui/fitText';
+import { mobileUi } from '../ui/uiScale';
 import { addMenuBackdrop } from '../ui/art/landscape';
 import { addIcon } from '../ui/art/icons';
 import { addTreeLinks, BRANCH_COLORS, drawTreeNode, type TreeHalo, type TreeLink } from '../ui/art/upgradeArt';
@@ -124,7 +125,10 @@ export class UpgradeScene extends Phaser.Scene {
       const y = TREE.y0 + n.depth * TREE.dy;
       const bg = this.add.graphics();
       // Nombres largos («Golpe certero»): con margen dentro del nodo
-      fitTextLine(this.add.text(x, y - 14, UPGRADE_LABEL[n.kind], { fontFamily: FONT, fontSize: '14px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5), TREE.w - 26, 10);
+      // Móvil: la letra crece y «Golpe certero» se encogía a ~7 px reales; en el nodo va corto (el detalle lo dice entero)
+      const mob = mobileUi();
+      const label = mob && n.kind === 'critPower' ? 'Certero' : UPGRADE_LABEL[n.kind];
+      fitTextLine(this.add.text(x, y - 14, label, { fontFamily: FONT, fontSize: '14px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5), TREE.w - (mob ? 14 : 26), mob ? 15 : 10);
       const cost = this.add.text(x, y + 22, '', { fontFamily: FONT, fontSize: '12px', fontStyle: 'bold', color: '#b8860b' }).setOrigin(0.5);
       const zone = this.add.zone(x, y, TREE.w, TREE.h).setInteractive({ useHandCursor: true });
       zone.on('pointerover', () => this.select(n.kind));
