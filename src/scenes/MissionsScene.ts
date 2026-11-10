@@ -123,7 +123,9 @@ export class MissionsScene extends Phaser.Scene {
       fitTextLine(this.add.text(x + 16, y + 16, `${done ? '★ ' : ''}${a.name}`, { fontFamily: FONT, fontSize: '17px', fontStyle: 'bold', color: HEX.text })
         .setOrigin(0, 0.5), cw - 32 - (bar ? 70 : 0), 11);
       fitTextLine(this.add.text(x + 16, y + 36, a.text, { fontFamily: FONT, fontSize: '14px', color: HEX.textSoft }).setOrigin(0, 0.5), cw - 32 - (bar ? 68 : 0), 10);
-      fitTextLine(this.add.text(x + 16, y + 56, rewardText(a.reward, itemNames(a.reward)), {
+      // Móvil: más corto, si no se encogía a ~7,5 px reales
+      const reward = rewardText(a.reward, itemNames(a.reward));
+      fitTextLine(this.add.text(x + 16, y + 56, mobileUi() ? reward.replace('nuevo objeto: ', 'objeto ') : reward, {
         fontFamily: FONT, fontSize: '12px', color: '#b8860b',
       }).setOrigin(0, 0.5), cw - 32, mobileUi() ? 14 : 9);
       if (bar) {

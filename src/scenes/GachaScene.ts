@@ -291,7 +291,7 @@ export class GachaScene extends Phaser.Scene {
     const arrow = (x: number, dir: -1 | 1) => {
       const g = this.add.graphics();
       g.fillStyle(0x2b3a67, 1).fillTriangle(x - 6 * dir, midY, x + 6 * dir, midY - 12, x + 6 * dir, midY + 12);
-      const zone = this.add.zone(x, midY, 40, 100).setInteractive({ cursor: 'pointer' });
+      const zone = this.add.zone(x, midY, mobileUi() ? 56 : 40, 100).setInteractive({ cursor: 'pointer' });
       zone.on('pointerdown', (_p: unknown, _x: unknown, _y: unknown, ev: Phaser.Types.Input.EventData) => {
         ev?.stopPropagation?.();
         if (this.phase === 'menu') this.changeBanner(dir);

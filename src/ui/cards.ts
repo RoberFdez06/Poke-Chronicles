@@ -148,7 +148,8 @@ export function buildPokemonCard(scene: Phaser.Scene, card: PokemonCard, x: numb
 export function statBars(scene: Phaser.Scene, stats: BaseStats, x: number, y: number, w: number) {
   const g = scene.add.graphics();
   const out: Phaser.GameObjects.GameObject[] = [g];
-  const labelW = 62;
+  // Móvil: «Velocidad» se encogía más que el resto (~7,6 px reales); columna del nombre más ancha
+  const labelW = mobileUi() ? 74 : 62;
   const numW = 26;
   const barW = w - labelW - numW - 6;
   STAT_KEYS.forEach((k, i) => {

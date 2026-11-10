@@ -111,7 +111,7 @@ export class UpgradeScene extends Phaser.Scene {
     // Buscar: abre la Pokédex con filtros (región, rareza, tipo, nombre) para elegir sin ir de uno en uno
     drawBox(this.add.graphics(), CARD_X - 110, 540, 220, 44, { radius: 12 });
     this.add.text(CARD_X, 562, 'Buscar (F / Y)', { fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5);
-    this.add.zone(CARD_X, 562, 220, 44).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.search());
+    this.add.zone(CARD_X, 562, 220, mobileUi() ? 64 : 44).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.search());
     this.add.text(CARD_X, 104, `${this.index + 1} de ${this.ids.length}`, { fontFamily: FONT, fontSize: '16px', color: '#ffffff' }).setOrigin(0.5).setName('count');
 
     // Arte de nodos y ramas: ui/art/upgradeArt.ts

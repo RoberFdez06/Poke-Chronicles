@@ -2854,3 +2854,11 @@ otra (p. ej. «Desafío diario»); además un Enter muy breve no siempre contaba
 
 - El fondo de los laterales (63 000 órdenes) y el minimapa (20 000) eran Graphics que se repetían en cada fotograma y por cada cámara del HUD: 26 ms de dibujado, 30-40 FPS. Ahora van a imágenes (`ui/bakedGraphics.ts`): cuatro para las franjas del fondo y una para el mapa, que se repinta solo en `drawMap`. El Graphics del mapa sigue guardando la disposición (tooltip y bordes) sin pintarse; el marco que late y los iconos animados siguen en sus capas. Se repintan si la gráfica pierde y recupera el contexto.
 - Test: `tests/e2e/hudbake.spec.ts`.
+
+## Revisión en móvil (rama `movil-tactil`)
+
+- **Torres**: en WebGL la cámara pintaba su color de fondo aunque fuera `transparent` y tapaba el mapa; ahora su fondo no tiene alfa.
+- **Botones táctiles**: la cámara táctil cogía el id 2, ya usado dentro del id compuesto del HUD, y su capa quedaba filtrada. Ahora se crea antes de componer los ids y se guarda antes de `layoutHudCams` (Parry y Esquiva caían encima de la primera ranura).
+- **Zonas de toque**: `ui/hitArea.ts` (`setHitRect`, `padHit`) marca la zona como propia; Phaser la rehacía al cambiar el color del texto y «Volver» dejaba de responder.
+- **Pausa**: letra con tope en móvil y cada línea bajo la anterior según su alto real (`flowY`, `PauseMetrics`). Los chips de tipo encogen el texto si no cabe. La portada pide «Toca la pantalla» en táctil.
+- **Tamaños** (852×393): Ajustes en dos columnas; textos de Gacha, Mejoras, Misiones, Huerto y Modo de 6–8 a ≥8,6 px reales; zonas de toque más grandes en flechas de dificultad, Tutorial, Continuar, Buscar, pestañas y flechas del Gacha, pestaña de encargos y resultados de Torres.

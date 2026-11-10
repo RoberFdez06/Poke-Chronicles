@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { addHelpBar } from '../ui/helpBar';
 import { fitTextBox, fitTextLine } from '../ui/fitText';
 import { mobileUi } from '../ui/uiScale';
-import { padHit } from '../ui/hitArea';
+import { padHit, setHitRect } from '../ui/hitArea';
 import { fitDesign } from '../ui/layout';
 import { emptyRecords, MODES, MODE_LABEL, modeDesc, recordText, Records, type GameMode } from '../data/modes';
 import { loadCandies, loadDaily, loadRecords } from '../data/save';
@@ -219,8 +219,8 @@ export class ModeScene extends Phaser.Scene {
     const touch = currentInput() === 'touch' || mobileUi();
     const base = `Tutorial de ${tm === 'normal' ? 'Normal' : CARDS.find((c) => c.id === tm)?.name ?? ''}`;
     this.tutBtn.setText(`${fresh ? 'Nuevo · ' : ''}${base}${touch ? '' : ' (T · Y)'}`).setColor(fresh ? '#ffd34d' : '#ffffff');
-    // Móvil: medía 17 px reales de alto; más zona hacia arriba y abajo (debajo empiezan las tarjetas, sin pisarlas)
-    if (mobileUi()) padHit(this.tutBtn, 0, 44);
+    // Móvil: medía 17 px reales de alto; la zona crece sobre todo hacia arriba (debajo empiezan las tarjetas, en y 92)
+    if (mobileUi()) setHitRect(this.tutBtn, -8, this.tutBtn.height / 2 - 48, this.tutBtn.width + 16, 62);
   }
 
   private tutorialSelected() {
