@@ -9,7 +9,8 @@ import type { MovePower, PlayerStats } from '../data/items';
 import { typeColor, typeHex, typeNameEs } from '../data/types';
 import { addHpBar, addTypeChip, drawBox, shorten } from '../ui/theme';
 import { STAT_KEYS, STAT_LABEL, type BaseStats } from '../data/pokeStats';
-import { itemLinesFromHeight, pauseTailLayout, PAUSE_ITEMS_Y, PAUSE_ITEM_MAX_LINES, PAUSE_PANEL_MIN_H, PAUSE_PANEL_Y } from '../data/pauseLayout';
+import { flowY, pauseTailLayout, PAUSE_ITEMS_Y, PAUSE_ITEM_MAX_LINES, PAUSE_MOBILE_FONT, PAUSE_PANEL_MIN_H, PAUSE_PANEL_Y } from '../data/pauseLayout';
+import { mobileUi } from '../ui/uiScale';
 import { addPanel, MenuList, NavInput, UI } from '../ui/nav';
 import type { SettingsData } from './SettingsScene';
 import { copyText } from '../ui/clipboard';
@@ -94,16 +95,23 @@ export class PauseScene extends Phaser.Scene {
     const panelFrom = this.children.list.length;
     const g = this.add.graphics();
     drawBox(g, 40, 100, 520, 470, { radius: 20 });
-    const t = (x: number, y: number, s: string, size = 18, color = '#2b3a67', bold = false) =>
-      this.add.text(x, y, s, { fontFamily: UI.FONT, fontSize: `${size}px`, color, fontStyle: bold ? 'bold' : 'normal', wordWrap: { width: 470 } });
+    const t = (x: number, y: number, s: string, size = 18, color = '#2b3a67', bold = false) => {
+      const o = this.add.text(x, y, s, { fontFamily: UI.FONT, fontSize: `${size}px`, color, fontStyle: bold ? 'bold' : 'normal', wordWrap: { width: 470 } });
+      // Móvil: las letras pequeñas crecen solas hasta ×1,5 (main.ts) y el panel no cabría en la pantalla; aquí se
+      // quedan en PAUSE_MOBILE_FONT (~11 px CSS en un móvil apaisado)
+      if (mobileUi() && size < 24) o.setFontSize(Math.min(parseFloat(String(o.style.fontSize)), PAUSE_MOBILE_FONT));
+      return o;
+    };
+    /** Borde de abajo de un texto. */
+    const below = (o: Phaser.GameObjects.Text) => o.y + o.height;
 
     const st = d.stats;
-    // Cada dato en su línea fija para que nada se monte encima de la tabla (con la fuente pixel ocupa más)
+    // Cada dato en su línea (la de siempre o, si las letras crecen en móvil, debajo de la anterior)
     t(66, 116, capitalize(d.starterName), 24, '#2b3a67', true);
     addHpBar(this, 340, 126, 190, 12).set(d.hp / st.maxHp);
     const rooms = d.showRooms ? ` · Salas ${d.roomsCleared}/${d.roomCount}` : '';
-    t(66, 150, `Hueco ${d.slot + 1} · ${d.modeLabel} · ${d.progress}${rooms}`, 15, '#4a5578');
-    t(66, 170, `Monedas ${d.coins} · Llaves ${d.keys} · Bombas ${d.bombs} · Tickets +${d.earned}`, 15, '#4a5578');
+    const line1 = t(66, 150, `Hueco ${d.slot + 1} · ${d.modeLabel} · ${d.progress}${rooms}`, 15, '#4a5578');
+    const line2 = t(66, flowY(170, below(line1)), `Monedas ${d.coins} · Llaves ${d.keys} · Bombas ${d.bombs} · Tickets +${d.earned}`, 15, '#4a5578');
     const rows: [string, string][] = [
       ['PS', `${Math.ceil(d.hp)} / ${st.maxHp}`],
       ['Daño', decimal(st.damage, 1)],
@@ -116,30 +124,37 @@ export class PauseScene extends Phaser.Scene {
       ['Poderes', `×${decimal(st.powerMul, 2)}`],
       ['Daño recibido', `${Math.round(st.damageTaken * 100)} %`],
     ];
+    const rowsY = flowY(198, below(line2) + 4);
+    let rowsBottom = rowsY;
     rows.forEach(([k, v], i) => {
       const x = 66 + (i % 2) * 245;
-      const y = 198 + Math.floor(i / 2) * 27;
+      const y = rowsY + Math.floor(i / 2) * 27;
       // Medida real (en móvil las letras crecen): cada dato en su columna sin pisar el de al lado
-      fitTextLine(t(x, y, k, 17, '#4a5578'), 132, 11);
+      const key = fitTextLine(t(x, y, k, 17, '#4a5578'), 132, 11);
       fitTextLine(t(x + 140, y, v, 17, '#2b3a67', true), 245 - 140 - 12, 11);
+      rowsBottom = Math.max(rowsBottom, below(key));
     });
-    // Estadísticas base del Pokémon, como en los juegos
     // Estadísticas base del Pokémon, como en los juegos: tres por línea
     const base = STAT_KEYS.map((k) => `${STAT_LABEL[k]} ${d.baseStats[k]}`);
-    t(66, 334, base.slice(0, 3).join(' · '), 13, '#4a5578');
-    t(66, 350, base.slice(3).join(' · '), 13, '#4a5578');
+    const base1 = t(66, flowY(334, rowsBottom + 4), base.slice(0, 3).join(' · '), 13, '#4a5578');
+    let above = t(66, flowY(350, below(base1)), base.slice(3).join(' · '), 13, '#4a5578');
     if (d.ability) {
-      t(66, 370, `Habilidad · ${d.ability.name}`, 17, '#2b3a67', true);
-      t(66, 392, d.ability.description, 13, '#4a5578');
+      const name = t(66, flowY(370, below(above)), `Habilidad · ${d.ability.name}`, 17, '#2b3a67', true);
+      above = t(66, flowY(392, below(name)), d.ability.description, 13, '#4a5578');
+      // En móvil, una sola línea: con dos el panel no cabría
+      if (mobileUi()) above.setMaxLines(1);
     }
-    t(66, 414, 'Objetos', 18, '#2b3a67', true);
+    const objY = flowY(414, below(above));
+    const objTitle = t(66, objY, 'Objetos', 18, '#2b3a67', true);
     // Sinergias cerca: insignia pixel y la primera a la que le falta una pieza (el resto, en el Libro de sinergias)
     const near = d.synergyNear ?? [];
     if (near.length > 0) {
-      this.add.image(160, 425, badgeTexture(this)).setScale(1.8);
-      t(176, 417, shorten(`Sinergia: ${near[0]}${near.length > 1 ? ` +${near.length - 1}` : ''}`, 46), 13, '#8a5a00', true);
+      const sx = Math.max(152, 66 + objTitle.width + 12);
+      this.add.image(sx + 8, objY + 11, badgeTexture(this)).setScale(1.8);
+      fitTextLine(t(sx + 24, objY + 3, shorten(`Sinergia: ${near[0]}${near.length > 1 ? ` +${near.length - 1}` : ''}`, 46), 13, '#8a5a00', true), 530 - sx - 24, 11);
     }
-    const itemsText = t(66, PAUSE_ITEMS_Y, d.items.length ? d.items.join(' · ') : 'Ninguno todavía', 14, '#4a5578').setMaxLines(PAUSE_ITEM_MAX_LINES);
+    const itemsY = flowY(PAUSE_ITEMS_Y, below(objTitle));
+    const itemsText = t(66, itemsY, d.items.length ? d.items.join(' · ') : 'Ninguno todavía', 14, '#4a5578').setMaxLines(PAUSE_ITEM_MAX_LINES);
     // Muchos objetos: la última línea visible acaba en «…» (no en un «·» suelto) para que se vea que hay más
     const itemLines = itemsText.getWrappedText(itemsText.text);
     if (itemLines.length > PAUSE_ITEM_MAX_LINES) {
@@ -147,21 +162,32 @@ export class PauseScene extends Phaser.Scene {
       shown[shown.length - 1] = shown[shown.length - 1].replace(/[\s·]+$/, '') + ' …';
       itemsText.setText(shown.join('\n'));
     }
-    // Lo de debajo se coloca donde termina de verdad la lista de objetos (1, 2 o 3 líneas)
-    const tail = pauseTailLayout(itemLinesFromHeight(itemsText.height), !!d.reactions, d.moves.length);
+    // Lo de debajo se coloca donde termina de verdad la lista de objetos (1, 2 o 3 líneas), con el alto real de
+    // cada texto (en móvil las líneas son más altas)
+    const itemRows = Math.min(PAUSE_ITEM_MAX_LINES, Math.max(1, itemsText.getWrappedText(itemsText.text).length));
+    const reactionsText = d.reactions ? t(66, 0, shorten(d.reactions, 70), 12, '#4a5578').setMaxLines(1) : null;
+    const powersTitle = t(66, 0, 'Poderes', 18, '#2b3a67', true);
+    const moveTexts = d.moves.map((m, i) =>
+      t(66 + (i % 2) * 245, 0, `${i + 1}  ${m ? shorten(pretty(m.name), 13) : '—'}`, 16, m ? typeHex(m.type) : '#9aa5b1', true).setStroke(m ? '#2b3a67' : '#00000000', m ? 2 : 0),
+    );
+    const tail = pauseTailLayout(itemRows, !!reactionsText, d.moves.length, {
+      itemsY,
+      itemLineH: itemsText.height / itemRows,
+      reactionsH: reactionsText?.height,
+      titleH: powersTitle.height,
+      moveRowH: (moveTexts[0]?.height ?? 0) + 6,
+    });
     if (tail.panelH > PAUSE_PANEL_MIN_H) {
       g.clear();
       drawBox(g, 40, PAUSE_PANEL_Y, 520, tail.panelH, { radius: 20 });
     }
-    if (d.reactions && tail.reactionsY !== null) t(66, tail.reactionsY, shorten(d.reactions, 70), 12, '#4a5578');
-    t(66, tail.powersTitleY, 'Poderes', 18, '#2b3a67', true);
+    if (reactionsText && tail.reactionsY !== null) reactionsText.setY(tail.reactionsY);
+    powersTitle.setY(tail.powersTitleY);
     d.moves.forEach((m, i) => {
-      const x = 66 + (i % 2) * 245;
-      const y = tail.movesY + Math.floor(i / 2) * 30;
-      t(x, y, `${i + 1}  ${m ? shorten(pretty(m.name), 13) : '—'}`, 16, m ? typeHex(m.type) : '#9aa5b1', true)
-        .setStroke(m ? '#2b3a67' : '#00000000', m ? 2 : 0);
+      const y = tail.movesY + Math.floor(i / 2) * tail.moveRowH;
+      moveTexts[i].setY(y);
       // Ficha del tipo del poder
-      if (m) addTypeChip(this, x + 196, y + 11, m.fusion ? 'Fusión' : typeNameEs(m.type), m.fusion ? 0xd4a017 : typeColor(m.type), 64, 20);
+      if (m) addTypeChip(this, moveTexts[i].x + 196, y + moveTexts[i].height / 2, m.fusion ? 'Fusión' : typeNameEs(m.type), m.fusion ? 0xd4a017 : typeColor(m.type), 64, 20);
     });
 
     // Pantalla ancha: panel y lista se separan hacia los lados para que no vayan tan juntos

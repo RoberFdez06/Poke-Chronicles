@@ -36,8 +36,20 @@ const ROW = { w: 520, h: 38, gap: 3, top: 124 };
 /** Con «Panel admin» (solo dev o cuenta admin) hay una fila más: van más juntas. */
 const ROW_ADMIN = { ...ROW, h: 33, gap: 3 };
 const ROWS_GEO = ROW;
-/** Móvil: tres filas más (zoom de la sala, tamaño de la interfaz y modo automático), más juntas. */
-const ROW_MOBILE = { ...ROW, h: 29, gap: 2 };
+/**
+ * Móvil: tres filas más (zoom de la sala, tamaño de la interfaz y modo automático). En una columna medían 18 px
+ * reales de alto (imposibles de tocar bien): van en dos columnas, con filas el doble de altas.
+ */
+const ROW_MOBILE = { w: 430, h: 50, gap: 4, top: 128, cols: 2 };
+type RowGeo = { w: number; h: number; gap: number; top: number; cols?: number };
+/** Centro de la fila `i` de `n` (en una o dos columnas, de arriba abajo y luego a la derecha). */
+function rowPos(geo: RowGeo, i: number, n: number): { x: number; y: number } {
+  const cols = geo.cols ?? 1;
+  const per = Math.ceil(n / cols);
+  const col = Math.floor(i / per);
+  const x = cols === 1 ? 480 : 480 + (col - (cols - 1) / 2) * (geo.w + 20);
+  return { x, y: geo.top + (i % per) * (geo.h + geo.gap) };
+}
 
 /** Créditos (T31): de dónde salen los datos, los sprites y la fuente. */
 const CREDITS: [string, string][] = [
@@ -52,12 +64,12 @@ export class SettingsScene extends Phaser.Scene {
   private args: SettingsData = {};
   private nav!: NavInput;
   private selected = 0;
-  private rows: { bg: Phaser.GameObjects.Graphics; text: Phaser.GameObjects.Text; arrow: Phaser.GameObjects.Text; y: number }[] = [];
+  private rows: { bg: Phaser.GameObjects.Graphics; text: Phaser.GameObjects.Text; arrow: Phaser.GameObjects.Text; x: number; y: number }[] = [];
   /** Diálogo de confirmación o panel de controles abierto encima. */
   private dialog?: { layer: Phaser.GameObjects.Container; list?: MenuList };
   private closing = false;
   private list: Row[] = ROWS;
-  private geo = ROW;
+  private geo: RowGeo = ROW;
 
   constructor() {
     super('Settings');
@@ -96,22 +108,23 @@ export class SettingsScene extends Phaser.Scene {
 
     const ROW = this.geo;
     this.list.forEach((row, i) => {
-      const y = ROW.top + i * (ROW.h + ROW.gap);
+      const { x, y } = rowPos(ROW, i, this.list.length);
       const bg = this.add.graphics();
-      const text = this.add.text(480, y, '', { fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5);
-      const arrow = this.add.text(480 - ROW.w / 2 + 16, y, ARROW, { fontFamily: FONT, fontSize: '20px', color: HEX.text }).setOrigin(0, 0.5);
+      const text = this.add.text(x, y, '', { fontFamily: FONT, fontSize: '20px', fontStyle: 'bold', color: HEX.text }).setOrigin(0.5);
+      const arrow = this.add.text(x - ROW.w / 2 + 16, y, ARROW, { fontFamily: FONT, fontSize: '20px', color: HEX.text }).setOrigin(0, 0.5);
       // Ratón: clic en la fila la usa; en las de volumen, la mitad izquierda baja y la derecha sube
-      const zone = this.add.zone(480, y, ROW.w, ROW.h).setInteractive({ useHandCursor: true });
+      const zone = this.add.zone(x, y, ROW.w, ROW.h).setInteractive({ useHandCursor: true });
       zone.on('pointerover', () => !this.dialog && this.select(i));
       zone.on('pointerdown', (p: Phaser.Input.Pointer) => {
         if (this.dialog) return;
         this.select(i);
-        if (row === 'music' || row === 'sfx') this.adjust(row, p.worldX < 480 ? -1 : 1);
-        else if (row === 'roomZoom' || row === 'uiSize') this.stepView(row, p.worldX < 480 ? -1 : 1);
-        else if (row === 'autoMode') this.stepAuto(p.worldX < 480 ? -1 : 1);
+        const d = p.worldX < x ? -1 : 1;
+        if (row === 'music' || row === 'sfx') this.adjust(row, d);
+        else if (row === 'roomZoom' || row === 'uiSize') this.stepView(row, d);
+        else if (row === 'autoMode') this.stepAuto(d);
         else this.activate();
       });
-      this.rows.push({ bg, text, arrow, y });
+      this.rows.push({ bg, text, arrow, x, y });
     });
 
     addHelpBar(this, 480, 604, '↑/↓: elegir · ←/→ o clic en ◀ ▶: cambiar valor · Enter o clic: usar · Esc: volver', {
@@ -170,7 +183,7 @@ export class SettingsScene extends Phaser.Scene {
     this.rows.forEach((r, i) => {
       const sel = i === this.selected;
       r.bg.clear();
-      drawBox(r.bg, 480 - this.geo.w / 2, r.y - this.geo.h / 2, this.geo.w, this.geo.h, {
+      drawBox(r.bg, r.x - this.geo.w / 2, r.y - this.geo.h / 2, this.geo.w, this.geo.h, {
         selected: sel,
         border: this.list[i] === 'reset' ? 0xc0392b : undefined,
       });

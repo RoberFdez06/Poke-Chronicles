@@ -157,6 +157,9 @@ export function addTypeChip(scene: Phaser.Scene, cx: number, cy: number, label: 
     .text(cx, cy, label.toUpperCase(), textStyle(14, HEX.white, { fontStyle: 'bold' }))
     .setOrigin(0.5)
     .setShadow(1, 1, '#00000088', 0);
+  // Sin salirse de la ficha (en móvil las letras crecen): se encoge lo justo
+  const room = w - 8;
+  if (t.width > room) t.setScale(room / t.width);
   return [g, t] as Phaser.GameObjects.GameObject[];
 }
 

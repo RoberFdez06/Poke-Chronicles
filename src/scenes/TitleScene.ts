@@ -46,7 +46,7 @@ export class TitleScene extends Phaser.Scene {
       })
       .setOrigin(0.5).setShadow(2, 2, '#101828', 0).setAlpha(0).setDepth(6);
     const press = this.add
-      .text(W / 2, H * 0.78, 'Pulsa Enter, haz clic o pulsa A', {
+      .text(W / 2, H * 0.78, touchOnlyDevice() ? 'Toca la pantalla para empezar' : 'Pulsa Enter, haz clic o pulsa A', {
         fontFamily: FONT, fontSize: `${Math.round(24 * u)}px`, color: '#f8f8f0',
       })
       .setOrigin(0.5).setShadow(2, 2, '#101828', 0).setAlpha(0).setDepth(6);

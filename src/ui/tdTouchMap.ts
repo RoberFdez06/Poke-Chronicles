@@ -65,7 +65,8 @@ export class TdTouchMap {
     const main = scene.cameras.main;
     list.splice(list.indexOf(main), 1);
     list.push(main);
-    main.transparent = true;
+    // Sin fondo: en WebGL la cámara pinta su color si tiene alfa aunque `transparent` sea true, y tapaba el mapa
+    main.setBackgroundColor('rgba(0,0,0,0)');
     this.gesture = new MapGesture(SLOP_CSS);
     // Dos dedos a la vez (pellizco): Phaser trae uno; los punteros son del juego entero
     const need = 3 - scene.input.manager.pointersTotal;

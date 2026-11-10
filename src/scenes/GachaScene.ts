@@ -23,6 +23,7 @@ import { typeColor, typeNameEs } from '../data/types';
 import { cry, sfx } from '../ui/audio';
 import { ARROW, addTypeChip, drawBox, fadeIn, FONT, goTo, hex, RARITY_COLORS } from '../ui/theme';
 import { fitTextLine, setFitLine } from '../ui/fitText';
+import { mobileUi } from '../ui/uiScale';
 import { addMenuBackdrop } from '../ui/art/landscape';
 import { NavInput, PadButtons } from '../ui/nav';
 import { bakeBannerArt, bannerKey } from '../ui/art/bannerArt';
@@ -228,7 +229,9 @@ export class GachaScene extends Phaser.Scene {
       const frame = this.add.graphics();
       const img = this.add.image(x, CARD.tabY, bannerKey(b.id)).setScale(2);
       // Zona de toque de 44×44 px (la textura mide 16: en sus píxeles, 22)
-      img.setInteractive(new Phaser.Geom.Rectangle(-3, -3, 22, 22), Phaser.Geom.Rectangle.Contains);
+      // Móvil: todo el hueco entre pestañas (46 de diseño) y más alta, porque en pantalla se ve a ~0,6
+      const hit = mobileUi() ? new Phaser.Geom.Rectangle(-3.5, -10, 23, 36) : new Phaser.Geom.Rectangle(-3, -3, 22, 22);
+      img.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
       img.input!.cursor = 'pointer';
       let downX: number | null = null;
       img.on('pointerdown', (p: Phaser.Input.Pointer) => (downX = p.x));
@@ -310,22 +313,28 @@ export class GachaScene extends Phaser.Scene {
     const owned = loadUnlocked();
     const prog = bannerProgress(pools, owned);
     const bar = this.add.graphics();
-    const bw = 190;
+    // Móvil: barra más corta para que la cifra quepa con letra legible (si no, se encogía a 6 px reales)
+    const mob = mobileUi();
+    const bw = mob ? 130 : 190;
     bar.fillStyle(0x2b3a67, 1).fillRect(500, 144, bw + 4, 14);
     bar.fillStyle(0xe4e4ec, 1).fillRect(502, 146, bw, 10);
     const frac = prog.total > 0 ? prog.got / prog.total : 0;
     bar.fillStyle(prog.got === prog.total ? 0xffd34d : 0x58b048, 1).fillRect(502, 146, Math.round(bw * frac), 10);
     // Los textos de la ficha acaban antes del destacado (x 862 ± 44 con sus rayos): con letra de móvil lo pisaban
     const TXT_END = 862 - 46;
-    parts.push(bar, fitTextLine(this.add.text(702, 151, `${prog.got}/${prog.total} conseguidos`, { fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: navy }).setOrigin(0, 0.5), TXT_END - 702, 9));
+    const minFit = mob ? 15 : 9;
+    const progX = 500 + bw + 12;
+    parts.push(bar, fitTextLine(this.add.text(progX, 151, mob ? `${prog.got}/${prog.total}` : `${prog.got}/${prog.total} conseguidos`, { fontFamily: FONT, fontSize: '15px', fontStyle: 'bold', color: navy }).setOrigin(0, 0.5), TXT_END - progX, minFit));
 
     // Garantías de este banner
     const top = bannerTop(pools);
     const left = pityLeft(pityOf(loadBannerState(), banner.id), top);
-    const pity = left.top !== null
-      ? `Garantía: ${RARITY_LABEL[top]} en ${left.top} · Épico o mejor en ${left.epic}`
-      : `Garantía: Épico o mejor en ${left.epic} (sin legendarios)`;
-    parts.push(fitTextLine(this.add.text(500, 176, pity, { fontFamily: FONT, fontSize: '14px', color: navy }).setOrigin(0, 0.5), TXT_END - 500, 9));
+    const pity = mob
+      ? (left.top !== null ? `${RARITY_LABEL[top]} en ${left.top} · Épico en ${left.epic}` : `Épico o mejor en ${left.epic}`)
+      : left.top !== null
+        ? `Garantía: ${RARITY_LABEL[top]} en ${left.top} · Épico o mejor en ${left.epic}`
+        : `Garantía: Épico o mejor en ${left.epic} (sin legendarios)`;
+    parts.push(fitTextLine(this.add.text(500, 176, pity, { fontFamily: FONT, fontSize: '14px', color: navy }).setOrigin(0, 0.5), TXT_END - 500, minFit));
 
     // Qué hay en el banner
     let info: string;
@@ -334,7 +343,7 @@ export class GachaScene extends Phaser.Scene {
       info = FORM_REGIONS.map((r) => `${FORM_REGION_LABEL[r]} ${fp[r].got}/${fp[r].total}`).join(' · ');
     } else if (banner.kind === 'region') info = `Pokédex n.º ${banner.first}-${banner.last} · ${poolIds(pools).length} Pokémon`;
     else info = `Todas las regiones y formas · ${poolIds(pools).length} Pokémon`;
-    parts.push(fitTextLine(this.add.text(500, 220, info, { fontFamily: FONT, fontSize: '13px', color: soft }).setOrigin(0, 0.5), TXT_END - 500, 9));
+    parts.push(fitTextLine(this.add.text(500, 220, info, { fontFamily: FONT, fontSize: '13px', color: soft }).setOrigin(0, 0.5), TXT_END - 500, minFit));
     const featText = this.add.text(500, 198, '', { fontFamily: FONT, fontSize: '14px', color: soft }).setOrigin(0, 0.5);
     parts.push(featText);
     this.cardLayer = this.add.container(0, 0, parts);

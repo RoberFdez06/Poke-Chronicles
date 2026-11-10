@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { addHelpBar } from '../ui/helpBar';
 import { fitTextBox, fitTextLine } from '../ui/fitText';
 import { mobileUi } from '../ui/uiScale';
+import { padHit } from '../ui/hitArea';
 import { fitDesign } from '../ui/layout';
 import { emptyRecords, MODES, MODE_LABEL, modeDesc, recordText, Records, type GameMode } from '../data/modes';
 import { loadCandies, loadDaily, loadRecords } from '../data/save';
@@ -110,6 +111,7 @@ export class ModeScene extends Phaser.Scene {
       const c = this.add
         .text(930, 48, '▶ Continuar partida', { fontFamily: UI.FONT, fontSize: '18px', fontStyle: 'bold', color: '#ffffff', backgroundColor: '#2b3a67' })
         .setOrigin(1, 0.5).setPadding(10, 6).setInteractive({ useHandCursor: true });
+      if (mobileUi()) padHit(c, c.width + 16, 64);
       c.on('pointerover', () => c.setColor('#ffd34d'));
       c.on('pointerout', () => c.setColor('#ffffff'));
       c.on('pointerdown', () => this.resume());
@@ -127,9 +129,14 @@ export class ModeScene extends Phaser.Scene {
     CARDS.forEach((def, i) => this.cards.push(this.buildCard(def, i)));
 
     // Fila de la dificultad (solo para los modos que se juegan con un Pokémon)
-    const arrow = (x: number, label: string, d: number) =>
-      this.add.text(x, 0, label, { fontFamily: UI.FONT, fontSize: '26px', color: '#ffd34d' })
+    // Móvil: las flechas medían 14×17 px reales; zona de toque de 56×68 de diseño (~34×42 reales)
+    const mob = mobileUi();
+    const arrow = (x: number, label: string, d: number) => {
+      const a = this.add.text(x, 0, label, { fontFamily: UI.FONT, fontSize: '26px', color: '#ffd34d' })
         .setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.changeDiff(d));
+      if (mob) padHit(a, 56, 68);
+      return a;
+    };
     const lbl = this.add.text(260, 0, 'Dificultad:', { fontFamily: UI.FONT, fontSize: '20px', color: '#ffffff' }).setOrigin(1, 0.5);
     this.diffText = this.add.text(360, 0, '', { fontFamily: UI.FONT, fontSize: '22px', fontStyle: 'bold', color: '#ffffff' })
       .setOrigin(0.5).setInteractive({ useHandCursor: true }).on('pointerdown', () => this.changeDiff(1));
@@ -212,6 +219,8 @@ export class ModeScene extends Phaser.Scene {
     const touch = currentInput() === 'touch' || mobileUi();
     const base = `Tutorial de ${tm === 'normal' ? 'Normal' : CARDS.find((c) => c.id === tm)?.name ?? ''}`;
     this.tutBtn.setText(`${fresh ? 'Nuevo · ' : ''}${base}${touch ? '' : ' (T · Y)'}`).setColor(fresh ? '#ffd34d' : '#ffffff');
+    // Móvil: medía 17 px reales de alto; más zona hacia arriba y abajo (debajo empiezan las tarjetas, sin pisarlas)
+    if (mobileUi()) padHit(this.tutBtn, 0, 44);
   }
 
   private tutorialSelected() {
@@ -272,6 +281,7 @@ export class ModeScene extends Phaser.Scene {
   private paintDiff() {
     const colors: Record<Difficulty, string> = { easy: '#8fe39a', normal: '#ffffff', hard: '#ff8a7a' };
     this.diffText.setText(DIFFICULTY_LABEL[this.diff]).setColor(colors[this.diff]);
+    if (mobileUi()) padHit(this.diffText, 0, 68);
     this.diffDesc.setText(DIFFICULTY_DESC[this.diff]);
     // En una línea: si no cabe se encoge (no salta de línea ni pisa «Luego: …»)
     this.cards.forEach((c, k) => {
@@ -281,7 +291,7 @@ export class ModeScene extends Phaser.Scene {
       const nextTop = c.next.y - c.next.displayHeight / 2;
       c.record.setY(Math.min(CARD.h - 36, nextTop - 1 - c.record.displayHeight / 2));
       const recTop = c.record.y - c.record.displayHeight / 2;
-      if (c.desc.y + c.desc.displayHeight > recTop - 3) fitTextBox(c.desc, CARD.w - 20, recTop - 3 - c.desc.y, mobileUi() ? 13 : 9);
+      if (c.desc.y + c.desc.displayHeight > recTop - 3) fitTextBox(c.desc, CARD.w - 20, recTop - 3 - c.desc.y, mobileUi() ? 14 : 9);
     });
   }
 
