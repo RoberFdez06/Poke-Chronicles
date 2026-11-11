@@ -22,7 +22,21 @@ service cloud.firestore {
         && d.data is map
         && d.data.size() <= 2000
         && (!('name' in d) || d.name == null || (d.name is string && d.name.size() <= 40))
-        && d.updatedAt == request.time;
+        && d.updatedAt == request.time
+        && moneyFieldOk(d.data, 'pokeisaac.tickets', 6)
+        && moneyFieldOk(d.data, 'pokeisaac.coins', 6)
+        && moneyFieldOk(d.data, 'pokeisaac.candies', 7);
+    }
+
+    // Tope a las claves numéricas de moneda (tickets, caramelos): nunca se ganan tantos jugando, pero un valor
+    // escrito a mano por fuera del juego (API REST, consola) sí podría ponerlos altísimos. No es una validación
+    // completa (el resto del guardado sigue sin tipar; eso pediría una función en la nube, de pago) pero sube
+    // mucho el listón: de "cualquier número" a "como mucho un número de maxDigits cifras, y solo dígitos".
+    function moneyFieldOk(data, key, maxDigits) {
+      return !(key in data)
+        || (data[key] is string
+            && data[key].size() >= 1 && data[key].size() <= maxDigits
+            && data[key].matches('^[0-9]+$'));
     }
 
     match /users/{uid} {

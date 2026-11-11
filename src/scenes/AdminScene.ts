@@ -5,6 +5,7 @@ import { ARROW, drawBox, FONT, HEX } from '../ui/theme';
 import { addPixelText } from '../ui/art/pixel';
 import { drawAdminWrench } from '../ui/art/adminArt';
 import { sfx } from '../ui/audio';
+import { adminAllowed } from '../data/admin';
 
 /**
  * Panel admin (ver data/admin.ts). Filas genéricas: quien lo abre (Ajustes o la partida) da las acciones.
@@ -71,6 +72,13 @@ export class AdminScene extends Phaser.Scene {
   }
 
   create() {
+    // Cierre de seguridad: aunque la escena se lance sin pasar por openAdmin() (p. ej. desde la consola del
+    // navegador), aquí tampoco se abre nada si no toca. No depender solo de quien la invoca.
+    if (!adminAllowed()) {
+      this.args?.onClose?.();
+      this.scene.stop();
+      return;
+    }
     fitDesign(this);
     this.born = this.time.now;
     this.nav = new NavInput(this);

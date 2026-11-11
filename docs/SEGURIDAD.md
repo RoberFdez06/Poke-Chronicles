@@ -9,9 +9,9 @@ Las rutas son del repositorio; los números de línea, de este commit.
 | # | Área | Control | Estado | Evidencia |
 |---|------|---------|--------|-----------|
 | 1 | Autenticación | Contraseña mínima en cliente (8, mayús., minús., número, especial) | OK | `src/data/account.ts:35-40` |
-| 2 | Autenticación | La misma política activada en Firebase (Password policy) | Pendiente de Roberto | Consola → Authentication → Settings |
+| 2 | Autenticación | La misma política activada en Firebase (Password policy) | OK (11/11, Roberto) | Consola → Authentication → Settings |
 | 3 | Autenticación | Errores de inicio de sesión no revelan si el correo existe | Corregido | `src/data/account.ts:59-60` (`user-not-found` = mismo texto que contraseña mala) |
-| 4 | Autenticación | Protección contra enumeración de correos en el registro (`email-already-in-use`) | Pendiente de Roberto | Activar «Email enumeration protection» en Authentication → Settings |
+| 4 | Autenticación | Protección contra enumeración de correos en el registro (`email-already-in-use`) | OK (11/11, Roberto) | Activada en Authentication → Settings |
 | 5 | Autenticación | Limitación de intentos | OK (Firebase) | `auth/too-many-requests` en `src/data/account.ts:61` |
 | 6 | Autenticación | Borrar cuenta pide sesión reciente | OK | `src/net/cloud.ts` `deleteAccount` + `auth/requires-recent-login` (`account.ts:66`). Nota: borra el documento antes que la cuenta; si Firebase pide reautenticar, el progreso ya se borró (riesgo bajo, solo afecta al propio usuario) |
 | 7 | Autenticación | Invitados no escriben en servidor | OK | `src/net/cloud.ts:84-90` (invitado = `MemoryStorage`; `scheduleUpload` solo desde `attach`) |
@@ -32,27 +32,40 @@ Las rutas son del repositorio; los números de línea, de este commit.
 | 22 | Entrada/salida | Páginas estáticas escapan el contenido | OK | `src/data/legal.ts` usa `esc()` al generar `public/*.html` |
 | 23 | Secretos | `.env.local` ignorado; `.env.example` sin valores reales | OK | `.gitignore:10-11` |
 | 24 | Secretos | Sin claves privadas, cuentas de servicio, `ghp_`, `github_pat_`, `sk-`, `xox` ni `AIza…` en el historial (439 commits) | OK | `git log --all -p` + grep: 0 coincidencias |
-| 25 | Secretos | apiKey web de Firebase restringida por dominio (es pública por diseño) | Pendiente de Roberto | Google Cloud → APIs y servicios → Credenciales: referentes HTTP `roberfdez06.github.io/*` y `localhost` |
+| 25 | Secretos | apiKey web de Firebase restringida por dominio (es pública por diseño) | OK (11/11, Roberto) | Restringida en Google Cloud → Credenciales a `roberfdez06.github.io/*`, `localhost` y `firebaseapp.com` |
 | 26 | Dependencias | `npm audit` | Pendiente de Roberto | Aquí el registro de auditoría está bloqueado por red. Ejecutar `npm audit --omit=dev` y `npm audit` |
 | 27 | Dependencias | Sin scripts `postinstall` propios ni de las dependencias directas; lockfile versionado | OK | `package.json` (solo `predev`/`prebuild` locales), `package-lock.json` en git |
 | 28 | Navegador | `Referrer-Policy` por meta | Corregido | `index.html:5`, `src/data/legal.ts:167` (→ `public/*.html`) |
 | 29 | Navegador | Enlaces `target=_blank` con `rel="noopener noreferrer"` | No aplica | No hay ningún `target=_blank` |
-| 30 | Navegador | Content-Security-Policy | Pendiente de Roberto | Borrador abajo; no se activa sin probar |
+| 30 | Navegador | Content-Security-Policy | OK (11/11) | Activada por `<meta>` en `index.html` y en `src/data/legal.ts` (páginas legales); probada en el navegador sin violaciones |
 | 31 | Despliegue | Depuración/trampas solo en dev o cuenta admin | OK | `GameScene.ts:8865-8867` (`installDebug` → `adminAllowed()`); `SettingsScene.ts:79`. `debugFlags.ts` (`?debug`) no se usa en ningún sitio (código muerto) |
 | 32 | Despliegue | Service worker solo cachea GET de hosts permitidos | OK | `public/sw.js:5,20-22` (`pokeapi.co`, `raw.githubusercontent.com`) |
 | 33 | Privacidad | Política de privacidad y borrado de cuenta desde el juego | OK | `public/privacidad.html`, `deleteAccount` |
 | 34 | Privacidad | El correo del admin nunca en claro | OK | Solo SHA-256 en `.env.local` (`admin.ts:1-5`) |
 
-Resumen: **21 OK (el 13, parcial) · 7 corregidos · 5 pendientes de Roberto · 1 no aplica**.
+Resumen: **25 OK (el 13, parcial) · 7 corregidos · 1 pendiente de Roberto · 1 no aplica**.
+
+### Añadidos 11/11 (sin numerar en la tabla de arriba, revisión de seguridad pedida por Roberto)
+
+| Área | Control | Estado | Evidencia |
+|------|---------|--------|-----------|
+| Autorización | El panel admin se cierra solo si se lanza sin pasar por quien lo abre (p. ej. desde la consola del navegador: `__POKEISAAC__.scene.start('Admin')`) | Corregido | `src/scenes/AdminScene.ts` `create()` comprueba `adminAllowed()` aunque ya lo comprueben `GameScene`/`SettingsScene`. Antes se podía abrir el panel desde la consola en la web pública; no daba ningún truco (las filas las construye quien lo abre y esas sí estaban protegidas), pero se caía con un error en vez de no hacer nada. |
+| Datos | Tickets/monedas/caramelos no pueden ponerse a mano a cualquier valor por fuera del juego (API REST de Firestore, consola) | Mitigado (sin desplegar) | `firestore.rules` `moneyFieldOk`: exige que `pokeisaac.tickets`/`pokeisaac.coins` tengan como mucho 6 cifras y `pokeisaac.candies` 7 (de "cualquier número" a como mucho 999 999 / 9 999 999, muy por encima de lo que da jugar). **No es una validación completa**: el resto del guardado sigue sin tipar y nadie impide forzar el propio guardado dentro de esos topes; una validación completa pediría Cloud Functions (plan de pago). Probado con dos cuentas reales desechables: sin iniciar sesión o con la cuenta de otro, todo denegado (403) tanto antes como después. |
+
 
 ## Pendiente de Roberto
 
-1. **Desplegar las reglas**: `firebase deploy --only firestore:rules` (las del commit NO se aplican solas).
-2. **Restringir la apiKey** por referente HTTP en Google Cloud Console (dominio de GitHub Pages + `localhost`).
-3. **Authentication → Settings**: activar «Email enumeration protection» y la «Password policy» (8+, mayús., minús., número, especial).
-4. **`npm audit --omit=dev` y `npm audit`** en tu PC; actualizar solo parches/menores.
-5. **CSP**: probar el borrador de abajo.
-6. Opcional: **App Check** (reCAPTCHA Enterprise) para frenar abusos de escritura con scripts.
+Hecho el 11/11: reglas desplegadas, apiKey restringida, política de contraseña y protección de enumeración
+activadas, CSP publicada, `npm audit --omit=dev` revisado (4 altas en `@grpc/grpc-js`, solo del lado servidor de
+Node; no afectan al cliente web, no se toca).
+
+1. **Volver a desplegar `firestore.rules`** (cambiaron hoy: tope a tickets/monedas/caramelos; ver tabla de arriba,
+   fila "Tickets/monedas/caramelos…"). Firestore → Reglas → pegar el archivo → Publicar.
+2. **Borrar dos documentos sueltos de prueba** en Firestore → Datos → colección `users` (de las pruebas de ataque
+   de hoy; las cuentas ya no existen, así que ya no puede leerlos ni borrarlos nadie salvo tú a mano):
+   - `rSZbaOBJhRgBzy8DuaTLSuZR4Dc2`
+   - `Ql4te9E7YkT3XBIewzoB5Qx68KQ2`
+3. Opcional: **App Check** (reCAPTCHA Enterprise) para frenar abusos de escritura con scripts.
 
 ## Borrador de CSP (NO activado)
 

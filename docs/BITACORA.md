@@ -2868,3 +2868,23 @@ otra (p. ej. «Desafío diario»); además un Enter muy breve no siempre contaba
 - **Sin bandas**: en pantallas más anchas que 16:9, joystick y botones ya no van en bandas DOM fuera del lienzo (al 150 % cada banda medía hasta 174 px CSS casi vacíos). El lienzo llena la caja (hasta 3:1) y los controles van siempre dentro del juego (`TOUCH_BANDS_ENABLED = false` en `data/touchLayout.ts`).
 - **«Tamaño de la interfaz» al 150 %**: la letra del HUD crece, pero nunca por encima de su tope (`max`) ni de ×2 (`hudFontSize`). Al cambiarlo en plena partida, cada texto se recalcula desde su tamaño de diseño (`hudFontOrigin`/`hudFontAt`), en vez de multiplicarse ×1,5 sin tope («Parry», «Adrenalina», «100/100», «Objetos» y el consejo se solapaban).
 - Comprobado con capturas de Playwright (Chrome emulando táctil) a 915×412, 734×372 y 667×258, al 100 % y al 150 %, y con el cambio en plena partida.
+
+## Auditoría de ataque real (pedida por Roberto, 11/11)
+
+Contra la web publicada, con dos cuentas de prueba desechables (creadas y borradas al terminar):
+- Sin iniciar sesión y con la cuenta de otro: leer, escribir y borrar el guardado ajeno, listar `users` y escribir en
+  una colección que no debería existir → los seis intentos, denegados (403) por `firestore.rules`.
+- Colar un campo fuera de esquema (`isAdmin: true`) en el propio guardado con el `updateMask` de Firestore → se
+  comprobó releyendo el documento: el campo nunca se escribió.
+- Inyección por la URL (`?codigo=<img onerror=...>`) y por el guardado local (`__proto__`, `constructor`, valores
+  inválidos) → nada se ejecuta ni se pinta; `safeData.ts` descarta las claves peligrosas sin romper el juego.
+- **Hallazgo real:** `window.__POKEISAAC__` expone el `Phaser.Game` entero; desde la consola, `scene.start('Admin')`
+  abría el panel en la web pública (nunca daba ningún truco, porque las filas las monta quien lo abre, y eso sí
+  estaba protegido por `adminAllowed()`, pero se caía con un error en vez de no hacer nada). Corregido: `AdminScene`
+  ahora se cierra sola si `adminAllowed()` es falso, sin fiarse de quien la invoca.
+- Escribiendo directamente en la nube (sin pasar por el cliente) sí se pudo poner el propio guardado a valores
+  absurdos (999 999 999 en tickets/monedas/caramelos): ya se sabía (economía de confianza en el cliente, documentado
+  en `admin.ts`), pero esta vía concreta tampoco pasaba por `markCheatRun`. Mitigado con un tope por regla
+  (`moneyFieldOk` en `firestore.rules`, ver `docs/SEGURIDAD.md`); no es una validación completa del resto del
+  guardado, eso pediría Cloud Functions.
+- Lanzar la escena `Game` desde la consola sin pasar por el menú ni elegir equipo: se detiene sola, sin romperse.
