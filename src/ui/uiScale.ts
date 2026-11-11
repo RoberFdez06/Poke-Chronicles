@@ -67,10 +67,18 @@ export const HUD_MAX_BOOST = 2;
 /** Tamaño de letra de un texto del HUD: igual en escritorio; en móvil, al menos HUD_MIN_CSS (con tope y `max`). */
 export function hudFontSize(size: number, cssPerPx: number, mobile: boolean, max = Infinity, ui = 1): number {
   if (!mobile) return size;
-  // «Tamaño de la interfaz» (Ajustes, solo móvil): agranda también el tope
+  // «Tamaño de la interfaz» (Ajustes, solo móvil): agranda la letra, pero NUNCA por encima de su tope (`max`, lo que
+  // cabe en su hueco) ni de ×HUD_MAX_BOOST. Antes el tope también crecía ×1,5 y al 150 % los textos se solapaban.
   const k = ui > 0 ? ui : 1;
   const s = Math.round(size * textBoost(size, cssPerPx, 1, HUD_MIN_CSS, HUD_MAX_BOOST) * k);
-  return Math.max(size, Math.min(s, Math.round(max * k)));
+  return Math.max(size, Math.min(s, max, Math.round(size * HUD_MAX_BOOST)));
+}
+
+/** Última llamada a hudFont: la partida la usa para recordar el tamaño de diseño de cada texto del HUD. */
+let lastHud: { size: number; max: number; out: number } | null = null;
+/** Tamaño de diseño y tope del texto recién creado con `px` (si salió de la última llamada a hudFont). */
+export function hudFontOrigin(px: number): { size: number; max: number } | null {
+  return lastHud && lastHud.out === px ? { size: lastHud.size, max: lastHud.max } : null;
 }
 
 let hudUi = 1;
@@ -81,7 +89,14 @@ export function setHudUiScale(k: number) {
 export const hudUiScale = (): number => (mobile ? hudUi : 1);
 
 /** Atajo para las escenas: tamaño del HUD con la ventana actual y el modo móvil fijado al arrancar. */
-export const hudFont = (size: number, max = Infinity): number => hudFontSize(size, viewportCssPerPx(), mobile, max, hudUi);
+export const hudFont = (size: number, max = Infinity): number => {
+  const out = hudFontSize(size, viewportCssPerPx(), mobile, max, hudUi);
+  lastHud = { size, max, out };
+  return out;
+};
+
+/** Tamaño de un texto del HUD (diseño `size`, tope `max`) con otro «Tamaño de la interfaz» `ui`. */
+export const hudFontAt = (size: number, max: number, ui: number): number => hudFontSize(size, viewportCssPerPx(), mobile, max, ui);
 
 /** Zona de toque buscada en móvil para botones sueltos (px CSS de lado): la de los dedos, no la de un cursor. */
 export const TOUCH_TARGET_CSS = 56;

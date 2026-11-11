@@ -151,6 +151,9 @@ export function touchScreen(cssW: number, cssH: number, lw: number, roomW = 1440
 // lienzo (modo «lienzo» de siempre); los paneles del HUD crecen con hudBandScale usando tramos que dejan las filas
 // de botones enteras (HUD_*_SEGS_TOUCH_CANVAS). La sala no cambia (manda el alto). Interruptor de seguridad:
 
+/** Bandas DOM con los controles fuera del lienzo. Apagadas: los controles van siempre dentro del juego. */
+export const TOUCH_BANDS_ENABLED = false;
+
 /** Poner a false devuelve exactamente el comportamiento anterior (touchLogicalWidth). */
 export const TOUCH_HUD_SCALE_ENABLED = true;
 /** Ganancia mínima del panel izquierdo para ensanchar (por debajo no compensa un zoom no entero). */
@@ -162,7 +165,15 @@ export const TOUCH_HUD_MIN_GAIN = 1.1;
  */
 export function touchWideWidth(cssW: number, cssH: number, ui = 1, enabled = TOUCH_HUD_SCALE_ENABLED, baseW = 1920, baseH = 1080): number {
   const old = touchLogicalWidth(cssW, cssH, ui, baseW, baseH);
-  if (!enabled || old !== baseW || !(cssW > 0 && cssH > 0)) return old;
+  if (!enabled || !(cssW > 0 && cssH > 0)) return old;
+  if (!TOUCH_BANDS_ENABLED) {
+    // Sin bandas DOM: el lienzo llena la caja (par, hasta TOUCH_MAX_W) y los controles van siempre dentro del
+    // juego. Antes, con la interfaz al 150 %, cada banda crecía hasta 174 px CSS casi vacíos.
+    let full = Math.min(TOUCH_MAX_W, Math.floor((baseH * cssW) / cssH));
+    full -= full % 2;
+    return Math.max(baseW, full);
+  }
+  if (old !== baseW) return old;
   // Solo donde ya se jugaba en modo «lienzo» (banda < MIN_BAND_CSS): con bandas DOM (p. ej. Safari con barras a
   // 667×258, banda 104) pasar los botones al lienzo los haría más pequeños (< 44 px CSS), así que no se toca.
   if (touchScreen(cssW, cssH, baseW).mode !== 'canvas') return old;
@@ -178,6 +189,7 @@ export function touchWideWidth(cssW: number, cssH: number, ui = 1, enabled = TOU
 
 /** ¿Lienzo táctil ensanchado SIN bandas (controles dentro del lienzo y paneles escalados)? */
 export function touchCanvasWide(cssW: number, cssH: number, lw: number, baseW = 1920): boolean {
+  if (!TOUCH_BANDS_ENABLED) return lw > baseW;
   return lw > baseW && touchScreen(cssW, cssH, lw).mode === 'canvas';
 }
 

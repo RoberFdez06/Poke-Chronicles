@@ -21,8 +21,8 @@ import { phaseAtSeconds, phasePowerMul, pickByPhase, PHASE_DESC, PHASE_NOTICE, t
 import { TouchControls } from '../ui/touchControls';
 import { touchCanvasWideNow } from '../ui/wideScreen';
 import { touchHudSegs, TOUCH_HUD_SCALE_ENABLED } from '../data/touchLayout';
-import { hudFont, hudUiScale, setHudUiScale } from '../ui/uiScale';
-import { hudRescaledPx, loadMobileView, MOBILE_MAP, MOBILE_VIEW_CHANGED, saveMobileView, viewFactor } from '../data/mobileView';
+import { hudFont, hudFontAt, hudFontOrigin, hudUiScale, setHudUiScale } from '../ui/uiScale';
+import { loadMobileView, MOBILE_MAP, MOBILE_VIEW_CHANGED, saveMobileView, viewFactor } from '../data/mobileView';
 import { pickAimTarget, touchAimDir } from '../data/touchAim';
 import {
   AUTO_FIRE_RANGE, AUTO_MODE_LABEL, AUTO_MODE_SHORT, autoCasts, autoFires, autoMoves, effectiveAutoMode, loadAutoMode, manualOverride,
@@ -3233,6 +3233,7 @@ export class GameScene extends Phaser.Scene {
     const hud = <T extends Phaser.GameObjects.GameObject>(o: T): T => {
       this.hudLayer.add(o);
       o.cameraFilter &= ~hudCam.id;
+      this.tagHudFont(o);
       return o;
     };
     // Táctil: capa y cámara propias para los controles cuando el HUD va escalado (ver touchLayer). La cámara no
@@ -4788,14 +4789,13 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
       const i = this.interior(this.current);
       cam.centerOn(i.cx, i.cy);
     }
-    // Letras del HUD: cada una vuelve a su tamaño base (sin el factor anterior) por el nuevo factor
+    // Letras del HUD: cada una se recalcula desde su tamaño de diseño con el nuevo factor, sin pasar de su tope
+    // (antes se multiplicaban ×1,5 sin tope y al 150 % se solapaban). Las que no salen de hudFont no cambian.
     if (oldUi !== newUi) {
       const walk = (o: Phaser.GameObjects.GameObject) => {
         if (o instanceof Phaser.GameObjects.Text) {
-          const cur = parseFloat(String(o.style.fontSize)) || 0;
-          const base = (o.getData('hudBasePx') as number | undefined) ?? cur / oldUi;
-          o.setData('hudBasePx', base);
-          if (cur > 0) o.setFontSize(hudRescaledPx(base, newUi));
+          const size = o.getData('hudSize') as number | undefined;
+          if (size !== undefined) o.setFontSize(hudFontAt(size, (o.getData('hudMax') as number | undefined) ?? Infinity, newUi));
         } else if (o instanceof Phaser.GameObjects.Container) o.each(walk);
       };
       this.hudLayer.each(walk);
@@ -13490,7 +13490,19 @@ ${where} — ${this.biome.name}`, { kind: 'info', icon: 'trapdoor' });
   }
 
   /** Mete un objeto en la capa del HUD (y en su cámara). */
+  /** Recuerda el tamaño de diseño (y tope) de un texto del HUD hecho con hudFont, para «Tamaño de la interfaz». */
+  private tagHudFont(o: Phaser.GameObjects.GameObject) {
+    const tag = (t: Phaser.GameObjects.GameObject) => {
+      if (!(t instanceof Phaser.GameObjects.Text) || t.getData('hudSize') !== undefined) return;
+      const src = hudFontOrigin(parseFloat(String(t.style.fontSize)) || 0);
+      if (src) t.setData('hudSize', src.size).setData('hudMax', src.max);
+    };
+    tag(o);
+    if (o instanceof Phaser.GameObjects.Container) o.each(tag);
+  }
+
   private toHud<T extends Phaser.GameObjects.GameObject>(o: T): T {
+    this.tagHudFont(o);
     this.hudLayer.add(o);
     const id = this.hudCam?.id ?? 0;
     o.cameraFilter &= ~id;

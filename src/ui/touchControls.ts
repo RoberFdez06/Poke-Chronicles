@@ -12,7 +12,7 @@
 import Phaser from 'phaser';
 import { GAME_VIEW, H, HUD, LW, W } from './layout';
 import { hitPadButton, padButtons, stickVector, stickZone, STICK_DEAD, STICK_DRAG, STICK_KNOB, STICK_R, type PadButton, type PadRect } from '../data/touchPad';
-import { bandLayout, touchLayoutMode, type BandSpot, type TouchLayoutMode } from '../data/touchLayout';
+import { bandLayout, touchLayoutMode, TOUCH_BANDS_ENABLED, type BandSpot, type TouchLayoutMode } from '../data/touchLayout';
 import { bakeTouchButtons, touchBtnKey, TOUCH_FRAME } from './art/touchButtons';
 import { lowFx } from './theme';
 import { noFingersLeft, pressFresh, StickArbiter, touchHitR, type Release, type StickSide } from '../data/touchPointers';
@@ -540,7 +540,7 @@ class BandLayer {
   /** Mide el lienzo y decide el modo; en bandas, coloca las cajas y lo de dentro. */
   measure(): TouchLayoutMode {
     const parent = this.scene.game.canvas?.parentElement;
-    if (!this.root || !this.sides || !this.sticks || !parent) return 'canvas';
+    if (!TOUCH_BANDS_ENABLED || !this.root || !this.sides || !this.sticks || !parent) return 'canvas';
     const r = parent.getBoundingClientRect();
     const mode = touchLayoutMode(r.width, r.height, LW, H);
     if (mode !== 'bands') return mode;

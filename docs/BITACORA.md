@@ -2862,3 +2862,9 @@ otra (p. ej. «Desafío diario»); además un Enter muy breve no siempre contaba
 - **Zonas de toque**: `ui/hitArea.ts` (`setHitRect`, `padHit`) marca la zona como propia; Phaser la rehacía al cambiar el color del texto y «Volver» dejaba de responder.
 - **Pausa**: letra con tope en móvil y cada línea bajo la anterior según su alto real (`flowY`, `PauseMetrics`). Los chips de tipo encogen el texto si no cabe. La portada pide «Toca la pantalla» en táctil.
 - **Tamaños** (852×393): Ajustes en dos columnas; textos de Gacha, Mejoras, Misiones, Huerto y Modo de 6–8 a ≥8,6 px reales; zonas de toque más grandes en flechas de dificultad, Tutorial, Continuar, Buscar, pestañas y flechas del Gacha, pestaña de encargos y resultados de Torres.
+
+## Móvil: controles dentro del juego y sin solapes al 150 % (rama `movil-sinbandas`)
+
+- **Sin bandas**: en pantallas más anchas que 16:9, joystick y botones ya no van en bandas DOM fuera del lienzo (al 150 % cada banda medía hasta 174 px CSS casi vacíos). El lienzo llena la caja (hasta 3:1) y los controles van siempre dentro del juego (`TOUCH_BANDS_ENABLED = false` en `data/touchLayout.ts`).
+- **«Tamaño de la interfaz» al 150 %**: la letra del HUD crece, pero nunca por encima de su tope (`max`) ni de ×2 (`hudFontSize`). Al cambiarlo en plena partida, cada texto se recalcula desde su tamaño de diseño (`hudFontOrigin`/`hudFontAt`), en vez de multiplicarse ×1,5 sin tope («Parry», «Adrenalina», «100/100», «Objetos» y el consejo se solapaban).
+- Comprobado con capturas de Playwright (Chrome emulando táctil) a 915×412, 734×372 y 667×258, al 100 % y al 150 %, y con el cambio en plena partida.
