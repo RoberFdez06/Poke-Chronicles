@@ -57,12 +57,15 @@ test('HUD: en móvil (escala 0,347) las letras llegan a ~9,5 px CSS, con tope ×
   assert.equal(hudFontSize(30, k, true, 10), 30);
 });
 
-test('HUD: «Tamaño de la interfaz» agranda en móvil (también el tope) y no en escritorio', async () => {
+test('HUD: «Tamaño de la interfaz» agranda en móvil (sin pasar del tope) y no en escritorio', async () => {
   const { hudFontSize } = await import('../src/ui/uiScale.ts');
   const base = hudFontSize(20, 0.347, true);
   assert.ok(hudFontSize(20, 0.347, true, Infinity, 1.5) > base);
   assert.equal(hudFontSize(20, 0.347, false, Infinity, 1.5), 20);
-  assert.equal(hudFontSize(14, 0.347, true, 22, 1.5), 33);
+  // El tope (lo que cabe en su hueco) no crece: al 150 % nada se sale ni se solapa
+  assert.equal(hudFontSize(14, 0.347, true, 22, 1.5), 22);
+  assert.equal(hudFontSize(16, 0.239, true, Infinity, 1.5), 32);
+  assert.ok(hudFontSize(12, 0.6, true, Infinity, 1.5) > hudFontSize(12, 0.6, true, Infinity, 1));
 });
 
 test('touchPad: margen para llegar a 56 px CSS, 0 si ya llega y con tope', async () => {

@@ -91,8 +91,8 @@ const PANEL = 240;
 const PAD = 16;
 const SLOTS_TOP = 1080 - PAD - 4 * 74;
 const slotY = (i: number) => 1080 - PAD - (4 - i) * 74;
-/** Cajas que deben mejorar (modo «lienzo» a ≈2,0–2,2:1); en el resto todo queda exactamente como antes. */
-const IMPROVED = new Set(['iPhone 14 (sin barras)', 'iPhone 14 Pro (sin barras)', 'iPhone 14 Pro Max (sin barras)', 'Galaxy S23', '2,17:1']);
+/** Cajas más anchas que 16:9: sin bandas, el lienzo llena la caja y los controles van dentro (TOUCH_BANDS_ENABLED). */
+const IMPROVED = new Set(DEVICES.filter(([, w, h]) => w / h > 1.79).map(([n]) => n));
 /** Letra más pequeña del panel izquierdo (ficha, progreso: data/hudLayout.ts). */
 const MIN_FONT = 14;
 
@@ -119,22 +119,20 @@ for (const [name, w, h] of DEVICES) {
       // Interruptor apagado: exactamente lo de antes
       assert.equal(touchWideWidth(w, h, ui, false), old);
       if (!IMPROVED.has(name)) {
-        // Sin mejora (escritorio aparte: 16:9, tablets, iPhone SE, cajas con bandas): idéntico
+        // 16:9 o más estrecho (tablets, iPhone SE): idéntico
         assert.equal(lw, old, 'sin mejora debe quedar igual');
         assert.equal(touchCanvasWide(w, h, lw), false);
         return;
       }
-      assert.equal(old, 1920);
       assert.ok(lw > 1920 && lw <= TOUCH_MAX_W && lw % 2 === 0);
       const before = touchScreen(w, h, 1920);
       const after = touchScreen(w, h, lw);
-      assert.equal(before.mode, 'canvas');
       assert.equal(after.mode, 'canvas');
       assert.ok(touchCanvasWide(w, h, lw));
       // Sala igual (manda el alto), todo dentro y sin franjas muertas (< 1 px CSS por lado)
       assert.ok(Math.abs(after.room - before.room) < 1e-6, 'sala');
       assert.ok(after.canvas <= w + EPS && after.scale * 1080 <= h + EPS);
-      assert.ok(after.band < 1, `franja ${after.band}`);
+      if (w / h <= TOUCH_MAX_W / 1080) assert.ok(after.band < 1, `franja ${after.band}`);
       // Los menús (diseño de 1920 centrado) se ven en el mismo sitio y tamaño
       assert.ok(Math.abs((before.band) - (after.band + centerOffset(lw) * after.scale)) < 1e-6, 'menús en su sitio');
       const segs = touchHudSegs(true);
@@ -192,13 +190,13 @@ test('HUD táctil escalado: sin escalar (1920), hudToScreen y screenToHud son la
   }
 });
 
-test('HUD táctil escalado: iPhone 14 Pro sin barras (734×372) gana HUD y 667×258 (Safari con barras) queda igual', () => {
+test('HUD táctil escalado: iPhone 14 Pro sin barras (734×372) gana HUD y 667×258 (Safari con barras) llena la caja', () => {
   const lw = touchWideWidth(734, 372);
   assert.equal(lw, 2130);
   assert.ok(Math.abs(hudBandScale(lw, PANEL, touchHudSegs(true).left) - 1080 / 852) < 1e-9);
   // Franja muerta de 36 px CSS por lado → 0; panel izquierdo de 83 a 105 px CSS
   assert.ok(touchScreen(734, 372, lw).band < 1);
-  // 667×258: bandas DOM de 104 px; pasar los botones al lienzo los dejaría < 44 px CSS, así que no cambia
-  for (const ui of UIS) assert.equal(touchWideWidth(667, 258, ui), touchLogicalWidth(667, 258, ui));
-  assert.equal(touchScreen(667, 258, touchWideWidth(667, 258)).mode, 'bands');
+  // 667×258 (Safari con barras): ya sin bandas DOM, el lienzo llena la caja y los controles van dentro
+  for (const ui of UIS) assert.equal(touchWideWidth(667, 258, ui), 2792);
+  assert.ok(touchScreen(667, 258, touchWideWidth(667, 258)).band < 1);
 });
